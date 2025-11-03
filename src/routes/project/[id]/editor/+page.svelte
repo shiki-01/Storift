@@ -90,7 +90,7 @@
 		};
 	});
 
-	async function handleCreateChapter() {
+	const handleCreateChapter = async() => {
 		if (!newChapterTitle.trim() || !currentProjectStore.project) return;
 
 		try {
@@ -110,7 +110,7 @@
 		}
 	}
 
-	async function handleCreateScene() {
+	const handleCreateScene = async() => {
 		if (!newSceneTitle.trim() || !selectedChapterId || !currentProjectStore.project) return;
 
 		try {
@@ -132,7 +132,7 @@
 		}
 	}
 
-	async function handleSave() {
+	const handleSave = async() => {
 		if (!editorStore.currentScene || !editorStore.isDirty) return;
 
 		editorStore.isSaving = true;
@@ -278,7 +278,7 @@
 		contextMenu.targetId = scene.id;
 	}
 
-	async function applyRename() {
+	const applyRename = async() => {
 		if (!renameValue.trim() || !contextMenu.targetId) return;
 
 		try {

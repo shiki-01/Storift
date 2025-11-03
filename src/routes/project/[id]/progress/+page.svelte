@@ -35,7 +35,7 @@
 		calculateStats();
 	});
 
-	async function loadProgressLogs() {
+	const loadProgressLogs = async() => {
 		if (!currentProjectStore.project) return;
 		isLoading = true;
 		try {
@@ -45,7 +45,7 @@
 		}
 	}
 
-	function calculateStats() {
+	const calculateStats = () => {
 		if (progressLogs.length === 0) {
 			stats = {
 				totalCharacters: 0,
@@ -101,7 +101,7 @@
 		};
 	}
 
-	function getCalendarDays() {
+	const getCalendarDays = () => {
 		const start = startOfMonth(currentMonth);
 		const end = endOfMonth(currentMonth);
 		const days = eachDayOfInterval({ start, end });
@@ -140,7 +140,7 @@
 		showLogModal = true;
 	}
 
-	async function handleSaveLog() {
+	const handleSaveLog = async() => {
 		if (!currentProjectStore.project || !selectedDate) return;
 
 		const dateStr = format(selectedDate, 'yyyy-MM-dd');
@@ -164,15 +164,15 @@
 		showLogModal = false;
 	}
 
-	function previousMonth() {
+	const previousMonth = () => {
 		currentMonth = subMonths(currentMonth, 1);
 	}
 
-	function nextMonth() {
+	const nextMonth = () => {
 		currentMonth = addMonths(currentMonth, 1);
 	}
 
-	function goToToday() {
+	const goToToday = () => {
 		currentMonth = new Date();
 	}
 

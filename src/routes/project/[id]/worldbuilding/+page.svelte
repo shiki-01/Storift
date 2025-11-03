@@ -44,7 +44,7 @@
 		await loadWorldbuildings();
 	});
 
-	async function loadWorldbuildings() {
+	const loadWorldbuildings = async() => {
 		if (!currentProjectStore.project) return;
 		isLoading = true;
 		try {
@@ -54,7 +54,7 @@
 		}
 	}
 
-	function openCreateModal() {
+	const openCreateModal = () => {
 		formData = {
 			title: '',
 			category: 'term',
@@ -77,7 +77,7 @@
 		showEditModal = true;
 	}
 
-	async function handleCreate() {
+	const handleCreate = async() => {
 		if (!currentProjectStore.project || !formData.title.trim()) return;
 
 		const worldbuilding = await worldbuildingDB.create({
@@ -99,7 +99,7 @@
 		showCreateModal = false;
 	}
 
-	async function handleUpdate() {
+	const handleUpdate = async() => {
 		if (!editingWorldbuilding) return;
 
 		await worldbuildingDB.update(editingWorldbuilding.id, {
@@ -125,7 +125,7 @@
 		await loadWorldbuildings();
 	}
 
-	function handleAddTag() {
+	const handleAddTag = () => {
 		if (formData.tagInput.trim() && !formData.tags.includes(formData.tagInput.trim())) {
 			formData.tags = [...formData.tags, formData.tagInput.trim()];
 			formData.tagInput = '';
@@ -136,7 +136,7 @@
 		formData.tags = formData.tags.filter((_, i) => i !== index);
 	}
 
-	function getCategoryCounts() {
+	const getCategoryCounts = () => {
 		return {
 			all: worldbuildings.length,
 			term: worldbuildings.filter((w) => w.category === 'term').length,

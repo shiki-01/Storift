@@ -211,7 +211,7 @@ async function handleSyncRequest(payload: { type?: string; data?: unknown }) {
 }
 
 // Background Sync
-async function performBackgroundSync() {
+const performBackgroundSync = async() => {
 	try {
 		console.log('🔄 Performing background sync...');
 
@@ -234,7 +234,7 @@ async function performBackgroundSync() {
 }
 
 // Periodic Sync
-async function performPeriodicSync() {
+const performPeriodicSync = async() => {
 	console.log('🔄 Performing periodic sync...');
 	return performBackgroundSync();
 }

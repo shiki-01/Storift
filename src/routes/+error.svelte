@@ -4,15 +4,15 @@
 	let errorMessage = $derived($page.error?.message || '不明なエラーが発生しました');
 	let errorStatus = $derived($page.status || 500);
 	
-	function goHome() {
+	const goHome = () => {
 		window.location.href = '/home';
 	}
 	
-	function reload() {
+	const reload = () => {
 		window.location.reload();
 	}
 	
-	function reportError() {
+	const reportError = () => {
 		console.error('Error reported:', {
 			status: errorStatus,
 			message: errorMessage,

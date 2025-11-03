@@ -5,11 +5,11 @@
 	let errorMessage = $derived($page.error?.message || '不明なエラーが発生しました');
 	let errorStatus = $derived($page.status || 500);
 	
-	function goToProjects() {
+	const goToProjects = () => {
 		goto('/home');
 	}
 	
-	function reload() {
+	const reload = () => {
 		window.location.reload();
 	}
 </script>

@@ -55,34 +55,36 @@
 	}
 
 	// 自動テーマ切替
-	async function handleAutoThemeToggle() {
+	const handleAutoThemeToggle = async() => {
 		settings.autoTheme = !settings.autoTheme;
 		await themeStore.setAutoTheme(settings.autoTheme);
 		await saveSettings();
 	}
 
 	// 同期設定の変更
-	async function handleSyncToggle() {
+	const handleSyncToggle = async() => {
 		const wasEnabled = settings.syncEnabled;
 		settings.syncEnabled = !settings.syncEnabled;
 		await saveSettings();
-		
-		console.log(`🔄 Sync toggle: ${wasEnabled ? 'ON' : 'OFF'} -> ${settings.syncEnabled ? 'ON' : 'OFF'}`);
-		
+
+		console.log(
+			`🔄 Sync toggle: ${wasEnabled ? 'ON' : 'OFF'} -> ${settings.syncEnabled ? 'ON' : 'OFF'}`
+		);
+
 		// Firebase同期の開始/停止
 		if (typeof window !== 'undefined') {
 			if (!isFirebaseInitialized()) {
 				console.log('ℹ️ Firebase not configured, sync setting saved but no action taken');
 				return;
 			}
-			
+
 			if (settings.syncEnabled && !wasEnabled) {
 				// 同期を有効化した場合
 				try {
 					// 認証状態を確認し、必要に応じて再認証
 					const { getCurrentUser, signInAnonymousUser } = await import('$lib/firebase/auth');
 					const { authStore } = await import('$lib/stores/auth.svelte');
-					
+
 					let user = getCurrentUser();
 					if (!user) {
 						console.log('🔐 Re-authenticating user...');
@@ -90,11 +92,11 @@
 						authStore.user = user;
 						authStore.isInitialized = true;
 					}
-					
+
 					// 同期システムを再初期化
 					const { initializeSync } = await import('$lib/services/sync.service');
 					await initializeSync();
-					
+
 					// プロジェクト固有の同期を開始
 					const projectId = currentProjectStore.project?.id;
 					if (projectId) {
@@ -104,7 +106,7 @@
 					} else {
 						console.log('ℹ️ No project selected, sync will start when project is opened');
 					}
-					
+
 					syncStore.status = 'synced';
 				} catch (error) {
 					console.error('❌ Failed to start Firebase sync:', error);
@@ -128,7 +130,7 @@
 	}
 
 	// 設定の保存
-	async function saveSettings() {
+	const saveSettings = async() => {
 		try {
 			// 既存の設定を取得してFirebase設定を保持
 			const existing = await db.settings.get('app-settings');
@@ -157,7 +159,7 @@
 	}
 
 	// 設定の読み込み
-	async function loadSettings() {
+	const loadSettings = async() => {
 		try {
 			const saved = await db.settings.get('app-settings');
 			if (saved) {
@@ -182,7 +184,7 @@
 	}
 
 	// エクスポート
-	async function handleExport() {
+	const handleExport = async() => {
 		try {
 			if (exportFormat === 'json') {
 				await exportAllProjects();
@@ -195,7 +197,7 @@
 	}
 
 	// インポート
-	async function handleImport() {
+	const handleImport = async() => {
 		if (!importFile) return;
 
 		try {
@@ -218,7 +220,7 @@
 	}
 
 	// キャッシュクリア
-	async function handleClearCache() {
+	const handleClearCache = async() => {
 		try {
 			// Service Workerのキャッシュをクリア
 			if ('caches' in window) {
@@ -233,7 +235,7 @@
 	}
 
 	// 全データ削除
-	async function handleClearAllData() {
+	const handleClearAllData = async() => {
 		try {
 			await db.delete();
 			await db.open();
@@ -263,15 +265,15 @@
 	});
 </script>
 
-<div class="container mx-auto p-6 max-w-4xl">
-	<h1 class="text-3xl font-bold mb-8">設定</h1>
+<div class="w:100% h:100% overflow-y:auto px:4rem py:2rem">
+	<h1 class="font:1.25rem">設定</h1>
 
 	<!-- テーマ設定 -->
-	<Card class="mb-6">
-		<h2 class="text-xl font-semibold mb-4">テーマ</h2>
+	<Card class="flex flex:column gap:1rem">
+		<h2 class="font:bold">テーマ</h2>
 
-		<div class="mb-4">
-			<label class="flex items-center gap-2 cursor-pointer">
+		<div class="px:4rem">
+			<label class="flex align-items:center gap:1rem cursor:pointer">
 				<input
 					type="checkbox"
 					checked={settings.autoTheme}
@@ -282,30 +284,31 @@
 			</label>
 		</div>
 
-		<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+		<div class="flex flex:column gap:.5rem px:4rem">
 			{#each Object.values(themes) as theme}
 				<button
 					onclick={() => handleThemeChange(theme.id)}
-					class="p-4 rounded-lg border-2 transition-all hover:scale-105"
-					class:border-primary={settings.theme === theme.id && !settings.autoTheme}
-					class:border-gray-300={settings.theme !== theme.id || settings.autoTheme}
+					class="p:4 r:8px b:2px|solid|black cursor:pointer flex flex:row ai:center jc:center gap:2rem rel {settings.autoTheme ? 'opacity:.5' : ''}"
 					style="background-color: {theme.colors.background}; color: {theme.colors.text};"
 					disabled={settings.autoTheme}
 				>
-					<div class="font-semibold mb-2">{theme.name}</div>
-					<div class="flex gap-1 justify-center">
-						<div
-							class="w-6 h-6 rounded-full"
-							style="background-color: {theme.colors.primary};"
-						></div>
-						<div
-							class="w-6 h-6 rounded-full"
-							style="background-color: {theme.colors.secondary};"
-						></div>
-						<div
-							class="w-6 h-6 rounded-full"
-							style="background-color: {theme.colors.accent};"
-						></div>
+					{#if settings.theme === theme.id && !settings.autoTheme}
+						<div class="abs top:50% left:1rem transform:translateY(-50%)">
+							<span
+								class="w:8px h:2px flex transform:rotate(45deg)|translate(0,6px)"
+								style="background-color: {theme.colors.text};"
+							></span>
+							<span
+								class="w:16px h:2px flex transform:rotate(-45deg)"
+								style="background-color: {theme.colors.text};"
+							></span>
+						</div>
+					{/if}
+					<div class="">{theme.name}</div>
+					<div class="flex gap:1rem justify-content:center">
+						<div class="w:8px h:8px r:full" style="background-color: {theme.colors.primary};"></div>
+						<div class="w:8px h:8px r:full" style="background-color: {theme.colors.secondary};"></div>
+						<div class="w:8px h:8px r:full" style="background-color: {theme.colors.accent};"></div>
 					</div>
 				</button>
 			{/each}
@@ -313,8 +316,8 @@
 	</Card>
 
 	<!-- Phase 2: 通知設定 -->
-	<Card class="mb-6">
-		<h2 class="text-xl font-semibold mb-4">通知とリマインダー</h2>
+	<Card class="">
+		<h2 class="font:bold">通知とリマインダー</h2>
 		{#if currentProjectStore.project}
 			<NotificationSettings projectId={currentProjectStore.project.id} />
 		{:else}
@@ -407,14 +410,13 @@
 					{/if}
 				</div>
 			{:else}
-				<div class="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
+				<div
+					class="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded"
+				>
 					<p class="text-sm text-yellow-800 dark:text-yellow-200 mb-2">
 						⚠️ Firebase連携が設定されていません
 					</p>
-					<a
-						href="/setup"
-						class="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-					>
+					<a href="/setup" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
 						Firebase設定ページへ →
 					</a>
 				</div>
@@ -430,9 +432,7 @@
 			{#each Object.entries(settings.shortcuts) as [action, key]}
 				<div class="flex items-center justify-between">
 					<span class="capitalize">{action.replace(/([A-Z])/g, ' $1')}</span>
-					<kbd
-						class="px-3 py-1 bg-gray-100 border border-gray-300 rounded text-sm font-mono"
-					>
+					<kbd class="px-3 py-1 bg-gray-100 border border-gray-300 rounded text-sm font-mono">
 						{key}
 					</kbd>
 				</div>
@@ -458,9 +458,7 @@
 				<Button onclick={() => (showImportModal = true)} variant="secondary" class="w-full">
 					データをインポート
 				</Button>
-				<p class="text-sm text-gray-600 mt-1">
-					バックアップファイルからプロジェクトを復元します。
-				</p>
+				<p class="text-sm text-gray-600 mt-1">バックアップファイルからプロジェクトを復元します。</p>
 			</div>
 
 			<div>
@@ -561,15 +559,3 @@
 		</div>
 	</Modal>
 {/if}
-
-<style>
-	.container {
-		min-height: 100vh;
-		background: var(--color-background);
-		color: var(--color-text);
-	}
-
-	:global(.border-primary) {
-		border-color: var(--color-primary) !important;
-	}
-</style>

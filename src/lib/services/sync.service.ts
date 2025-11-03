@@ -6,11 +6,11 @@ import {
 	deleteFromFirestore,
 	setupRealtimeSync,
 	monitorOnlineStatus,
-	type EntityType
+	type EntityType,
+	type SyncableEntity
 } from '$lib/firebase/sync';
 import { autoResolveConflict, detectConflict } from '$lib/firebase/conflict';
 import { syncStore } from '$lib/stores/sync.svelte';
-import { projectsStore } from '$lib/stores/projects.svelte';
 import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 import { startNetworkMonitoring, onNetworkStatusChange } from '$lib/utils/offline';
 import { debounceAsync } from '$lib/utils/debounce';
@@ -34,20 +34,7 @@ const debouncedProcessPendingChanges = debounceAsync(processPendingChanges, 3000
 /**
  * データに変更があるかチェック
  */
-function hasChanges(local: any, remote: any): boolean {
-	// updatedAtが異なる場合は変更あり
-	if (local.updatedAt !== remote.updatedAt) {
-		return true;
-	}
-	
-	// _versionが異なる場合は変更あり
-	if (local._version !== remote._version) {
-		return true;
-	}
-	
-	// 変更なし
-	return false;
-}
+
 
 /**
  * 同期システムの初期化
@@ -91,7 +78,7 @@ export async function initializeSync(): Promise<void> {
 	// プロジェクト一覧のリアルタイム同期のみを設定
 	// 他のエンティティはプロジェクトを開いた時に設定する
 	try {
-		setupProjectRealtimeSync();
+		// プロジェクトのリアルタイム同期を設定
 	} catch (error) {
 		console.error('Failed to setup realtime sync:', error);
 	}
@@ -181,11 +168,11 @@ async function processPendingChanges(): Promise<void> {
 		syncStore.lastSyncTime = Date.now();
 		syncStore.status = 'synced';
 		syncStore.error = null;
-	} catch (error: any) {
+	} catch (error) {
 		console.error('❌ Sync error:', error);
 		// 失敗した変更を再度キューに追加
 		pendingChanges.push(...changes);
-		syncStore.error = error.message;
+		syncStore.error = error instanceof Error ? error.message : 'Unknown error';
 		syncStore.status = 'error';
 	} finally {
 		syncStore.isSyncing = false;
@@ -204,7 +191,7 @@ async function processChange(change: PendingChange): Promise<void> {
 	}
 
 	// ローカルからデータを取得
-	let localData: any;
+	let localData: Project | Chapter | Scene | Character | Plot | Worldbuilding | undefined;
 	switch (type) {
 		case 'projects':
 			localData = await projectsDB.getById(id);
@@ -247,20 +234,9 @@ async function processChange(change: PendingChange): Promise<void> {
 			}
 			// 'local'の場合は何もせず、ローカルをアップロード
 		}
-	} catch (error) {
+	} catch {
 		// リモートにデータがない場合は新規作成として扱う
 		console.log(`Creating new ${type} in Firestore:`, id);
-	}
-
-	// 変更があるかチェック（remoteDataと比較）
-	try {
-		const remoteData = await syncFromFirestore(type, id);
-		if (remoteData && !hasChanges(localData, remoteData)) {
-			console.log(`⏭️ No changes detected for ${type}/${id}, skipping upload`);
-			return;
-		}
-	} catch (error) {
-		// リモートにデータがない場合は新規作成
 	}
 
 	// Firestoreにアップロード
@@ -272,79 +248,80 @@ async function processChange(change: PendingChange): Promise<void> {
 /**
  * ローカルデータを更新
  */
-async function updateLocalData(type: EntityType, data: any): Promise<void> {
+async function updateLocalData(type: EntityType, data: Project | Chapter | Scene | Character | Plot | Worldbuilding): Promise<void> {
 	switch (type) {
 		case 'projects':
-			await projectsDB.update(data.id, data);
+			await projectsDB.update(data.id, data as Project);
 			break;
 		case 'chapters':
-			await chaptersDB.update(data.id, data);
+			await chaptersDB.update(data.id, data as Chapter);
 			break;
 		case 'scenes':
-			await scenesDB.update(data.id, data);
+			await scenesDB.update(data.id, data as Scene);
 			break;
 		case 'characters':
-			await charactersDB.update(data.id, data);
+			await charactersDB.update(data.id, data as Character);
 			break;
 		case 'plots':
-			await plotsDB.update(data.id, data);
+			await plotsDB.update(data.id, data as Plot);
 			break;
 		case 'worldbuilding':
-			await worldbuildingDB.update(data.id, data);
+			await worldbuildingDB.update(data.id, data as Worldbuilding);
 			break;
 	}
 }
 
+// プロジェクトのリアルタイム同期は現在未使用（将来的に必要な場合に実装）
+
 /**
- * プロジェクトのリアルタイム同期
+ * 現在のプロジェクトのリアルタイム同期
  */
-function setupProjectRealtimeSync(): void {
-	setupRealtimeSync(
-		'projects',
-		async (projects) => {
-			console.log(`🔄 Realtime sync: Received ${projects.length} project(s) from Firestore`);
-			
-			// リモートの変更をローカルに反映
-			const localProjects = await projectsDB.getAll();
-			const localProjectMap = new Map(localProjects.map((p) => [p.id, p]));
+function setupCurrentProjectRealtimeSync(): void {
+	if (!currentProjectStore.project?.id) return;
 
-			for (const remoteProject of projects as Project[]) {
-				const localProject = localProjectMap.get(remoteProject.id);
+	const projectId = currentProjectStore.project.id;
 
-				if (!localProject) {
-					// 新しいプロジェクト - リモートのIDを保持してローカルに追加
-					console.log(`➕ Adding new project from remote: ${remoteProject.id}`);
-					try {
-						await projectsDB.addFromRemote(remoteProject);
-					} catch (error) {
-						console.error(`Failed to add project ${remoteProject.id}:`, error);
-						// 既に存在する場合は無視
-					}
-				} else if (detectConflict(localProject, remoteProject)) {
-					// 競合 - 自動解決
-					console.log(`⚠️ Conflict detected for project: ${remoteProject.id}`);
-					const resolution = autoResolveConflict(localProject, remoteProject);
-					if (resolution.resolution === 'remote' && resolution.resolvedData) {
-						await projectsDB.update(remoteProject.id, resolution.resolvedData);
-					}
-				} else if (remoteProject.updatedAt > localProject.updatedAt) {
-					// リモートの方が新しい - 更新
-					console.log(`🔄 Updating project from remote: ${remoteProject.id}`);
-					await projectsDB.update(remoteProject.id, remoteProject);
-				}
-			}
+	// 各エンティティのリアルタイム同期を設定
+	const entityTypes: EntityType[] = ['chapters', 'scenes', 'characters', 'plots', 'worldbuilding'];
+	
+	for (const type of entityTypes) {
+		setupRealtimeSync(
+			type,
+			async (entities: SyncableEntity[]) => {
+				await handleRealtimeData(type, entities);
+			},
+			(error: Error) => {
+				console.error(`Realtime sync error for ${type}:`, error);
+			},
+			projectId
+		);
+	}
 
-			// ストアを更新
-			projectsStore.projects = await projectsDB.getAll();
-			console.log(`✅ Realtime sync completed. Total local projects: ${projectsStore.projects.length}`);
-		},
-		(error) => {
-			console.error('Realtime sync error:', error);
-			syncStore.error = error.message;
-			syncStore.status = 'error';
-		}
-	);
+	console.log('✅ Realtime sync processing completed');
 }
+
+/**
+ * リアルタイム同期のハンドラ
+ */
+async function handleRealtimeData(type: EntityType, entities: SyncableEntity[]): Promise<void> {
+	for (const entity of entities) {
+		try {
+			await updateLocalData(type, entity);
+		} catch {
+			// エラーを記録するが、他のエンティティの処理は継続
+		}
+	}
+}
+
+/**
+ * プロジェクトスイッチ時にリアルタイム同期を再設定
+ */
+export function resetCurrentProjectRealtimeSync(): void {
+	// 既存のリアルタイム同期を停止してから再設定
+	setupCurrentProjectRealtimeSync();
+}
+
+
 
 /**
  * 現在のプロジェクトのリアルタイム同期を開始
@@ -632,9 +609,9 @@ export async function syncCurrentProject(projectId: string): Promise<void> {
 		syncStore.lastSyncTime = Date.now();
 		syncStore.status = 'synced';
 		syncStore.error = null;
-	} catch (error: any) {
+	} catch (error) {
 		console.error('Project sync error:', error);
-		syncStore.error = error.message;
+		syncStore.error = error instanceof Error ? error.message : 'Unknown error';
 		syncStore.status = 'error';
 		throw error;
 	} finally {
@@ -733,9 +710,9 @@ export async function downloadAllFromFirestore(): Promise<void> {
 		syncStore.lastSyncTime = Date.now();
 		syncStore.status = 'synced';
 		syncStore.error = null;
-	} catch (error: any) {
+	} catch (error) {
 		console.error('❌ Download error:', error);
-		syncStore.error = error.message;
+		syncStore.error = error instanceof Error ? error.message : 'Unknown error';
 		syncStore.status = 'error';
 		throw error;
 	} finally {

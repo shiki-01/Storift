@@ -1,11 +1,22 @@
 import { db } from '$lib/db';
 import { v4 as uuidv4 } from 'uuid';
-import type { Project } from '$lib/types/project';
+import type { Project, Chapter, Scene, Character, Plot, Worldbuilding } from '$lib/types';
+import type { ProgressLog } from '$lib/types/progress';
 
 export interface ImportResult {
 	success: boolean;
 	projectIds: string[];
 	errors: string[];
+}
+
+interface ImportedProjectData {
+	project: Record<string, unknown>;
+	chapters?: Record<string, unknown>[];
+	scenes?: Record<string, unknown>[];
+	characters?: Record<string, unknown>[];
+	plots?: Record<string, unknown>[];
+	worldbuilding?: Record<string, unknown>[];
+	progressLogs?: Record<string, unknown>[];
 }
 
 /**
@@ -64,12 +75,12 @@ export async function importFromJson(file: File): Promise<ImportResult> {
 /**
  * 単一プロジェクトをインポート
  */
-async function importSingleProject(data: any): Promise<string | null> {
+async function importSingleProject(data: ImportedProjectData): Promise<string | null> {
 	const newProjectId = uuidv4();
 	const now = Date.now();
 
 	// プロジェクトの作成
-	const project: Project = {
+	const project = {
 		...data.project,
 		id: newProjectId,
 		createdAt: now,
@@ -77,16 +88,16 @@ async function importSingleProject(data: any): Promise<string | null> {
 		syncedAt: undefined,
 		_firestoreId: undefined,
 		_version: 1
-	};
+	} as Project;
 
 	await db.projects.add(project);
 
-	// 章のインポート
+	// 章のインポート（IDマッピング）
 	const chapterIdMap = new Map<string, string>();
 	if (data.chapters) {
 		for (const chapter of data.chapters) {
 			const newChapterId = uuidv4();
-			chapterIdMap.set(chapter.id, newChapterId);
+			chapterIdMap.set(chapter.id as string, newChapterId);
 
 			await db.chapters.add({
 				...chapter,
@@ -95,7 +106,7 @@ async function importSingleProject(data: any): Promise<string | null> {
 				createdAt: now,
 				updatedAt: now,
 				_version: 1
-			});
+			} as Chapter);
 		}
 	}
 
@@ -106,11 +117,11 @@ async function importSingleProject(data: any): Promise<string | null> {
 				...scene,
 				id: uuidv4(),
 				projectId: newProjectId,
-				chapterId: chapterIdMap.get(scene.chapterId) || scene.chapterId,
+				chapterId: chapterIdMap.get(scene.chapterId as string) || scene.chapterId,
 				createdAt: now,
 				updatedAt: now,
 				_version: 1
-			});
+			} as Scene);
 		}
 	}
 
@@ -119,7 +130,7 @@ async function importSingleProject(data: any): Promise<string | null> {
 	if (data.characters) {
 		for (const character of data.characters) {
 			const newCharacterId = uuidv4();
-			characterIdMap.set(character.id, newCharacterId);
+			characterIdMap.set(character.id as string, newCharacterId);
 
 			await db.characters.add({
 				...character,
@@ -128,19 +139,20 @@ async function importSingleProject(data: any): Promise<string | null> {
 				createdAt: now,
 				updatedAt: now,
 				_version: 1
-			});
+			} as Character);
 		}
 	}
 
 	// キャラクター関係性のIDを更新
 	if (data.characters) {
 		for (const character of data.characters) {
-			const newCharacterId = characterIdMap.get(character.id);
+			const newCharacterId = characterIdMap.get(character.id as string);
 			if (newCharacterId && character.relationships) {
-				const updatedRelationships = character.relationships.map((rel: any) => ({
+				const relationships = character.relationships as Array<Record<string, unknown> & { characterId: string }>;
+				const updatedRelationships = relationships.map((rel) => ({
 					...rel,
 					characterId: characterIdMap.get(rel.characterId) || rel.characterId
-				}));
+				})) as Character['relationships'];
 
 				await db.characters.update(newCharacterId, {
 					relationships: updatedRelationships
@@ -152,20 +164,23 @@ async function importSingleProject(data: any): Promise<string | null> {
 	// プロットのインポート
 	if (data.plots) {
 		for (const plot of data.plots) {
+			const linkedSceneId = plot.linkedSceneId as string | undefined;
+			const linkedChapterId = plot.linkedChapterId as string | undefined;
+			
 			await db.plots.add({
 				...plot,
 				id: uuidv4(),
 				projectId: newProjectId,
-				linkedSceneId: plot.linkedSceneId
-					? chapterIdMap.get(plot.linkedSceneId) || plot.linkedSceneId
+				linkedSceneId: linkedSceneId
+					? chapterIdMap.get(linkedSceneId) || linkedSceneId
 					: undefined,
-				linkedChapterId: plot.linkedChapterId
-					? chapterIdMap.get(plot.linkedChapterId) || plot.linkedChapterId
+				linkedChapterId: linkedChapterId
+					? chapterIdMap.get(linkedChapterId) || linkedChapterId
 					: undefined,
 				createdAt: now,
 				updatedAt: now,
 				_version: 1
-			});
+			} as Plot);
 		}
 	}
 
@@ -179,7 +194,7 @@ async function importSingleProject(data: any): Promise<string | null> {
 				createdAt: now,
 				updatedAt: now,
 				_version: 1
-			});
+			} as Worldbuilding);
 		}
 	}
 
@@ -191,7 +206,7 @@ async function importSingleProject(data: any): Promise<string | null> {
 				id: uuidv4(),
 				projectId: newProjectId,
 				createdAt: now
-			});
+			} as ProgressLog);
 		}
 	}
 

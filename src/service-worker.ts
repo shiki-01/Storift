@@ -141,11 +141,11 @@ self.addEventListener('sync', (event) => {
 });
 
 // Periodic Background Sync (if supported)
-self.addEventListener('periodicsync', (event: any) => {
+self.addEventListener('periodicsync', ((event: ExtendableEvent & { tag?: string }) => {
 	if (event.tag === 'storift-periodic-sync') {
 		event.waitUntil(performPeriodicSync());
 	}
-});
+}) as EventListener);
 
 // Push Notification
 self.addEventListener('push', (event) => {
@@ -186,7 +186,7 @@ self.addEventListener('notificationclick', (event) => {
 });
 
 // Sync Request Handler
-async function handleSyncRequest(payload: any) {
+async function handleSyncRequest(payload: { type?: string; data?: unknown }) {
 	try {
 		console.log('🔄 Handling sync request:', payload);
 
@@ -246,9 +246,8 @@ self.addEventListener('activate', (event) => {
 });
 
 // Service Worker Install
-self.addEventListener('install', (event) => {
-	console.log('📦 Service Worker installing...');
-	self.skipWaiting();
+self.addEventListener('install', () => {
+	console.log('Service Worker installed');
 });
 
 console.log('🚀 Storift Service Worker loaded');

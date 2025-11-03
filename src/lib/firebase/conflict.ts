@@ -47,7 +47,7 @@ export interface ConflictData<T> {
 	conflictFields: string[];
 }
 
-export function prepareConflictData<T extends Record<string, any>>(
+export function prepareConflictData<T extends Record<string, unknown>>(
 	local: T,
 	remote: T
 ): ConflictData<T> {

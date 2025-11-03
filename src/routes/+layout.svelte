@@ -117,8 +117,8 @@
 	<meta name="description" content="個人向け小説執筆アプリ" />
 </svelte:head>
 
-<div class="min-h:100vh bg:$(theme.background)">
-	<header class="px:1.5rem py:1rem bb:2px|solid|$(theme.border)">
+<div class="min-h:100vh bg:theme-background">
+	<header class="px:1.5rem py:1rem bb:2px|solid|theme-text">
 		<div class="max-w:1200 gap:1.5rem mx:auto flex justify-content:start align-items:center">
 			<button
 				aria-label="mordal"
@@ -126,17 +126,17 @@
 				class="rel w:30px h:30px cursor:pointer"
 			>
 				<span
-					class="w:20px h:2px flex bg:$(theme.text) abs top:50% left:0 transition:all|.2s|ease-in-out {editorStore.isOpen
+					class="w:20px h:2px flex bg:theme-text abs top:50% left:0 transition:all|.2s|ease-in-out {editorStore.isOpen
 						? 'rotate(45deg)'
 						: 'transform:translateY(-6px)'}"
 				></span>
 				<span
-					class="w:20px h:2px flex bg:$(theme.text) abs top:50% left:0 transition:all|.2s|ease-in-out {editorStore.isOpen
+					class="w:20px h:2px flex bg:theme-text abs top:50% left:0 transition:all|.2s|ease-in-out {editorStore.isOpen
 						? 'rotate(90deg) opacity:0'
 						: 'transform:translateY(0) opacity:1'}"
 				></span>
 				<span
-					class="w:20px h:2px flex bg:$(theme.text) abs top:50% left:0 transition:all|.2s|ease-in-out {editorStore.isOpen
+					class="w:20px h:2px flex bg:theme-text abs top:50% left:0 transition:all|.2s|ease-in-out {editorStore.isOpen
 						? 'rotate(-45deg)'
 						: 'transform:translateY(6px)'}"
 				></span>
@@ -150,10 +150,10 @@
 		</div>
 	</header>
 
-	<main class="mx:auto h:calc(100vh-64px) rel">
+	<main class="mx:auto h:calc(100vh-66px) rel">
 		<!-- サイドバー -->
 		<aside
-			class="w:240 h:100% bg:var(--theme.surface) flex flex:column abs z:2 top:0 transition:left|.2s|ease-in-out border-right:2px|solid|$(theme.border) {editorStore.isOpen
+			class="w:240 h:100% bg:theme-background flex flex:column abs z:2 top:0 transition:left|.2s|ease-in-out border-right:2px|solid|theme-text {editorStore.isOpen
 				? 'left:0'
 				: 'left:-240px'}"
 		>
@@ -162,7 +162,7 @@
 				<a
 					href="/home"
 					onclick={() => (editorStore.isOpen = false)}
-					class="flex align-items:center gap:12 px:16 py:12 r:8 mb:4 font:14 fg:$(theme.text) hover:bg:$(theme.background)"
+					class="flex align-items:center gap:12 px:16 py:12 r:8 mb:4 font:14 fg:theme-text"
 				>
 					<span>ホーム</span>
 				</a>
@@ -171,7 +171,7 @@
 					<!-- プロジェクトページ用のナビゲーション -->
 					<div class="mt:16 mb:8 px:16">
 						<div
-							class="font:12 font-weight:600 fg:$(theme.text-secondary) text-transform:uppercase"
+							class="font:12 font-weight:600 fg:theme-text-secondary text-transform:uppercase"
 						>
 							プロジェクト
 						</div>
@@ -180,11 +180,12 @@
 						<a
 							href="/project/{projectId}/{item.path}"
 							onclick={() => (editorStore.isOpen = false)}
-							class="flex align-items:center gap:12 px:16 py:12 r:8 mb:4 font:14 {isActive(
+							class="flex ai:center gap:12 px:16 py:12 r:8 mb:4 font:14 {isActive(
 								item.path
 							)
-								? 'bg:$(theme.primary)/.1 fg:$(theme.primary)'
-								: 'fg:$(theme.text) hover:bg:$(theme.background)'}"
+								? 'fg:theme-primary'
+								: 'fg:theme-text'}"
+							style={isActive(item.path) ? 'background-color: color-mix(in srgb, var(--color-primary) 20%, transparent)' : ''}
 						>
 							<span>{item.label}</span>
 						</a>
@@ -192,11 +193,11 @@
 				{/if}
 			</nav>
 
-			<div class="p:12 border-top:1px|solid|$(theme.border)">
+			<div class="p:12 border-top:1px|solid|theme-border">
 				<a
 					href="/settings"
 					onclick={() => (editorStore.isOpen = false)}
-					class="flex align-items:center gap:12 px:16 py:12 r:8 mb:4 font:14 fg:$(theme.text) hover:bg:$(theme.background)"
+					class="flex align-items:center gap:12 px:16 py:12 r:8 mb:4 font:14 fg:theme-text"
 				>
 					<span>設定</span>
 				</a>
@@ -206,7 +207,7 @@
 		<button
 			aria-label="sidebar overlay"
 			onclick={() => (editorStore.isOpen = false)}
-			class="w:100% h:100% abs z:1 bg:$(theme.text) cursor:pointer transition:opacity|.2s|ease-in-out {editorStore.isOpen
+			class="w:100% h:100% abs z:1 bg:theme-text cursor:pointer transition:opacity|.2s|ease-in-out {editorStore.isOpen
 				? 'opacity:.5 pointer-events:auto'
 				: 'opacity:0 pointer-events:none'}"
 		></button>

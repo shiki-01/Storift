@@ -7,6 +7,8 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
+	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
+	import { createPlotContextMenu, type ContextMenuItem } from '$lib/utils/contextMenu';
 	import { onMount } from 'svelte';
 
 	let plots = $state<Plot[]>([]);
@@ -15,6 +17,15 @@
 	let showCreateModal = $state(false);
 	let showEditModal = $state(false);
 	let editingPlot = $state<Plot | null>(null);
+
+	// コンテキストメニュー
+	let contextMenu = $state<{
+		visible: boolean;
+		x: number;
+		y: number;
+		items: ContextMenuItem[];
+		targetPlot?: Plot;
+	}>({ visible: false, x: 0, y: 0, items: [] });
 
 	// フォーム状態
 	let formData = $state({
@@ -130,6 +141,51 @@
 	function getPlotsByStatus(status: Plot['status']) {
 		return plots.filter((p) => p.status === status);
 	}
+
+	// コンテキストメニュー - プロット
+	function handlePlotContextMenu(e: MouseEvent, plot: Plot) {
+		e.preventDefault();
+		e.stopPropagation();
+
+		const items = createPlotContextMenu({
+			onEdit: () => openEditModal(plot),
+			onDuplicate: () => handleDuplicatePlot(plot),
+			onDelete: () => handleDelete(plot.id)
+		});
+
+		contextMenu = {
+			visible: true,
+			x: e.clientX,
+			y: e.clientY,
+			items,
+			targetPlot: plot
+		};
+	}
+
+	// 複製処理
+	async function handleDuplicatePlot(plot: Plot) {
+		if (!currentProjectStore.project) return;
+
+		try {
+			const newPlot = await plotsDB.create({
+				projectId: currentProjectStore.project.id,
+				title: `${plot.title} (コピー)`,
+				type: plot.type,
+				status: plot.status
+			});
+
+			await plotsDB.update(newPlot.id, {
+				content: plot.content,
+				color: plot.color
+			});
+
+			await queueChange('plots', newPlot.id, 'create');
+			await loadPlots();
+		} catch (error) {
+			console.error('Failed to duplicate plot:', error);
+			alert('プロットの複製に失敗しました');
+		}
+	}
 </script>
 
 <div class="p:32 h:100% overflow:auto">
@@ -175,7 +231,10 @@
 					</div>
 					<div class="flex flex:col gap:8 min-h:400 p:12 bg:gray-50 r:8">
 						{#each getPlotsByStatus(status as Plot['status']) as plot (plot.id)}
-							<Card class="p:16 cursor:pointer hover:shadow:2 transition:all|200ms">
+							<Card 
+								class="p:16 cursor:pointer hover:shadow:2 transition:all|200ms"
+								oncontextmenu={(e) => handlePlotContextMenu(e, plot)}
+							>
 								<div class="flex justify-content:space-between align-items:start mb:8">
 									<div class="flex align-items:center gap:8">
 										<div
@@ -236,7 +295,10 @@
 		<!-- タイムラインビュー -->
 		<div class="flex flex:col gap:16">
 			{#each plots as plot (plot.id)}
-				<Card class="p:24">
+				<Card 
+					class="p:24"
+					oncontextmenu={(e) => handlePlotContextMenu(e, plot)}
+				>
 					<div class="flex gap:16">
 						<div
 							class="w:4 bg:gray-200 r:2 flex-shrink:0"
@@ -389,6 +451,15 @@
 		</div>
 	{/snippet}
 </Modal>
+
+<!-- コンテキストメニュー -->
+<ContextMenu
+	visible={contextMenu.visible}
+	x={contextMenu.x}
+	y={contextMenu.y}
+	items={contextMenu.items}
+	onClose={() => contextMenu.visible = false}
+/>
 
 <style>
 	.line-clamp\:3 {

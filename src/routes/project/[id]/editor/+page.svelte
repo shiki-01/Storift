@@ -559,12 +559,13 @@
 			<!-- エディタ -->
 			<div class="flex-grow:1 overflow-y:auto p:32 bg:gray-50">
 				<div
-					class="max-w:800 mx:auto bg:white p:48 r:8 box-shadow:0|2|8|rgba(0,0,0,0.08) min-h:full"
+					class="max-w:800 mx:auto bg:white p:48 r:8 box-shadow:0|2|8|rgba(0,0,0,0.08) min-h:full h:fit"
 				>
 					<textarea
 						bind:this={editorTextarea}
 						bind:value={editorStore.content}
-						class="w:full h:full min-h:600 border:none outline:none resize:none font:16 line-height:2"
+						class="w:full h:fit min-h:600 border:none outline:none resize:none font:16 line-height:2"
+                        style="field-sizing: content;"
 						placeholder="ここに執筆を開始..."
 						oncontextmenu={handleEditorContextMenu}
 					></textarea>

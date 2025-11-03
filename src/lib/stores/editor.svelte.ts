@@ -1,6 +1,6 @@
 import type { Scene } from '$lib/types';
 
-let isOpen = $state(false);
+let isOpen = $state(true);
 let currentScene = $state<Scene | null>(null);
 let content = $state('');
 let isDirty = $state(false);

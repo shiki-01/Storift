@@ -4,17 +4,8 @@
 	import { projectsDB, chaptersDB, scenesDB } from '$lib/db';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { startCurrentProjectSync, stopCurrentProjectSync } from '$lib/services/sync.service';
-	import { editorStore } from '$lib/stores/editor.svelte';
 
 	let { children } = $props();
-
-	const navItems = [
-		{ path: 'editor', label: '執筆' },
-		{ path: 'plot', label: 'プロット' },
-		{ path: 'characters', label: 'キャラクター' },
-		{ path: 'worldbuilding', label: '設定資料' },
-		{ path: 'progress', label: '進捗' }
-	];
 
 	onMount(async () => {
 		const projectId = $page.params.id;
@@ -40,10 +31,6 @@
 	onDestroy(() => {
 		stopCurrentProjectSync();
 	});
-
-	function isActive(path: string): boolean {
-		return $page.url.pathname.includes(`/project/${$page.params.id}/${path}`);
-	}
 </script>
 
 {#if currentProjectStore.isLoading}
@@ -55,40 +42,7 @@
 		<p class="fg:red-600">プロジェクトが見つかりません</p>
 	</div>
 {:else}
-	<div class="flex w:100% h:100% min-h:100% rel">
-		<!-- サイドバー -->
-		<aside
-			class="w:240 h:100% bg:white flex flex:col abs z:2 top:0 transition:left|.2s|ease-in-out {editorStore.isOpen
-				? 'left:0'
-				: 'left:-240px'}"
-		>
-			<!-- ナビゲーション -->
-			<nav class="flex:1 p:12">
-				{#each navItems as item}
-					<a
-						href="/project/{$page.params.id}/{item.path}"
-						onclick={() => (editorStore.isOpen = false)}
-						class="flex align-items:center gap:12 px:16 py:12 r:8 mb:4 font:14 {isActive(item.path)
-							? 'bg:gray fg:black'
-							: 'fg:gray-700 hover:bg:gray-100'}"
-					>
-						<span>{item.label}</span>
-					</a>
-				{/each}
-			</nav>
-		</aside>
-
-		<button
-			aria-label="sidebar"
-			onclick={() => (editorStore.isOpen = !editorStore.isOpen)}
-			class="w:100% h:100% abs z:1 bg:black cursor:pointer transition:opacity|.2s|ease-in-out {editorStore.isOpen
-				? 'opacity:.5 pointer-events:auto'
-				: 'opacity:0 pointer-events:none'}"
-		></button>
-
-		<!-- メインコンテンツ -->
-		<div class="overflow-x:hidden overflow-y:auto w:100% h:100%">
-			{@render children()}
-		</div>
+	<div class="w:100% h:100%">
+		{@render children()}
 	</div>
 {/if}

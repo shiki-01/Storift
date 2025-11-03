@@ -98,7 +98,7 @@
 </svelte:head>
 
 <div class="min-h:100vh bg:white">
-	<header class="px:2rem py:1.5rem">
+	<header class="px:2rem py:1.5rem bb:2px|solid|black">
 		<div class="max-w:1200 gap:1.5rem mx:auto flex justify-content:start align-items:center">
 			<button
 				aria-label="mordal"

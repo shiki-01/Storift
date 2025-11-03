@@ -154,20 +154,8 @@
 
 <div class="flex w:100% h:100%">
 	<!-- サイドバー -->
-	<aside class="w:280 bg:white border-right:1|solid|gray-200 flex flex-direction:column">
-		<div class="p:16 border-bottom:1|solid|gray-200">
-			<button
-				class="w:full text-align:left p:8 bg:transparent border:none cursor:pointer fg:gray-700 fg:gray-900:hover"
-				onclick={() => goto('/home')}
-			>
-				← 作品一覧に戻る
-			</button>
-			<h2 class="font:18 font-weight:600 m:16|0|8|0">
-				{currentProjectStore.project?.title}
-			</h2>
-		</div>
-
-		<div class="flex-grow:1 overflow-y:auto p:16">
+	<aside class="w:280 bg:white br:2px|solid|black flex flex-direction:column">
+		<div class="flex-grow:1 overflow-y:auto p:16 pt:24px">
 			<div class="flex justify-content:space-between align-items:center mb:12">
 				<h3 class="font:14 font-weight:600 m:0">章・シーン</h3>
 				<Button size="sm" onclick={() => (isChapterModalOpen = true)}>+ 章</Button>

@@ -23,10 +23,10 @@
 </script>
 
 <div class="min-h:screen flex align-items:center justify-content:center bg:gray-50 p:24">
-	<div class="max-w:600 w:full bg:white rounded:16 shadow:0|4|12|rgba(0,0,0,0.1) p:32">
+	<div class="max-w:600 w:full bg:white r:16 shadow:0|4|12|rgba(0,0,0,0.1) p:32">
 		<!-- エラーアイコン -->
 		<div class="text-align:center mb:24">
-			<div class="inline-flex align-items:center justify-content:center w:80 h:80 rounded:full bg:red-100 mb:16">
+			<div class="inline-flex align-items:center justify-content:center w:80 h:80 r:full bg:red-100 mb:16">
 				<svg class="w:40 h:40 fill:red-600" viewBox="0 0 24 24">
 					<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
 				</svg>

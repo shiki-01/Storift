@@ -76,7 +76,7 @@
 </script>
 
 <div class="writing-assistant bg:white r:12 shadow:0|2|8|rgba(0,0,0,0.1) overflow:hidden">
-	<!-- タブ�EチE��ー -->
+	<!-- タブスイッチャー -->
 	<div class="flex border-bottom:1|solid|gray-200">
 		<button
 			class="flex-grow py:12 px:24 font:14 font:semibold cursor:pointer border:none transition:all|0.2s {activeTab === 'proofreading' ? 'bg:blue-50 fg:blue-600 border-bottom:2|solid|blue-600' : 'bg:white fg:gray-600 hover:bg:gray-50'}"
@@ -84,7 +84,7 @@
 		>
 			📝 校閲
 			{#if issues.length > 0}
-				<span class="ml:8 px:6 py:2 bg:red-100 fg:red-600 rounded:full font:12">
+				<span class="ml:8 px:6 py:2 bg:red-100 fg:red-600 r:full font:12">
 					{issues.length}
 				</span>
 			{/if}
@@ -93,18 +93,19 @@
 			class="flex-grow py:12 px:24 font:14 font:semibold cursor:pointer border:none transition:all|0.2s {activeTab === 'ruby' ? 'bg:blue-50 fg:blue-600 border-bottom:2|solid|blue-600' : 'bg:white fg:gray-600 hover:bg:gray-50'}"
 			onclick={() => activeTab = 'ruby'}
 		>
-			🔤 ルビ		</button>
+			🔤 ルビ
+		</button>
 	</div>
 
-	<!-- コンチE��チE-->
+	<!-- コンテンツ -->
 	<div class="p:24">
 		{#if activeTab === 'proofreading'}
 			<div class="proofreading-panel">
 				<div class="flex align-items:center justify-content:space-between mb:16">
-					<h3 class="font:16 font:bold fg:gray-900">斁E��校閲</h3>
+					<h3 class="font:16 font:bold fg:gray-900">文章校閲</h3>
 					<div class="flex gap:8">
 						<Button size="sm" variant="secondary" onclick={runProofreading}>
-							🔍 チェチE��実衁E
+							🔍 チェック実行
                         </Button>
 						{#if issues.length > 0}
 							<Button size="sm" variant="primary" onclick={applyAllSuggestions}>
@@ -136,7 +137,7 @@
 						</div>
 						<div class="text-align:center">
 							<div class="font:20 font:bold fg:blue-600">{summary.bySeverity.info || 0}</div>
-							<div class="font:12 fg:gray-600">情報��</div>
+							<div class="font:12 fg:gray-600">情報</div>
 						</div>
 					</div>
 
@@ -149,7 +150,7 @@
 								onclick={() => selectedIssue = issue}
 							>
 								<div class="flex align-items:start gap:12">
-									<div class="w:4 h:4 rounded:full bg:{getSeverityColor(issue.severity)}-500 mt:4"></div>
+									<div class="w:4 h:4 r:full bg:{getSeverityColor(issue.severity)}-500 mt:4"></div>
 									<div class="flex-grow">
 										<div class="font:14 fg:gray-900 mb:4">{issue.message}</div>
 										<div class="font:12 fg:gray-600 mb:8">

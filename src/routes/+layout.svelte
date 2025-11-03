@@ -119,7 +119,7 @@
 
 <div class="min-h:100vh bg:theme-background">
 	<header class="px:1.5rem py:1rem bb:2px|solid|theme-text">
-		<div class="max-w:1200 gap:1.5rem mx:auto flex justify-content:start align-items:center">
+		<div class="gap:1.5rem mx:auto flex justify-content:start align-items:center">
 			<button
 				aria-label="mordal"
 				onclick={() => (editorStore.isOpen = !editorStore.isOpen)}

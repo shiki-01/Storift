@@ -118,9 +118,12 @@
 
 		<div class="space-y:12">
 			{#if permission === 'granted'}
-				<div class="flex align-items:center gap:8 p:12 bg:green-50 border:1|solid|green-200 r:8">
+				<div
+					class="flex align-items:center gap:8 p:12 border:2px|solid|theme-success r:8 fg:theme-success"
+					style="background-color: color-mix(in srgb, var(--color-success) 10%, transparent);"
+				>
 					<span class="font:20">✓</span>
-					<span class="font:14 fg:green-800">通知が有効です</span>
+					<span class="font:14">通知が有効です</span>
 				</div>
 			{:else if permission === 'denied'}
 				<div class="flex align-items:center gap:8 p:12 bg:red-50 border:1|solid|red-200 r:8">
@@ -140,7 +143,7 @@
 			{/if}
 
 			{#if permission === 'granted'}
-				<Button variant="secondary" onclick={handleTestNotification}>テスト通知を送信</Button>
+				<Button class="my:1rem" variant="secondary" onclick={handleTestNotification}>テスト通知を送信</Button>
 			{/if}
 		</div>
 	</Card>
@@ -205,7 +208,7 @@
 	<!-- 通知履歴 -->
 	<Card>
 		<div class="flex justify-content:space-between align-items:center mb:12">
-			<h3 class="font:16 font:semibold fg:gray-900">通知履歴</h3>
+			<h3 class="font:16 font:semibold">通知履歴</h3>
 			<button
 				class="font:14 fg:blue-600 cursor:pointer hover:fg:blue-700"
 				onclick={() => (showHistory = !showHistory)}
@@ -227,7 +230,7 @@
 										<span class="font:14 font:semibold fg:gray-900">
 											{notification.title}
 										</span>
-										<span class="px:6 py:2 bg:gray-100 fg:gray-600 font:11 r:4">
+										<span class="px:6 py:2 bg:theme-text fg:theme-background font:11 r:4">
 											{getNotificationTypeLabel(notification.type)}
 										</span>
 									</div>

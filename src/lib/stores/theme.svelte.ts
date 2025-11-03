@@ -189,7 +189,7 @@ class ThemeStore {
 
 		// システムテーマの変更を監視
 		if (typeof window !== 'undefined') {
-			window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+			window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
 				if (this.autoTheme) {
 					this.applySystemTheme();
 				}

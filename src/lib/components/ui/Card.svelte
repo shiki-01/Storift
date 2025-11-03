@@ -27,7 +27,7 @@
 
 {#if onclick}
 	<button
-		class="bg:white r:8 border:1|solid|gray-200 {paddingClasses[
+		class="r:8 {paddingClasses[
 			padding
 		]} {hoverable
 			? 'cursor:pointer'
@@ -43,7 +43,7 @@
 {:else}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div 
-		class="bg:white r:8 border:1|solid|gray-200 {paddingClasses[padding]} {className}"
+		class="r:8 {paddingClasses[padding]} {className}"
 		{oncontextmenu}
 	>
 		{#if children}

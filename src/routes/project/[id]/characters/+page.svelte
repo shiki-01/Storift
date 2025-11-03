@@ -7,6 +7,8 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
+	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
+	import { createCharacterContextMenu, type ContextMenuItem } from '$lib/utils/contextMenu';
 	import { onMount } from 'svelte';
 
 	let characters = $state<Character[]>([]);
@@ -17,6 +19,15 @@
 	let editingCharacter = $state<Character | null>(null);
 	let selectedCharacter = $state<Character | null>(null);
 	let viewMode = $state<'grid' | 'list' | 'graph'>('grid');
+
+	// コンテキストメニュー
+	let contextMenu = $state<{
+		visible: boolean;
+		x: number;
+		y: number;
+		items: ContextMenuItem[];
+		targetCharacter?: Character;
+	}>({ visible: false, x: 0, y: 0, items: [] });
 
 	// フォーム状態
 	let formData = $state({
@@ -178,6 +189,54 @@
 			name: getCharacterName(rel.characterId)
 		}));
 	}
+
+	// コンテキストメニュー - キャラクター
+	function handleCharacterContextMenu(e: MouseEvent, character: Character) {
+		e.preventDefault();
+		e.stopPropagation();
+
+		const items = createCharacterContextMenu({
+			onEdit: () => openEditModal(character),
+			onDuplicate: () => handleDuplicateCharacter(character),
+			onDelete: () => handleDelete(character.id),
+			onViewRelations: () => openRelationModal(character)
+		});
+
+		contextMenu = {
+			visible: true,
+			x: e.clientX,
+			y: e.clientY,
+			items,
+			targetCharacter: character
+		};
+	}
+
+	// 複製処理
+	async function handleDuplicateCharacter(character: Character) {
+		if (!currentProjectStore.project) return;
+
+		try {
+			const newCharacter = await charactersDB.create({
+				projectId: currentProjectStore.project.id,
+				name: `${character.name} (コピー)`,
+				role: character.role
+			});
+
+			await charactersDB.update(newCharacter.id, {
+				age: character.age,
+				gender: character.gender,
+				appearance: character.appearance,
+				personality: character.personality,
+				background: character.background
+			});
+
+			await queueChange('characters', newCharacter.id, 'create');
+			await loadCharacters();
+		} catch (error) {
+			console.error('Failed to duplicate character:', error);
+			alert('キャラクターの複製に失敗しました');
+		}
+	}
 </script>
 
 <div class="p:32 h:100% overflow:auto">
@@ -220,7 +279,10 @@
 		<!-- グリッドビュー -->
 		<div class="grid cols:3 gap:16">
 			{#each characters as character (character.id)}
-				<Card class="p:20">
+				<Card 
+					class="p:20"
+					oncontextmenu={(e) => handleCharacterContextMenu(e, character)}
+				>
 					<div class="flex flex:col align-items:center text-align:center mb:16">
 						<div class="w:80 h:80 r:full bg:gray-200 flex align-items:center justify-content:center mb:12 font:32 fg:gray-500">
 							{character.name.charAt(0)}
@@ -286,7 +348,10 @@
 		<!-- リストビュー -->
 		<div class="flex flex:col gap:12">
 			{#each characters as character (character.id)}
-				<Card class="p:20">
+				<Card 
+					class="p:20"
+					oncontextmenu={(e) => handleCharacterContextMenu(e, character)}
+				>
 					<div class="flex gap:16">
 						<div class="w:60 h:60 r:full bg:gray-200 flex align-items:center justify-content:center font:24 fg:gray-500 flex-shrink:0">
 							{character.name.charAt(0)}
@@ -584,6 +649,15 @@
 		</div>
 	{/snippet}
 </Modal>
+
+<!-- コンテキストメニュー -->
+<ContextMenu
+	visible={contextMenu.visible}
+	x={contextMenu.x}
+	y={contextMenu.y}
+	items={contextMenu.items}
+	onClose={() => contextMenu.visible = false}
+/>
 
 <style>
 	.line-clamp\:2 {

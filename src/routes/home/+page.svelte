@@ -10,13 +10,27 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import SyncStatus from '$lib/components/ui/SyncStatus.svelte';
+	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
 	import { formatRelativeTime } from '$lib/utils/dateUtils';
-	import type { ProjectCreateInput } from '$lib/types';
+	import { createProjectContextMenu, type ContextMenuItem } from '$lib/utils/contextMenu';
+	import type { Project, ProjectCreateInput } from '$lib/types';
+	import { exportProject } from '$lib/services/export.service';
 
 	let isCreateModalOpen = $state(false);
+	let isRenameModalOpen = $state(false);
 	let newProjectTitle = $state('');
 	let newProjectDescription = $state('');
+	let renameValue = $state('');
 	let isCreating = $state(false);
+
+	// コンテキストメニュー
+	let contextMenu = $state<{
+		visible: boolean;
+		x: number;
+		y: number;
+		items: ContextMenuItem[];
+		targetProject?: Project;
+	}>({ visible: false, x: 0, y: 0, items: [] });
 
 	onMount(async () => {
 		await loadProjects();
@@ -81,6 +95,159 @@
 		writing: 'bg:blue-100 fg:blue-700',
 		completed: 'bg:green-100 fg:green-700'
 	};
+
+	// コンテキストメニュー - プロジェクト
+	function handleProjectContextMenu(e: MouseEvent, project: Project) {
+		e.preventDefault();
+		e.stopPropagation();
+
+		const items = createProjectContextMenu({
+			onOpen: () => goto(`/project/${project.id}/editor`),
+			onRename: () => handleRenameProject(project),
+			onDuplicate: () => handleDuplicateProject(project),
+			onExport: () => handleExportProject(project),
+			onDelete: () => handleDeleteProject(project)
+		});
+
+		contextMenu = {
+			visible: true,
+			x: e.clientX,
+			y: e.clientY,
+			items,
+			targetProject: project
+		};
+	}
+
+	// リネーム処理
+	function handleRenameProject(project: Project) {
+		renameValue = project.title;
+		isRenameModalOpen = true;
+		contextMenu.targetProject = project;
+	}
+
+	async function applyRename() {
+		if (!renameValue.trim() || !contextMenu.targetProject) return;
+
+		try {
+			await projectsDB.update(contextMenu.targetProject.id, { title: renameValue });
+			const index = projectsStore.projects.findIndex(p => p.id === contextMenu.targetProject!.id);
+			if (index !== -1) {
+				projectsStore.projects[index] = { ...projectsStore.projects[index], title: renameValue };
+			}
+			await queueChange('projects', contextMenu.targetProject.id, 'update');
+			isRenameModalOpen = false;
+			renameValue = '';
+		} catch (error) {
+			console.error('Failed to rename project:', error);
+			alert('プロジェクト名の変更に失敗しました');
+		}
+	}
+
+	// 削除処理
+	async function handleDeleteProject(project: Project) {
+		if (!confirm(`プロジェクト「${project.title}」を削除しますか?\nこの操作は取り消せません。`)) return;
+
+		try {
+			// プロジェクト関連のすべてのデータを削除
+			const { chaptersDB, scenesDB, charactersDB, plotsDB, worldbuildingDB, progressLogsDB } = await import('$lib/db');
+			
+			// 各種データを削除
+			const chapters = await chaptersDB.getByProjectId(project.id);
+			for (const chapter of chapters) {
+				const scenes = await scenesDB.getByChapterId(chapter.id);
+				for (const scene of scenes) {
+					await scenesDB.delete(scene.id);
+					await queueChange('scenes', scene.id, 'delete');
+				}
+				await chaptersDB.delete(chapter.id);
+				await queueChange('chapters', chapter.id, 'delete');
+			}
+
+			const characters = await charactersDB.getByProjectId(project.id);
+			for (const char of characters) {
+				await charactersDB.delete(char.id);
+				await queueChange('characters', char.id, 'delete');
+			}
+
+			const plots = await plotsDB.getByProjectId(project.id);
+			for (const plot of plots) {
+				await plotsDB.delete(plot.id);
+				await queueChange('plots', plot.id, 'delete');
+			}
+
+			const worldbuildings = await worldbuildingDB.getByProjectId(project.id);
+			for (const wb of worldbuildings) {
+				await worldbuildingDB.delete(wb.id);
+				await queueChange('worldbuilding', wb.id, 'delete');
+			}
+
+			const logs = await progressLogsDB.getByProjectId(project.id);
+			for (const log of logs) {
+				await progressLogsDB.delete(log.id);
+			}
+
+			// プロジェクト本体を削除
+			await projectsDB.delete(project.id);
+			await queueChange('projects', project.id, 'delete');
+
+			projectsStore.projects = projectsStore.projects.filter(p => p.id !== project.id);
+		} catch (error) {
+			console.error('Failed to delete project:', error);
+			alert('プロジェクトの削除に失敗しました');
+		}
+	}
+
+	// 複製処理
+	async function handleDuplicateProject(project: Project) {
+		try {
+			const newProject = await projectsDB.create({
+				title: `${project.title} (コピー)`,
+				description: project.description
+			});
+
+			projectsStore.projects = [newProject, ...projectsStore.projects];
+			await queueChange('projects', newProject.id, 'create');
+
+			// チャプターとシーンも複製
+			const { chaptersDB, scenesDB } = await import('$lib/db');
+			const chapters = await chaptersDB.getByProjectId(project.id);
+			
+			for (const chapter of chapters) {
+				const newChapter = await chaptersDB.create({
+					projectId: newProject.id,
+					title: chapter.title,
+					synopsis: chapter.synopsis
+				});
+				await queueChange('chapters', newChapter.id, 'create');
+
+				const scenes = await scenesDB.getByChapterId(chapter.id);
+				for (const scene of scenes) {
+					const newScene = await scenesDB.create({
+						chapterId: newChapter.id,
+						projectId: newProject.id,
+						title: scene.title,
+						content: scene.content
+					});
+					await queueChange('scenes', newScene.id, 'create');
+				}
+			}
+
+			alert('プロジェクトを複製しました');
+		} catch (error) {
+			console.error('Failed to duplicate project:', error);
+			alert('プロジェクトの複製に失敗しました');
+		}
+	}
+
+	// エクスポート処理
+	async function handleExportProject(project: Project) {
+		try {
+			await exportProject(project.id, { format: 'txt' });
+		} catch (error) {
+			console.error('Failed to export project:', error);
+			alert('エクスポートに失敗しました');
+		}
+	}
 </script>
 
 <div class="px:60px py:24px">
@@ -112,6 +279,7 @@
 					hoverable
 					padding="none"
 					onclick={() => goto(`/project/${project.id}/editor`)}
+					oncontextmenu={(e) => handleProjectContextMenu(e, project)}
 					class="w:200px h:fit p:0 flex flex:column gap:1rem"
 				>
 					<div class="w:200px h:284px flex bg:gray r:8px"></div>
@@ -177,3 +345,33 @@
 		</div>
 	</form>
 </Modal>
+
+<!-- リネームモーダル -->
+<Modal bind:isOpen={isRenameModalOpen} title="プロジェクト名を変更">
+	<form
+		onsubmit={(e) => {
+			e.preventDefault();
+			applyRename();
+		}}
+	>
+		<div class="mb:16">
+			<label class="display:block font-weight:500 m:0|0|8|0" for="renameValue">新しい名前</label>
+			<Input bind:value={renameValue} placeholder="プロジェクト名を入力" required />
+		</div>
+		<div class="flex justify-content:flex-end gap:12">
+			<Button type="button" variant="secondary" onclick={() => (isRenameModalOpen = false)}>
+				キャンセル
+			</Button>
+			<Button type="submit" disabled={!renameValue.trim()}>変更</Button>
+		</div>
+	</form>
+</Modal>
+
+<!-- コンテキストメニュー -->
+<ContextMenu
+	visible={contextMenu.visible}
+	x={contextMenu.x}
+	y={contextMenu.y}
+	items={contextMenu.items}
+	onClose={() => contextMenu.visible = false}
+/>

@@ -13,11 +13,16 @@
 	import WritingAssistant from '$lib/components/ui/WritingAssistant.svelte';
 	import PrintPreview from '$lib/components/ui/PrintPreview.svelte';
 	import VersionManager from '$lib/components/ui/VersionManager.svelte';
+	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
+	import { createEditorContextMenu, createChapterContextMenu, createSceneContextMenu, type ContextMenuItem } from '$lib/utils/contextMenu';
+	import type { Chapter, Scene } from '$lib/types';
 
 	let isChapterModalOpen = $state(false);
 	let isSceneModalOpen = $state(false);
+	let isRenameModalOpen = $state(false);
 	let newChapterTitle = $state('');
 	let newSceneTitle = $state('');
+	let renameValue = $state('');
 	let selectedChapterId = $state<string | null>(null);
 	let autoSave: AutoSave | null = null;
 	
@@ -25,6 +30,18 @@
 	let showWritingAssistant = $state(false);
 	let showPrintPreview = $state(false);
 	let showVersionManager = $state(false);
+
+	// コンテキストメニュー
+	let contextMenu = $state<{
+		visible: boolean;
+		x: number;
+		y: number;
+		items: ContextMenuItem[];
+		targetType?: 'editor' | 'chapter' | 'scene';
+		targetId?: string;
+	}>({ visible: false, x: 0, y: 0, items: [] });
+
+	let editorTextarea = $state<HTMLTextAreaElement | null>(null);
 
 	onMount(() => {
 		// 初期化処理を即座に実行（非同期）
@@ -150,6 +167,292 @@
 		selectedChapterId = chapterId;
 		isSceneModalOpen = true;
 	}
+
+	// コンテキストメニュー - エディター
+	function handleEditorContextMenu(e: MouseEvent) {
+		e.preventDefault();
+		
+		const hasSelection = editorTextarea ? 
+			editorTextarea.selectionStart !== editorTextarea.selectionEnd : false;
+
+		const items = createEditorContextMenu({
+			scene: editorStore.currentScene,
+			chapter: currentProjectStore.chapters.find(c => 
+				c.id === editorStore.currentScene?.chapterId
+			) || null,
+			hasSelection,
+			onSave: handleSave,
+			onCopy: () => document.execCommand('copy'),
+			onCut: () => document.execCommand('cut'),
+			onPaste: () => document.execCommand('paste'),
+			onSelectAll: () => editorTextarea?.select(),
+			onRename: () => handleRenameScene(editorStore.currentScene!),
+			onDelete: () => handleDeleteScene(editorStore.currentScene!),
+			onDuplicate: () => handleDuplicateScene(editorStore.currentScene!),
+			onExport: () => showPrintPreview = true,
+			onPrint: () => showPrintPreview = true,
+			onVersionHistory: () => showVersionManager = true
+		});
+
+		contextMenu = {
+			visible: true,
+			x: e.clientX,
+			y: e.clientY,
+			items,
+			targetType: 'editor'
+		};
+	}
+
+	// コンテキストメニュー - チャプター
+	function handleChapterContextMenu(e: MouseEvent, chapter: Chapter) {
+		e.preventDefault();
+		e.stopPropagation();
+
+		const chapterIndex = currentProjectStore.chapters.findIndex(c => c.id === chapter.id);
+		const items = createChapterContextMenu({
+			chapter,
+			onRename: () => handleRenameChapter(chapter),
+			onDelete: () => handleDeleteChapter(chapter),
+			onDuplicate: () => handleDuplicateChapter(chapter),
+			onAddScene: () => openSceneModal(chapter.id),
+			onMoveUp: chapterIndex > 0 ? () => handleMoveChapter(chapter, 'up') : undefined,
+			onMoveDown: chapterIndex < currentProjectStore.chapters.length - 1 ? () => handleMoveChapter(chapter, 'down') : undefined,
+			canMoveUp: chapterIndex > 0,
+			canMoveDown: chapterIndex < currentProjectStore.chapters.length - 1
+		});
+
+		contextMenu = {
+			visible: true,
+			x: e.clientX,
+			y: e.clientY,
+			items,
+			targetType: 'chapter',
+			targetId: chapter.id
+		};
+	}
+
+	// コンテキストメニュー - シーン
+	function handleSceneContextMenu(e: MouseEvent, scene: Scene) {
+		e.preventDefault();
+		e.stopPropagation();
+
+		const chapterScenes = currentProjectStore.scenesByChapter.get(scene.chapterId) || [];
+		const sceneIndex = chapterScenes.findIndex(s => s.id === scene.id);
+
+		const items = createSceneContextMenu({
+			scene,
+			onOpen: () => handleSceneSelect(scene),
+			onRename: () => handleRenameScene(scene),
+			onDelete: () => handleDeleteScene(scene),
+			onDuplicate: () => handleDuplicateScene(scene),
+			onMoveUp: sceneIndex > 0 ? () => handleMoveScene(scene, 'up') : undefined,
+			onMoveDown: sceneIndex < chapterScenes.length - 1 ? () => handleMoveScene(scene, 'down') : undefined,
+			canMoveUp: sceneIndex > 0,
+			canMoveDown: sceneIndex < chapterScenes.length - 1
+		});
+
+		contextMenu = {
+			visible: true,
+			x: e.clientX,
+			y: e.clientY,
+			items,
+			targetType: 'scene',
+			targetId: scene.id
+		};
+	}
+
+	// リネーム処理
+	async function handleRenameChapter(chapter: Chapter) {
+		renameValue = chapter.title;
+		isRenameModalOpen = true;
+		contextMenu.targetType = 'chapter';
+		contextMenu.targetId = chapter.id;
+	}
+
+	async function handleRenameScene(scene: Scene) {
+		renameValue = scene.title;
+		isRenameModalOpen = true;
+		contextMenu.targetType = 'scene';
+		contextMenu.targetId = scene.id;
+	}
+
+	async function applyRename() {
+		if (!renameValue.trim() || !contextMenu.targetId) return;
+
+		try {
+			if (contextMenu.targetType === 'chapter') {
+				await chaptersDB.update(contextMenu.targetId, { title: renameValue });
+				const updatedChapter = await chaptersDB.getById(contextMenu.targetId);
+				if (updatedChapter) {
+					const index = currentProjectStore.chapters.findIndex(c => c.id === contextMenu.targetId);
+					if (index !== -1) {
+						currentProjectStore.chapters[index] = updatedChapter;
+					}
+				}
+				await queueChange('chapters', contextMenu.targetId, 'update');
+			} else if (contextMenu.targetType === 'scene') {
+				await scenesDB.update(contextMenu.targetId, { title: renameValue });
+				const updatedScene = await scenesDB.getById(contextMenu.targetId);
+				if (updatedScene) {
+					const index = currentProjectStore.scenes.findIndex(s => s.id === contextMenu.targetId);
+					if (index !== -1) {
+						currentProjectStore.scenes[index] = updatedScene;
+					}
+					if (editorStore.currentScene?.id === contextMenu.targetId) {
+						editorStore.currentScene = updatedScene;
+					}
+				}
+				await queueChange('scenes', contextMenu.targetId, 'update');
+			}
+			isRenameModalOpen = false;
+			renameValue = '';
+		} catch (error) {
+			console.error('Failed to rename:', error);
+			alert('名前の変更に失敗しました');
+		}
+	}
+
+	// 削除処理
+	async function handleDeleteChapter(chapter: Chapter) {
+		if (!confirm(`章「${chapter.title}」とそのシーンを削除しますか？`)) return;
+
+		try {
+			// チャプター内のシーンを削除
+			const scenes = currentProjectStore.scenesByChapter.get(chapter.id) || [];
+			for (const scene of scenes) {
+				await scenesDB.delete(scene.id);
+				await queueChange('scenes', scene.id, 'delete');
+			}
+
+			await chaptersDB.delete(chapter.id);
+			await queueChange('chapters', chapter.id, 'delete');
+
+			currentProjectStore.chapters = currentProjectStore.chapters.filter(c => c.id !== chapter.id);
+			currentProjectStore.scenes = currentProjectStore.scenes.filter(s => s.chapterId !== chapter.id);
+			
+			if (editorStore.currentScene?.chapterId === chapter.id) {
+				editorStore.currentScene = null;
+			}
+		} catch (error) {
+			console.error('Failed to delete chapter:', error);
+			alert('章の削除に失敗しました');
+		}
+	}
+
+	async function handleDeleteScene(scene: Scene) {
+		if (!confirm(`シーン「${scene.title}」を削除しますか？`)) return;
+
+		try {
+			await scenesDB.delete(scene.id);
+			await queueChange('scenes', scene.id, 'delete');
+			
+			currentProjectStore.scenes = currentProjectStore.scenes.filter(s => s.id !== scene.id);
+			
+			if (editorStore.currentScene?.id === scene.id) {
+				editorStore.currentScene = null;
+			}
+		} catch (error) {
+			console.error('Failed to delete scene:', error);
+			alert('シーンの削除に失敗しました');
+		}
+	}
+
+	// 複製処理
+	async function handleDuplicateChapter(chapter: Chapter) {
+		if (!currentProjectStore.project) return;
+
+		try {
+			const newChapter = await chaptersDB.create({
+				projectId: currentProjectStore.project.id,
+				title: `${chapter.title} (コピー)`,
+				synopsis: chapter.synopsis
+			});
+			
+			currentProjectStore.chapters = [...currentProjectStore.chapters, newChapter];
+			await queueChange('chapters', newChapter.id, 'create');
+
+			// シーンも複製
+			const scenes = currentProjectStore.scenesByChapter.get(chapter.id) || [];
+			for (const scene of scenes) {
+				const newScene = await scenesDB.create({
+					chapterId: newChapter.id,
+					projectId: currentProjectStore.project.id,
+					title: scene.title,
+					content: scene.content
+				});
+				currentProjectStore.scenes = [...currentProjectStore.scenes, newScene];
+				await queueChange('scenes', newScene.id, 'create');
+			}
+		} catch (error) {
+			console.error('Failed to duplicate chapter:', error);
+			alert('章の複製に失敗しました');
+		}
+	}
+
+	async function handleDuplicateScene(scene: Scene) {
+		if (!currentProjectStore.project) return;
+
+		try {
+			const newScene = await scenesDB.create({
+				chapterId: scene.chapterId,
+				projectId: currentProjectStore.project.id,
+				title: `${scene.title} (コピー)`,
+				content: scene.content
+			});
+			
+			currentProjectStore.scenes = [...currentProjectStore.scenes, newScene];
+			await queueChange('scenes', newScene.id, 'create');
+		} catch (error) {
+			console.error('Failed to duplicate scene:', error);
+			alert('シーンの複製に失敗しました');
+		}
+	}
+
+	// 移動処理
+	async function handleMoveChapter(chapter: Chapter, direction: 'up' | 'down') {
+		const chapters = [...currentProjectStore.chapters];
+		const index = chapters.findIndex(c => c.id === chapter.id);
+		if (index === -1) return;
+
+		const newIndex = direction === 'up' ? index - 1 : index + 1;
+		if (newIndex < 0 || newIndex >= chapters.length) return;
+
+		// 順序を入れ替え
+		[chapters[index], chapters[newIndex]] = [chapters[newIndex], chapters[index]];
+		
+		// order を更新
+		for (let i = 0; i < chapters.length; i++) {
+			await chaptersDB.update(chapters[i].id, { order: i });
+			await queueChange('chapters', chapters[i].id, 'update');
+		}
+
+		currentProjectStore.chapters = chapters;
+	}
+
+	async function handleMoveScene(scene: Scene, direction: 'up' | 'down') {
+		const chapterScenes = [...(currentProjectStore.scenesByChapter.get(scene.chapterId) || [])];
+		const index = chapterScenes.findIndex(s => s.id === scene.id);
+		if (index === -1) return;
+
+		const newIndex = direction === 'up' ? index - 1 : index + 1;
+		if (newIndex < 0 || newIndex >= chapterScenes.length) return;
+
+		// 順序を入れ替え
+		[chapterScenes[index], chapterScenes[newIndex]] = [chapterScenes[newIndex], chapterScenes[index]];
+		
+		// order を更新
+		for (let i = 0; i < chapterScenes.length; i++) {
+			await scenesDB.update(chapterScenes[i].id, { order: i });
+			await queueChange('scenes', chapterScenes[i].id, 'update');
+		}
+
+		// ストアを更新
+		const allScenes = currentProjectStore.scenes.map(s => {
+			const updated = chapterScenes.find(cs => cs.id === s.id);
+			return updated || s;
+		});
+		currentProjectStore.scenes = allScenes;
+	}
 </script>
 
 <div class="flex w:100% h:100%">
@@ -163,7 +466,11 @@
 
 			{#each currentProjectStore.chapters as chapter (chapter.id)}
 				<div class="mb:16">
-					<div class="flex justify-content:space-between align-items:center mb:8">
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div 
+						class="flex justify-content:space-between align-items:center mb:8"
+						oncontextmenu={(e) => handleChapterContextMenu(e, chapter)}
+					>
 						<h4 class="font:14 font-weight:500 m:0">{chapter.title}</h4>
 						<button
 							class="bg:transparent border:none cursor:pointer fg:gray-600 fg:blue-600:hover font:12 p:4"
@@ -180,6 +487,7 @@
 								? 'bg:blue-50 fg:blue-700'
 								: 'fg:gray-700 bg:gray-50:hover'}"
 							onclick={() => handleSceneSelect(scene)}
+							oncontextmenu={(e) => handleSceneContextMenu(e, scene)}
 						>
 							<div class="font:13">{scene.title}</div>
 							<div class="font:11 fg:gray-500">{scene.characterCount}文字</div>
@@ -254,9 +562,11 @@
 					class="max-w:800 mx:auto bg:white p:48 r:8 box-shadow:0|2|8|rgba(0,0,0,0.08) min-h:full"
 				>
 					<textarea
+						bind:this={editorTextarea}
 						bind:value={editorStore.content}
 						class="w:full h:full min-h:600 border:none outline:none resize:none font:16 line-height:2"
 						placeholder="ここに執筆を開始..."
+						oncontextmenu={handleEditorContextMenu}
 					></textarea>
 				</div>
 			</div>
@@ -352,3 +662,33 @@
 		/>
 	</Modal>
 {/if}
+
+<!-- リネームモーダル -->
+<Modal bind:isOpen={isRenameModalOpen} title="名前を変更">
+	<form
+		onsubmit={(e) => {
+			e.preventDefault();
+			applyRename();
+		}}
+	>
+		<div class="mb:16">
+			<label class="display:block font-weight:500 m:0|0|8|0" for="renameValue">新しい名前</label>
+			<Input bind:value={renameValue} placeholder="名前を入力" required />
+		</div>
+		<div class="flex justify-content:flex-end gap:12">
+			<Button type="button" variant="secondary" onclick={() => (isRenameModalOpen = false)}>
+				キャンセル
+			</Button>
+			<Button type="submit" disabled={!renameValue.trim()}>変更</Button>
+		</div>
+	</form>
+</Modal>
+
+<!-- コンテキストメニュー -->
+<ContextMenu
+	visible={contextMenu.visible}
+	x={contextMenu.x}
+	y={contextMenu.y}
+	items={contextMenu.items}
+	onClose={() => contextMenu.visible = false}
+/>

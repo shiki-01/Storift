@@ -3,6 +3,7 @@
 		padding?: 'none' | 'sm' | 'md' | 'lg';
 		hoverable?: boolean;
 		onclick?: () => void;
+		oncontextmenu?: (e: MouseEvent) => void;
 		class?: string;
 		children?: import('svelte').Snippet;
 	}
@@ -11,6 +12,7 @@
 		padding = 'md',
 		hoverable = false,
 		onclick,
+		oncontextmenu,
 		class: className = '',
 		children
 	}: CardProps = $props();
@@ -32,13 +34,18 @@
 			: ''} {className}"
 		type="button"
 		{onclick}
+		{oncontextmenu}
 	>
 		{#if children}
 			{@render children()}
 		{/if}
 	</button>
 {:else}
-	<div class="bg:white r:8 border:1|solid|gray-200 {paddingClasses[padding]} {className}">
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div 
+		class="bg:white r:8 border:1|solid|gray-200 {paddingClasses[padding]} {className}"
+		{oncontextmenu}
+	>
 		{#if children}
 			{@render children()}
 		{/if}

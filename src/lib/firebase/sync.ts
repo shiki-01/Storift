@@ -9,7 +9,6 @@ import {
 	where,
 	onSnapshot,
 	serverTimestamp,
-	Timestamp,
 	type Unsubscribe
 } from 'firebase/firestore';
 import { getFirestoreInstance } from './index';
@@ -97,7 +96,6 @@ export async function syncAllFromFirestore(
 	
 	// 差分同期: 最終同期時刻以降のデータのみ取得
 	if (lastSyncTime) {
-		const lastSyncTimestamp = Timestamp.fromMillis(lastSyncTime);
 		constraints.push(where('updatedAt', '>', lastSyncTime));
 	}
 	
@@ -157,10 +155,10 @@ export function setupRealtimeSync(
 	const collectionRef = collection(db, entityType);
 
 	// プロジェクトIDでフィルタリング（プロジェクト以外）
-	let q = collectionRef;
+	let q: ReturnType<typeof query> | typeof collectionRef = collectionRef;
 	if (projectId && entityType !== 'projects') {
 		console.log(`🔍 Setting up realtime sync for ${entityType} filtered by projectId: ${projectId}`);
-		q = query(collectionRef, where('projectId', '==', projectId)) as any;
+		q = query(collectionRef, where('projectId', '==', projectId));
 	} else {
 		console.log(`🔍 Setting up realtime sync for ${entityType} (all)`);
 	}
@@ -169,10 +167,10 @@ export function setupRealtimeSync(
 		q,
 		(snapshot) => {
 			const entities = snapshot.docs.map((doc) => {
-				const data = doc.data();
+				const data = doc.data() as SyncableEntity & { syncedAt?: { toMillis: () => number } };
 				// Timestamp型をnumberに変換
-				if (data.syncedAt) {
-					data.syncedAt = data.syncedAt.toMillis();
+				if (data.syncedAt && typeof data.syncedAt === 'object' && 'toMillis' in data.syncedAt) {
+					(data as SyncableEntity & { syncedAt?: number }).syncedAt = data.syncedAt.toMillis();
 				}
 				return data as SyncableEntity;
 			});
@@ -214,9 +212,9 @@ export async function batchSyncToFirestore(
 		}
 		syncStore.lastSyncTime = Date.now();
 		syncStore.status = 'synced';
-	} catch (error: any) {
+	} catch (error) {
 		console.error('Batch sync error:', error);
-		syncStore.error = error.message;
+		syncStore.error = error instanceof Error ? error.message : 'Unknown error';
 		syncStore.status = 'error';
 		throw error;
 	} finally {

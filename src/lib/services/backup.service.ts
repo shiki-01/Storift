@@ -1,19 +1,22 @@
 import { db } from '$lib/db';
-import type { Project } from '$lib/types';
+import type { Project, Chapter, Scene, Character, Plot, Worldbuilding } from '$lib/types';
+import type { ProgressLog } from '$lib/types/progress';
+
+interface ProjectBackup {
+	project: Project;
+	chapters: unknown[];
+	scenes: unknown[];
+	characters: unknown[];
+	plots: unknown[];
+	worldbuilding: unknown[];
+	progressLogs: unknown[];
+}
 
 export interface BackupData {
 	version: string;
 	createdAt: number;
 	appVersion: string;
-	projects: Array<{
-		project: Project;
-		chapters: any[];
-		scenes: any[];
-		characters: any[];
-		plots: any[];
-		worldbuilding: any[];
-		progressLogs: any[];
-	}>;
+	projects: ProjectBackup[];
 }
 
 /**
@@ -58,7 +61,7 @@ export async function createFullBackup(): Promise<BackupData> {
 /**
  * 特定のプロジェクトをバックアップ
  */
-export async function createProjectBackup(projectId: string): Promise<any> {
+export async function createProjectBackup(projectId: string): Promise<ProjectBackup> {
 	const project = await db.projects.get(projectId);
 	if (!project) {
 		throw new Error('Project not found');
@@ -72,8 +75,6 @@ export async function createProjectBackup(projectId: string): Promise<any> {
 	const progressLogs = await db.progressLogs.where('projectId').equals(projectId).toArray();
 
 	return {
-		version: '1.0',
-		createdAt: Date.now(),
 		project,
 		chapters,
 		scenes,
@@ -85,9 +86,9 @@ export async function createProjectBackup(projectId: string): Promise<any> {
 }
 
 /**
- * バックアップをJSONファイルとしてダウンロード
+ * バックアップをダウンロード
  */
-export async function downloadBackup(data: any, filename: string): Promise<void> {
+export async function downloadBackup(data: unknown, filename: string): Promise<void> {
 	const { saveAs } = await import('file-saver');
 	const blob = new Blob([JSON.stringify(data, null, 2)], {
 		type: 'application/json;charset=utf-8'
@@ -158,12 +159,12 @@ export async function restoreFromBackup(data: BackupData): Promise<void> {
 
 		// データを復元
 		await db.projects.put(projectData.project);
-		await db.chapters.bulkPut(projectData.chapters);
-		await db.scenes.bulkPut(projectData.scenes);
-		await db.characters.bulkPut(projectData.characters);
-		await db.plots.bulkPut(projectData.plots);
-		await db.worldbuilding.bulkPut(projectData.worldbuilding);
-		await db.progressLogs.bulkPut(projectData.progressLogs);
+		await db.chapters.bulkPut(projectData.chapters as Chapter[]);
+		await db.scenes.bulkPut(projectData.scenes as Scene[]);
+		await db.characters.bulkPut(projectData.characters as Character[]);
+		await db.plots.bulkPut(projectData.plots as Plot[]);
+		await db.worldbuilding.bulkPut(projectData.worldbuilding as Worldbuilding[]);
+		await db.progressLogs.bulkPut(projectData.progressLogs as ProgressLog[]);
 	}
 
 	alert('バックアップの復元が完了しました');

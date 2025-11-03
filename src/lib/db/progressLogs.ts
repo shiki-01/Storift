@@ -98,7 +98,7 @@ export const progressLogsDB = {
 		let consecutiveDays = 0;
 		const sortedLogs = logs.sort((a, b) => b.date.localeCompare(a.date));
 		const today = new Date().toISOString().split('T')[0];
-		let checkDate = new Date(today);
+		const checkDate = new Date(today);
 
 		for (let i = 0; i < 365; i++) {
 			const dateString = checkDate.toISOString().split('T')[0];

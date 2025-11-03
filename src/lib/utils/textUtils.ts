@@ -1,4 +1,4 @@
-export function countCharacters(text: string, p0: boolean = false): number {
+export function countCharacters(text: string): number {
 	return text.length;
 }
 

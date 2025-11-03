@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { countCharacters, countWords, countLines } from './textUtils';
 
 describe('textUtils', () => {
@@ -13,9 +13,8 @@ describe('textUtils', () => {
 			expect(countCharacters('行1\n行2')).toBe(5);
 		});
 
-		it('should exclude spaces when specified', () => {
-			expect(countCharacters('こんにちは 世界', true)).toBe(7);
-			expect(countCharacters('こんにちは 世界', false)).toBe(8);
+		it('should count characters including spaces', () => {
+			expect(countCharacters('こんにちは 世界')).toBe(8);
 		});
 	});
 

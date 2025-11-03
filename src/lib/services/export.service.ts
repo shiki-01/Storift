@@ -38,7 +38,7 @@ export async function exportProject(
 		case 'json':
 			return exportAsJson(projectId);
 		case 'epub':
-			return exportAsEpub(project, chapters, scenes, options);
+			return exportAsEpub(project, chapters, scenes);
 		default:
 			throw new Error(`Unsupported format: ${options.format}`);
 	}
@@ -242,7 +242,8 @@ async function exportAsDocx(
 		'docx'
 	);
 
-	const docChildren: any[] = [];
+	type DocChild = InstanceType<typeof Paragraph>;
+	const docChildren: DocChild[] = [];
 
 	// メタデータ
 	if (options.includeMetadata) {
@@ -322,8 +323,7 @@ async function exportAsDocx(
 async function exportAsEpub(
 	project: Project,
 	chapters: Chapter[],
-	scenes: Scene[],
-	//options: ExportOptions
+	scenes: Scene[]
 ): Promise<void> {
 	const { saveAs } = await import('file-saver');
 	const { default: JSZip } = await import('jszip');
@@ -462,6 +462,16 @@ export async function exportAsJson(projectId: string): Promise<void> {
 /**
  * 全プロジェクトをエクスポート
  */
+interface ProjectExportData {
+	project: Project;
+	chapters: Chapter[];
+	scenes: Scene[];
+	characters: unknown[];
+	plots: unknown[];
+	worldbuilding: unknown[];
+	progressLogs: unknown[];
+}
+
 export async function exportAllProjects(): Promise<void> {
 	const { saveAs } = await import('file-saver');
 	const projects = await db.projects.toArray();
@@ -469,7 +479,7 @@ export async function exportAllProjects(): Promise<void> {
 		version: string;
 		exportedAt: string;
 		projectCount: number;
-		projects: any[];
+		projects: ProjectExportData[];
 	} = {
 		version: '1.0.0',
 		exportedAt: new Date().toISOString(),

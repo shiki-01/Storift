@@ -87,8 +87,8 @@
 		></button>
 
 		<!-- メインコンテンツ -->
-		<main class="flex:1 overflow:hidden">
+		<div class="overflow-x:hidden overflow-y:auto w:100% h:calc(100vh-80px)">
 			{@render children()}
-		</main>
+		</div>
 	</div>
 {/if}

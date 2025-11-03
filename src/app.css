@@ -66,3 +66,8 @@ html {
   color: var(--color-text);
   transition: background-color .2s ease-in-out, color .2s ease-in-out;
 }
+
+::selection {
+  background-color: var(--editor-selection);
+  color: var(--editor-text)
+}

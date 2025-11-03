@@ -23,7 +23,7 @@
 	let configText = $state('');
 	let showManualInput = $state(false);
 
-	function handlePaste() {
+	const handlePaste = () => {
 		try {
 			// まずJSON形式をトライ
 			const config = JSON.parse(configText);
@@ -62,7 +62,7 @@
 		}
 	}
 
-	async function handleTest() {
+	const handleTest = async() => {
 		error = '';
 		testResult = '';
 		isLoading = true;
@@ -91,7 +91,7 @@
 		}
 	}
 
-	async function handleSave() {
+	const handleSave = async() => {
 		error = '';
 		isLoading = true;
 

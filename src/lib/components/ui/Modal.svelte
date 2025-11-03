@@ -33,7 +33,7 @@
 		large: 'max-w:800'
 	};
 
-	function handleClose() {
+	const handleClose = () => {
 		isOpen = false;
 		onClose?.();
 	}

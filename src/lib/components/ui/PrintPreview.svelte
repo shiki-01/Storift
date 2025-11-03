@@ -17,7 +17,7 @@
 
 	let options = $state<PrintOptions>({ ...defaultPrintOptions });
 
-	function handlePrint() {
+	const handlePrint = () => {
 		console.log('印刷プレビュー開始:', { chapters, options });
 		
 		if (!chapters || chapters.length === 0) {

@@ -44,7 +44,7 @@
 		await loadCharacters();
 	});
 
-	async function loadCharacters() {
+	const loadCharacters = async() => {
 		if (!currentProjectStore.project) return;
 		isLoading = true;
 		try {
@@ -54,7 +54,7 @@
 		}
 	}
 
-	function openCreateModal() {
+	const openCreateModal = () => {
 		formData = {
 			name: '',
 			role: '',
@@ -86,7 +86,7 @@
 		showRelationModal = true;
 	}
 
-	async function handleCreate() {
+	const handleCreate = async() => {
 		if (!currentProjectStore.project || !formData.name.trim()) return;
 
 		const character = await charactersDB.create({
@@ -111,7 +111,7 @@
 		showCreateModal = false;
 	}
 
-	async function handleUpdate() {
+	const handleUpdate = async() => {
 		if (!editingCharacter) return;
 
 		await charactersDB.update(editingCharacter.id, {

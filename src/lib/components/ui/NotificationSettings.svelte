@@ -1,6 +1,10 @@
 ﻿<script lang="ts">
 	import { onMount } from 'svelte';
-	import { notificationService, type WritingGoal, type PermissionState } from '$lib/services/notification.service';
+	import {
+		notificationService,
+		type WritingGoal,
+		type PermissionState
+	} from '$lib/services/notification.service';
 	import Button from './Button.svelte';
 	import Input from './Input.svelte';
 	import Card from './Card.svelte';
@@ -25,7 +29,7 @@
 		loadHistory();
 	});
 
-	function loadGoal() {
+	const loadGoal = () => {
 		const existingGoal = notificationService.getGoal(projectId);
 		if (existingGoal) {
 			goal = existingGoal;
@@ -35,18 +39,18 @@
 		}
 	}
 
-	function loadHistory() {
+	const loadHistory = () => {
 		notificationHistory = notificationService.getNotificationHistory().slice(0, 10);
 	}
 
-	async function handleRequestPermission() {
+	const handleRequestPermission = async() => {
 		permission = await notificationService.requestPermission();
 		if (permission === 'granted') {
 			await notificationService.notifySystem('通知が有効になりました');
 		}
 	}
 
-	function handleSaveGoal() {
+	const handleSaveGoal = () => {
 		const updatedGoal: WritingGoal = {
 			id: goal?.id || crypto.randomUUID(),
 			projectId,
@@ -61,7 +65,7 @@
 		notificationService.notifySystem('執筆目標を保存しました');
 	}
 
-	async function handleTestNotification() {
+	const handleTestNotification = async() => {
 		await notificationService.showNotification({
 			title: 'テスト通知',
 			body: 'Storiftの通知が正常に動作しています',
@@ -70,7 +74,7 @@
 		loadHistory();
 	}
 
-	function handleClearHistory() {
+	const handleClearHistory = () => {
 		notificationService.clearNotificationHistory();
 		notificationHistory = [];
 	}
@@ -111,7 +115,7 @@
 	<!-- 通知権限 -->
 	<Card>
 		<h3 class="font:16 font:semibold fg:gray-900 mb:12">通知権限</h3>
-		
+
 		<div class="space-y:12">
 			{#if permission === 'granted'}
 				<div class="flex align-items:center gap:8 p:12 bg:green-50 border:1|solid|green-200 r:8">
@@ -131,16 +135,12 @@
 					<p class="font:14 fg:gray-700">
 						通知を有効にすると、執筆リマインダーや同期ステータスなどの通知を受け取れます。
 					</p>
-					<Button variant="primary" onclick={handleRequestPermission}>
-						通知を許可
-					</Button>
+					<Button variant="primary" onclick={handleRequestPermission}>通知を許可</Button>
 				</div>
 			{/if}
 
 			{#if permission === 'granted'}
-				<Button variant="secondary" onclick={handleTestNotification}>
-					テスト通知を送信
-				</Button>
+				<Button variant="secondary" onclick={handleTestNotification}>テスト通知を送信</Button>
 			{/if}
 		</div>
 	</Card>
@@ -148,13 +148,11 @@
 	<!-- 執筆目標とリマインダー -->
 	<Card>
 		<h3 class="font:16 font:semibold fg:gray-900 mb:12">執筆目標とリマインダー</h3>
-		
+
 		<div class="space-y:16">
 			<!-- 1日の目標文字数 -->
 			<div>
-				<label for="dailyGoal" class="font:14 fg:gray-700 mb:6 block">
-					1日の目標文字数
-				</label>
+				<label for="dailyGoal" class="font:14 fg:gray-700 mb:6 block"> 1日の目標文字数 </label>
 				<div class="flex align-items:center gap:12">
 					<input
 						id="dailyGoal"
@@ -165,7 +163,9 @@
 						bind:value={dailyWordCount}
 						class="flex-grow"
 					/>
-					<span class="font:14 fg:gray-700 w:80 text-align:right">{dailyWordCount.toLocaleString()}文字</span>
+					<span class="font:14 fg:gray-700 w:80 text-align:right"
+						>{dailyWordCount.toLocaleString()}文字</span
+					>
 				</div>
 			</div>
 
@@ -196,11 +196,7 @@
 				{/if}
 			</div>
 
-			<Button 
-				variant="primary" 
-				onclick={handleSaveGoal}
-				disabled={permission !== 'granted'}
-			>
+			<Button variant="primary" onclick={handleSaveGoal} disabled={permission !== 'granted'}>
 				設定を保存
 			</Button>
 		</div>
@@ -212,7 +208,7 @@
 			<h3 class="font:16 font:semibold fg:gray-900">通知履歴</h3>
 			<button
 				class="font:14 fg:blue-600 cursor:pointer hover:fg:blue-700"
-				onclick={() => showHistory = !showHistory}
+				onclick={() => (showHistory = !showHistory)}
 			>
 				{showHistory ? '非表示' : '表示'}
 			</button>
@@ -221,9 +217,7 @@
 		{#if showHistory}
 			<div class="space-y:8">
 				{#if notificationHistory.length === 0}
-					<p class="font:14 fg:gray-500 text-align:center py:16">
-						通知履歴はありません
-					</p>
+					<p class="font:14 fg:gray-500 text-align:center py:16">通知履歴はありません</p>
 				{:else}
 					{#each notificationHistory as notification}
 						<div class="p:12 border:1|solid|gray-200 r:8">
@@ -247,9 +241,7 @@
 					{/each}
 
 					<div class="flex justify-content:flex-end pt:8">
-						<Button variant="secondary" onclick={handleClearHistory}>
-							履歴をクリア
-						</Button>
+						<Button variant="secondary" onclick={handleClearHistory}>履歴をクリア</Button>
 					</div>
 				{/if}
 			</div>
@@ -258,7 +250,7 @@
 </div>
 
 <style>
-	input[type="range"] {
+	input[type='range'] {
 		-webkit-appearance: none;
 		appearance: none;
 		height: 6px;
@@ -267,7 +259,7 @@
 		outline: none;
 	}
 
-	input[type="range"]::-webkit-slider-thumb {
+	input[type='range']::-webkit-slider-thumb {
 		-webkit-appearance: none;
 		appearance: none;
 		width: 18px;
@@ -277,7 +269,7 @@
 		cursor: pointer;
 	}
 
-	input[type="range"]::-moz-range-thumb {
+	input[type='range']::-moz-range-thumb {
 		width: 18px;
 		height: 18px;
 		border-radius: 50%;
@@ -286,13 +278,12 @@
 		border: none;
 	}
 
-	input[type="checkbox"] {
+	input[type='checkbox'] {
 		cursor: pointer;
 		accent-color: #3b82f6;
 	}
 
-	input[type="time"] {
+	input[type='time'] {
 		cursor: pointer;
 	}
 </style>
-

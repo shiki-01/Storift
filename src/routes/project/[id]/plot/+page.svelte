@@ -54,7 +54,7 @@
 		await loadPlots();
 	});
 
-	async function loadPlots() {
+	const loadPlots = async() => {
 		if (!currentProjectStore.project) return;
 		isLoading = true;
 		try {
@@ -64,7 +64,7 @@
 		}
 	}
 
-	function openCreateModal() {
+	const openCreateModal = () => {
 		formData = {
 			title: '',
 			type: 'scene',
@@ -87,7 +87,7 @@
 		showEditModal = true;
 	}
 
-	async function handleCreate() {
+	const handleCreate = async() => {
 		if (!currentProjectStore.project || !formData.title.trim()) return;
 
 		const plot = await plotsDB.create({
@@ -104,7 +104,7 @@
 		showCreateModal = false;
 	}
 
-	async function handleUpdate() {
+	const handleUpdate = async() => {
 		if (!editingPlot) return;
 
 		await plotsDB.update(editingPlot.id, {

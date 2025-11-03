@@ -30,7 +30,7 @@
 		}
 	});
 
-	async function loadHistory() {
+	const loadHistory = async() => {
 		isLoading = true;
 		try {
 			histories = await historyDB.getByEntity(entityId);

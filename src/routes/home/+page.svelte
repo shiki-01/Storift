@@ -43,7 +43,7 @@
 		}
 	});
 
-	async function loadProjects() {
+	const loadProjects = async() => {
 		projectsStore.isLoading = true;
 		try {
 			const projects = await projectsDB.getAll();
@@ -53,7 +53,7 @@
 		}
 	}
 
-	async function handleCreateProject() {
+	const handleCreateProject = async() => {
 		if (!newProjectTitle.trim()) return;
 
 		isCreating = true;
@@ -125,7 +125,7 @@
 		contextMenu.targetProject = project;
 	}
 
-	async function applyRename() {
+	const applyRename = async() => {
 		if (!renameValue.trim() || !contextMenu.targetProject) return;
 
 		try {

@@ -17,7 +17,7 @@
 	let showRubyPreview = $state(false);
 
 	// 校閲を実行
-	function runProofreading() {
+	const runProofreading = () => {
 		issues = proofread(text);
 	}
 
@@ -31,7 +31,7 @@
 	}
 
 	// すべての修正を適用
-	function applyAllSuggestions() {
+	const applyAllSuggestions = () => {
 		const suggestedIssues = issues.filter(i => i.suggestion);
 		let newText = text;
 		
@@ -46,18 +46,18 @@
 	}
 
 	// ルビプレビュー
-	function previewRuby() {
+	const previewRuby = () => {
 		rubyPreview = rubyToHtml(text);
 		showRubyPreview = true;
 	}
 
 	// ルビを削除
-	function removeRubyFromText() {
+	const removeRubyFromText = () => {
 		text = removeRuby(text);
 	}
 
 	// ルビを統一
-	function normalizeRubyFormat() {
+	const normalizeRubyFormat = () => {
 		text = normalizeRuby(text);
 	}
 

@@ -30,15 +30,15 @@
 		loadRestorePoints();
 	});
 
-	async function loadHistory() {
+	const loadHistory = async() => {
 		history = await versionService.getEntityHistory(entityType, entityId);
 	}
 
-	function loadRestorePoints() {
+	const loadRestorePoints = () => {
 		restorePoints = versionService.getEntityRestorePoints(entityType, entityId);
 	}
 
-	async function handleCompareVersions() {
+	const handleCompareVersions = async() => {
 		if (!selectedOldVersion || !selectedNewVersion) {
 			return;
 		}
@@ -58,7 +58,7 @@
 		}
 	}
 
-	function handleCreateRestorePoint() {
+	const handleCreateRestorePoint = () => {
 		if (!selectedHistory) {
 			return;
 		}

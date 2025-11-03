@@ -20,7 +20,7 @@
 	let fontSize = $state(12);
 	let isExporting = $state(false);
 
-	async function handleExport() {
+	const handleExport = async() => {
 		isExporting = true;
 		try {
 			const options: ExportOptions = {

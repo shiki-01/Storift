@@ -28,7 +28,7 @@
 	]);
 
 	// 検索実行
-	async function handleSearch() {
+	const handleSearch = async() => {
 		if (!searchQuery) return;
 
 		// 正規表現の検証
@@ -60,7 +60,7 @@
 	}
 
 	// 置換実行
-	async function handleReplace() {
+	const handleReplace = async() => {
 		if (!searchQuery || !replaceWith) return;
 
 		const confirmed = confirm(

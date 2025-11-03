@@ -55,10 +55,10 @@
 		<p class="fg:red-600">プロジェクトが見つかりません</p>
 	</div>
 {:else}
-	<div class="flex w:100% h:100% min-h:calc(100vh-80px) rel">
+	<div class="flex w:100% h:100% min-h:calc(100vh-82px) rel">
 		<!-- サイドバー -->
 		<aside
-			class="w:240 h:calc(100vh-80px) bg:white flex flex:col abs z:2 top:0 transition:left|.2s|ease-in-out {editorStore.isOpen
+			class="w:240 h:calc(100vh-82px) bg:white flex flex:col abs z:2 top:0 transition:left|.2s|ease-in-out {editorStore.isOpen
 				? 'left:0'
 				: 'left:-240px'}"
 		>
@@ -81,13 +81,13 @@
 		<button
 			aria-label="sidebar"
 			onclick={() => (editorStore.isOpen = !editorStore.isOpen)}
-			class="w:100% h:calc(100vh-80px) abs z:1 bg:black cursor:pointer transition:opacity|.2s|ease-in-out {editorStore.isOpen
+			class="w:100% h:calc(100vh-82px) abs z:1 bg:black cursor:pointer transition:opacity|.2s|ease-in-out {editorStore.isOpen
 				? 'opacity:.5 pointer-events:auto'
 				: 'opacity:0 pointer-events:none'}"
 		></button>
 
 		<!-- メインコンテンツ -->
-		<div class="overflow-x:hidden overflow-y:auto w:100% h:calc(100vh-80px)">
+		<div class="overflow-x:hidden overflow-y:auto w:100% h:calc(100vh-82px)">
 			{@render children()}
 		</div>
 	</div>

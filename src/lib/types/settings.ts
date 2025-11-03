@@ -1,8 +1,19 @@
+export type EditorFont = 
+	| 'yu-gothic'
+	| 'gen-shin-mincho'
+	| 'hiragino-mincho'
+	| 'noto-sans'
+	| 'noto-serif'
+	| 'hannari-mincho'
+	| 'sawarabi-mincho'
+	| 'sawarabi-gothic';
+
 export interface AppSettings {
 	id: 'app-settings';
 	firebase?: FirebaseConfig;
 	theme: 'light' | 'dark' | 'auto';
 	autoTheme: boolean;
+	editorFont?: EditorFont;
 	shortcuts: {
 		save: string;
 		undo: string;

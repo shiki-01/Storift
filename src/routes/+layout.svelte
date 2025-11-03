@@ -118,7 +118,7 @@
 		</div>
 	</header>
 
-	<main class="max-w:1200 mx:auto">
+	<main class="mx:auto h:calc(100vh-64px)">
 		{@render children()}
 	</main>
 </div>

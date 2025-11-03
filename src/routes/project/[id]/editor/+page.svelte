@@ -3,7 +3,8 @@
 	import { goto } from '$app/navigation';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
-	import { chaptersDB, scenesDB } from '$lib/db';
+	import { settingsStore } from '$lib/stores/settings.svelte';
+	import { chaptersDB, scenesDB, settingsDB } from '$lib/db';
 	import { queueChange } from '$lib/services/sync.service';
 	import { AutoSave, enableUnsavedWarning, enableVisibilityAutoSave } from '$lib/utils/autoSave';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -14,8 +15,9 @@
 	import PrintPreview from '$lib/components/ui/PrintPreview.svelte';
 	import VersionManager from '$lib/components/ui/VersionManager.svelte';
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
+	import FontSelector from '$lib/components/ui/FontSelector.svelte';
 	import { createEditorContextMenu, createChapterContextMenu, createSceneContextMenu, type ContextMenuItem } from '$lib/utils/contextMenu';
-	import type { Chapter, Scene } from '$lib/types';
+	import type { Chapter, Scene, EditorFont } from '$lib/types';
 
 	let isChapterModalOpen = $state(false);
 	let isSceneModalOpen = $state(false);
@@ -453,6 +455,31 @@
 		});
 		currentProjectStore.scenes = allScenes;
 	}
+
+	// フォント変更処理
+	async function handleFontChange(font: EditorFont) {
+		settingsStore.editorFont = font;
+		try {
+			await settingsDB.update({ editorFont: font });
+		} catch (error) {
+			console.error('Failed to save font setting:', error);
+		}
+	}
+
+	// フォントファミリーを取得
+	function getFontFamily(font: EditorFont): string {
+		const fontMap: Record<EditorFont, string> = {
+			'yu-gothic': '"Yu Gothic", "YuGothic", sans-serif',
+			'gen-shin-mincho': '"Gen Shin Mincho", "源ノ明朝", serif',
+			'hiragino-mincho': '"Hiragino Mincho ProN", "ヒラギノ明朝 ProN", serif',
+			'noto-sans': '"Noto Sans JP", sans-serif',
+			'noto-serif': '"Noto Serif JP", serif',
+			'hannari-mincho': '"Hannari", "はんなり明朝", serif',
+			'sawarabi-mincho': '"Sawarabi Mincho", "さわらび明朝", serif',
+			'sawarabi-gothic': '"Sawarabi Gothic", "さわらびゴシック", sans-serif'
+		};
+		return fontMap[font] || fontMap['yu-gothic'];
+	}
 </script>
 
 <div class="flex w:100% h:100%">
@@ -525,6 +552,9 @@
 					<span class="font:13 fg:gray-600">{editorStore.characterCount}文字</span>
 				</div>
 				<div class="flex align-items:center gap:8">
+					<!-- フォント選択 -->
+					<FontSelector value={settingsStore.editorFont} onchange={handleFontChange} />
+					<div class="w:1 h:20 bg:gray-300"></div>
 					<!-- Phase 2: 執筆支援ツール -->
 					<button
 						class="p:8 r:6 hover:bg:gray-100 cursor:pointer transition:all|0.2s"
@@ -565,7 +595,7 @@
 						bind:this={editorTextarea}
 						bind:value={editorStore.content}
 						class="w:full h:fit min-h:600 border:none outline:none resize:none font:16 line-height:2"
-                        style="field-sizing: content;"
+                        style="field-sizing: content; font-family: {getFontFamily(settingsStore.editorFont)};"
 						placeholder="ここに執筆を開始..."
 						oncontextmenu={handleEditorContextMenu}
 					></textarea>

@@ -98,7 +98,7 @@
 </svelte:head>
 
 <div class="min-h:100vh bg:white">
-	<header class="px:2rem py:1.5rem bb:2px|solid|black">
+	<header class="px:1.5rem py:1rem bb:2px|solid|black">
 		<div class="max-w:1200 gap:1.5rem mx:auto flex justify-content:start align-items:center">
 			<button
 				aria-label="mordal"
@@ -112,7 +112,7 @@
 				></span>
 			</button>
 			<div class="flex align-items:center gap:24">
-				<img src={title} alt="title logo" />
+				<img src={title} alt="title logo" class="w:100px" />
 				<SyncStatus />
 			</div>
 		</div>

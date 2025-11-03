@@ -20,10 +20,10 @@
 	}: ButtonProps = $props();
 
 	const variantClasses = {
-		primary: 'fg:black',
-		secondary: 'bg:gray-200 bg:gray-300:hover fg:gray-900',
-		danger: 'bg:red-600 bg:red-700:hover fg:white',
-		ghost: 'bg:transparent bg:gray-100:hover fg:gray-900'
+		primary: 'fg:theme-text',
+		secondary: 'bg:theme-text fg:theme-background',
+		danger: 'bg:theme-error fg:theme-background',
+		ghost: 'bg:transparent fg:theme-text-secondary'
 	};
 
 	const sizeClasses = {
@@ -34,7 +34,7 @@
 </script>
 
 <button
-	class="r:6 border:none cursor:pointer transition:all|.2s|ease {variantClasses[variant]} {sizeClasses[
+	class="r:6 cursor:pointer transition:all|.2s|ease {variantClasses[variant]} {sizeClasses[
 		size
 	]} opacity:.5:disabled cursor:not-allowed:disabled {className}"
 	{type}

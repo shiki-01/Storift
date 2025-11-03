@@ -55,14 +55,14 @@
 	}
 
 	// 自動テーマ切替
-	const handleAutoThemeToggle = async() => {
+	const handleAutoThemeToggle = async () => {
 		settings.autoTheme = !settings.autoTheme;
 		await themeStore.setAutoTheme(settings.autoTheme);
 		await saveSettings();
-	}
+	};
 
 	// 同期設定の変更
-	const handleSyncToggle = async() => {
+	const handleSyncToggle = async () => {
 		const wasEnabled = settings.syncEnabled;
 		settings.syncEnabled = !settings.syncEnabled;
 		await saveSettings();
@@ -127,10 +127,10 @@
 				}
 			}
 		}
-	}
+	};
 
 	// 設定の保存
-	const saveSettings = async() => {
+	const saveSettings = async () => {
 		try {
 			// 既存の設定を取得してFirebase設定を保持
 			const existing = await db.settings.get('app-settings');
@@ -156,10 +156,10 @@
 		} catch (error) {
 			console.error('Failed to save settings:', error);
 		}
-	}
+	};
 
 	// 設定の読み込み
-	const loadSettings = async() => {
+	const loadSettings = async () => {
 		try {
 			const saved = await db.settings.get('app-settings');
 			if (saved) {
@@ -181,10 +181,10 @@
 		} catch (error) {
 			console.error('Failed to load settings:', error);
 		}
-	}
+	};
 
 	// エクスポート
-	const handleExport = async() => {
+	const handleExport = async () => {
 		try {
 			if (exportFormat === 'json') {
 				await exportAllProjects();
@@ -194,10 +194,10 @@
 			console.error('Export failed:', error);
 			alert('エクスポートに失敗しました');
 		}
-	}
+	};
 
 	// インポート
-	const handleImport = async() => {
+	const handleImport = async () => {
 		if (!importFile) return;
 
 		try {
@@ -217,10 +217,10 @@
 		} catch (error) {
 			importProgress = `エラー: ${error}`;
 		}
-	}
+	};
 
 	// キャッシュクリア
-	const handleClearCache = async() => {
+	const handleClearCache = async () => {
 		try {
 			// Service Workerのキャッシュをクリア
 			if ('caches' in window) {
@@ -232,10 +232,10 @@
 		} catch (error) {
 			alert('キャッシュのクリアに失敗しました');
 		}
-	}
+	};
 
 	// 全データ削除
-	const handleClearAllData = async() => {
+	const handleClearAllData = async () => {
 		try {
 			await db.delete();
 			await db.open();
@@ -245,7 +245,7 @@
 		} catch (error) {
 			alert('データの削除に失敗しました');
 		}
-	}
+	};
 
 	// ページ読み込み時に設定を読み込む
 	$effect(() => {
@@ -265,15 +265,15 @@
 	});
 </script>
 
-<div class="w:100% h:100% overflow-y:auto px:4rem py:2rem">
+<div class="w:100% h:100% overflow-y:auto px:4rem py:2rem flex flex:column gap:2rem">
 	<h1 class="font:1.25rem">設定</h1>
 
 	<!-- テーマ設定 -->
-	<Card class="flex flex:column gap:1rem">
+	<Card class="flex flex:column gap:1rem b:2px|solid|var(--color-text)">
 		<h2 class="font:bold">テーマ</h2>
 
 		<div class="px:4rem">
-			<label class="flex align-items:center gap:1rem cursor:pointer">
+			<label class="flex align-items:center gap:.5rem cursor:pointer">
 				<input
 					type="checkbox"
 					checked={settings.autoTheme}
@@ -288,7 +288,9 @@
 			{#each Object.values(themes) as theme}
 				<button
 					onclick={() => handleThemeChange(theme.id)}
-					class="p:4 r:8px b:2px|solid|black cursor:pointer flex flex:row ai:center jc:center gap:2rem rel {settings.autoTheme ? 'opacity:.5' : ''}"
+					class="p:4 r:8px b:2px|solid|var(--color-text) cursor:pointer flex flex:row ai:center jc:center gap:2rem rel {settings.autoTheme
+						? 'opacity:.5'
+						: ''}"
 					style="background-color: {theme.colors.background}; color: {theme.colors.text};"
 					disabled={settings.autoTheme}
 				>
@@ -307,7 +309,10 @@
 					<div class="">{theme.name}</div>
 					<div class="flex gap:1rem justify-content:center">
 						<div class="w:8px h:8px r:full" style="background-color: {theme.colors.primary};"></div>
-						<div class="w:8px h:8px r:full" style="background-color: {theme.colors.secondary};"></div>
+						<div
+							class="w:8px h:8px r:full"
+							style="background-color: {theme.colors.secondary};"
+						></div>
 						<div class="w:8px h:8px r:full" style="background-color: {theme.colors.accent};"></div>
 					</div>
 				</button>
@@ -316,7 +321,7 @@
 	</Card>
 
 	<!-- Phase 2: 通知設定 -->
-	<Card class="">
+	<Card class="b:2px|solid|var(--color-text)">
 		<h2 class="font:bold">通知とリマインダー</h2>
 		{#if currentProjectStore.project}
 			<NotificationSettings projectId={currentProjectStore.project.id} />
@@ -326,25 +331,25 @@
 	</Card>
 
 	<!-- エディタ設定 -->
-	<Card class="mb-6">
-		<h2 class="text-xl font-semibold mb-4">エディタ</h2>
+	<Card class="b:2px|solid|var(--color-text) flex flex:column gap:1rem">
+		<h2 class="font:bold">エディタ</h2>
 
-		<div class="space-y-4">
+		<div class="flex flex:column gap:1rem">
 			<div>
-				<label class="flex items-center gap-2 cursor-pointer">
+				<label class="flex ai:center gap:.5rem cursor:pointer">
 					<input
 						type="checkbox"
 						bind:checked={settings.autoSave}
 						onchange={saveSettings}
-						class="w-4 h-4"
+						class="w:1rem h:1rem"
 					/>
 					<span>自動保存を有効にする</span>
 				</label>
 			</div>
 
 			{#if settings.autoSave}
-				<div>
-					<label for="autoSaveInterval" class="block mb-2">自動保存間隔 (秒)</label>
+				<div class="flex flex:column gap:.5rem">
+					<label for="autoSaveInterval" class="block">自動保存間隔 (秒)</label>
 					<input
 						id="autoSaveInterval"
 						type="number"
@@ -352,7 +357,7 @@
 						onchange={saveSettings}
 						min="10"
 						max="300"
-						class="w-32 px-3 py-2 border rounded"
+						class="px:.5rem py:.1rem b:2px|solid|theme-text r:8px"
 					/>
 				</div>
 			{/if}
@@ -360,34 +365,36 @@
 	</Card>
 
 	<!-- 同期設定 -->
-	<Card class="mb-6">
-		<h2 class="text-xl font-semibold mb-4">同期</h2>
+	<Card class="b:2px|solid|var(--color-text)  flex flex:column gap:1rem">
+		<h2 class="font:bold">同期</h2>
 
-		<div class="space-y-4">
+		<div class="flex flex:column gap:1rem">
 			<div>
-				<label class="flex items-center gap-2 cursor-pointer">
+				<label class="flex ai:center gap:.5rem cursor:pointer">
 					<input
 						type="checkbox"
 						checked={settings.syncEnabled}
 						onchange={handleSyncToggle}
-						class="w-4 h-4"
+						class="w:1rem h:1rem"
 					/>
 					<span>クラウド同期を有効にする</span>
 				</label>
-				<p class="text-sm text-gray-600 mt-2">
+				<p class="">
 					Firebase連携が設定されている場合、プロジェクトデータを自動的にクラウドに同期します。
 				</p>
 			</div>
 
 			{#if isFirebaseInitialized()}
-				<div class="p-3 bg-gray-100 dark:bg-gray-800 rounded">
-					<div class="flex items-center gap-2 text-sm">
+				<div class="flex">
+					<div class="flex ai:center gap:.5rem">
 						<span
-							class="w-2 h-2 rounded-full"
-							class:bg-green-500={syncStore.status === 'synced'}
-							class:bg-yellow-500={syncStore.status === 'syncing'}
-							class:bg-red-500={syncStore.status === 'error'}
-							class:bg-gray-400={syncStore.status === 'offline'}
+							class="w:1rem h:1rem block r:full {syncStore.status === 'synced'
+								? 'bg:theme-success'
+								: syncStore.status === 'syncing'
+									? 'bg:theme-wraning'
+									: syncStore.status === 'error'
+										? 'bg:theme-error'
+										: 'bg:theme-border'}"
 						></span>
 						<span>
 							{#if syncStore.status === 'synced'}
@@ -411,28 +418,25 @@
 				</div>
 			{:else}
 				<div
-					class="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded"
+					class="px:1rem py:1em b:2px|solid|theme-warning r:8px flex flex:column gap:1rem"
+                    style="background-color: color-mix(in srgb, var(--color-warning) 10%, transparent);"
 				>
-					<p class="text-sm text-yellow-800 dark:text-yellow-200 mb-2">
-						⚠️ Firebase連携が設定されていません
-					</p>
-					<a href="/setup" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
-						Firebase設定ページへ →
-					</a>
+					<p class="font:bold fg:theme-warning">Firebase連携が設定されていません</p>
+					<a href="/setup" class=""> Firebase設定ページへ → </a>
 				</div>
 			{/if}
 		</div>
 	</Card>
 
 	<!-- ショートカットキー -->
-	<Card class="mb-6">
-		<h2 class="text-xl font-semibold mb-4">ショートカットキー</h2>
+	<Card class="b:2px|solid|var(--color-text)  flex flex:column gap:1rem">
+		<h2 class="font:bold">ショートカットキー</h2>
 
-		<div class="space-y-3">
+		<div class="flex flex:column gap:.6rem">
 			{#each Object.entries(settings.shortcuts) as [action, key]}
-				<div class="flex items-center justify-between">
+				<div class="flex flex:row ai:center jc:space-between">
 					<span class="capitalize">{action.replace(/([A-Z])/g, ' $1')}</span>
-					<kbd class="px-3 py-1 bg-gray-100 border border-gray-300 rounded text-sm font-mono">
+					<kbd class="px:.4rem py:.1rem bg:theme-border b:1px|solid|theme-text-secondary r:6px">
 						{key}
 					</kbd>
 				</div>
@@ -441,43 +445,50 @@
 	</Card>
 
 	<!-- データ管理 -->
-	<Card class="mb-6">
-		<h2 class="text-xl font-semibold mb-4">データ管理</h2>
+	<Card class="b:2px|solid|var(--color-text)  flex flex:column gap:1rem">
+		<h2 class="font:bold">データ管理</h2>
 
-		<div class="space-y-4">
-			<div>
-				<Button onclick={() => (showExportModal = true)} class="w-full">
+		<div class="flex flex:column gap:1rem">
+			<div class="flex flex:column gap:.6rem">
+				<Button
+					onclick={() => (showExportModal = true)}
+					class="p:.5rem|1rem b:2px|solid|theme-text"
+				>
 					全データをエクスポート
 				</Button>
-				<p class="text-sm text-gray-600 mt-1">
-					すべてのプロジェクトをJSONファイルとしてバックアップします。
-				</p>
+				<p class="">すべてのプロジェクトをJSONファイルとしてバックアップします。</p>
 			</div>
 
-			<div>
-				<Button onclick={() => (showImportModal = true)} variant="secondary" class="w-full">
+			<div class="flex flex:column gap:.6rem">
+				<Button
+					onclick={() => (showImportModal = true)}
+					variant="secondary"
+					class="p:.5rem|1rem b:2px|solid|theme-text"
+				>
 					データをインポート
 				</Button>
-				<p class="text-sm text-gray-600 mt-1">バックアップファイルからプロジェクトを復元します。</p>
+				<p class="">バックアップファイルからプロジェクトを復元します。</p>
 			</div>
 
-			<div>
-				<Button onclick={() => (showClearDataModal = true)} variant="danger" class="w-full">
+			<div class="flex flex:column gap:.6rem">
+				<Button
+					onclick={() => (showClearDataModal = true)}
+					variant="danger"
+					class="p:.5rem|1rem b:2px|solid|theme-text"
+				>
 					全データを削除
 				</Button>
-				<p class="text-sm text-gray-600 mt-1">
-					すべてのプロジェクトとキャッシュを削除します。この操作は取り消せません。
-				</p>
+				<p class="">すべてのプロジェクトとキャッシュを削除します。この操作は取り消せません。</p>
 			</div>
 		</div>
 	</Card>
 
 	<!-- バージョン情報 -->
-	<Card>
-		<h2 class="text-xl font-semibold mb-4">バージョン情報</h2>
-		<div class="text-sm text-gray-600">
+	<Card class="b:2px|solid|var(--color-text)  flex flex:column gap:1rem">
+		<h2 class="font:bold">バージョン情報</h2>
+		<div class="fg:theme-text-secondary">
 			<p>Storift v0.0.1</p>
-			<p>SvelteKit + Master CSS + TypeScript</p>
+			<p>&copy shiki 2025</p>
 		</div>
 	</Card>
 </div>

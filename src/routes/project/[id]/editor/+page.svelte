@@ -484,10 +484,10 @@
 
 <div class="flex w:100% h:100%">
 	<!-- サイドバー -->
-	<aside class="w:280 bg:white br:2px|solid|black flex flex-direction:column">
+	<aside class="w:280 bg:$(theme.surface) br:2px|solid|$(theme.border) flex flex-direction:column">
 		<div class="flex-grow:1 overflow-y:auto p:16 pt:24px">
 			<div class="flex justify-content:space-between align-items:center mb:12">
-				<h3 class="font:14 font-weight:600 m:0">章・シーン</h3>
+				<h3 class="font:14 font-weight:600 m:0 fg:$(theme.text)">章・シーン</h3>
 				<Button size="sm" onclick={() => (isChapterModalOpen = true)}>+ 章</Button>
 			</div>
 
@@ -498,9 +498,9 @@
 						class="flex justify-content:space-between align-items:center mb:8"
 						oncontextmenu={(e) => handleChapterContextMenu(e, chapter)}
 					>
-						<h4 class="font:14 font-weight:500 m:0">{chapter.title}</h4>
+						<h4 class="font:14 font-weight:500 m:0 fg:$(theme.text)">{chapter.title}</h4>
 						<button
-							class="bg:transparent border:none cursor:pointer fg:gray-600 fg:blue-600:hover font:12 p:4"
+							class="bg:transparent border:none cursor:pointer fg:$(theme.text-secondary) fg:$(theme.primary):hover font:12 p:4"
 							onclick={() => openSceneModal(chapter.id)}
 						>
 							+ シーン
@@ -511,21 +511,21 @@
 						<button
 							class="w:full text-align:left p:8 bg:transparent border:none cursor:pointer r:4 {editorStore
 								.currentScene?.id === scene.id
-								? 'bg:blue-50 fg:blue-700'
-								: 'fg:gray-700 bg:gray-50:hover'}"
+								? 'bg:$(theme.primary)/.1 fg:$(theme.primary)'
+								: 'fg:$(theme.text) bg:$(theme.surface):hover'}"
 							onclick={() => handleSceneSelect(scene)}
 							oncontextmenu={(e) => handleSceneContextMenu(e, scene)}
 						>
 							<div class="font:13">{scene.title}</div>
-							<div class="font:11 fg:gray-500">{scene.characterCount}文字</div>
+							<div class="font:11 fg:$(theme.text-secondary)">{scene.characterCount}文字</div>
 						</button>
 					{/each}
 				</div>
 			{/each}
 		</div>
 
-		<div class="p:16 border-top:1|solid|gray-200">
-			<div class="font:12 fg:gray-600">
+		<div class="p:16 border-top:1|solid|$(theme.border)">
+			<div class="font:12 fg:$(theme.text-secondary)">
 				合計: {currentProjectStore.totalCharacterCount.toLocaleString()}文字
 			</div>
 		</div>
@@ -545,41 +545,41 @@
 		{:else}
 			<!-- ツールバー -->
 			<div
-				class="bg:white border-bottom:1|solid|gray-200 p:12|16 flex justify-content:space-between align-items:center"
+				class="bg:$(theme.surface) border-bottom:1|solid|$(theme.border) p:12|16 flex justify-content:space-between align-items:center"
 			>
 				<div class="flex align-items:center gap:16">
-					<h3 class="font:16 font-weight:500 m:0">{editorStore.currentScene.title}</h3>
-					<span class="font:13 fg:gray-600">{editorStore.characterCount}文字</span>
+					<h3 class="font:16 font-weight:500 m:0 fg:$(theme.text)">{editorStore.currentScene.title}</h3>
+					<span class="font:13 fg:$(theme.text-secondary)">{editorStore.characterCount}文字</span>
 				</div>
 				<div class="flex align-items:center gap:8">
 					<!-- フォント選択 -->
 					<FontSelector value={settingsStore.editorFont} onchange={handleFontChange} />
-					<div class="w:1 h:20 bg:gray-300"></div>
+					<div class="w:1 h:20 bg:$(theme.border)"></div>
 					<!-- Phase 2: 執筆支援ツール -->
 					<button
-						class="p:8 r:6 hover:bg:gray-100 cursor:pointer transition:all|0.2s"
+						class="p:8 r:6 hover:bg:$(theme.surface) cursor:pointer transition:all|0.2s"
 						onclick={() => showWritingAssistant = true}
 						title="執筆支援"
 					>
 						📝
 					</button>
 					<button
-						class="p:8 r:6 hover:bg:gray-100 cursor:pointer transition:all|0.2s"
+						class="p:8 r:6 hover:bg:$(theme.surface) cursor:pointer transition:all|0.2s"
 						onclick={() => showPrintPreview = true}
 						title="印刷プレビュー"
 					>
 						🖨️
 					</button>
 					<button
-						class="p:8 r:6 hover:bg:gray-100 cursor:pointer transition:all|0.2s"
+						class="p:8 r:6 hover:bg:$(theme.surface) cursor:pointer transition:all|0.2s"
 						onclick={() => showVersionManager = true}
 						title="バージョン履歴"
 					>
 						📜
 					</button>
-					<div class="w:1 h:20 bg:gray-300"></div>
+					<div class="w:1 h:20 bg:$(theme.border)"></div>
 					<SyncStatus />
-					<span class="font:13 fg:gray-600">
+					<span class="font:13 fg:$(theme.text-secondary)">
 						{editorStore.isDirty ? '未保存' : editorStore.isSaving ? '保存中...' : '保存済み'}
 					</span>
 					<Button size="sm" onclick={handleSave} disabled={!editorStore.isDirty}>保存</Button>
@@ -587,14 +587,14 @@
 			</div>
 
 			<!-- エディタ -->
-			<div class="flex-grow:1 overflow-y:auto p:32 bg:gray-50">
+			<div class="flex-grow:1 overflow-y:auto p:32 bg:$(editor.background)">
 				<div
-					class="max-w:800 mx:auto bg:white p:48 r:8 box-shadow:0|2|8|rgba(0,0,0,0.08) min-h:full h:fit"
+					class="max-w:800 mx:auto bg:$(theme.background) p:48 r:8 box-shadow:0|2|8|rgba(0,0,0,0.08) min-h:full h:fit"
 				>
 					<textarea
 						bind:this={editorTextarea}
 						bind:value={editorStore.content}
-						class="w:full h:fit min-h:600 border:none outline:none resize:none font:16 line-height:2"
+						class="w:full h:fit min-h:600 border:none outline:none resize:none font:16 line-height:2 bg:$(editor.background) fg:$(editor.text)"
                         style="field-sizing: content; font-family: {getFontFamily(settingsStore.editorFont)};"
 						placeholder="ここに執筆を開始..."
 						oncontextmenu={handleEditorContextMenu}

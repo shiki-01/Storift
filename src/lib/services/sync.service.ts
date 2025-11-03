@@ -271,8 +271,6 @@ async function updateLocalData(type: EntityType, data: Project | Chapter | Scene
 	}
 }
 
-// プロジェクトのリアルタイム同期は現在未使用（将来的に必要な場合に実装）
-
 /**
  * 現在のプロジェクトのリアルタイム同期
  */

@@ -21,6 +21,7 @@
 		autoSave: true,
 		autoSaveInterval: 30,
 		syncEnabled: true,
+		conflictResolution: 'manual',
 		shortcuts: {
 			save: 'Ctrl+S',
 			undo: 'Ctrl+Z',
@@ -142,6 +143,7 @@
 				autoSave: settings.autoSave,
 				autoSaveInterval: settings.autoSaveInterval,
 				syncEnabled: settings.syncEnabled,
+				conflictResolution: settings.conflictResolution,
 				shortcuts: {
 					save: settings.shortcuts.save,
 					undo: settings.shortcuts.undo,
@@ -168,6 +170,7 @@
 				settings.autoSave = saved.autoSave;
 				settings.autoSaveInterval = saved.autoSaveInterval;
 				settings.syncEnabled = saved.syncEnabled;
+				settings.conflictResolution = saved.conflictResolution || 'manual';
 				if (saved.shortcuts) {
 					settings.shortcuts.save = saved.shortcuts.save;
 					settings.shortcuts.undo = saved.shortcuts.undo;
@@ -382,6 +385,38 @@
 				<p class="">
 					Firebase連携が設定されている場合、プロジェクトデータを自動的にクラウドに同期します。
 				</p>
+			</div>
+
+			<div class="flex flex:column gap:.5rem">
+				<label for="conflictResolution" class="font:bold">競合解決方法</label>
+				<p class="fg:theme-text-secondary font:.875rem">
+					同じデータが複数の端末で編集された場合の処理方法を選択します。
+				</p>
+				<select
+					id="conflictResolution"
+					bind:value={settings.conflictResolution}
+					onchange={saveSettings}
+					class="px:.75rem py:.5rem b:2px|solid|theme-text r:8px bg:theme-background fg:theme-text"
+				>
+					<option value="manual">手動で選択（推奨）</option>
+					<option value="local">常にこの端末の変更を優先</option>
+					<option value="remote">常にクラウドの変更を優先</option>
+				</select>
+				<div class="px:1rem py:.75rem r:6px" style="background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);">
+					{#if settings.conflictResolution === 'manual'}
+						<p class="font:.875rem">
+							競合が発生した場合、どちらの変更を採用するか手動で選択できます。
+						</p>
+					{:else if settings.conflictResolution === 'local'}
+						<p class="font:.875rem fg:theme-warning">
+							⚠️ クラウドの変更が自動的に破棄されます。他の端末での編集が失われる可能性があります。
+						</p>
+					{:else if settings.conflictResolution === 'remote'}
+						<p class="font:.875rem fg:theme-warning">
+							⚠️ この端末の変更が自動的に破棄されます。ローカルでの編集が失われる可能性があります。
+						</p>
+					{/if}
+				</div>
 			</div>
 
 			{#if isFirebaseInitialized()}

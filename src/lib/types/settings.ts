@@ -8,6 +8,8 @@ export type EditorFont =
 	| 'sawarabi-mincho'
 	| 'sawarabi-gothic';
 
+export type ConflictResolutionPolicy = 'local' | 'remote' | 'manual';
+
 export interface AppSettings {
 	id: 'app-settings';
 	firebase?: FirebaseConfig;
@@ -26,6 +28,7 @@ export interface AppSettings {
 	autoSave: boolean;
 	autoSaveInterval: number;
 	syncEnabled: boolean;
+	conflictResolution: ConflictResolutionPolicy;
 	updatedAt: number;
 }
 

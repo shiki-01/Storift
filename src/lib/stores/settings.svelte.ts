@@ -17,6 +17,7 @@ let settings = $state<AppSettings>({
 	autoSave: true,
 	autoSaveInterval: 30000,
 	syncEnabled: true,
+	conflictResolution: 'manual',
 	updatedAt: Date.now()
 });
 

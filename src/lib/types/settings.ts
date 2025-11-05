@@ -10,12 +10,20 @@ export type EditorFont =
 
 export type ConflictResolutionPolicy = 'local' | 'remote' | 'manual';
 
+export interface EditorFormatting {
+	fontSize: number; // px
+	lineHeight: number; // 倍率
+	letterSpacing: number; // em
+	paragraphSpacing: number; // px
+}
+
 export interface AppSettings {
 	id: 'app-settings';
 	firebase?: FirebaseConfig;
 	theme: 'light' | 'dark' | 'auto';
 	autoTheme: boolean;
 	editorFont?: EditorFont;
+	editorFormatting: EditorFormatting;
 	shortcuts: {
 		save: string;
 		undo: string;

@@ -5,6 +5,12 @@ const DEFAULT_SETTINGS: AppSettings = {
 	id: 'app-settings',
 	theme: 'auto',
 	autoTheme: true,
+	editorFormatting: {
+		fontSize: 16,
+		lineHeight: 2,
+		letterSpacing: 0,
+		paragraphSpacing: 16
+	},
 	shortcuts: {
 		save: 'Ctrl+S',
 		undo: 'Ctrl+Z',
@@ -17,6 +23,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 	autoSave: true,
 	autoSaveInterval: 30000, // 30秒
 	syncEnabled: true,
+	conflictResolution: 'manual',
 	updatedAt: Date.now()
 };
 

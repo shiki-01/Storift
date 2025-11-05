@@ -5,6 +5,12 @@ let settings = $state<AppSettings>({
 	theme: 'auto',
 	autoTheme: true,
 	editorFont: 'yu-gothic',
+	editorFormatting: {
+		fontSize: 16,
+		lineHeight: 2,
+		letterSpacing: 0,
+		paragraphSpacing: 16
+	},
 	shortcuts: {
 		save: 'Ctrl+S',
 		undo: 'Ctrl+Z',
@@ -39,6 +45,12 @@ export const settingsStore = {
 	},
 	set editorFont(value: EditorFont) {
 		settings.editorFont = value;
+	},
+	get editorFormatting() {
+		return settings.editorFormatting;
+	},
+	set editorFormatting(value: AppSettings['editorFormatting']) {
+		settings.editorFormatting = value;
 	},
 	get hasFirebaseConfig() {
 		return settings.firebase !== undefined;

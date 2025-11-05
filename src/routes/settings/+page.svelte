@@ -22,6 +22,12 @@
 		autoSaveInterval: 30,
 		syncEnabled: true,
 		conflictResolution: 'manual',
+		editorFormatting: {
+			fontSize: 16,
+			lineHeight: 2,
+			letterSpacing: 0,
+			paragraphSpacing: 16
+		},
 		shortcuts: {
 			save: 'Ctrl+S',
 			undo: 'Ctrl+Z',
@@ -135,15 +141,23 @@
 		try {
 			// 既存の設定を取得してFirebase設定を保持
 			const existing = await db.settings.get('app-settings');
-			await db.settings.put({
-				id: 'app-settings',
-				firebase: existing?.firebase, // Firebase設定を保持
+			
+			// プレーンなオブジェクトに変換（Svelteのリアクティブプロパティを除去）
+			const plainSettings = {
+				id: 'app-settings' as const,
+				firebase: existing?.firebase,
 				theme: settings.theme,
 				autoTheme: settings.autoTheme,
 				autoSave: settings.autoSave,
 				autoSaveInterval: settings.autoSaveInterval,
 				syncEnabled: settings.syncEnabled,
 				conflictResolution: settings.conflictResolution,
+				editorFormatting: {
+					fontSize: settings.editorFormatting.fontSize,
+					lineHeight: settings.editorFormatting.lineHeight,
+					letterSpacing: settings.editorFormatting.letterSpacing,
+					paragraphSpacing: settings.editorFormatting.paragraphSpacing
+				},
 				shortcuts: {
 					save: settings.shortcuts.save,
 					undo: settings.shortcuts.undo,
@@ -154,7 +168,9 @@
 					newScene: settings.shortcuts.newScene
 				},
 				updatedAt: Date.now()
-			});
+			};
+			
+			await db.settings.put(plainSettings);
 		} catch (error) {
 			console.error('Failed to save settings:', error);
 		}
@@ -171,6 +187,12 @@
 				settings.autoSaveInterval = saved.autoSaveInterval;
 				settings.syncEnabled = saved.syncEnabled;
 				settings.conflictResolution = saved.conflictResolution || 'manual';
+				settings.editorFormatting = saved.editorFormatting || {
+					fontSize: 16,
+					lineHeight: 2,
+					letterSpacing: 0,
+					paragraphSpacing: 16
+				};
 				if (saved.shortcuts) {
 					settings.shortcuts.save = saved.shortcuts.save;
 					settings.shortcuts.undo = saved.shortcuts.undo;
@@ -364,6 +386,141 @@
 					/>
 				</div>
 			{/if}
+		</div>
+	</Card>
+
+	<!-- 書式設定 -->
+	<Card class="b:2px|solid|var(--color-text) flex flex:column gap:1rem">
+		<h2 class="font:bold">書式設定</h2>
+		<p class="fg:theme-text-secondary font:.875rem">
+			エディタのテキスト表示形式を一括で調整できます。
+		</p>
+
+		<div class="flex flex:column gap:1.5rem">
+			<!-- フォントサイズ -->
+			<div class="flex flex:column gap:.5rem">
+				<div class="flex justify-content:space-between align-items:center">
+					<label for="fontSize" class="font-weight:500">フォントサイズ</label>
+					<span class="fg:theme-text-secondary font:.875rem">{settings.editorFormatting.fontSize}px</span>
+				</div>
+				<input
+					id="fontSize"
+					type="range"
+					bind:value={settings.editorFormatting.fontSize}
+					onchange={saveSettings}
+					min="12"
+					max="24"
+					step="1"
+					class="w:full"
+				/>
+				<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
+					<span>小 (12px)</span>
+					<span>大 (24px)</span>
+				</div>
+			</div>
+
+			<!-- 行間 -->
+			<div class="flex flex:column gap:.5rem">
+				<div class="flex justify-content:space-between align-items:center">
+					<label for="lineHeight" class="font-weight:500">行間</label>
+					<span class="fg:theme-text-secondary font:.875rem">{settings.editorFormatting.lineHeight.toFixed(1)}</span>
+				</div>
+				<input
+					id="lineHeight"
+					type="range"
+					bind:value={settings.editorFormatting.lineHeight}
+					onchange={saveSettings}
+					min="1.0"
+					max="3.0"
+					step="0.1"
+					class="w:full"
+				/>
+				<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
+					<span>狭い (1.0)</span>
+					<span>広い (3.0)</span>
+				</div>
+			</div>
+
+			<!-- 字間 -->
+			<div class="flex flex:column gap:.5rem">
+				<div class="flex justify-content:space-between align-items:center">
+					<label for="letterSpacing" class="font-weight:500">字間</label>
+					<span class="fg:theme-text-secondary font:.875rem">{settings.editorFormatting.letterSpacing.toFixed(2)}em</span>
+				</div>
+				<input
+					id="letterSpacing"
+					type="range"
+					bind:value={settings.editorFormatting.letterSpacing}
+					onchange={saveSettings}
+					min="-0.05"
+					max="0.2"
+					step="0.01"
+					class="w:full"
+				/>
+				<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
+					<span>狭い (-0.05em)</span>
+					<span>広い (0.2em)</span>
+				</div>
+			</div>
+
+			<!-- 段落間隔 -->
+			<div class="flex flex:column gap:.5rem">
+				<div class="flex justify-content:space-between align-items:center">
+					<label for="paragraphSpacing" class="font-weight:500">段落間隔</label>
+					<span class="fg:theme-text-secondary font:.875rem">{settings.editorFormatting.paragraphSpacing}px</span>
+				</div>
+				<input
+					id="paragraphSpacing"
+					type="range"
+					bind:value={settings.editorFormatting.paragraphSpacing}
+					onchange={saveSettings}
+					min="0"
+					max="48"
+					step="4"
+					class="w:full"
+				/>
+				<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
+					<span>なし (0px)</span>
+					<span>広い (48px)</span>
+				</div>
+			</div>
+
+			<!-- プレビュー -->
+			<div class="p:1rem b:2px|solid|theme-border r:8px bg:theme-background-secondary">
+				<p class="font:.75rem fg:theme-text-secondary mb:.5rem">プレビュー</p>
+				<div
+					class="fg:theme-text"
+					style="
+						font-size: {settings.editorFormatting.fontSize}px;
+						line-height: {settings.editorFormatting.lineHeight};
+						letter-spacing: {settings.editorFormatting.letterSpacing}em;
+					"
+				>
+					<p style="margin-bottom: {settings.editorFormatting.paragraphSpacing}px;">
+						吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。
+					</p>
+					<p>
+						何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。
+					</p>
+				</div>
+			</div>
+
+			<!-- リセットボタン -->
+			<Button
+				onclick={() => {
+					settings.editorFormatting = {
+						fontSize: 16,
+						lineHeight: 2,
+						letterSpacing: 0,
+						paragraphSpacing: 16
+					};
+					saveSettings();
+				}}
+				variant="secondary"
+				class="w:fit"
+			>
+				デフォルトに戻す
+			</Button>
 		</div>
 	</Card>
 

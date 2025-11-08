@@ -13,7 +13,8 @@ export default defineConfig({
 			filename: 'service-worker.ts',
 			strategies: 'injectManifest',
 			injectManifest: {
-				globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,json}']
+				globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,json}'],
+				globIgnores: ['**/font/**']
 			},
 			includeAssets: ['favicon.ico', 'robots.txt', 'manifest.json'],
 			manifest: {

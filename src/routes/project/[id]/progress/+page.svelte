@@ -119,12 +119,32 @@
 	}
 
 	function getHeatmapColor(charactersWritten: number): string {
-		if (charactersWritten === 0) return 'bg:gray-100';
-		if (charactersWritten < 500) return 'bg:green-200';
-		if (charactersWritten < 1000) return 'bg:green-400';
-		if (charactersWritten < 2000) return 'bg:green-600';
-		return 'bg:green-800';
+		if (charactersWritten === 0) return 'bg:theme-surface';
+		if (charactersWritten < 500) return 'bg:$(theme.primary)/.08';
+		if (charactersWritten < 1000) return 'bg:$(theme.primary)/.16';
+		if (charactersWritten < 2000) return 'bg:$(theme.primary)/.24';
+		return 'bg:$(theme.primary)/.32';
 	}
+
+	const heatmapLegend = [
+		{ label: '0', className: 'bg:theme-surface' },
+		{ label: '~500', className: 'bg:$(theme.primary)/.08' },
+		{ label: '~1000', className: 'bg:$(theme.primary)/.16' },
+		{ label: '~2000', className: 'bg:$(theme.primary)/.24' },
+		{ label: '2000+', className: 'bg:$(theme.primary)/.32' }
+	];
+
+	function calendarDayClass(charactersWritten: number, isToday: boolean): string {
+		return [
+			'aspect:1/1 r:8 p:8 flex flex-direction:column align-items:center justify-content:center gap:4 transition:all|.2s cursor:pointer',
+			getHeatmapColor(charactersWritten),
+			isToday ? 'b:2px|solid|$(theme.primary)' : 'b:1px|solid|theme-border',
+			'hover:bg:$(theme.primary)/.12'
+		].join(' ');
+	}
+
+	const fieldBaseClass =
+		'w:full px:12 py:10 b:1|solid|theme-border bg:theme-background fg:theme-text r:8 outline:none focus:b:$(theme.primary) transition:all|.2s font:inherit';
 
 	function openLogModal(date: Date) {
 		selectedDate = date;
@@ -197,229 +217,221 @@
 	);
 </script>
 
-<div class="p:32 h:100% overflow:auto">
-	<!-- ヘッダー -->
-	<div class="flex justify-content:space-between align-items:center mb:24">
-		<div>
-			<h1 class="font:32 font:bold mb:8">進捗管理</h1>
-			<p class="fg:gray-600">執筆の進捗を記録・可視化します</p>
-		</div>
-	</div>
-
-	{#if isLoading}
-		<div class="flex justify-content:center align-items:center h:400">
-			<p class="fg:gray-600">読み込み中...</p>
-		</div>
-	{:else}
-		<!-- 統計サマリー -->
-		<div class="grid cols:5 gap:16 mb:24">
-			<Card>
-				<div class="p:20 text-align:center">
-					<p class="fg:gray-600 font:14 mb:8">累計文字数</p>
-					<p class="font:32 font:bold fg:blue-600">{stats.totalCharacters.toLocaleString()}</p>
-					<p class="fg:gray-500 font:12 mt:4">文字</p>
+<div class="flex w:100% h:100% bg:theme-background fg:theme-text">
+	<div class="flex-grow:1 flex flex-direction:column">
+		<header class="bg:theme-background border-bottom:2|solid|theme-text">
+			<div class="max-w:1280 mx:auto w:100% px:24 py:20 flex justify-content:space-between align-items:center">
+				<div>
+					<h1 class="font:26 font-weight:600 m:0 fg:theme-text">進捗管理</h1>
+					<p class="font:14 fg:theme-text-secondary mt:8">執筆の進捗を記録・可視化します</p>
 				</div>
-			</Card>
-
-			<Card>
-				<div class="p:20 text-align:center">
-					<p class="fg:gray-600 font:14 mb:8">平均執筆量</p>
-					<p class="font:32 font:bold fg:green-600">{stats.averageDaily.toLocaleString()}</p>
-					<p class="fg:gray-500 font:12 mt:4">文字/日</p>
+				<div class="flex align-items:center gap:12">
+					<Button
+						class="px:18 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8 font:14"
+						onclick={() => openLogModal(new Date())}
+						disabled={!currentProjectStore.project}
+					>
+						今日の記録
+					</Button>
 				</div>
-			</Card>
-
-			<Card>
-				<div class="p:20 text-align:center">
-					<p class="fg:gray-600 font:14 mb:8">最高記録</p>
-					<p class="font:32 font:bold fg:purple-600">{stats.maxDaily.toLocaleString()}</p>
-					<p class="fg:gray-500 font:12 mt:4">文字/日</p>
-				</div>
-			</Card>
-
-			<Card>
-				<div class="p:20 text-align:center">
-					<p class="fg:gray-600 font:14 mb:8">連続執筆</p>
-					<p class="font:32 font:bold fg:orange-600">{stats.consecutiveDays}</p>
-					<p class="fg:gray-500 font:12 mt:4">日間</p>
-				</div>
-			</Card>
-
-			<Card>
-				<div class="p:20 text-align:center">
-					<p class="fg:gray-600 font:14 mb:8">目標達成率</p>
-					<p class="font:32 font:bold fg:red-600">{stats.goalProgress}%</p>
-					<p class="fg:gray-500 font:12 mt:4">達成</p>
-				</div>
-			</Card>
-		</div>
-
-		<div class="grid cols:3 gap:16">
-			<!-- カレンダー -->
-			<div class="col:span-2">
-				<Card>
-					<div class="p:24">
-						<!-- カレンダーヘッダー -->
-						<div class="flex justify-content:space-between align-items:center mb:20">
-							<h2 class="font:20 font:semibold">
-								{format(currentMonth, 'yyyy年M月', { locale: ja })}
-							</h2>
-							<div class="flex gap:8">
-								<Button variant="secondary" onclick={previousMonth}>←</Button>
-								<Button variant="secondary" onclick={goToToday}>今日</Button>
-								<Button variant="secondary" onclick={nextMonth}>→</Button>
-							</div>
-						</div>
-
-						<!-- 月間合計 -->
-						<div class="mb:16 p:12 bg:blue-50 r:8">
-							<p class="fg:blue-800 font:14">
-								今月の合計: <span class="font:bold">{monthlyTotal.toLocaleString()}</span> 文字
-							</p>
-						</div>
-
-						<!-- 曜日ヘッダー -->
-						<div class="grid cols:7 gap:4 mb:8">
-							{#each ['日', '月', '火', '水', '木', '金', '土'] as day}
-								<div class="text-align:center font:12 font:semibold fg:gray-600 py:8">
-									{day}
-								</div>
-							{/each}
-						</div>
-
-						<!-- カレンダーグリッド -->
-						<div class="grid cols:7 gap:4">
-							{#each getCalendarDays() as day}
-								{#if day === null}
-									<div class="aspect:1/1"></div>
-								{:else}
-									{@const log = getLogForDate(day)}
-									{@const isToday = isSameDay(day, new Date())}
-									<button
-										class="aspect:1/1 r:8 p:8 {getHeatmapColor(log?.charactersWritten || 0)} 
-											{isToday ? 'ring:2|solid|blue-500' : ''} 
-											hover:opacity:80 transition:all|200ms flex flex:col align-items:center justify-content:center"
-										onclick={() => openLogModal(day)}
-									>
-										<span class="font:14 font:semibold mb:4">{format(day, 'd')}</span>
-										{#if log}
-											<span class="font:10 fg:gray-700">{log.charactersWritten}</span>
-										{/if}
-									</button>
-								{/if}
-							{/each}
-						</div>
-
-						<!-- 凡例 -->
-						<div class="flex align-items:center gap:8 mt:16 pt:16 bt:1|solid|gray-200">
-							<span class="font:12 fg:gray-600">執筆量:</span>
-							<div class="flex align-items:center gap:4">
-								<div class="w:16 h:16 bg:gray-100 r:4"></div>
-								<span class="font:12 fg:gray-600">0</span>
-							</div>
-							<div class="flex align-items:center gap:4">
-								<div class="w:16 h:16 bg:green-200 r:4"></div>
-								<span class="font:12 fg:gray-600">~500</span>
-							</div>
-							<div class="flex align-items:center gap:4">
-								<div class="w:16 h:16 bg:green-400 r:4"></div>
-								<span class="font:12 fg:gray-600">~1000</span>
-							</div>
-							<div class="flex align-items:center gap:4">
-								<div class="w:16 h:16 bg:green-600 r:4"></div>
-								<span class="font:12 fg:gray-600">~2000</span>
-							</div>
-							<div class="flex align-items:center gap:4">
-								<div class="w:16 h:16 bg:green-800 r:4"></div>
-								<span class="font:12 fg:gray-600">2000+</span>
-							</div>
-						</div>
-					</div>
-				</Card>
 			</div>
+		</header>
 
-			<!-- 最近の記録 -->
-			<div>
-				<Card>
-					<div class="p:24">
-						<h3 class="font:18 font:semibold mb:16">最近の記録</h3>
-						<div class="flex flex:col gap:12">
-							{#each recentLogs as log (log.id)}
-								<div class="p:12 bg:gray-50 r:8">
-									<div class="flex justify-content:space-between align-items:start mb:8">
-										<span class="font:14 font:semibold">
-											{format(parseISO(log.date), 'M月d日(E)', { locale: ja })}
-										</span>
-										<button
-											class="px:8 py:4 bg:blue-50 fg:blue-600 r:4 font:12 hover:bg:blue-100"
-											onclick={() => openLogModal(parseISO(log.date))}
-										>
-											編集
-										</button>
-									</div>
-									<div class="flex flex:col gap:4">
-										<div class="flex justify-content:space-between">
-											<span class="font:12 fg:gray-600">執筆量</span>
-											<span class="font:14 font:semibold">
-												{log.charactersWritten.toLocaleString()}文字
-											</span>
+		<main class="flex-grow:1 overflow-y:auto">
+			<div class="max-w:1280 mx:auto w:100% px:24 py:24 flex flex-direction:column gap:24">
+				{#if isLoading}
+					<div class="flex justify-content:center align-items:center h:320">
+						<p class="fg:theme-text-secondary font:14">読み込み中...</p>
+					</div>
+				{:else}
+					<div class="flex gap:16 flex-wrap:wrap justify-content:space-between">
+						<Card class="flex:1 min-w:200">
+							<div class="p:20 text-align:center flex flex-direction:column gap:8">
+								<p class="font:14 fg:theme-text-secondary">累計文字数</p>
+								<p class="font:30 font-weight:600 fg:theme-text">{stats.totalCharacters.toLocaleString()}</p>
+								<p class="font:12 fg:theme-text-secondary">文字</p>
+							</div>
+						</Card>
+
+						<Card class="flex:1 min-w:200">
+							<div class="p:20 text-align:center flex flex-direction:column gap:8">
+								<p class="font:14 fg:theme-text-secondary">平均執筆量</p>
+								<p class="font:30 font-weight:600 fg:theme-text">{stats.averageDaily.toLocaleString()}</p>
+								<p class="font:12 fg:theme-text-secondary">文字/日</p>
+							</div>
+						</Card>
+
+						<Card class="flex:1 min-w:200">
+							<div class="p:20 text-align:center flex flex-direction:column gap:8">
+								<p class="font:14 fg:theme-text-secondary">最高記録</p>
+								<p class="font:30 font-weight:600 fg:theme-text">{stats.maxDaily.toLocaleString()}</p>
+								<p class="font:12 fg:theme-text-secondary">文字/日</p>
+							</div>
+						</Card>
+
+						<Card class="flex:1 min-w:200">
+							<div class="p:20 text-align:center flex flex-direction:column gap:8">
+								<p class="font:14 fg:theme-text-secondary">連続執筆</p>
+								<p class="font:30 font-weight:600 fg:theme-text">{stats.consecutiveDays}</p>
+								<p class="font:12 fg:theme-text-secondary">日間</p>
+							</div>
+						</Card>
+
+						<Card class="flex:1 min-w:200">
+							<div class="p:20 text-align:center flex flex-direction:column gap:8">
+								<p class="font:14 fg:theme-text-secondary">目標達成率</p>
+								<p class="font:30 font-weight:600 fg:$(theme.primary)">{stats.goalProgress}%</p>
+								<p class="font:12 fg:theme-text-secondary">達成</p>
+							</div>
+						</Card>
+					</div>
+
+					<div class="grid gap:16 lg:grid-template-columns:repeat(3,minmax(0,1fr))">
+						<div class="lg:col:span-2">
+							<Card>
+								<div class="p:24 flex flex-direction:column gap:20">
+									<div class="flex justify-content:space-between align-items:center">
+										<h2 class="font:20 font-weight:600 fg:theme-text">
+											{format(currentMonth, 'yyyy年M月', { locale: ja })}
+										</h2>
+										<div class="flex gap:8">
+											<Button variant="secondary" class="px:12 py:8 font:12" onclick={previousMonth}>←</Button>
+											<Button variant="secondary" class="px:12 py:8 font:12" onclick={goToToday}>今日</Button>
+											<Button variant="secondary" class="px:12 py:8 font:12" onclick={nextMonth}>→</Button>
 										</div>
-										{#if log.timeSpent > 0}
-											<div class="flex justify-content:space-between">
-												<span class="font:12 fg:gray-600">執筆時間</span>
-												<span class="font:14 font:semibold">
-													{Math.floor(log.timeSpent / 60)}時間{log.timeSpent % 60}分
-												</span>
+									</div>
+
+									<div class="p:12 bg:$(theme.primary)/.12 r:8 b:1px|solid|theme-border">
+										<p class="font:14 fg:theme-text">
+											今月の合計: <span class="font-weight:600">{monthlyTotal.toLocaleString()}</span> 文字
+										</p>
+									</div>
+
+									<div class="grid gap:4 grid-template-columns:repeat(7,minmax(0,1fr)) mb:8">
+										{#each ['日', '月', '火', '水', '木', '金', '土'] as day}
+											<div class="text-align:center font:12 font-weight:600 fg:theme-text-secondary py:8">
+												{day}
 											</div>
-										{/if}
+										{/each}
+									</div>
+
+									<div class="grid gap:4 grid-template-columns:repeat(7,minmax(0,1fr))">
+										{#each getCalendarDays() as day}
+											{#if day === null}
+												<div class="w:full aspect:1/1"></div>
+											{:else}
+												{@const log = getLogForDate(day)}
+												{@const isToday = isSameDay(day, new Date())}
+												<button
+													class={`w:full ${calendarDayClass(log?.charactersWritten || 0, isToday)}`}
+													onclick={() => openLogModal(day)}
+												>
+													<span class="font:14 font-weight:600 fg:theme-text">{format(day, 'd')}</span>
+													{#if log}
+														<span class="font:10 fg:theme-text-secondary">{log.charactersWritten}</span>
+													{/if}
+												</button>
+											{/if}
+										{/each}
+									</div>
+
+									<div class="flex align-items:center gap:8 mt:16 pt:16 bt:1|solid|theme-border flex-wrap:wrap">
+										<span class="font:12 fg:theme-text-secondary">執筆量:</span>
+										{#each heatmapLegend as level}
+											<div class="flex align-items:center gap:4">
+												<div class={`w:16 h:16 r:4 b:1px|solid|theme-border ${level.className}`}></div>
+												<span class="font:12 fg:theme-text-secondary">{level.label}</span>
+											</div>
+										{/each}
 									</div>
 								</div>
-							{/each}
+							</Card>
+						</div>
 
-							{#if recentLogs.length === 0}
-								<p class="fg:gray-500 font:14 text-align:center py:20">
-									まだ記録がありません
-								</p>
-							{/if}
+						<div>
+							<Card>
+								<div class="p:24 flex flex-direction:column gap:16">
+									<h3 class="font:18 font-weight:600 fg:theme-text">最近の記録</h3>
+									<div class="flex flex-direction:column gap:12">
+										{#each recentLogs as log (log.id)}
+											<div class="p:12 bg:theme-surface r:8 b:1px|solid|theme-border flex flex-direction:column gap:8">
+												<div class="flex justify-content:space-between align-items:start">
+													<span class="font:14 font-weight:600 fg:theme-text">
+														{format(parseISO(log.date), 'M月d日(E)', { locale: ja })}
+													</span>
+													<button
+														class="px:10 py:6 bg:$(theme.primary)/.12 fg:$(theme.primary) r:6 font:12 transition:all|.2s hover:bg:$(theme.primary)/.2"
+														onclick={() => openLogModal(parseISO(log.date))}
+													>
+														編集
+													</button>
+												</div>
+												<div class="flex flex-direction:column gap:4">
+													<div class="flex justify-content:space-between">
+														<span class="font:12 fg:theme-text-secondary">執筆量</span>
+														<span class="font:14 font-weight:600 fg:theme-text">
+															{log.charactersWritten.toLocaleString()}文字
+														</span>
+													</div>
+													{#if log.timeSpent > 0}
+														<div class="flex justify-content:space-between">
+															<span class="font:12 fg:theme-text-secondary">執筆時間</span>
+															<span class="font:14 font-weight:600 fg:theme-text">
+																{Math.floor(log.timeSpent / 60)}時間{log.timeSpent % 60}分
+															</span>
+														</div>
+													{/if}
+											</div>
+										</div>
+									{/each}
+
+									{#if recentLogs.length === 0}
+										<p class="fg:theme-text-secondary font:14 text-align:center py:20">
+											まだ記録がありません
+										</p>
+									{/if}
+								</div>
+							</div>
+							</Card>
 						</div>
 					</div>
-				</Card>
+				{/if}
 			</div>
-		</div>
-	{/if}
+		</main>
+	</div>
 </div>
 
 <!-- 進捗記録モーダル -->
 <Modal bind:isOpen={showLogModal} title="進捗記録">
 	{#snippet children()}
 		{#if selectedDate}
-			<div class="flex flex:col gap:16">
-				<div class="p:16 bg:gray-50 r:8">
-					<p class="font:14 fg:gray-600 mb:4">日付</p>
-					<p class="font:18 font:semibold">
+			<div class="flex flex-direction:column gap:16">
+				<div class="p:16 bg:theme-surface r:8 b:1px|solid|theme-border">
+					<p class="font:14 fg:theme-text-secondary mb:4">日付</p>
+					<p class="font:18 font-weight:600 fg:theme-text">
 						{format(selectedDate, 'yyyy年M月d日(E)', { locale: ja })}
 					</p>
 				</div>
 
 				<div>
-					<label for="characters-written" class="block mb:8 font:14 font:semibold">執筆文字数</label>
+					<label for="characters-written" class="block mb:8 font:14 font-weight:600 fg:theme-text">執筆文字数</label>
 					<input
 						id="characters-written"
 						type="number"
 						bind:value={logForm.charactersWritten}
 						placeholder="0"
-						class="w:full px:12 py:10 b:1|solid|gray-300 r:8 outline:none focus:b:blue-500"
+						class={fieldBaseClass}
 					/>
 				</div>
 
 				<div>
-					<label for="time-spent" class="block mb:8 font:14 font:semibold">執筆時間(分)</label>
+					<label for="time-spent" class="block mb:8 font:14 font-weight:600 fg:theme-text">執筆時間(分)</label>
 					<input
 						id="time-spent"
 						type="number"
 						bind:value={logForm.timeSpent}
 						placeholder="0"
-						class="w:full px:12 py:10 b:1|solid|gray-300 r:8 outline:none focus:b:blue-500"
+						class={fieldBaseClass}
 					/>
 				</div>
 			</div>
@@ -428,8 +440,8 @@
 
 	{#snippet footer()}
 		<div class="flex gap:12">
-			<Button variant="secondary" onclick={() => (showLogModal = false)}>キャンセル</Button>
-			<Button onclick={handleSaveLog}>保存</Button>
+			<Button variant="secondary" class="px:16 py:8" onclick={() => (showLogModal = false)}>キャンセル</Button>
+			<Button class="px:18 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8" onclick={handleSaveLog}>保存</Button>
 		</div>
 	{/snippet}
 </Modal>

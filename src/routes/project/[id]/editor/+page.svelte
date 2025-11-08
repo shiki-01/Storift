@@ -225,9 +225,42 @@
 			) || null,
 			hasSelection,
 			onSave: handleSave,
-			onCopy: () => document.execCommand('copy'),
-			onCut: () => document.execCommand('cut'),
-			onPaste: () => document.execCommand('paste'),
+			onCopy: async () => {
+				if (editorTextarea) {
+					const text = editorTextarea.value.substring(
+						editorTextarea.selectionStart,
+						editorTextarea.selectionEnd
+					);
+					await navigator.clipboard.writeText(text);
+				}
+			},
+			onCut: async () => {
+				if (editorTextarea) {
+					const text = editorTextarea.value.substring(
+						editorTextarea.selectionStart,
+						editorTextarea.selectionEnd
+					);
+					await navigator.clipboard.writeText(text);
+					const start = editorTextarea.selectionStart;
+					const end = editorTextarea.selectionEnd;
+					editorTextarea.value = editorTextarea.value.substring(0, start) + 
+						editorTextarea.value.substring(end);
+					editorTextarea.setSelectionRange(start, start);
+					editorStore.isDirty = true;
+				}
+			},
+			onPaste: async () => {
+				if (editorTextarea) {
+					const text = await navigator.clipboard.readText();
+					const start = editorTextarea.selectionStart;
+					const end = editorTextarea.selectionEnd;
+					editorTextarea.value = editorTextarea.value.substring(0, start) + 
+						text + editorTextarea.value.substring(end);
+					const newPos = start + text.length;
+					editorTextarea.setSelectionRange(newPos, newPos);
+					editorStore.isDirty = true;
+				}
+			},
 			onSelectAll: () => editorTextarea?.select(),
 			onRename: () => handleRenameScene(editorStore.currentScene!),
 			onDelete: () => handleDeleteScene(editorStore.currentScene!),
@@ -574,9 +607,36 @@
 			) || null,
 			hasSelection,
 			onSave: handleSave,
-			onCopy: () => document.execCommand('copy'),
-			onCut: () => document.execCommand('cut'),
-			onPaste: () => document.execCommand('paste'),
+			onCopy: async () => {
+				const selection = window.getSelection();
+				if (selection) {
+					await navigator.clipboard.writeText(selection.toString());
+				}
+			},
+			onCut: async () => {
+				const selection = window.getSelection();
+				if (selection && selection.rangeCount > 0) {
+					await navigator.clipboard.writeText(selection.toString());
+					const range = selection.getRangeAt(0);
+					range.deleteContents();
+					editorStore.isDirty = true;
+				}
+			},
+			onPaste: async () => {
+				const text = await navigator.clipboard.readText();
+				const selection = window.getSelection();
+				if (selection && selection.rangeCount > 0) {
+					const range = selection.getRangeAt(0);
+					range.deleteContents();
+					const textNode = document.createTextNode(text);
+					range.insertNode(textNode);
+					range.setStartAfter(textNode);
+					range.setEndAfter(textNode);
+					selection.removeAllRanges();
+					selection.addRange(range);
+					editorStore.isDirty = true;
+				}
+			},
 			onSelectAll: () => {
 				const range = document.createRange();
 				if (editorDiv) {

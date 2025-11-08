@@ -3,6 +3,7 @@
 	import { parseRuby, rubyToHtml, removeRuby, normalizeRuby } from '$lib/utils/ruby';
 	import Modal from './Modal.svelte';
 	import Button from './Button.svelte';
+	import Icon from './Icon.svelte';
 
 	interface Props {
 		text?: string;
@@ -79,10 +80,10 @@
 	<!-- タブスイッチャー -->
 	<div class="flex border-bottom:1|solid|gray-200">
 		<button
-			class="flex-grow py:12 px:24 font:14 font:semibold cursor:pointer border:none transition:all|0.2s {activeTab === 'proofreading' ? 'bg:blue-50 fg:blue-600 border-bottom:2|solid|blue-600' : 'bg:white fg:gray-600 hover:bg:gray-50'}"
+			class="flex flex:grow gap:.5em py:12 px:24 font:14 font:semibold cursor:pointer border:none transition:all|0.2s {activeTab === 'proofreading' ? 'bg:blue-50 fg:blue-600 border-bottom:2|solid|blue-600' : 'bg:white fg:gray-600 hover:bg:gray-50'}"
 			onclick={() => activeTab = 'proofreading'}
 		>
-			📝 校閲
+			<Icon name="pencil-bolt" class="w:20px" /> 校閲
 			{#if issues.length > 0}
 				<span class="ml:8 px:6 py:2 bg:red-100 fg:red-600 r:full font:12">
 					{issues.length}
@@ -90,10 +91,10 @@
 			{/if}
 		</button>
 		<button
-			class="flex-grow py:12 px:24 font:14 font:semibold cursor:pointer border:none transition:all|0.2s {activeTab === 'ruby' ? 'bg:blue-50 fg:blue-600 border-bottom:2|solid|blue-600' : 'bg:white fg:gray-600 hover:bg:gray-50'}"
+			class="flex flex:grow gap:.5em py:12 px:24 font:14 font:semibold cursor:pointer border:none transition:all|0.2s {activeTab === 'ruby' ? 'bg:blue-50 fg:blue-600 border-bottom:2|solid|blue-600' : 'bg:white fg:gray-600 hover:bg:gray-50'}"
 			onclick={() => activeTab = 'ruby'}
 		>
-			🔤 ルビ
+			<Icon name="abc" class="w:20px" /> ルビ
 		</button>
 	</div>
 
@@ -104,12 +105,12 @@
 				<div class="flex align-items:center justify-content:space-between mb:16">
 					<h3 class="font:16 font:bold fg:gray-900">文章校閲</h3>
 					<div class="flex gap:8">
-						<Button size="sm" variant="secondary" onclick={runProofreading}>
-							🔍 チェック実行
+						<Button class="flex flex:row gap:.5em" size="sm" variant="secondary" onclick={runProofreading}>
+							<Icon name="search" /> チェック実行
                         </Button>
 						{#if issues.length > 0}
-							<Button size="sm" variant="primary" onclick={applyAllSuggestions}>
-								✨ すべて修正
+							<Button class="flex flex:row gap:.5em" size="sm" variant="primary" onclick={applyAllSuggestions}>
+								<Icon name="sparkles" /> すべて修正
 							</Button>
 						{/if}
 					</div>
@@ -189,14 +190,14 @@
 					</div>
 
 					<div class="flex gap:8 flex-wrap">
-						<Button size="sm" variant="secondary" onclick={previewRuby}>
-							👁️ プレビュー
+						<Button class="flex flex:row gap:.5em" size="sm" variant="secondary" onclick={previewRuby}>
+							<Icon name="eye" /> プレビュー
 						</Button>
-						<Button size="sm" variant="secondary" onclick={normalizeRubyFormat}>
-							🔧 表記統一
+						<Button class="flex flex:row gap:.5em" size="sm" variant="secondary" onclick={normalizeRubyFormat}>
+							<Icon name="tool" /> 表記統一
 						</Button>
-						<Button size="sm" variant="secondary" onclick={removeRubyFromText}>
-							🗑️ ルビ削除
+						<Button class="flex flex:row gap:.5em" size="sm" variant="secondary" onclick={removeRubyFromText}>
+							<Icon name="trash" /> ルビ削除
 						</Button>
 					</div>
 				</div>

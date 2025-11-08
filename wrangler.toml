@@ -2,3 +2,4 @@
 name = "storift"
 compatibility_date = "2025-11-08"
 compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".svelte-kit/cloudflare"

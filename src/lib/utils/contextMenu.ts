@@ -41,45 +41,45 @@ export function createEditorContextMenu(params: {
 	// 選択範囲がある場合の操作
 	if (params.hasSelection) {
 		items.push(
-			{ label: 'コピー', icon: '📋', action: params.onCopy, shortcut: 'Ctrl+C' },
-			{ label: 'カット', icon: '✂️', action: params.onCut, shortcut: 'Ctrl+X' }
+			{ label: 'コピー', icon: 'clipboard-text', action: params.onCopy, shortcut: 'Ctrl+C' },
+			{ label: 'カット', icon: 'clipboard-text', action: params.onCut, shortcut: 'Ctrl+X' }
 		);
 	}
 
-	items.push({ label: '貼り付け', icon: '📄', action: params.onPaste, shortcut: 'Ctrl+V' });
+	items.push({ label: '貼り付け', icon: 'files', action: params.onPaste, shortcut: 'Ctrl+V' });
 
 	if (params.hasSelection) {
 		items.push({ divider: true } as ContextMenuItem);
-		items.push({ label: 'すべて選択', icon: '🔲', action: params.onSelectAll, shortcut: 'Ctrl+A' });
+		items.push({ label: 'すべて選択', icon: 'list', action: params.onSelectAll, shortcut: 'Ctrl+A' });
 	}
 
 	// シーン固有の操作
 	if (params.scene) {
 		items.push(
 			{ divider: true } as ContextMenuItem,
-			{ label: '保存', icon: '💾', action: params.onSave, shortcut: 'Ctrl+S' },
-			{ label: '名前を変更', icon: '✏️', action: params.onRename },
-			{ label: '複製', icon: '📑', action: params.onDuplicate }
+			{ label: '保存', icon: 'device-sd-card', action: params.onSave, shortcut: 'Ctrl+S' },
+			{ label: '名前を変更', icon: 'pencil', action: params.onRename },
+			{ label: '複製', icon: 'files', action: params.onDuplicate }
 		);
 	}
 
 	// エクスポート・印刷
 	items.push(
 		{ divider: true } as ContextMenuItem,
-		{ label: 'エクスポート', icon: '📤', action: params.onExport },
-		{ label: '印刷プレビュー', icon: '🖨️', action: params.onPrint }
+		{ label: 'エクスポート', icon: 'package-export', action: params.onExport },
+		{ label: '印刷プレビュー', icon: 'printer', action: params.onPrint }
 	);
 
 	// バージョン履歴
 	if (params.scene) {
-		items.push({ label: 'バージョン履歴', icon: '🕐', action: params.onVersionHistory });
+		items.push({ label: 'バージョン履歴', icon: 'history', action: params.onVersionHistory });
 	}
 
 	// 削除
 	if (params.scene) {
 		items.push({ divider: true } as ContextMenuItem, {
 			label: '削除',
-			icon: '🗑️',
+			icon: 'trash',
 			action: params.onDelete,
 			danger: true
 		});
@@ -103,10 +103,10 @@ export function createChapterContextMenu(params: {
 	canMoveDown: boolean;
 }): ContextMenuItem[] {
 	const items: ContextMenuItem[] = [
-		{ label: 'シーンを追加', icon: '➕', action: params.onAddScene },
+		{ label: 'シーンを追加', icon: 'playlist-add', action: params.onAddScene },
 		{ divider: true } as ContextMenuItem,
-		{ label: '名前を変更', icon: '✏️', action: params.onRename },
-		{ label: '複製', icon: '📑', action: params.onDuplicate }
+		{ label: '名前を変更', icon: 'pencil', action: params.onRename },
+		{ label: '複製', icon: 'files', action: params.onDuplicate }
 	];
 
 	// 並び替え
@@ -115,7 +115,7 @@ export function createChapterContextMenu(params: {
 		if (params.onMoveUp) {
 			items.push({
 				label: '上に移動',
-				icon: '⬆️',
+				icon: 'pencil',
 				action: params.onMoveUp,
 				disabled: !params.canMoveUp
 			});
@@ -123,7 +123,7 @@ export function createChapterContextMenu(params: {
 		if (params.onMoveDown) {
 			items.push({
 				label: '下に移動',
-				icon: '⬇️',
+				icon: 'pencil',
 				action: params.onMoveDown,
 				disabled: !params.canMoveDown
 			});
@@ -132,7 +132,7 @@ export function createChapterContextMenu(params: {
 
 	items.push({ divider: true } as ContextMenuItem, {
 		label: '削除',
-		icon: '🗑️',
+		icon: 'trash',
 		action: params.onDelete,
 		danger: true
 	});
@@ -156,10 +156,10 @@ export function createSceneContextMenu(params: {
 	canMoveDown: boolean;
 }): ContextMenuItem[] {
 	const items: ContextMenuItem[] = [
-		{ label: '開く', icon: '📖', action: params.onOpen },
+		{ label: '開く', icon: 'book-2', action: params.onOpen },
 		{ divider: true } as ContextMenuItem,
-		{ label: '名前を変更', icon: '✏️', action: params.onRename },
-		{ label: '複製', icon: '📑', action: params.onDuplicate }
+		{ label: '名前を変更', icon: 'pencil', action: params.onRename },
+		{ label: '複製', icon: 'files', action: params.onDuplicate }
 	];
 
 	// 並び替え
@@ -168,7 +168,7 @@ export function createSceneContextMenu(params: {
 		if (params.onMoveUp) {
 			items.push({
 				label: '上に移動',
-				icon: '⬆️',
+				icon: 'pencil',
 				action: params.onMoveUp,
 				disabled: !params.canMoveUp
 			});
@@ -176,7 +176,7 @@ export function createSceneContextMenu(params: {
 		if (params.onMoveDown) {
 			items.push({
 				label: '下に移動',
-				icon: '⬇️',
+				icon: 'pencil',
 				action: params.onMoveDown,
 				disabled: !params.canMoveDown
 			});
@@ -185,12 +185,12 @@ export function createSceneContextMenu(params: {
 
 	// チャプター間移動
 	if (params.onMoveToChapter) {
-		items.push({ label: 'チャプターを移動', icon: '📁', action: params.onMoveToChapter });
+		items.push({ label: 'チャプターを移動', icon: 'files', action: params.onMoveToChapter });
 	}
 
 	items.push({ divider: true } as ContextMenuItem, {
 		label: '削除',
-		icon: '🗑️',
+		icon: 'trash',
 		action: params.onDelete,
 		danger: true
 	});
@@ -210,20 +210,20 @@ export function createProjectContextMenu(params: {
 	onArchive?: () => void;
 }): ContextMenuItem[] {
 	const items: ContextMenuItem[] = [
-		{ label: '開く', icon: '📖', action: params.onOpen },
+		{ label: '開く', icon: 'book-2', action: params.onOpen },
 		{ divider: true } as ContextMenuItem,
-		{ label: '名前を変更', icon: '✏️', action: params.onRename },
-		{ label: '複製', icon: '📑', action: params.onDuplicate },
-		{ label: 'エクスポート', icon: '📤', action: params.onExport }
+		{ label: '名前を変更', icon: 'pencil', action: params.onRename },
+		{ label: '複製', icon: 'files', action: params.onDuplicate },
+		{ label: 'エクスポート', icon: 'package-export', action: params.onExport }
 	];
 
 	if (params.onArchive) {
-		items.push({ label: 'アーカイブ', icon: '📦', action: params.onArchive });
+		items.push({ label: 'アーカイブ', icon: 'device-sd-card', action: params.onArchive });
 	}
 
 	items.push({ divider: true } as ContextMenuItem, {
 		label: '削除',
-		icon: '🗑️',
+		icon: 'trash',
 		action: params.onDelete,
 		danger: true
 	});
@@ -241,17 +241,17 @@ export function createCharacterContextMenu(params: {
 	onViewRelations?: () => void;
 }): ContextMenuItem[] {
 	const items: ContextMenuItem[] = [
-		{ label: '編集', icon: '✏️', action: params.onEdit },
-		{ label: '複製', icon: '📑', action: params.onDuplicate }
+		{ label: '編集', icon: 'pencil', action: params.onEdit },
+		{ label: '複製', icon: 'files', action: params.onDuplicate }
 	];
 
 	if (params.onViewRelations) {
-		items.push({ label: '関係性を表示', icon: '🔗', action: params.onViewRelations });
+		items.push({ label: '関係性を表示', icon: 'files', action: params.onViewRelations });
 	}
 
 	items.push({ divider: true } as ContextMenuItem, {
 		label: '削除',
-		icon: '🗑️',
+		icon: 'trash',
 		action: params.onDelete,
 		danger: true
 	});
@@ -269,17 +269,17 @@ export function createPlotContextMenu(params: {
 	onLinkToScene?: () => void;
 }): ContextMenuItem[] {
 	const items: ContextMenuItem[] = [
-		{ label: '編集', icon: '✏️', action: params.onEdit },
-		{ label: '複製', icon: '📑', action: params.onDuplicate }
+		{ label: '編集', icon: 'pencil', action: params.onEdit },
+		{ label: '複製', icon: 'files', action: params.onDuplicate }
 	];
 
 	if (params.onLinkToScene) {
-		items.push({ label: 'シーンにリンク', icon: '🔗', action: params.onLinkToScene });
+		items.push({ label: 'シーンにリンク', icon: 'files', action: params.onLinkToScene });
 	}
 
 	items.push({ divider: true } as ContextMenuItem, {
 		label: '削除',
-		icon: '🗑️',
+		icon: 'trash',
 		action: params.onDelete,
 		danger: true
 	});

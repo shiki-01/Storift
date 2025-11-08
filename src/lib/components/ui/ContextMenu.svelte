@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import Icon from './Icon.svelte';
 
 	interface MenuItem {
 		label: string;
@@ -99,7 +100,7 @@
 					role="menuitem"
 				>
 					{#if item.icon}
-						<span class="icon">{item.icon}</span>
+						<Icon name={item.icon} class="icon" />
 					{/if}
 					<span class="label">{item.label}</span>
 					{#if item.shortcut}
@@ -171,10 +172,18 @@
 		background: var(--error-bg, rgba(220, 38, 38, 0.1));
 	}
 
-	.icon {
+	:global(.menu-item .icon) {
 		flex-shrink: 0;
 		width: 16px;
-		text-align: center;
+		height: 16px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	:global(.menu-item .icon svg) {
+		width: 100%;
+		height: 100%;
 	}
 
 	.label {

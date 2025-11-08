@@ -25,7 +25,7 @@
 		return [
 			'px:16 py:8 r:8 font:13 transition:all|.2s|ease b:2px|solid|theme-border',
 			viewMode === mode
-				? 'bg:theme.primary fg:theme.primary'
+				? 'bg:$(theme.primary) fg:$(theme.primary)'
 				: 'bg:theme-background fg:theme-text-secondary hover:bg:theme-surface'
 		].join(' ');
 	}
@@ -41,10 +41,10 @@
 	}
 
 	const textareaBaseClass =
-		'w:full px:12 py:10 b:1|solid|theme-border bg:theme-background r:8 outline:none focus:b:theme.primary transition:all|.2s font-family:inherit fg:theme-text';
+		'w:full px:12 py:10 b:1|solid|theme-border bg:theme-background r:8 outline:none focus:b:$(theme.primary) transition:all|.2s font-family:inherit fg:theme-text';
 
 	const fieldBaseClass =
-		'px:12 py:10 b:1|solid|theme-border bg:theme-background fg:theme-text r:8 outline:none focus:b:theme.primary transition:all|.2s';
+		'px:12 py:10 b:1|solid|theme-border bg:theme-background fg:theme-text r:8 outline:none focus:b:$(theme.primary) transition:all|.2s';
 
 	// コンテキストメニュー
 	let contextMenu = $state<{
@@ -341,7 +341,7 @@
 					<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">関係</p>
 					<div class="flex flex-wrap gap:6">
 						{#each character.relationships.slice(0, 3) as rel}
-							<span class="px:10 py:4 r:full bg:theme.primary/.12 fg:theme.primary font:12">
+							<span class="px:10 py:4 r:full bg:$(theme.primary)/.12 fg:$(theme.primary) font:12">
 								{getCharacterName(rel.characterId)}
 							</span>
 						{/each}
@@ -439,7 +439,7 @@
 				{#each characters as character (character.id)}
 					<div class="flex flex-direction:column align-items:center gap:8">
 						<button
-							class="w:80 h:80 r:full b:2px|solid|theme-border bg:theme.primary/.18 fg:theme.primary flex align-items:center justify-content:center font:22 transition:all|.2s|ease hover:bg:theme.primary/.25"
+							class="w:80 h:80 r:full b:2px|solid|theme-border bg:$(theme.primary)/.18 fg:$(theme.primary) flex align-items:center justify-content:center font:22 transition:all|.2s|ease hover:bg:$(theme.primary)/.25"
 							onclick={() => openRelationModal(character)}
 						>
 							{character.name.charAt(0)}

@@ -37,18 +37,18 @@
 			reminderTime = existingGoal.reminderTime || '20:00';
 			reminderEnabled = existingGoal.enabled;
 		}
-	}
+	};
 
 	const loadHistory = () => {
 		notificationHistory = notificationService.getNotificationHistory().slice(0, 10);
-	}
+	};
 
-	const handleRequestPermission = async() => {
+	const handleRequestPermission = async () => {
 		permission = await notificationService.requestPermission();
 		if (permission === 'granted') {
 			await notificationService.notifySystem('通知が有効になりました');
 		}
-	}
+	};
 
 	const handleSaveGoal = () => {
 		const updatedGoal: WritingGoal = {
@@ -63,21 +63,21 @@
 		goal = updatedGoal;
 
 		notificationService.notifySystem('執筆目標を保存しました');
-	}
+	};
 
-	const handleTestNotification = async() => {
+	const handleTestNotification = async () => {
 		await notificationService.showNotification({
 			title: 'テスト通知',
 			body: 'Storiftの通知が正常に動作しています',
 			type: 'system'
 		});
 		loadHistory();
-	}
+	};
 
 	const handleClearHistory = () => {
 		notificationService.clearNotificationHistory();
 		notificationHistory = [];
-	}
+	};
 
 	function getNotificationTypeLabel(type: string): string {
 		const labels: Record<string, string> = {
@@ -143,7 +143,9 @@
 			{/if}
 
 			{#if permission === 'granted'}
-				<Button class="my:1rem" variant="secondary" onclick={handleTestNotification}>テスト通知を送信</Button>
+				<Button class="my:1rem" variant="secondary" onclick={handleTestNotification}
+					>テスト通知を送信</Button
+				>
 			{/if}
 		</div>
 	</Card>

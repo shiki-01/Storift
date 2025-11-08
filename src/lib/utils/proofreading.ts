@@ -42,11 +42,23 @@ function checkTypos(text: string): ProofreadingIssue[] {
 	}> = [
 		{ pattern: /以外/g, message: '「意外」の誤字の可能性があります', suggestion: '意外' },
 		{ pattern: /意外と/g, message: '「案外」の方が自然かもしれません', suggestion: '案外' },
-		{ pattern: /雰囲気/g, message: '「ふんいき」は「ふいんき」と誤読されやすいです', suggestion: '雰囲気' },
+		{
+			pattern: /雰囲気/g,
+			message: '「ふんいき」は「ふいんき」と誤読されやすいです',
+			suggestion: '雰囲気'
+		},
 		{ pattern: /延々と/g, message: '「永遠と」の誤用ではありませんか？', suggestion: '延々と' },
 		{ pattern: /永遠と/g, message: '「延々と」の誤用です', suggestion: '延々と' },
-		{ pattern: /シュミレーション/g, message: '「シミュレーション」の誤字です', suggestion: 'シミュレーション' },
-		{ pattern: /コミニュケーション/g, message: '「コミュニケーション」の誤字です', suggestion: 'コミュニケーション' }
+		{
+			pattern: /シュミレーション/g,
+			message: '「シミュレーション」の誤字です',
+			suggestion: 'シミュレーション'
+		},
+		{
+			pattern: /コミニュケーション/g,
+			message: '「コミュニケーション」の誤字です',
+			suggestion: 'コミュニケーション'
+		}
 	];
 
 	for (const { pattern, message, suggestion } of typoPatterns) {
@@ -80,9 +92,21 @@ function checkRedundancy(text: string): ProofreadingIssue[] {
 	}> = [
 		{ pattern: /することができる/g, message: '冗長な表現です', suggestion: 'できる' },
 		{ pattern: /という(?:こと|もの)/g, message: '冗長な表現の可能性があります', suggestion: '' },
-		{ pattern: /(?:まさに|本当に|実に|非常に)(?:まさに|本当に|実に|非常に)/g, message: '強調語が重複しています', suggestion: '' },
-		{ pattern: /だと思います(?:が|けど|けれど)/g, message: '「思う」の後に逆接は不自然です', suggestion: '' },
-		{ pattern: /(?:私は|僕は|俺は).+(?:私は|僕は|俺は)/g, message: '一人称が重複しています', suggestion: '' }
+		{
+			pattern: /(?:まさに|本当に|実に|非常に)(?:まさに|本当に|実に|非常に)/g,
+			message: '強調語が重複しています',
+			suggestion: ''
+		},
+		{
+			pattern: /だと思います(?:が|けど|けれど)/g,
+			message: '「思う」の後に逆接は不自然です',
+			suggestion: ''
+		},
+		{
+			pattern: /(?:私は|僕は|俺は).+(?:私は|僕は|俺は)/g,
+			message: '一人称が重複しています',
+			suggestion: ''
+		}
 	];
 
 	for (const { pattern, message, suggestion } of redundancyPatterns) {
@@ -242,30 +266,22 @@ export function getProofreadingSummary(issues: ProofreadingIssue[]): {
 /**
  * 校閲結果を適用してテキストを修正
  */
-export function applyProofreadingSuggestion(
-	text: string,
-	issue: ProofreadingIssue
-): string {
+export function applyProofreadingSuggestion(text: string, issue: ProofreadingIssue): string {
 	if (!issue.suggestion) {
 		return text;
 	}
 
 	return (
-		text.substring(0, issue.position.start) +
-		issue.suggestion +
-		text.substring(issue.position.end)
+		text.substring(0, issue.position.start) + issue.suggestion + text.substring(issue.position.end)
 	);
 }
 
 /**
  * すべての修正候補を適用
  */
-export function applyAllSuggestions(
-	text: string,
-	issues: ProofreadingIssue[]
-): string {
+export function applyAllSuggestions(text: string, issues: ProofreadingIssue[]): string {
 	let result = text;
-	
+
 	// 後ろから適用することで位置がずれないようにする
 	const sortedIssues = [...issues]
 		.filter((issue) => issue.suggestion)

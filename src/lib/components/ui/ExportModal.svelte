@@ -20,7 +20,7 @@
 	let fontSize = $state(12);
 	let isExporting = $state(false);
 
-	const handleExport = async() => {
+	const handleExport = async () => {
 		isExporting = true;
 		try {
 			const options: ExportOptions = {
@@ -44,7 +44,7 @@
 		} finally {
 			isExporting = false;
 		}
-	}
+	};
 </script>
 
 {#if show}
@@ -76,9 +76,7 @@
 						<input type="checkbox" bind:checked={includeMetadata} class="w-4 h-4" />
 						<span>メタデータを含める</span>
 					</label>
-					<p class="text-sm text-gray-600 ml-6">
-						タイトル、説明、作成日などの情報を含めます
-					</p>
+					<p class="text-sm text-gray-600 ml-6">タイトル、説明、作成日などの情報を含めます</p>
 				</div>
 
 				<!-- 章番号 -->

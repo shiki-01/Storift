@@ -12,13 +12,13 @@ export function countWords(text: string): number {
  * @returns 行数
  */
 export function countLines(text: string): number {
-  if (text === '') {
-    return 0;
-  }
-  // 改行文字で分割して行数を取得
-  // 最後が改行で終わる場合も考慮
-  const lines = text.split('\n');
-  return lines.length;
+	if (text === '') {
+		return 0;
+	}
+	// 改行文字で分割して行数を取得
+	// 最後が改行で終わる場合も考慮
+	const lines = text.split('\n');
+	return lines.length;
 }
 
 export function countParagraphs(text: string): number {

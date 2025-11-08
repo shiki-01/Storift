@@ -38,16 +38,10 @@ export const scenesDB = {
 
 		await db.scenes.add(scene);
 		await touchProject(input.projectId);
-		
+
 		// 作成履歴を保存
-		await historyDB.create(
-			'scene',
-			scene.id,
-			scene.projectId,
-			scene,
-			'create'
-		);
-		
+		await historyDB.create('scene', scene.id, scene.projectId, scene, 'create');
+
 		return scene;
 	},
 
@@ -58,7 +52,7 @@ export const scenesDB = {
 		const updates: Partial<Scene> = {
 			...changes,
 			updatedAt: Date.now(),
-			_version: ((currentScene?._version || 0) + 1)
+			_version: (currentScene?._version || 0) + 1
 		};
 
 		// 文字数を自動計算
@@ -104,7 +98,7 @@ export const scenesDB = {
 				if (scene && !projectId) {
 					projectId = scene.projectId;
 				}
-				await db.scenes.update(sceneIds[i], { 
+				await db.scenes.update(sceneIds[i], {
 					order: i,
 					updatedAt: Date.now()
 				});

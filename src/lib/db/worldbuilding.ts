@@ -12,7 +12,10 @@ export const worldbuildingDB = {
 		return await db.worldbuilding.get(id);
 	},
 
-	async getByCategory(projectId: string, category: Worldbuilding['category']): Promise<Worldbuilding[]> {
+	async getByCategory(
+		projectId: string,
+		category: Worldbuilding['category']
+	): Promise<Worldbuilding[]> {
 		return await db.worldbuilding
 			.where(['projectId', 'category'])
 			.equals([projectId, category])
@@ -44,7 +47,7 @@ export const worldbuildingDB = {
 		await db.worldbuilding.update(id, {
 			...changes,
 			updatedAt: Date.now(),
-			_version: ((worldbuilding?._version || 0) + 1)
+			_version: (worldbuilding?._version || 0) + 1
 		});
 		if (worldbuilding) {
 			await touchProject(worldbuilding.projectId);

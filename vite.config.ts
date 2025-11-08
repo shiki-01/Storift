@@ -19,7 +19,8 @@ export default defineConfig({
 			manifest: {
 				name: 'Storift - 小説執筆アプリ',
 				short_name: 'Storift',
-				description: 'オフライン対応の小説執筆PWAアプリ。クラウド同期、プロット管理、キャラクター管理など執筆に必要な機能を搭載。',
+				description:
+					'オフライン対応の小説執筆PWAアプリ。クラウド同期、プロット管理、キャラクター管理など執筆に必要な機能を搭載。',
 				theme_color: '#3b82f6',
 				background_color: '#ffffff',
 				display: 'standalone',

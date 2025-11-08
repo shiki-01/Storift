@@ -38,10 +38,7 @@ export async function createFullBackup(): Promise<BackupData> {
 		const scenes = await db.scenes.where('projectId').equals(project.id).toArray();
 		const characters = await db.characters.where('projectId').equals(project.id).toArray();
 		const plots = await db.plots.where('projectId').equals(project.id).toArray();
-		const worldbuilding = await db.worldbuilding
-			.where('projectId')
-			.equals(project.id)
-			.toArray();
+		const worldbuilding = await db.worldbuilding.where('projectId').equals(project.id).toArray();
 		const progressLogs = await db.progressLogs.where('projectId').equals(project.id).toArray();
 
 		backup.projects.push({

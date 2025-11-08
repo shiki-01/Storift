@@ -31,7 +31,8 @@
 	}
 
 	function actionButtonClass(variant: 'default' | 'secondary' | 'danger' = 'default'): string {
-		const base = 'px:12 py:8 r:6 b:2px|solid|theme-border bg:theme-background transition:all|.2s|ease';
+		const base =
+			'px:12 py:8 r:6 b:2px|solid|theme-border bg:theme-background transition:all|.2s|ease';
 		const variants = {
 			default: 'fg:theme-text',
 			secondary: 'fg:theme.secondary',
@@ -70,7 +71,7 @@
 		await loadCharacters();
 	});
 
-	const loadCharacters = async() => {
+	const loadCharacters = async () => {
 		if (!currentProjectStore.project) return;
 		isLoading = true;
 		try {
@@ -78,7 +79,7 @@
 		} finally {
 			isLoading = false;
 		}
-	}
+	};
 
 	const openCreateModal = () => {
 		formData = {
@@ -91,7 +92,7 @@
 			background: ''
 		};
 		showCreateModal = true;
-	}
+	};
 
 	function openEditModal(character: Character) {
 		editingCharacter = character;
@@ -112,7 +113,7 @@
 		showRelationModal = true;
 	}
 
-	const handleCreate = async() => {
+	const handleCreate = async () => {
 		if (!currentProjectStore.project || !formData.name.trim()) return;
 
 		const character = await charactersDB.create({
@@ -135,9 +136,9 @@
 
 		await loadCharacters();
 		showCreateModal = false;
-	}
+	};
 
-	const handleUpdate = async() => {
+	const handleUpdate = async () => {
 		if (!editingCharacter) return;
 
 		await charactersDB.update(editingCharacter.id, {
@@ -156,7 +157,7 @@
 		await loadCharacters();
 		showEditModal = false;
 		editingCharacter = null;
-	}
+	};
 
 	async function handleDelete(id: string) {
 		if (!confirm('このキャラクターを削除しますか?')) return;
@@ -166,13 +167,17 @@
 		await loadCharacters();
 	}
 
-	async function handleAddRelation(fromCharacterId: string, toCharacterId: string, relation: string) {
+	async function handleAddRelation(
+		fromCharacterId: string,
+		toCharacterId: string,
+		relation: string
+	) {
 		const character = characters.find((c) => c.id === fromCharacterId);
 		if (!character) return;
 
 		// プレーンなオブジェクトと配列に変換
 		const newRelationships = [
-			...character.relationships.map(r => ({ characterId: r.characterId, relation: r.relation })),
+			...character.relationships.map((r) => ({ characterId: r.characterId, relation: r.relation })),
 			{ characterId: toCharacterId, relation }
 		];
 
@@ -193,7 +198,7 @@
 		// プレーンなオブジェクトと配列に変換
 		const newRelationships = character.relationships
 			.filter((_, i) => i !== relationshipIndex)
-			.map(r => ({ characterId: r.characterId, relation: r.relation }));
+			.map((r) => ({ characterId: r.characterId, relation: r.relation }));
 
 		await charactersDB.update(characterId, {
 			relationships: newRelationships
@@ -265,37 +270,32 @@
 	}
 </script>
 
-
 <div class="flex w:100% h:100% bg:theme-background fg:theme-text">
 	<div class="flex-grow:1 flex flex-direction:column">
 		<header class="bg:theme-background border-bottom:2|solid|theme-text">
-			<div class="max-w:1280 mx:auto w:100% px:24 py:20 flex justify-content:space-between align-items:center">
+			<div
+				class="max-w:1280 mx:auto w:100% px:24 py:20 flex justify-content:space-between align-items:center"
+			>
 				<div>
 					<h1 class="font:26 font-weight:600 m:0 fg:theme-text">キャラクター管理</h1>
 					<p class="font:14 fg:theme-text-secondary mt:8">登場人物の情報と相関図を管理します</p>
 				</div>
 				<div class="flex align-items:center gap:12">
 					<div class="flex bg:theme-surface b:2px|solid|theme-border r:10 p:6 gap:8">
-						<button
-							class={viewToggleClass('grid')}
-							onclick={() => (viewMode = 'grid')}
-						>
+						<button class={viewToggleClass('grid')} onclick={() => (viewMode = 'grid')}>
 							グリッド
 						</button>
-						<button
-							class={viewToggleClass('list')}
-							onclick={() => (viewMode = 'list')}
-						>
+						<button class={viewToggleClass('list')} onclick={() => (viewMode = 'list')}>
 							リスト
 						</button>
-						<button
-							class={viewToggleClass('graph')}
-							onclick={() => (viewMode = 'graph')}
-						>
+						<button class={viewToggleClass('graph')} onclick={() => (viewMode = 'graph')}>
 							相関図
 						</button>
 					</div>
-					<Button class="px:16 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8 font:14" onclick={openCreateModal}>
+					<Button
+						class="px:16 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8 font:14"
+						onclick={openCreateModal}
+					>
 						+ 新規キャラクター
 					</Button>
 				</div>
@@ -311,174 +311,204 @@
 				{:else if viewMode === 'grid'}
 					<!-- グリッドビュー -->
 					<div class="grid cols:3 gap:20">
-	{#each characters as character (character.id)}
-		<Card
-			class="bg:theme-surface b:2px|solid|theme-border shadow:sm p:24 flex flex-direction:column gap:16"
-			oncontextmenu={(e) => handleCharacterContextMenu(e, character)}
-		>
-			<div class="flex flex-direction:column align-items:center text-align:center gap:8">
-				<div class="w:72 h:72 r:full bg:theme-border flex align-items:center justify-content:center font:24 fg:theme-text">
-					{character.name.charAt(0)}
-				</div>
-				<h3 class="font:18 font-weight:600 fg:theme-text m:0">{character.name}</h3>
-				<p class="font:14 fg:theme-text-secondary m:0">{character.role}</p>
-				{#if character.age || character.gender}
-					<p class="font:12 fg:theme-text-secondary">
-						{character.age ? `${character.age}歳` : ''}{character.age && character.gender ? ' / ' : ''}{character.gender || ''}
-					</p>
+						{#each characters as character (character.id)}
+							<Card
+								class="bg:theme-surface b:2px|solid|theme-border shadow:sm p:24 flex flex-direction:column gap:16"
+								oncontextmenu={(e) => handleCharacterContextMenu(e, character)}
+							>
+								<div class="flex flex-direction:column align-items:center text-align:center gap:8">
+									<div
+										class="w:72 h:72 r:full bg:theme-border flex align-items:center justify-content:center font:24 fg:theme-text"
+									>
+										{character.name.charAt(0)}
+									</div>
+									<h3 class="font:18 font-weight:600 fg:theme-text m:0">{character.name}</h3>
+									<p class="font:14 fg:theme-text-secondary m:0">{character.role}</p>
+									{#if character.age || character.gender}
+										<p class="font:12 fg:theme-text-secondary">
+											{character.age ? `${character.age}歳` : ''}{character.age && character.gender
+												? ' / '
+												: ''}{character.gender || ''}
+										</p>
+									{/if}
+								</div>
+
+								{#if character.personality}
+									<div class="flex flex-direction:column gap:4">
+										<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">性格</p>
+										<p class="font:14 fg:theme-text-secondary line-clamp:2">
+											{character.personality}
+										</p>
+									</div>
+								{/if}
+
+								{#if character.relationships.length > 0}
+									<div class="flex flex-direction:column gap:4">
+										<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">関係</p>
+										<div class="flex flex-wrap gap:6">
+											{#each character.relationships.slice(0, 3) as rel}
+												<span
+													class="px:10 py:4 r:full bg:$(theme.primary)/.12 fg:$(theme.primary) font:12"
+												>
+													{getCharacterName(rel.characterId)}
+												</span>
+											{/each}
+											{#if character.relationships.length > 3}
+												<span
+													class="px:10 py:4 r:full bg:theme-background b:1px|solid|theme-border fg:theme-text-secondary font:12"
+												>
+													+{character.relationships.length - 3}
+												</span>
+											{/if}
+										</div>
+									</div>
+								{/if}
+
+								<div class="flex gap:8">
+									<button
+										class={`flex:1 ${actionButtonClass()}`}
+										onclick={() => openEditModal(character)}
+									>
+										編集
+									</button>
+									<button
+										class={`flex:1 ${actionButtonClass('secondary')}`}
+										onclick={() => openRelationModal(character)}
+									>
+										関係
+									</button>
+									<button
+										class={actionButtonClass('danger')}
+										onclick={() => handleDelete(character.id)}
+									>
+										削除
+									</button>
+								</div>
+							</Card>
+						{/each}
+					</div>
+				{:else if viewMode === 'list'}
+					<!-- リストビュー -->
+					<div class="flex flex-direction:column gap:16">
+						{#each characters as character (character.id)}
+							<Card
+								class="bg:theme-surface b:2px|solid|theme-border shadow:sm p:24"
+								oncontextmenu={(e) => handleCharacterContextMenu(e, character)}
+							>
+								<div class="flex gap:20 align-items:start">
+									<div
+										class="w:64 h:64 r:full bg:theme-border flex align-items:center justify-content:center font:22 fg:theme-text flex-shrink:0"
+									>
+										{character.name.charAt(0)}
+									</div>
+									<div class="flex:1 flex flex-direction:column gap:16">
+										<div class="flex justify-content:space-between align-items:start gap:16">
+											<div>
+												<h3 class="font:18 font-weight:600 fg:theme-text m:0">{character.name}</h3>
+												<p class="font:14 fg:theme-text-secondary mt:6">
+													{character.role}
+													{#if character.age || character.gender}
+														• {character.age ? `${character.age}歳` : ''}{character.age &&
+														character.gender
+															? ' / '
+															: ''}{character.gender || ''}
+													{/if}
+												</p>
+											</div>
+											<div class="flex gap:8">
+												<button class={actionButtonClass()} onclick={() => openEditModal(character)}
+													>編集</button
+												>
+												<button
+													class={actionButtonClass('secondary')}
+													onclick={() => openRelationModal(character)}>関係</button
+												>
+												<button
+													class={actionButtonClass('danger')}
+													onclick={() => handleDelete(character.id)}>削除</button
+												>
+											</div>
+										</div>
+
+										<div class="grid cols:3 gap:16">
+											{#if character.appearance}
+												<div class="flex flex-direction:column gap:4">
+													<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">外見</p>
+													<p class="font:14 fg:theme-text-secondary">{character.appearance}</p>
+												</div>
+											{/if}
+											{#if character.personality}
+												<div class="flex flex-direction:column gap:4">
+													<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">性格</p>
+													<p class="font:14 fg:theme-text-secondary">{character.personality}</p>
+												</div>
+											{/if}
+											{#if character.background}
+												<div class="flex flex-direction:column gap:4">
+													<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">背景</p>
+													<p class="font:14 fg:theme-text-secondary">{character.background}</p>
+												</div>
+											{/if}
+										</div>
+									</div>
+								</div>
+							</Card>
+						{/each}
+					</div>
+				{:else}
+					<!-- 相関図ビュー -->
+					<Card class="bg:theme-surface b:2px|solid|theme-border shadow:sm p:24">
+						<div class="flex flex-wrap gap:24 justify-content:center">
+							{#each characters as character (character.id)}
+								<div class="flex flex-direction:column align-items:center gap:8">
+									<button
+										class="w:80 h:80 r:full b:2px|solid|theme-border bg:$(theme.primary)/.18 fg:$(theme.primary) flex align-items:center justify-content:center font:22 transition:all|.2s|ease hover:bg:$(theme.primary)/.25"
+										onclick={() => openRelationModal(character)}
+									>
+										{character.name.charAt(0)}
+									</button>
+									<p class="font:14 font-weight:600 fg:theme-text m:0">{character.name}</p>
+									<p class="font:12 fg:theme-text-secondary m:0">{character.role}</p>
+									{#if character.relationships.length > 0}
+										<div class="mt:12 flex flex-direction:column gap:6 w:200">
+											{#each getRelationships(character) as rel}
+												<div
+													class="flex align-items:center gap:8 px:12 py:6 bg:theme-background b:1px|solid|theme-border r:8"
+												>
+													<span class="font:12 fg:theme-text-secondary">{rel.relation}</span>
+													<span class="font:12 font-weight:600 fg:theme-text-secondary">→</span>
+													<span class="font:12 fg:theme.primary">{rel.name}</span>
+												</div>
+											{/each}
+										</div>
+									{/if}
+								</div>
+							{/each}
+						</div>
+						{#if characters.length === 0}
+							<div class="flex justify-content:center align-items:center h:300">
+								<p class="fg:theme-text-secondary">キャラクターがありません</p>
+							</div>
+						{/if}
+					</Card>
+				{/if}
+
+				{#if characters.length === 0 && !isLoading}
+					<div
+						class="flex flex-direction:column align-items:center justify-content:center h:400 gap:16"
+					>
+						<p class="fg:theme-text-secondary font:18">キャラクターがまだありません</p>
+						<Button
+							class="px:20 py:12 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:10 font:14"
+							onclick={openCreateModal}
+						>
+							最初のキャラクターを作成
+						</Button>
+					</div>
 				{/if}
 			</div>
-
-			{#if character.personality}
-				<div class="flex flex-direction:column gap:4">
-					<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">性格</p>
-					<p class="font:14 fg:theme-text-secondary line-clamp:2">{character.personality}</p>
-				</div>
-			{/if}
-
-			{#if character.relationships.length > 0}
-				<div class="flex flex-direction:column gap:4">
-					<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">関係</p>
-					<div class="flex flex-wrap gap:6">
-						{#each character.relationships.slice(0, 3) as rel}
-							<span class="px:10 py:4 r:full bg:$(theme.primary)/.12 fg:$(theme.primary) font:12">
-								{getCharacterName(rel.characterId)}
-							</span>
-						{/each}
-						{#if character.relationships.length > 3}
-							<span class="px:10 py:4 r:full bg:theme-background b:1px|solid|theme-border fg:theme-text-secondary font:12">
-								+{character.relationships.length - 3}
-							</span>
-						{/if}
-					</div>
-				</div>
-			{/if}
-
-			<div class="flex gap:8">
-				<button
-					class={`flex:1 ${actionButtonClass()}`}
-					onclick={() => openEditModal(character)}
-				>
-					編集
-				</button>
-				<button
-					class={`flex:1 ${actionButtonClass('secondary')}`}
-					onclick={() => openRelationModal(character)}
-				>
-					関係
-				</button>
-				<button
-					class={actionButtonClass('danger')}
-					onclick={() => handleDelete(character.id)}
-				>
-					削除
-				</button>
-			</div>
-		</Card>
-	{/each}
-		</div>
-    {:else if viewMode === 'list'}
-	<!-- リストビュー -->
-	<div class="flex flex-direction:column gap:16">
-		{#each characters as character (character.id)}
-			<Card
-				class="bg:theme-surface b:2px|solid|theme-border shadow:sm p:24"
-				oncontextmenu={(e) => handleCharacterContextMenu(e, character)}
-			>
-				<div class="flex gap:20 align-items:start">
-					<div class="w:64 h:64 r:full bg:theme-border flex align-items:center justify-content:center font:22 fg:theme-text flex-shrink:0">
-						{character.name.charAt(0)}
-					</div>
-					<div class="flex:1 flex flex-direction:column gap:16">
-						<div class="flex justify-content:space-between align-items:start gap:16">
-							<div>
-								<h3 class="font:18 font-weight:600 fg:theme-text m:0">{character.name}</h3>
-								<p class="font:14 fg:theme-text-secondary mt:6">
-									{character.role}
-									{#if character.age || character.gender}
-										• {character.age ? `${character.age}歳` : ''}{character.age && character.gender ? ' / ' : ''}{character.gender || ''}
-									{/if}
-								</p>
-							</div>
-							<div class="flex gap:8">
-								<button class={actionButtonClass()} onclick={() => openEditModal(character)}>編集</button>
-								<button class={actionButtonClass('secondary')} onclick={() => openRelationModal(character)}>関係</button>
-								<button class={actionButtonClass('danger')} onclick={() => handleDelete(character.id)}>削除</button>
-							</div>
-						</div>
-
-						<div class="grid cols:3 gap:16">
-							{#if character.appearance}
-								<div class="flex flex-direction:column gap:4">
-									<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">外見</p>
-									<p class="font:14 fg:theme-text-secondary">{character.appearance}</p>
-								</div>
-							{/if}
-							{#if character.personality}
-								<div class="flex flex-direction:column gap:4">
-									<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">性格</p>
-									<p class="font:14 fg:theme-text-secondary">{character.personality}</p>
-								</div>
-							{/if}
-							{#if character.background}
-								<div class="flex flex-direction:column gap:4">
-									<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">背景</p>
-									<p class="font:14 fg:theme-text-secondary">{character.background}</p>
-								</div>
-							{/if}
-						</div>
-					</div>
-				</div>
-			</Card>
-		{/each}
+		</main>
 	</div>
-	{:else}
-		<!-- 相関図ビュー -->
-		<Card class="bg:theme-surface b:2px|solid|theme-border shadow:sm p:24">
-			<div class="flex flex-wrap gap:24 justify-content:center">
-				{#each characters as character (character.id)}
-					<div class="flex flex-direction:column align-items:center gap:8">
-						<button
-							class="w:80 h:80 r:full b:2px|solid|theme-border bg:$(theme.primary)/.18 fg:$(theme.primary) flex align-items:center justify-content:center font:22 transition:all|.2s|ease hover:bg:$(theme.primary)/.25"
-							onclick={() => openRelationModal(character)}
-						>
-							{character.name.charAt(0)}
-						</button>
-						<p class="font:14 font-weight:600 fg:theme-text m:0">{character.name}</p>
-						<p class="font:12 fg:theme-text-secondary m:0">{character.role}</p>
-						{#if character.relationships.length > 0}
-							<div class="mt:12 flex flex-direction:column gap:6 w:200">
-								{#each getRelationships(character) as rel}
-									<div class="flex align-items:center gap:8 px:12 py:6 bg:theme-background b:1px|solid|theme-border r:8">
-										<span class="font:12 fg:theme-text-secondary">{rel.relation}</span>
-										<span class="font:12 font-weight:600 fg:theme-text-secondary">→</span>
-										<span class="font:12 fg:theme.primary">{rel.name}</span>
-									</div>
-								{/each}
-							</div>
-						{/if}
-					</div>
-				{/each}
-			</div>
-			{#if characters.length === 0}
-				<div class="flex justify-content:center align-items:center h:300">
-					<p class="fg:theme-text-secondary">キャラクターがありません</p>
-				</div>
-			{/if}
-		</Card>
-	{/if}
-
-	{#if characters.length === 0 && !isLoading}
-		<div class="flex flex-direction:column align-items:center justify-content:center h:400 gap:16">
-			<p class="fg:theme-text-secondary font:18">キャラクターがまだありません</p>
-			<Button class="px:20 py:12 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:10 font:14" onclick={openCreateModal}>
-				最初のキャラクターを作成
-			</Button>
-		</div>
-	{/if}
-	</div>
-	</main>
-</div>
 </div>
 
 <!-- 新規作成モーダル -->
@@ -536,8 +566,14 @@
 
 	{#snippet footer()}
 		<div class="flex gap:12">
-			<Button variant="ghost" class={actionButtonClass()} onclick={() => (showCreateModal = false)}>キャンセル</Button>
-			<Button class="px:20 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8 font:14" onclick={handleCreate} disabled={!formData.name.trim()}>作成</Button>
+			<Button variant="ghost" class={actionButtonClass()} onclick={() => (showCreateModal = false)}
+				>キャンセル</Button
+			>
+			<Button
+				class="px:20 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8 font:14"
+				onclick={handleCreate}
+				disabled={!formData.name.trim()}>作成</Button
+			>
 		</div>
 	{/snippet}
 </Modal>
@@ -597,8 +633,14 @@
 
 	{#snippet footer()}
 		<div class="flex gap:12">
-			<Button variant="ghost" class={actionButtonClass()} onclick={() => (showEditModal = false)}>キャンセル</Button>
-			<Button class="px:20 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8 font:14" onclick={handleUpdate} disabled={!formData.name.trim()}>更新</Button>
+			<Button variant="ghost" class={actionButtonClass()} onclick={() => (showEditModal = false)}
+				>キャンセル</Button
+			>
+			<Button
+				class="px:20 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8 font:14"
+				onclick={handleUpdate}
+				disabled={!formData.name.trim()}>更新</Button
+			>
 		</div>
 	{/snippet}
 </Modal>
@@ -606,79 +648,84 @@
 <!-- 関係編集モーダル -->
 <Modal bind:isOpen={showRelationModal} title="キャラクター関係編集">
 	{#snippet children()}
-	{#if selectedCharacter}
-		<div class="flex flex-direction:column gap:16">
-			<div class="p:16 bg:theme-surface b:1px|solid|theme-border r:8">
-				<p class="font:14 fg:theme-text-secondary mb:4">対象キャラクター</p>
-				<p class="font:18 font-weight:600 fg:theme-text">{selectedCharacter.name}</p>
-			</div>
+		{#if selectedCharacter}
+			<div class="flex flex-direction:column gap:16">
+				<div class="p:16 bg:theme-surface b:1px|solid|theme-border r:8">
+					<p class="font:14 fg:theme-text-secondary mb:4">対象キャラクター</p>
+					<p class="font:18 font-weight:600 fg:theme-text">{selectedCharacter.name}</p>
+				</div>
 
-			<div>
-				<p class="font:14 font:semibold mb:12">現在の関係</p>
-				{#if selectedCharacter.relationships.length === 0}
-					<p class="fg:theme-text-secondary font:14">関係が登録されていません</p>
-				{:else}
-					<div class="flex flex-direction:column gap:8">
-						{#each getRelationships(selectedCharacter) as rel, index}
-							<div class="flex align-items:center justify-content:space-between p:12 bg:theme-background b:1px|solid|theme-border r:8">
-								<div class="flex align-items:center gap:12">
-									<span class="font:14 fg:theme-text-secondary">{rel.relation}</span>
-									<span class="fg:theme-text-secondary">→</span>
-									<span class="font:14 font-weight:600 fg:theme.primary">{rel.name}</span>
-								</div>
-								<button
-									class={actionButtonClass('danger')}
-									onclick={() => handleRemoveRelation(selectedCharacter!.id, index)}
+				<div>
+					<p class="font:14 font:semibold mb:12">現在の関係</p>
+					{#if selectedCharacter.relationships.length === 0}
+						<p class="fg:theme-text-secondary font:14">関係が登録されていません</p>
+					{:else}
+						<div class="flex flex-direction:column gap:8">
+							{#each getRelationships(selectedCharacter) as rel, index}
+								<div
+									class="flex align-items:center justify-content:space-between p:12 bg:theme-background b:1px|solid|theme-border r:8"
 								>
-									削除
-								</button>
-							</div>
-						{/each}
-					</div>
-				{/if}
-			</div>
+									<div class="flex align-items:center gap:12">
+										<span class="font:14 fg:theme-text-secondary">{rel.relation}</span>
+										<span class="fg:theme-text-secondary">→</span>
+										<span class="font:14 font-weight:600 fg:theme.primary">{rel.name}</span>
+									</div>
+									<button
+										class={actionButtonClass('danger')}
+										onclick={() => handleRemoveRelation(selectedCharacter!.id, index)}
+									>
+										削除
+									</button>
+								</div>
+							{/each}
+						</div>
+					{/if}
+				</div>
 
-			<div>
-				<p class="font:14 font:semibold mb:12">新しい関係を追加</p>
-				<div class="flex gap:8">
-					<input
-						type="text"
-						placeholder="関係性（例: 親友、ライバル）"
-						class={`flex:1 ${fieldBaseClass}`}
-						id="relation-input"
-					/>
-					<select
-						class={fieldBaseClass}
-						id="target-character"
-					>
-						<option value="">キャラクターを選択</option>
-						{#each characters.filter((c) => c.id !== selectedCharacter?.id) as char}
-							<option value={char.id}>{char.name}</option>
-						{/each}
-					</select>
-					<Button
-						class="px:16 py:10 bg:theme.primary fg:theme-background r:8"
-						onclick={() => {
-							const relationInput = document.getElementById('relation-input') as HTMLInputElement;
-							const targetSelect = document.getElementById('target-character') as HTMLSelectElement;
-							if (relationInput.value && targetSelect.value && selectedCharacter) {
-								handleAddRelation(selectedCharacter.id, targetSelect.value, relationInput.value);
-								relationInput.value = '';
-								targetSelect.value = '';
-							}
-						}}
-					>
-						追加
-					</Button>
+				<div>
+					<p class="font:14 font:semibold mb:12">新しい関係を追加</p>
+					<div class="flex gap:8">
+						<input
+							type="text"
+							placeholder="関係性（例: 親友、ライバル）"
+							class={`flex:1 ${fieldBaseClass}`}
+							id="relation-input"
+						/>
+						<select class={fieldBaseClass} id="target-character">
+							<option value="">キャラクターを選択</option>
+							{#each characters.filter((c) => c.id !== selectedCharacter?.id) as char}
+								<option value={char.id}>{char.name}</option>
+							{/each}
+						</select>
+						<Button
+							class="px:16 py:10 bg:theme.primary fg:theme-background r:8"
+							onclick={() => {
+								const relationInput = document.getElementById('relation-input') as HTMLInputElement;
+								const targetSelect = document.getElementById(
+									'target-character'
+								) as HTMLSelectElement;
+								if (relationInput.value && targetSelect.value && selectedCharacter) {
+									handleAddRelation(selectedCharacter.id, targetSelect.value, relationInput.value);
+									relationInput.value = '';
+									targetSelect.value = '';
+								}
+							}}
+						>
+							追加
+						</Button>
+					</div>
 				</div>
 			</div>
-		</div>
-	{/if}
+		{/if}
 	{/snippet}
 
 	{#snippet footer()}
 		<div class="flex gap:12">
-			<Button variant="ghost" class={actionButtonClass()} onclick={() => (showRelationModal = false)}>閉じる</Button>
+			<Button
+				variant="ghost"
+				class={actionButtonClass()}
+				onclick={() => (showRelationModal = false)}>閉じる</Button
+			>
 		</div>
 	{/snippet}
 </Modal>
@@ -689,7 +736,7 @@
 	x={contextMenu.x}
 	y={contextMenu.y}
 	items={contextMenu.items}
-	onClose={() => contextMenu.visible = false}
+	onClose={() => (contextMenu.visible = false)}
 />
 
 <style>

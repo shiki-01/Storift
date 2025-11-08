@@ -41,31 +41,35 @@ export const projectsDB = {
 		await db.projects.update(id, {
 			...changes,
 			updatedAt: Date.now(),
-			_version: ((project?._version || 0) + 1)
+			_version: (project?._version || 0) + 1
 		});
 	},
 
 	async delete(id: string): Promise<void> {
 		// 関連データも削除
-		await db.transaction('rw', [
-			db.projects,
-			db.chapters,
-			db.scenes,
-			db.characters,
-			db.plots,
-			db.worldbuilding,
-			db.history,
-			db.progressLogs
-		], async () => {
-			await db.projects.delete(id);
-			await db.chapters.where('projectId').equals(id).delete();
-			await db.scenes.where('projectId').equals(id).delete();
-			await db.characters.where('projectId').equals(id).delete();
-			await db.plots.where('projectId').equals(id).delete();
-			await db.worldbuilding.where('projectId').equals(id).delete();
-			await db.history.where('projectId').equals(id).delete();
-			await db.progressLogs.where('projectId').equals(id).delete();
-		});
+		await db.transaction(
+			'rw',
+			[
+				db.projects,
+				db.chapters,
+				db.scenes,
+				db.characters,
+				db.plots,
+				db.worldbuilding,
+				db.history,
+				db.progressLogs
+			],
+			async () => {
+				await db.projects.delete(id);
+				await db.chapters.where('projectId').equals(id).delete();
+				await db.scenes.where('projectId').equals(id).delete();
+				await db.characters.where('projectId').equals(id).delete();
+				await db.plots.where('projectId').equals(id).delete();
+				await db.worldbuilding.where('projectId').equals(id).delete();
+				await db.history.where('projectId').equals(id).delete();
+				await db.progressLogs.where('projectId').equals(id).delete();
+			}
+		);
 	},
 
 	async search(query: string): Promise<Project[]> {

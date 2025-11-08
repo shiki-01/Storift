@@ -1,4 +1,4 @@
-export type EditorFont = 
+export type EditorFont =
 	| 'yu-gothic'
 	| 'gen-shin-mincho'
 	| 'hiragino-mincho'

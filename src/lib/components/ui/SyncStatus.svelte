@@ -34,7 +34,11 @@
 </script>
 
 <div class="flex align-items:center gap:8 font:13">
-	<span class={config.color + " " + syncStore.status === 'syncing' ? 'animation:spin|2s|linear|infinite' : ''}>
+	<span
+		class={config.color + ' ' + syncStore.status === 'syncing'
+			? 'animation:spin|2s|linear|infinite'
+			: ''}
+	>
 		{config.icon}
 	</span>
 	<span class={config.color}>

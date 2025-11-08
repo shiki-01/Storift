@@ -124,7 +124,7 @@ export class AutoSave {
 	 */
 	setInterval(interval: number): void {
 		this.options.interval = interval;
-		
+
 		// タイマーが動いている場合は再起動
 		if (this.timer !== null) {
 			this.stop();

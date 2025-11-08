@@ -1,15 +1,15 @@
 <script lang="ts">
-	import { onMount } from "svelte";
-    import { getIcon } from "../editor/icons";
+	import { onMount } from 'svelte';
+	import { getIcon } from '../editor/icons';
 
-    let { name, class: className }: { name: string; class?: string } = $props();
-    let icon = $state('');
+	let { name, class: className }: { name: string; class?: string } = $props();
+	let icon = $state('');
 
-    onMount(() => {
-        icon = getIcon(name) || '';
-    })
+	onMount(() => {
+		icon = getIcon(name) || '';
+	});
 </script>
 
 <div class={className}>
-    {@html icon}
+	{@html icon}
 </div>

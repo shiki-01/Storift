@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
@@ -18,6 +17,7 @@
 	import FontSelector from '$lib/components/ui/FontSelector.svelte';
 	import { createEditorContextMenu, createChapterContextMenu, createSceneContextMenu, type ContextMenuItem } from '$lib/utils/contextMenu';
 	import type { Chapter, Scene, EditorFont } from '$lib/types';
+	import Icon from '$lib/components/ui/Icon.svelte';
 
 	let isChapterModalOpen = $state(false);
 	let isSceneModalOpen = $state(false);
@@ -717,7 +717,7 @@
 							onclick={openFormattingModal}
 							title="書式設定"
 						>
-							🎨
+							<Icon name="palette" class="w:24px" />
 						</button>
 						<div class="w:1 h:20 bg:theme-text"></div>
 						<!-- Phase 2: 執筆支援ツール -->
@@ -726,21 +726,21 @@
 							onclick={() => showWritingAssistant = true}
 							title="執筆支援"
 						>
-							📝
+							<Icon name="pencil-bolt" class="w:24px" />
 						</button>
 						<button
 							class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
 							onclick={() => showPrintPreview = true}
 							title="印刷プレビュー"
 						>
-							🖨️
+							<Icon name="printer" class="w:24px" />
 						</button>
 						<button
 							class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
 							onclick={() => showVersionManager = true}
 							title="バージョン履歴"
 						>
-							📜
+							<Icon name="history" class="w:24px" />
 						</button>
 						<div class="w:1 h:20 bg:theme-text"></div>
 						<SyncStatus />

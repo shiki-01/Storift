@@ -7,7 +7,16 @@
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import { onMount } from 'svelte';
-	import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, parseISO, subMonths, addMonths } from 'date-fns';
+	import {
+		format,
+		startOfMonth,
+		endOfMonth,
+		eachDayOfInterval,
+		isSameDay,
+		parseISO,
+		subMonths,
+		addMonths
+	} from 'date-fns';
 	import { ja } from 'date-fns/locale';
 
 	let progressLogs = $state<ProgressLog[]>([]);
@@ -35,7 +44,7 @@
 		calculateStats();
 	});
 
-	const loadProgressLogs = async() => {
+	const loadProgressLogs = async () => {
 		if (!currentProjectStore.project) return;
 		isLoading = true;
 		try {
@@ -43,7 +52,7 @@
 		} finally {
 			isLoading = false;
 		}
-	}
+	};
 
 	const calculateStats = () => {
 		if (progressLogs.length === 0) {
@@ -65,13 +74,15 @@
 		const sortedLogs = [...progressLogs].sort((a, b) => b.date.localeCompare(a.date));
 		let consecutiveDays = 0;
 		const today = format(new Date(), 'yyyy-MM-dd');
-		
+
 		if (sortedLogs.length > 0 && sortedLogs[0].date === today) {
 			consecutiveDays = 1;
 			for (let i = 1; i < sortedLogs.length; i++) {
 				const prevDate = new Date(sortedLogs[i - 1].date);
 				const currDate = new Date(sortedLogs[i].date);
-				const diffDays = Math.floor((prevDate.getTime() - currDate.getTime()) / (1000 * 60 * 60 * 24));
+				const diffDays = Math.floor(
+					(prevDate.getTime() - currDate.getTime()) / (1000 * 60 * 60 * 24)
+				);
 				if (diffDays === 1) {
 					consecutiveDays++;
 				} else {
@@ -86,7 +97,9 @@
 		if (goal) {
 			if (goal.type === 'daily') {
 				const todayLog = progressLogs.find((log) => log.date === today);
-				goalProgress = todayLog ? Math.min(100, (todayLog.charactersWritten / goal.target) * 100) : 0;
+				goalProgress = todayLog
+					? Math.min(100, (todayLog.charactersWritten / goal.target) * 100)
+					: 0;
 			} else if (goal.type === 'total') {
 				goalProgress = Math.min(100, (totalCharacters / goal.target) * 100);
 			}
@@ -99,7 +112,7 @@
 			consecutiveDays,
 			goalProgress: Math.round(goalProgress)
 		};
-	}
+	};
 
 	const getCalendarDays = () => {
 		const start = startOfMonth(currentMonth);
@@ -111,7 +124,7 @@
 		const emptyDays = Array(firstDayOfWeek).fill(null);
 
 		return [...emptyDays, ...days];
-	}
+	};
 
 	function getLogForDate(date: Date): ProgressLog | undefined {
 		const dateStr = format(date, 'yyyy-MM-dd');
@@ -160,7 +173,7 @@
 		showLogModal = true;
 	}
 
-	const handleSaveLog = async() => {
+	const handleSaveLog = async () => {
 		if (!currentProjectStore.project || !selectedDate) return;
 
 		const dateStr = format(selectedDate, 'yyyy-MM-dd');
@@ -182,36 +195,36 @@
 		await loadProgressLogs();
 		calculateStats();
 		showLogModal = false;
-	}
+	};
 
 	const previousMonth = () => {
 		currentMonth = subMonths(currentMonth, 1);
-	}
+	};
 
 	const nextMonth = () => {
 		currentMonth = addMonths(currentMonth, 1);
-	}
+	};
 
 	const goToToday = () => {
 		currentMonth = new Date();
-	}
+	};
 
 	$effect(() => {
 		calculateStats();
 	});
 
 	let recentLogs = $derived(
-		[...progressLogs]
-			.sort((a, b) => b.date.localeCompare(a.date))
-			.slice(0, 7)
+		[...progressLogs].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 7)
 	);
 
 	let monthlyTotal = $derived(
 		progressLogs
 			.filter((log) => {
 				const logDate = parseISO(log.date);
-				return logDate.getMonth() === currentMonth.getMonth() &&
-					logDate.getFullYear() === currentMonth.getFullYear();
+				return (
+					logDate.getMonth() === currentMonth.getMonth() &&
+					logDate.getFullYear() === currentMonth.getFullYear()
+				);
 			})
 			.reduce((sum, log) => sum + log.charactersWritten, 0)
 	);
@@ -220,7 +233,9 @@
 <div class="flex w:100% h:100% bg:theme-background fg:theme-text">
 	<div class="flex-grow:1 flex flex-direction:column">
 		<header class="bg:theme-background border-bottom:2|solid|theme-text">
-			<div class="max-w:1280 mx:auto w:100% px:24 py:20 flex justify-content:space-between align-items:center">
+			<div
+				class="max-w:1280 mx:auto w:100% px:24 py:20 flex justify-content:space-between align-items:center"
+			>
 				<div>
 					<h1 class="font:26 font-weight:600 m:0 fg:theme-text">進捗管理</h1>
 					<p class="font:14 fg:theme-text-secondary mt:8">執筆の進捗を記録・可視化します</p>
@@ -248,7 +263,9 @@
 						<Card class="flex:1 min-w:200">
 							<div class="p:20 text-align:center flex flex-direction:column gap:8">
 								<p class="font:14 fg:theme-text-secondary">累計文字数</p>
-								<p class="font:30 font-weight:600 fg:theme-text">{stats.totalCharacters.toLocaleString()}</p>
+								<p class="font:30 font-weight:600 fg:theme-text">
+									{stats.totalCharacters.toLocaleString()}
+								</p>
 								<p class="font:12 fg:theme-text-secondary">文字</p>
 							</div>
 						</Card>
@@ -256,7 +273,9 @@
 						<Card class="flex:1 min-w:200">
 							<div class="p:20 text-align:center flex flex-direction:column gap:8">
 								<p class="font:14 fg:theme-text-secondary">平均執筆量</p>
-								<p class="font:30 font-weight:600 fg:theme-text">{stats.averageDaily.toLocaleString()}</p>
+								<p class="font:30 font-weight:600 fg:theme-text">
+									{stats.averageDaily.toLocaleString()}
+								</p>
 								<p class="font:12 fg:theme-text-secondary">文字/日</p>
 							</div>
 						</Card>
@@ -264,7 +283,9 @@
 						<Card class="flex:1 min-w:200">
 							<div class="p:20 text-align:center flex flex-direction:column gap:8">
 								<p class="font:14 fg:theme-text-secondary">最高記録</p>
-								<p class="font:30 font-weight:600 fg:theme-text">{stats.maxDaily.toLocaleString()}</p>
+								<p class="font:30 font-weight:600 fg:theme-text">
+									{stats.maxDaily.toLocaleString()}
+								</p>
 								<p class="font:12 fg:theme-text-secondary">文字/日</p>
 							</div>
 						</Card>
@@ -295,21 +316,31 @@
 											{format(currentMonth, 'yyyy年M月', { locale: ja })}
 										</h2>
 										<div class="flex gap:8">
-											<Button variant="secondary" class="px:12 py:8 font:12" onclick={previousMonth}>←</Button>
-											<Button variant="secondary" class="px:12 py:8 font:12" onclick={goToToday}>今日</Button>
-											<Button variant="secondary" class="px:12 py:8 font:12" onclick={nextMonth}>→</Button>
+											<Button variant="secondary" class="px:12 py:8 font:12" onclick={previousMonth}
+												>←</Button
+											>
+											<Button variant="secondary" class="px:12 py:8 font:12" onclick={goToToday}
+												>今日</Button
+											>
+											<Button variant="secondary" class="px:12 py:8 font:12" onclick={nextMonth}
+												>→</Button
+											>
 										</div>
 									</div>
 
 									<div class="p:12 bg:$(theme.primary)/.12 r:8 b:1px|solid|theme-border">
 										<p class="font:14 fg:theme-text">
-											今月の合計: <span class="font-weight:600">{monthlyTotal.toLocaleString()}</span> 文字
+											今月の合計: <span class="font-weight:600"
+												>{monthlyTotal.toLocaleString()}</span
+											> 文字
 										</p>
 									</div>
 
 									<div class="grid gap:4 grid-template-columns:repeat(7,minmax(0,1fr)) mb:8">
 										{#each ['日', '月', '火', '水', '木', '金', '土'] as day}
-											<div class="text-align:center font:12 font-weight:600 fg:theme-text-secondary py:8">
+											<div
+												class="text-align:center font:12 font-weight:600 fg:theme-text-secondary py:8"
+											>
 												{day}
 											</div>
 										{/each}
@@ -326,20 +357,28 @@
 													class={`w:full ${calendarDayClass(log?.charactersWritten || 0, isToday)}`}
 													onclick={() => openLogModal(day)}
 												>
-													<span class="font:14 font-weight:600 fg:theme-text">{format(day, 'd')}</span>
+													<span class="font:14 font-weight:600 fg:theme-text"
+														>{format(day, 'd')}</span
+													>
 													{#if log}
-														<span class="font:10 fg:theme-text-secondary">{log.charactersWritten}</span>
+														<span class="font:10 fg:theme-text-secondary"
+															>{log.charactersWritten}</span
+														>
 													{/if}
 												</button>
 											{/if}
 										{/each}
 									</div>
 
-									<div class="flex align-items:center gap:8 mt:16 pt:16 bt:1|solid|theme-border flex-wrap:wrap">
+									<div
+										class="flex align-items:center gap:8 mt:16 pt:16 bt:1|solid|theme-border flex-wrap:wrap"
+									>
 										<span class="font:12 fg:theme-text-secondary">執筆量:</span>
 										{#each heatmapLegend as level}
 											<div class="flex align-items:center gap:4">
-												<div class={`w:16 h:16 r:4 b:1px|solid|theme-border ${level.className}`}></div>
+												<div
+													class={`w:16 h:16 r:4 b:1px|solid|theme-border ${level.className}`}
+												></div>
 												<span class="font:12 fg:theme-text-secondary">{level.label}</span>
 											</div>
 										{/each}
@@ -354,7 +393,9 @@
 									<h3 class="font:18 font-weight:600 fg:theme-text">最近の記録</h3>
 									<div class="flex flex-direction:column gap:12">
 										{#each recentLogs as log (log.id)}
-											<div class="p:12 bg:theme-surface r:8 b:1px|solid|theme-border flex flex-direction:column gap:8">
+											<div
+												class="p:12 bg:theme-surface r:8 b:1px|solid|theme-border flex flex-direction:column gap:8"
+											>
 												<div class="flex justify-content:space-between align-items:start">
 													<span class="font:14 font-weight:600 fg:theme-text">
 														{format(parseISO(log.date), 'M月d日(E)', { locale: ja })}
@@ -381,17 +422,17 @@
 															</span>
 														</div>
 													{/if}
+												</div>
 											</div>
-										</div>
-									{/each}
+										{/each}
 
-									{#if recentLogs.length === 0}
-										<p class="fg:theme-text-secondary font:14 text-align:center py:20">
-											まだ記録がありません
-										</p>
-									{/if}
+										{#if recentLogs.length === 0}
+											<p class="fg:theme-text-secondary font:14 text-align:center py:20">
+												まだ記録がありません
+											</p>
+										{/if}
+									</div>
 								</div>
-							</div>
 							</Card>
 						</div>
 					</div>
@@ -414,7 +455,9 @@
 				</div>
 
 				<div>
-					<label for="characters-written" class="block mb:8 font:14 font-weight:600 fg:theme-text">執筆文字数</label>
+					<label for="characters-written" class="block mb:8 font:14 font-weight:600 fg:theme-text"
+						>執筆文字数</label
+					>
 					<input
 						id="characters-written"
 						type="number"
@@ -425,7 +468,9 @@
 				</div>
 
 				<div>
-					<label for="time-spent" class="block mb:8 font:14 font-weight:600 fg:theme-text">執筆時間(分)</label>
+					<label for="time-spent" class="block mb:8 font:14 font-weight:600 fg:theme-text"
+						>執筆時間(分)</label
+					>
 					<input
 						id="time-spent"
 						type="number"
@@ -440,8 +485,13 @@
 
 	{#snippet footer()}
 		<div class="flex gap:12">
-			<Button variant="secondary" class="px:16 py:8" onclick={() => (showLogModal = false)}>キャンセル</Button>
-			<Button class="px:18 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8" onclick={handleSaveLog}>保存</Button>
+			<Button variant="secondary" class="px:16 py:8" onclick={() => (showLogModal = false)}
+				>キャンセル</Button
+			>
+			<Button
+				class="px:18 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8"
+				onclick={handleSaveLog}>保存</Button
+			>
 		</div>
 	{/snippet}
 </Modal>

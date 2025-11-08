@@ -13,12 +13,7 @@
 		onClose?: () => void;
 	}
 
-	let {
-		isOpen = $bindable(false),
-		entityId,
-		onRestore,
-		onClose
-	}: HistoryViewerProps = $props();
+	let { isOpen = $bindable(false), entityId, onRestore, onClose }: HistoryViewerProps = $props();
 
 	let histories = $state<History[]>([]);
 	let isLoading = $state(false);
@@ -30,7 +25,7 @@
 		}
 	});
 
-	const loadHistory = async() => {
+	const loadHistory = async () => {
 		isLoading = true;
 		try {
 			histories = await historyDB.getByEntity(entityId);
@@ -39,7 +34,7 @@
 		} finally {
 			isLoading = false;
 		}
-	}
+	};
 
 	async function handleRestore(history: History) {
 		if (confirm('このバージョンに復元しますか?')) {
@@ -56,7 +51,7 @@
 	};
 </script>
 
-<Modal bind:isOpen title="変更履歴" onClose={onClose}>
+<Modal bind:isOpen title="変更履歴" {onClose}>
 	{#if isLoading}
 		<div class="text-align:center p:32">
 			<p class="fg:gray-600">読み込み中...</p>
@@ -82,7 +77,7 @@
 							復元
 						</Button>
 					</div>
-					
+
 					{#if selectedHistory?.id === history.id}
 						<div class="bg:gray-50 p:12 r:6 font:12 white-space:pre-wrap overflow-x:auto">
 							{JSON.stringify(history.snapshot, null, 2)}

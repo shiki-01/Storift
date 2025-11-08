@@ -27,8 +27,7 @@ export const projectsStore = {
 		if (!searchQuery) return projects;
 		const query = searchQuery.toLowerCase();
 		return projects.filter(
-			(p) =>
-				p.title.toLowerCase().includes(query) || p.description.toLowerCase().includes(query)
+			(p) => p.title.toLowerCase().includes(query) || p.description.toLowerCase().includes(query)
 		);
 	}
 };

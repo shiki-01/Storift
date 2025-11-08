@@ -31,16 +31,10 @@ export const chaptersDB = {
 
 		await db.chapters.add(chapter);
 		await touchProject(input.projectId);
-		
+
 		// 作成履歴を保存
-		await historyDB.create(
-			'chapter',
-			chapter.id,
-			chapter.projectId,
-			chapter,
-			'create'
-		);
-		
+		await historyDB.create('chapter', chapter.id, chapter.projectId, chapter, 'create');
+
 		return chapter;
 	},
 
@@ -49,19 +43,13 @@ export const chaptersDB = {
 		await db.chapters.update(id, {
 			...changes,
 			updatedAt: Date.now(),
-			_version: ((chapter?._version || 0) + 1)
+			_version: (chapter?._version || 0) + 1
 		});
 		if (chapter) {
 			await touchProject(chapter.projectId);
-			
+
 			// 更新履歴を保存
-			await historyDB.create(
-				'chapter',
-				chapter.id,
-				chapter.projectId,
-				chapter,
-				'update'
-			);
+			await historyDB.create('chapter', chapter.id, chapter.projectId, chapter, 'update');
 		}
 	},
 
@@ -79,7 +67,7 @@ export const chaptersDB = {
 	async reorder(projectId: string, chapterIds: string[]): Promise<void> {
 		await db.transaction('rw', [db.chapters, db.projects], async () => {
 			for (let i = 0; i < chapterIds.length; i++) {
-				await db.chapters.update(chapterIds[i], { 
+				await db.chapters.update(chapterIds[i], {
 					order: i,
 					updatedAt: Date.now()
 				});

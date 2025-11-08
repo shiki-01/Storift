@@ -56,7 +56,9 @@ class VersionService {
 	private computeLCSMatrix(oldLines: string[], newLines: string[]): number[][] {
 		const m = oldLines.length;
 		const n = newLines.length;
-		const matrix: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+		const matrix: number[][] = Array(m + 1)
+			.fill(null)
+			.map(() => Array(n + 1).fill(0));
 
 		for (let i = 1; i <= m; i++) {
 			for (let j = 1; j <= n; j++) {
@@ -132,9 +134,9 @@ class VersionService {
 		const diffs = this.calculateDiff(oldContent, newContent);
 
 		const stats = {
-			additions: diffs.filter(d => d.type === 'add').length,
-			deletions: diffs.filter(d => d.type === 'remove').length,
-			unchanged: diffs.filter(d => d.type === 'unchanged').length
+			additions: diffs.filter((d) => d.type === 'add').length,
+			deletions: diffs.filter((d) => d.type === 'remove').length,
+			unchanged: diffs.filter((d) => d.type === 'unchanged').length
 		};
 
 		return {
@@ -195,7 +197,7 @@ class VersionService {
 	 * プロジェクトの復元ポイントを取得
 	 */
 	getProjectRestorePoints(projectId: string): RestorePoint[] {
-		return this.getAllRestorePoints().filter(p => p.projectId === projectId);
+		return this.getAllRestorePoints().filter((p) => p.projectId === projectId);
 	}
 
 	/**
@@ -203,7 +205,7 @@ class VersionService {
 	 */
 	getEntityRestorePoints(entityType: string, entityId: string): RestorePoint[] {
 		return this.getAllRestorePoints().filter(
-			p => p.entityType === entityType && p.entityId === entityId
+			(p) => p.entityType === entityType && p.entityId === entityId
 		);
 	}
 
@@ -212,7 +214,7 @@ class VersionService {
 	 */
 	deleteRestorePoint(restorePointId: string): void {
 		const key = 'storift_restore_points';
-		const points = this.getAllRestorePoints().filter(p => p.id !== restorePointId);
+		const points = this.getAllRestorePoints().filter((p) => p.id !== restorePointId);
 		localStorage.setItem(key, JSON.stringify(points));
 	}
 
@@ -220,7 +222,7 @@ class VersionService {
 	 * 復元ポイントからデータを復元
 	 */
 	async restoreFromPoint(restorePointId: string): Promise<boolean> {
-		const restorePoint = this.getAllRestorePoints().find(p => p.id === restorePointId);
+		const restorePoint = this.getAllRestorePoints().find((p) => p.id === restorePointId);
 		if (!restorePoint) {
 			return false;
 		}
@@ -293,11 +295,7 @@ class VersionService {
 	/**
 	 * エンティティの履歴を取得
 	 */
-	async getEntityHistory(
-		entityType: string,
-		entityId: string,
-		limit = 50
-	): Promise<History[]> {
+	async getEntityHistory(entityType: string, entityId: string, limit = 50): Promise<History[]> {
 		const history = await db.history
 			.where(['entityType', 'entityId'])
 			.equals([entityType, entityId])
@@ -317,9 +315,9 @@ class VersionService {
 		unchanged: number;
 		totalChanges: number;
 	} {
-		const additions = diffs.filter(d => d.type === 'add').length;
-		const deletions = diffs.filter(d => d.type === 'remove').length;
-		const unchanged = diffs.filter(d => d.type === 'unchanged').length;
+		const additions = diffs.filter((d) => d.type === 'add').length;
+		const deletions = diffs.filter((d) => d.type === 'remove').length;
+		const unchanged = diffs.filter((d) => d.type === 'unchanged').length;
 
 		return {
 			additions,
@@ -334,7 +332,7 @@ class VersionService {
 	 */
 	renderDiffAsHtml(diffs: TextDiff[]): string {
 		return diffs
-			.map(diff => {
+			.map((diff) => {
 				const escapedText = this.escapeHtml(diff.text);
 				switch (diff.type) {
 					case 'add':
@@ -412,9 +410,9 @@ class VersionService {
 	async cleanupOldSnapshots(daysToKeep = 30): Promise<void> {
 		const cutoffTime = Date.now() - daysToKeep * 24 * 60 * 60 * 1000;
 		const points = this.getAllRestorePoints();
-		const pointsToDelete = points.filter(p => p.createdAt < cutoffTime);
+		const pointsToDelete = points.filter((p) => p.createdAt < cutoffTime);
 
-		pointsToDelete.forEach(p => {
+		pointsToDelete.forEach((p) => {
 			this.deleteRestorePoint(p.id);
 		});
 

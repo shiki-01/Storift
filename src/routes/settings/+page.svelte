@@ -141,7 +141,7 @@
 		try {
 			// 既存の設定を取得してFirebase設定を保持
 			const existing = await db.settings.get('app-settings');
-			
+
 			// プレーンなオブジェクトに変換（Svelteのリアクティブプロパティを除去）
 			const plainSettings = {
 				id: 'app-settings' as const,
@@ -169,7 +169,7 @@
 				},
 				updatedAt: Date.now()
 			};
-			
+
 			await db.settings.put(plainSettings);
 		} catch (error) {
 			console.error('Failed to save settings:', error);
@@ -401,7 +401,9 @@
 			<div class="flex flex:column gap:.5rem">
 				<div class="flex justify-content:space-between align-items:center">
 					<label for="fontSize" class="font-weight:500">フォントサイズ</label>
-					<span class="fg:theme-text-secondary font:.875rem">{settings.editorFormatting.fontSize}px</span>
+					<span class="fg:theme-text-secondary font:.875rem"
+						>{settings.editorFormatting.fontSize}px</span
+					>
 				</div>
 				<input
 					id="fontSize"
@@ -423,7 +425,9 @@
 			<div class="flex flex:column gap:.5rem">
 				<div class="flex justify-content:space-between align-items:center">
 					<label for="lineHeight" class="font-weight:500">行間</label>
-					<span class="fg:theme-text-secondary font:.875rem">{settings.editorFormatting.lineHeight.toFixed(1)}</span>
+					<span class="fg:theme-text-secondary font:.875rem"
+						>{settings.editorFormatting.lineHeight.toFixed(1)}</span
+					>
 				</div>
 				<input
 					id="lineHeight"
@@ -445,7 +449,9 @@
 			<div class="flex flex:column gap:.5rem">
 				<div class="flex justify-content:space-between align-items:center">
 					<label for="letterSpacing" class="font-weight:500">字間</label>
-					<span class="fg:theme-text-secondary font:.875rem">{settings.editorFormatting.letterSpacing.toFixed(2)}em</span>
+					<span class="fg:theme-text-secondary font:.875rem"
+						>{settings.editorFormatting.letterSpacing.toFixed(2)}em</span
+					>
 				</div>
 				<input
 					id="letterSpacing"
@@ -467,7 +473,9 @@
 			<div class="flex flex:column gap:.5rem">
 				<div class="flex justify-content:space-between align-items:center">
 					<label for="paragraphSpacing" class="font-weight:500">段落間隔</label>
-					<span class="fg:theme-text-secondary font:.875rem">{settings.editorFormatting.paragraphSpacing}px</span>
+					<span class="fg:theme-text-secondary font:.875rem"
+						>{settings.editorFormatting.paragraphSpacing}px</span
+					>
 				</div>
 				<input
 					id="paragraphSpacing"
@@ -499,9 +507,7 @@
 					<p style="margin-bottom: {settings.editorFormatting.paragraphSpacing}px;">
 						吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。
 					</p>
-					<p>
-						何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。
-					</p>
+					<p>何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。</p>
 				</div>
 			</div>
 
@@ -559,7 +565,10 @@
 					<option value="local">常にこの端末の変更を優先</option>
 					<option value="remote">常にクラウドの変更を優先</option>
 				</select>
-				<div class="px:1rem py:.75rem r:6px" style="background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);">
+				<div
+					class="px:1rem py:.75rem r:6px"
+					style="background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);"
+				>
 					{#if settings.conflictResolution === 'manual'}
 						<p class="font:.875rem">
 							競合が発生した場合、どちらの変更を採用するか手動で選択できます。
@@ -611,7 +620,7 @@
 			{:else}
 				<div
 					class="px:1rem py:1em b:2px|solid|theme-warning r:8px flex flex:column gap:1rem"
-                    style="background-color: color-mix(in srgb, var(--color-warning) 10%, transparent);"
+					style="background-color: color-mix(in srgb, var(--color-warning) 10%, transparent);"
 				>
 					<p class="font:bold fg:theme-warning">Firebase連携が設定されていません</p>
 					<a href="/setup" class=""> Firebase設定ページへ → </a>

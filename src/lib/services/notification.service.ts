@@ -91,9 +91,9 @@ class NotificationService {
 				};
 
 				if (actions && actions.length > 0) {
-					notificationOptions.actions = actions.map(a => ({ 
-						action: a.action, 
-						title: a.title 
+					notificationOptions.actions = actions.map((a) => ({
+						action: a.action,
+						title: a.title
 					}));
 				}
 
@@ -206,7 +206,7 @@ class NotificationService {
 	 */
 	getGoal(projectId: string): WritingGoal | null {
 		const goals = this.getAllGoals();
-		return goals.find(g => g.projectId === projectId) || null;
+		return goals.find((g) => g.projectId === projectId) || null;
 	}
 
 	/**
@@ -226,7 +226,7 @@ class NotificationService {
 	 */
 	updateGoal(goal: WritingGoal): void {
 		const goals = this.getAllGoals();
-		const index = goals.findIndex(g => g.id === goal.id);
+		const index = goals.findIndex((g) => g.id === goal.id);
 
 		if (index >= 0) {
 			goals[index] = goal;
@@ -249,7 +249,7 @@ class NotificationService {
 	 */
 	deleteGoal(goalId: string): void {
 		this.clearReminder(goalId);
-		const goals = this.getAllGoals().filter(g => g.id !== goalId);
+		const goals = this.getAllGoals().filter((g) => g.id !== goalId);
 		localStorage.setItem(NotificationService.GOALS_KEY, JSON.stringify(goals));
 	}
 
@@ -259,7 +259,9 @@ class NotificationService {
 	async notifySyncComplete(status: 'success' | 'error', message?: string): Promise<void> {
 		await this.showNotification({
 			title: status === 'success' ? '同期完了' : '同期エラー',
-			body: message || (status === 'success' ? 'データが正常に同期されました' : '同期中にエラーが発生しました'),
+			body:
+				message ||
+				(status === 'success' ? 'データが正常に同期されました' : '同期中にエラーが発生しました'),
 			type: 'sync',
 			tag: 'sync-status',
 			icon: status === 'success' ? '/icon-192.png' : undefined
@@ -335,7 +337,7 @@ class NotificationService {
 	 */
 	initializeReminders(): void {
 		const goals = this.getAllGoals();
-		goals.forEach(goal => {
+		goals.forEach((goal) => {
 			if (goal.enabled && goal.reminderTime) {
 				this.setWritingReminder(goal);
 			}

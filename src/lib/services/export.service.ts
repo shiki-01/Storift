@@ -16,10 +16,7 @@ export interface ExportOptions {
 /**
  * プロジェクトをエクスポート
  */
-export async function exportProject(
-	projectId: string,
-	options: ExportOptions
-): Promise<void> {
+export async function exportProject(projectId: string, options: ExportOptions): Promise<void> {
 	const project = await db.projects.get(projectId);
 	if (!project) throw new Error('Project not found');
 
@@ -154,7 +151,7 @@ async function exportAsPdf(
 	options: ExportOptions
 ): Promise<void> {
 	const { default: jsPDF } = await import('jspdf');
-	
+
 	const doc = new jsPDF({
 		orientation: 'portrait',
 		unit: 'mm',
@@ -320,11 +317,7 @@ async function exportAsDocx(
 /**
  * EPUBファイルとしてエクスポート
  */
-async function exportAsEpub(
-	project: Project,
-	chapters: Chapter[],
-	scenes: Scene[]
-): Promise<void> {
+async function exportAsEpub(project: Project, chapters: Chapter[], scenes: Scene[]): Promise<void> {
 	const { saveAs } = await import('file-saver');
 	const { default: JSZip } = await import('jszip');
 	const zip = new JSZip();

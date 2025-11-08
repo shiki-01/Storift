@@ -36,7 +36,7 @@
 	const handleClose = () => {
 		isOpen = false;
 		onClose?.();
-	}
+	};
 
 	function handleBackdropClick(e: MouseEvent) {
 		if (e.target === e.currentTarget) {
@@ -57,7 +57,9 @@
 		tabindex="-1"
 	>
 		<div
-			class="bg:white r:12 {sizeClasses[size]} w:90% max-h:90vh overflow:auto box-shadow:0|8|32|rgba(0,0,0,0.2)"
+			class="bg:white r:12 {sizeClasses[
+				size
+			]} w:90% max-h:90vh overflow:auto box-shadow:0|8|32|rgba(0,0,0,0.2)"
 		>
 			<div
 				class="flex justify-content:space-between align-items:center p:24 border-bottom:1|solid|gray-200"

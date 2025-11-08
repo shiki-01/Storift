@@ -13,10 +13,7 @@ export const progressLogsDB = {
 	},
 
 	async getByDate(projectId: string, date: string): Promise<ProgressLog | undefined> {
-		return await db.progressLogs
-			.where(['projectId', 'date'])
-			.equals([projectId, date])
-			.first();
+		return await db.progressLogs.where(['projectId', 'date']).equals([projectId, date]).first();
 	},
 
 	async getById(id: string): Promise<ProgressLog | undefined> {
@@ -52,9 +49,15 @@ export const progressLogsDB = {
 		}
 	},
 
-	async addProgress(projectId: string, date: string, characters: number, timeSpent: number, sceneId?: string): Promise<void> {
+	async addProgress(
+		projectId: string,
+		date: string,
+		characters: number,
+		timeSpent: number,
+		sceneId?: string
+	): Promise<void> {
 		let log = await this.getByDate(projectId, date);
-		
+
 		if (!log) {
 			log = await this.create(projectId, date);
 		}
@@ -103,7 +106,7 @@ export const progressLogsDB = {
 		for (let i = 0; i < 365; i++) {
 			const dateString = checkDate.toISOString().split('T')[0];
 			const hasLog = sortedLogs.some((log) => log.date === dateString && log.charactersWritten > 0);
-			
+
 			if (hasLog) {
 				consecutiveDays++;
 				checkDate.setDate(checkDate.getDate() - 1);

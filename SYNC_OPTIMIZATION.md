@@ -5,15 +5,18 @@
 ### ✅ 1. 現在のプロジェクトのみリアルタイム監視
 
 **変更前:**
+
 - 全プロジェクトの全データを常時監視
 - アプリ起動時に全コレクション読み込み
 
 **変更後:**
+
 - プロジェクト一覧のみグローバルで監視
 - 章・シーン・キャラクターは**プロジェクトを開いた時だけ**監視
 - `where('projectId', '==', currentProjectId)` でフィルタリング
 
 **使用方法:**
+
 ```typescript
 // プロジェクトを開いた時
 startCurrentProjectSync(projectId);
@@ -29,13 +32,16 @@ stopCurrentProjectSync();
 ### ✅ 2. 差分同期の実装
 
 **変更前:**
+
 - 毎回全データを取得
 
 **変更後:**
+
 - `lastSyncTime` を localStorage に保存
 - `where('updatedAt', '>', lastSyncTime)` で変更分のみ取得
 
 **実装箇所:**
+
 - `src/lib/firebase/sync.ts`: `syncAllFromFirestore()` に `lastSyncTime` パラメータ追加
 - localStorage で最終同期時刻を管理
 
@@ -46,13 +52,16 @@ stopCurrentProjectSync();
 ### ✅ 3. 自動保存のデバウンス処理
 
 **変更前:**
+
 - 変更の度に即座に同期
 
 **変更後:**
+
 - 変更から3秒後に同期（連続した変更をまとめる）
 - `debounceAsync()` 関数を実装
 
 **実装箇所:**
+
 - `src/lib/utils/debounce.ts`: デバウンス関数
 - `src/lib/services/sync.service.ts`: `debouncedProcessPendingChanges`
 
@@ -63,13 +72,16 @@ stopCurrentProjectSync();
 ### ✅ 4. Firestoreキャッシュの有効化
 
 **変更前:**
+
 - キャッシュなし（毎回サーバーから取得）
 
 **変更後:**
+
 - `persistentLocalCache` を有効化（既に実装済み）
 - オフライン時もキャッシュからデータ取得可能
 
 **実装箇所:**
+
 - `src/lib/firebase/config.ts`: 既に実装済み
 
 **削減効果:** 再接続時の読み取り100%削減（キャッシュから取得）
@@ -79,13 +91,16 @@ stopCurrentProjectSync();
 ### ✅ 5. 変更検出の最適化
 
 **変更前:**
+
 - 変更の有無に関わらず常にアップロード
 
 **変更後:**
+
 - `updatedAt` と `_version` を比較
 - 変更がない場合はアップロードをスキップ
 
 **実装箇所:**
+
 - `src/lib/services/sync.service.ts`: `hasChanges()` 関数
 
 **削減効果:** 不要な書き込みを削減
@@ -96,17 +111,17 @@ stopCurrentProjectSync();
 
 ### 最適化前（5人共同編集）
 
-| 項目 | 回数/日 | 使用率 |
-|------|---------|--------|
+| 項目     | 回数/日 | 使用率  |
+| -------- | ------- | ------- |
 | 読み取り | 140,750 | 281% ❌ |
-| 書き込み | 4,000 | 20% |
+| 書き込み | 4,000   | 20%     |
 
 ### 最適化後（5人共同編集）
 
-| 項目 | 回数/日 | 使用率 |
-|------|---------|--------|
-| 読み取り | 2,000 | 4% ✅ |
-| 書き込み | 800 | 4% ✅ |
+| 項目     | 回数/日 | 使用率 |
+| -------- | ------- | ------ |
+| 読み取り | 2,000   | 4% ✅  |
+| 書き込み | 800     | 4% ✅  |
 
 **結果: 無料枠内で余裕を持って使用可能！**
 
@@ -125,13 +140,13 @@ import { onMount, onDestroy } from 'svelte';
 let projectId = $page.params.id;
 
 onMount(() => {
-  // プロジェクトの同期を開始
-  startCurrentProjectSync(projectId);
+	// プロジェクトの同期を開始
+	startCurrentProjectSync(projectId);
 });
 
 onDestroy(() => {
-  // プロジェクトの同期を停止
-  stopCurrentProjectSync();
+	// プロジェクトの同期を停止
+	stopCurrentProjectSync();
 });
 ```
 

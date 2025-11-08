@@ -148,7 +148,9 @@ async function importSingleProject(data: ImportedProjectData): Promise<string | 
 		for (const character of data.characters) {
 			const newCharacterId = characterIdMap.get(character.id as string);
 			if (newCharacterId && character.relationships) {
-				const relationships = character.relationships as Array<Record<string, unknown> & { characterId: string }>;
+				const relationships = character.relationships as Array<
+					Record<string, unknown> & { characterId: string }
+				>;
 				const updatedRelationships = relationships.map((rel) => ({
 					...rel,
 					characterId: characterIdMap.get(rel.characterId) || rel.characterId
@@ -166,14 +168,12 @@ async function importSingleProject(data: ImportedProjectData): Promise<string | 
 		for (const plot of data.plots) {
 			const linkedSceneId = plot.linkedSceneId as string | undefined;
 			const linkedChapterId = plot.linkedChapterId as string | undefined;
-			
+
 			await db.plots.add({
 				...plot,
 				id: uuidv4(),
 				projectId: newProjectId,
-				linkedSceneId: linkedSceneId
-					? chapterIdMap.get(linkedSceneId) || linkedSceneId
-					: undefined,
+				linkedSceneId: linkedSceneId ? chapterIdMap.get(linkedSceneId) || linkedSceneId : undefined,
 				linkedChapterId: linkedChapterId
 					? chapterIdMap.get(linkedChapterId) || linkedChapterId
 					: undefined,
@@ -246,8 +246,7 @@ export async function importFromText(
 	});
 
 	// 章の検出パターン(デフォルト)
-	const chapterPattern =
-		options.chapterPattern || /^(?:第[0-9]+章|Chapter [0-9]+|#+ )(.+)$/gm;
+	const chapterPattern = options.chapterPattern || /^(?:第[0-9]+章|Chapter [0-9]+|#+ )(.+)$/gm;
 
 	// 章ごとに分割
 	const chapters: Array<{ title: string; content: string }> = [];

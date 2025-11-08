@@ -31,16 +31,10 @@ export const charactersDB = {
 
 		await db.characters.add(character);
 		await touchProject(input.projectId);
-		
+
 		// 作成履歴を保存
-		await historyDB.create(
-			'character',
-			character.id,
-			character.projectId,
-			character,
-			'create'
-		);
-		
+		await historyDB.create('character', character.id, character.projectId, character, 'create');
+
 		return character;
 	},
 
@@ -49,19 +43,13 @@ export const charactersDB = {
 		await db.characters.update(id, {
 			...changes,
 			updatedAt: Date.now(),
-			_version: ((character?._version || 0) + 1)
+			_version: (character?._version || 0) + 1
 		});
 		if (character) {
 			await touchProject(character.projectId);
-			
+
 			// 更新履歴を保存
-			await historyDB.create(
-				'character',
-				character.id,
-				character.projectId,
-				character,
-				'update'
-			);
+			await historyDB.create('character', character.id, character.projectId, character, 'update');
 		}
 	},
 

@@ -102,13 +102,15 @@ service cloud.firestore {
 ### データパスの変更点
 
 **変更前:**
+
 ```typescript
-doc(db, `users/${user.uid}/projects/${projectId}`)
+doc(db, `users/${user.uid}/projects/${projectId}`);
 ```
 
 **変更後:**
+
 ```typescript
-doc(db, `projects/${projectId}`)
+doc(db, `projects/${projectId}`);
 ```
 
 ### リアルタイム同期の仕組み
@@ -121,6 +123,7 @@ doc(db, `projects/${projectId}`)
 ### オフライン対応
 
 Firestoreの `persistentLocalCache` により、オフライン時も以下が可能:
+
 - ローカルキャッシュからの読み取り
 - 変更の一時保存（オンライン復帰時に自動同期）
 - 競合の自動解決

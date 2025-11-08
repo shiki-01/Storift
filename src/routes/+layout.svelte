@@ -170,9 +170,7 @@
 				{#if isProjectPage}
 					<!-- プロジェクトページ用のナビゲーション -->
 					<div class="mt:16 mb:8 px:16">
-						<div
-							class="font:12 font-weight:600 fg:theme-text-secondary text-transform:uppercase"
-						>
+						<div class="font:12 font-weight:600 fg:theme-text-secondary text-transform:uppercase">
 							プロジェクト
 						</div>
 					</div>
@@ -180,12 +178,12 @@
 						<a
 							href="/project/{projectId}/{item.path}"
 							onclick={() => (editorStore.isOpen = false)}
-							class="flex ai:center gap:12 px:16 py:12 r:8 mb:4 font:14 {isActive(
-								item.path
-							)
+							class="flex ai:center gap:12 px:16 py:12 r:8 mb:4 font:14 {isActive(item.path)
 								? 'fg:theme-primary'
 								: 'fg:theme-text'}"
-							style={isActive(item.path) ? 'background-color: color-mix(in srgb, var(--color-primary) 20%, transparent)' : ''}
+							style={isActive(item.path)
+								? 'background-color: color-mix(in srgb, var(--color-primary) 20%, transparent)'
+								: ''}
 						>
 							<span>{item.label}</span>
 						</a>

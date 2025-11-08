@@ -1,7 +1,8 @@
 import type { SyncStatus } from '$lib/types';
 
 // ブラウザの実際のオンライン状態から初期値を設定
-const initialStatus: SyncStatus = typeof navigator !== 'undefined' && navigator.onLine ? 'synced' : 'offline';
+const initialStatus: SyncStatus =
+	typeof navigator !== 'undefined' && navigator.onLine ? 'synced' : 'offline';
 
 let status = $state<SyncStatus>(initialStatus);
 let lastSyncTime = $state<number | null>(null);

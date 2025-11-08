@@ -9,14 +9,38 @@
 	let { value = $bindable('yu-gothic'), onchange }: Props = $props();
 
 	const fonts: { value: EditorFont; label: string; fontFamily: string }[] = [
-		{ value: 'yu-gothic', label: '游ゴシック体', fontFamily: '"Yu Gothic", "YuGothic", sans-serif' },
-		{ value: 'gen-shin-mincho', label: '源ノ明朝', fontFamily: '"Gen Shin Mincho", "源ノ明朝", serif' },
-		{ value: 'hiragino-mincho', label: 'ヒラギノ明朝', fontFamily: '"Hiragino Mincho ProN", "ヒラギノ明朝 ProN", serif' },
+		{
+			value: 'yu-gothic',
+			label: '游ゴシック体',
+			fontFamily: '"Yu Gothic", "YuGothic", sans-serif'
+		},
+		{
+			value: 'gen-shin-mincho',
+			label: '源ノ明朝',
+			fontFamily: '"Gen Shin Mincho", "源ノ明朝", serif'
+		},
+		{
+			value: 'hiragino-mincho',
+			label: 'ヒラギノ明朝',
+			fontFamily: '"Hiragino Mincho ProN", "ヒラギノ明朝 ProN", serif'
+		},
 		{ value: 'noto-sans', label: 'Noto Sans JP', fontFamily: '"Noto Sans JP", sans-serif' },
 		{ value: 'noto-serif', label: 'Noto Serif JP', fontFamily: '"Noto Serif JP", serif' },
-		{ value: 'hannari-mincho', label: 'はんなり明朝', fontFamily: '"Hannari", "はんなり明朝", serif' },
-		{ value: 'sawarabi-mincho', label: 'さわらび明朝', fontFamily: '"Sawarabi Mincho", "さわらび明朝", serif' },
-		{ value: 'sawarabi-gothic', label: 'さわらびゴシック', fontFamily: '"Sawarabi Gothic", "さわらびゴシック", sans-serif' }
+		{
+			value: 'hannari-mincho',
+			label: 'はんなり明朝',
+			fontFamily: '"Hannari", "はんなり明朝", serif'
+		},
+		{
+			value: 'sawarabi-mincho',
+			label: 'さわらび明朝',
+			fontFamily: '"Sawarabi Mincho", "さわらび明朝", serif'
+		},
+		{
+			value: 'sawarabi-gothic',
+			label: 'さわらびゴシック',
+			fontFamily: '"Sawarabi Gothic", "さわらびゴシック", sans-serif'
+		}
 	];
 
 	function handleChange(e: Event) {

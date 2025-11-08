@@ -14,14 +14,14 @@ export async function registerServiceWorker(): Promise<void> {
 	// 開発環境では既存のService Workerを登録解除
 	if (import.meta.env.DEV) {
 		console.log('⏭️ Service Worker skipped in development mode');
-		
+
 		// 既存のService Workerを登録解除
 		const registrations = await navigator.serviceWorker.getRegistrations();
 		for (const registration of registrations) {
 			await registration.unregister();
 			console.log('🗑️ Unregistered existing Service Worker');
 		}
-		
+
 		return;
 	}
 
@@ -32,7 +32,7 @@ export async function registerServiceWorker(): Promise<void> {
 		// Service Workerの更新を検知
 		wb.addEventListener('waiting', () => {
 			console.log('🔄 New Service Worker available');
-			
+
 			// 新しいService Workerがあることをユーザーに通知
 			if (confirm('新しいバージョンが利用可能です。更新しますか?')) {
 				wb?.messageSkipWaiting();
@@ -105,7 +105,7 @@ export async function unregisterServiceWorker(): Promise<void> {
 	try {
 		const registration = await navigator.serviceWorker.ready;
 		const success = await registration.unregister();
-		
+
 		if (success) {
 			console.log('✅ Service Worker unregistered');
 		}
@@ -163,9 +163,8 @@ export function getServiceWorkerStatus(): {
 	backgroundSyncSupported: boolean;
 } {
 	const supported = 'serviceWorker' in navigator;
-	const backgroundSyncSupported = 
-		'serviceWorker' in navigator && 
-		'sync' in ServiceWorkerRegistration.prototype;
+	const backgroundSyncSupported =
+		'serviceWorker' in navigator && 'sync' in ServiceWorkerRegistration.prototype;
 
 	return {
 		supported,

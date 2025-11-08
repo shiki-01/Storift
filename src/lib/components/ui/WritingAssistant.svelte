@@ -1,5 +1,10 @@
 <script lang="ts">
-	import { proofread, getProofreadingSummary, applyProofreadingSuggestion, type ProofreadingIssue } from '$lib/utils/proofreading';
+	import {
+		proofread,
+		getProofreadingSummary,
+		applyProofreadingSuggestion,
+		type ProofreadingIssue
+	} from '$lib/utils/proofreading';
 	import { parseRuby, rubyToHtml, removeRuby, normalizeRuby } from '$lib/utils/ruby';
 	import Modal from './Modal.svelte';
 	import Button from './Button.svelte';
@@ -20,7 +25,7 @@
 	// 校閲を実行
 	const runProofreading = () => {
 		issues = proofread(text);
-	}
+	};
 
 	// 修正を適用
 	function applySuggestion(issue: ProofreadingIssue) {
@@ -33,42 +38,46 @@
 
 	// すべての修正を適用
 	const applyAllSuggestions = () => {
-		const suggestedIssues = issues.filter(i => i.suggestion);
+		const suggestedIssues = issues.filter((i) => i.suggestion);
 		let newText = text;
-		
+
 		// 後ろから適用
 		const sorted = [...suggestedIssues].sort((a, b) => b.position.start - a.position.start);
 		for (const issue of sorted) {
 			newText = applyProofreadingSuggestion(newText, issue);
 		}
-		
+
 		text = newText;
 		issues = proofread(newText);
-	}
+	};
 
 	// ルビプレビュー
 	const previewRuby = () => {
 		rubyPreview = rubyToHtml(text);
 		showRubyPreview = true;
-	}
+	};
 
 	// ルビを削除
 	const removeRubyFromText = () => {
 		text = removeRuby(text);
-	}
+	};
 
 	// ルビを統一
 	const normalizeRubyFormat = () => {
 		text = normalizeRuby(text);
-	}
+	};
 
 	// 重要度別の色
 	function getSeverityColor(severity: string): string {
 		switch (severity) {
-			case 'error': return 'red';
-			case 'warning': return 'orange';
-			case 'info': return 'blue';
-			default: return 'gray';
+			case 'error':
+				return 'red';
+			case 'warning':
+				return 'orange';
+			case 'info':
+				return 'blue';
+			default:
+				return 'gray';
 		}
 	}
 
@@ -80,8 +89,11 @@
 	<!-- タブスイッチャー -->
 	<div class="flex border-bottom:1|solid|gray-200">
 		<button
-			class="flex flex:grow gap:.5em py:12 px:24 font:14 font:semibold cursor:pointer border:none transition:all|0.2s {activeTab === 'proofreading' ? 'bg:blue-50 fg:blue-600 border-bottom:2|solid|blue-600' : 'bg:white fg:gray-600 hover:bg:gray-50'}"
-			onclick={() => activeTab = 'proofreading'}
+			class="flex flex:grow gap:.5em py:12 px:24 font:14 font:semibold cursor:pointer border:none transition:all|0.2s {activeTab ===
+			'proofreading'
+				? 'bg:blue-50 fg:blue-600 border-bottom:2|solid|blue-600'
+				: 'bg:white fg:gray-600 hover:bg:gray-50'}"
+			onclick={() => (activeTab = 'proofreading')}
 		>
 			<Icon name="pencil-bolt" class="w:20px" /> 校閲
 			{#if issues.length > 0}
@@ -91,8 +103,11 @@
 			{/if}
 		</button>
 		<button
-			class="flex flex:grow gap:.5em py:12 px:24 font:14 font:semibold cursor:pointer border:none transition:all|0.2s {activeTab === 'ruby' ? 'bg:blue-50 fg:blue-600 border-bottom:2|solid|blue-600' : 'bg:white fg:gray-600 hover:bg:gray-50'}"
-			onclick={() => activeTab = 'ruby'}
+			class="flex flex:grow gap:.5em py:12 px:24 font:14 font:semibold cursor:pointer border:none transition:all|0.2s {activeTab ===
+			'ruby'
+				? 'bg:blue-50 fg:blue-600 border-bottom:2|solid|blue-600'
+				: 'bg:white fg:gray-600 hover:bg:gray-50'}"
+			onclick={() => (activeTab = 'ruby')}
 		>
 			<Icon name="abc" class="w:20px" /> ルビ
 		</button>
@@ -105,11 +120,21 @@
 				<div class="flex align-items:center justify-content:space-between mb:16">
 					<h3 class="font:16 font:bold fg:gray-900">文章校閲</h3>
 					<div class="flex gap:8">
-						<Button class="flex flex:row gap:.5em" size="sm" variant="secondary" onclick={runProofreading}>
+						<Button
+							class="flex flex:row gap:.5em"
+							size="sm"
+							variant="secondary"
+							onclick={runProofreading}
+						>
 							<Icon name="search" /> チェック実行
-                        </Button>
+						</Button>
 						{#if issues.length > 0}
-							<Button class="flex flex:row gap:.5em" size="sm" variant="primary" onclick={applyAllSuggestions}>
+							<Button
+								class="flex flex:row gap:.5em"
+								size="sm"
+								variant="primary"
+								onclick={applyAllSuggestions}
+							>
 								<Icon name="sparkles" /> すべて修正
 							</Button>
 						{/if}
@@ -148,7 +173,7 @@
 							<button
 								type="button"
 								class="w:full border:1|solid|gray-200 r:8 p:12 hover:bg:gray-50 transition:all|0.2s cursor:pointer text-align:left"
-								onclick={() => selectedIssue = issue}
+								onclick={() => (selectedIssue = issue)}
 							>
 								<div class="flex align-items:start gap:12">
 									<div class="w:4 h:4 r:full bg:{getSeverityColor(issue.severity)}-500 mt:4"></div>
@@ -190,13 +215,28 @@
 					</div>
 
 					<div class="flex gap:8 flex-wrap">
-						<Button class="flex flex:row gap:.5em" size="sm" variant="secondary" onclick={previewRuby}>
+						<Button
+							class="flex flex:row gap:.5em"
+							size="sm"
+							variant="secondary"
+							onclick={previewRuby}
+						>
 							<Icon name="eye" /> プレビュー
 						</Button>
-						<Button class="flex flex:row gap:.5em" size="sm" variant="secondary" onclick={normalizeRubyFormat}>
+						<Button
+							class="flex flex:row gap:.5em"
+							size="sm"
+							variant="secondary"
+							onclick={normalizeRubyFormat}
+						>
 							<Icon name="tool" /> 表記統一
 						</Button>
-						<Button class="flex flex:row gap:.5em" size="sm" variant="secondary" onclick={removeRubyFromText}>
+						<Button
+							class="flex flex:row gap:.5em"
+							size="sm"
+							variant="secondary"
+							onclick={removeRubyFromText}
+						>
 							<Icon name="trash" /> ルビ削除
 						</Button>
 					</div>
@@ -208,8 +248,11 @@
 
 <!-- ルビプレビューモーダル -->
 {#if showRubyPreview}
-	<Modal title="ルビプレビュー" onClose={() => showRubyPreview = false}>
-		<div class="ruby-preview p:24" style="writing-mode: vertical-rl; text-orientation: upright; line-height: 2;">
+	<Modal title="ルビプレビュー" onClose={() => (showRubyPreview = false)}>
+		<div
+			class="ruby-preview p:24"
+			style="writing-mode: vertical-rl; text-orientation: upright; line-height: 2;"
+		>
 			{@html rubyPreview}
 		</div>
 	</Modal>
@@ -236,4 +279,3 @@
 		font-size: 0.6em;
 	}
 </style>
-

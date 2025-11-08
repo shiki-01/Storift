@@ -15,7 +15,12 @@
 	import VersionManager from '$lib/components/ui/VersionManager.svelte';
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
 	import FontSelector from '$lib/components/ui/FontSelector.svelte';
-	import { createEditorContextMenu, createChapterContextMenu, createSceneContextMenu, type ContextMenuItem } from '$lib/utils/contextMenu';
+	import {
+		createEditorContextMenu,
+		createChapterContextMenu,
+		createSceneContextMenu,
+		type ContextMenuItem
+	} from '$lib/utils/contextMenu';
 	import type { Chapter, Scene, EditorFont } from '$lib/types';
 	import Icon from '$lib/components/ui/Icon.svelte';
 
@@ -27,7 +32,7 @@
 	let renameValue = $state('');
 	let selectedChapterId = $state<string | null>(null);
 	let autoSave: AutoSave | null = null;
-	
+
 	// Phase 2: UI状態管理
 	let showWritingAssistant = $state(false);
 	let showPrintPreview = $state(false);
@@ -46,7 +51,7 @@
 
 	let editorTextarea = $state<HTMLTextAreaElement | null>(null);
 	let editorDiv = $state<HTMLDivElement | null>(null);
-	
+
 	// エディタツールバーの書式設定（ローカル状態）
 	let localFormatting = $state<{
 		fontSize: number;
@@ -131,7 +136,7 @@
 		};
 	});
 
-	const handleCreateChapter = async() => {
+	const handleCreateChapter = async () => {
 		if (!newChapterTitle.trim() || !currentProjectStore.project) return;
 
 		try {
@@ -149,9 +154,9 @@
 		} catch (error) {
 			console.error('Failed to create chapter:', error);
 		}
-	}
+	};
 
-	const handleCreateScene = async() => {
+	const handleCreateScene = async () => {
 		if (!newSceneTitle.trim() || !selectedChapterId || !currentProjectStore.project) return;
 
 		try {
@@ -171,9 +176,9 @@
 		} catch (error) {
 			console.error('Failed to create scene:', error);
 		}
-	}
+	};
 
-	const handleSave = async() => {
+	const handleSave = async () => {
 		if (!editorStore.currentScene || !editorStore.isDirty) return;
 
 		editorStore.isSaving = true;
@@ -200,7 +205,7 @@
 		} finally {
 			editorStore.isSaving = false;
 		}
-	}
+	};
 
 	function handleSceneSelect(scene: (typeof currentProjectStore.scenes)[0]) {
 		editorStore.currentScene = scene;
@@ -214,15 +219,16 @@
 	// コンテキストメニュー - エディター
 	function handleEditorContextMenu(e: MouseEvent) {
 		e.preventDefault();
-		
-		const hasSelection = editorTextarea ? 
-			editorTextarea.selectionStart !== editorTextarea.selectionEnd : false;
+
+		const hasSelection = editorTextarea
+			? editorTextarea.selectionStart !== editorTextarea.selectionEnd
+			: false;
 
 		const items = createEditorContextMenu({
 			scene: editorStore.currentScene,
-			chapter: currentProjectStore.chapters.find(c => 
-				c.id === editorStore.currentScene?.chapterId
-			) || null,
+			chapter:
+				currentProjectStore.chapters.find((c) => c.id === editorStore.currentScene?.chapterId) ||
+				null,
 			hasSelection,
 			onSave: handleSave,
 			onCopy: async () => {
@@ -243,8 +249,8 @@
 					await navigator.clipboard.writeText(text);
 					const start = editorTextarea.selectionStart;
 					const end = editorTextarea.selectionEnd;
-					editorTextarea.value = editorTextarea.value.substring(0, start) + 
-						editorTextarea.value.substring(end);
+					editorTextarea.value =
+						editorTextarea.value.substring(0, start) + editorTextarea.value.substring(end);
 					editorTextarea.setSelectionRange(start, start);
 					editorStore.isDirty = true;
 				}
@@ -254,8 +260,8 @@
 					const text = await navigator.clipboard.readText();
 					const start = editorTextarea.selectionStart;
 					const end = editorTextarea.selectionEnd;
-					editorTextarea.value = editorTextarea.value.substring(0, start) + 
-						text + editorTextarea.value.substring(end);
+					editorTextarea.value =
+						editorTextarea.value.substring(0, start) + text + editorTextarea.value.substring(end);
 					const newPos = start + text.length;
 					editorTextarea.setSelectionRange(newPos, newPos);
 					editorStore.isDirty = true;
@@ -265,9 +271,9 @@
 			onRename: () => handleRenameScene(editorStore.currentScene!),
 			onDelete: () => handleDeleteScene(editorStore.currentScene!),
 			onDuplicate: () => handleDuplicateScene(editorStore.currentScene!),
-			onExport: () => showPrintPreview = true,
-			onPrint: () => showPrintPreview = true,
-			onVersionHistory: () => showVersionManager = true
+			onExport: () => (showPrintPreview = true),
+			onPrint: () => (showPrintPreview = true),
+			onVersionHistory: () => (showVersionManager = true)
 		});
 
 		contextMenu = {
@@ -284,7 +290,7 @@
 		e.preventDefault();
 		e.stopPropagation();
 
-		const chapterIndex = currentProjectStore.chapters.findIndex(c => c.id === chapter.id);
+		const chapterIndex = currentProjectStore.chapters.findIndex((c) => c.id === chapter.id);
 		const items = createChapterContextMenu({
 			chapter,
 			onRename: () => handleRenameChapter(chapter),
@@ -292,7 +298,10 @@
 			onDuplicate: () => handleDuplicateChapter(chapter),
 			onAddScene: () => openSceneModal(chapter.id),
 			onMoveUp: chapterIndex > 0 ? () => handleMoveChapter(chapter, 'up') : undefined,
-			onMoveDown: chapterIndex < currentProjectStore.chapters.length - 1 ? () => handleMoveChapter(chapter, 'down') : undefined,
+			onMoveDown:
+				chapterIndex < currentProjectStore.chapters.length - 1
+					? () => handleMoveChapter(chapter, 'down')
+					: undefined,
 			canMoveUp: chapterIndex > 0,
 			canMoveDown: chapterIndex < currentProjectStore.chapters.length - 1
 		});
@@ -313,7 +322,7 @@
 		e.stopPropagation();
 
 		const chapterScenes = currentProjectStore.scenesByChapter.get(scene.chapterId) || [];
-		const sceneIndex = chapterScenes.findIndex(s => s.id === scene.id);
+		const sceneIndex = chapterScenes.findIndex((s) => s.id === scene.id);
 
 		const items = createSceneContextMenu({
 			scene,
@@ -322,7 +331,8 @@
 			onDelete: () => handleDeleteScene(scene),
 			onDuplicate: () => handleDuplicateScene(scene),
 			onMoveUp: sceneIndex > 0 ? () => handleMoveScene(scene, 'up') : undefined,
-			onMoveDown: sceneIndex < chapterScenes.length - 1 ? () => handleMoveScene(scene, 'down') : undefined,
+			onMoveDown:
+				sceneIndex < chapterScenes.length - 1 ? () => handleMoveScene(scene, 'down') : undefined,
 			canMoveUp: sceneIndex > 0,
 			canMoveDown: sceneIndex < chapterScenes.length - 1
 		});
@@ -352,7 +362,7 @@
 		contextMenu.targetId = scene.id;
 	}
 
-	const applyRename = async() => {
+	const applyRename = async () => {
 		if (!renameValue.trim() || !contextMenu.targetId) return;
 
 		try {
@@ -360,7 +370,9 @@
 				await chaptersDB.update(contextMenu.targetId, { title: renameValue });
 				const updatedChapter = await chaptersDB.getById(contextMenu.targetId);
 				if (updatedChapter) {
-					const index = currentProjectStore.chapters.findIndex(c => c.id === contextMenu.targetId);
+					const index = currentProjectStore.chapters.findIndex(
+						(c) => c.id === contextMenu.targetId
+					);
 					if (index !== -1) {
 						currentProjectStore.chapters[index] = updatedChapter;
 					}
@@ -370,7 +382,7 @@
 				await scenesDB.update(contextMenu.targetId, { title: renameValue });
 				const updatedScene = await scenesDB.getById(contextMenu.targetId);
 				if (updatedScene) {
-					const index = currentProjectStore.scenes.findIndex(s => s.id === contextMenu.targetId);
+					const index = currentProjectStore.scenes.findIndex((s) => s.id === contextMenu.targetId);
 					if (index !== -1) {
 						currentProjectStore.scenes[index] = updatedScene;
 					}
@@ -386,7 +398,7 @@
 			console.error('Failed to rename:', error);
 			alert('名前の変更に失敗しました');
 		}
-	}
+	};
 
 	// 削除処理
 	async function handleDeleteChapter(chapter: Chapter) {
@@ -403,9 +415,13 @@
 			await chaptersDB.delete(chapter.id);
 			await queueChange('chapters', chapter.id, 'delete');
 
-			currentProjectStore.chapters = currentProjectStore.chapters.filter(c => c.id !== chapter.id);
-			currentProjectStore.scenes = currentProjectStore.scenes.filter(s => s.chapterId !== chapter.id);
-			
+			currentProjectStore.chapters = currentProjectStore.chapters.filter(
+				(c) => c.id !== chapter.id
+			);
+			currentProjectStore.scenes = currentProjectStore.scenes.filter(
+				(s) => s.chapterId !== chapter.id
+			);
+
 			if (editorStore.currentScene?.chapterId === chapter.id) {
 				editorStore.currentScene = null;
 			}
@@ -421,9 +437,9 @@
 		try {
 			await scenesDB.delete(scene.id);
 			await queueChange('scenes', scene.id, 'delete');
-			
-			currentProjectStore.scenes = currentProjectStore.scenes.filter(s => s.id !== scene.id);
-			
+
+			currentProjectStore.scenes = currentProjectStore.scenes.filter((s) => s.id !== scene.id);
+
 			if (editorStore.currentScene?.id === scene.id) {
 				editorStore.currentScene = null;
 			}
@@ -443,7 +459,7 @@
 				title: `${chapter.title} (コピー)`,
 				synopsis: chapter.synopsis
 			});
-			
+
 			currentProjectStore.chapters = [...currentProjectStore.chapters, newChapter];
 			await queueChange('chapters', newChapter.id, 'create');
 
@@ -475,7 +491,7 @@
 				title: `${scene.title} (コピー)`,
 				content: scene.content
 			});
-			
+
 			currentProjectStore.scenes = [...currentProjectStore.scenes, newScene];
 			await queueChange('scenes', newScene.id, 'create');
 		} catch (error) {
@@ -487,7 +503,7 @@
 	// 移動処理
 	async function handleMoveChapter(chapter: Chapter, direction: 'up' | 'down') {
 		const chapters = [...currentProjectStore.chapters];
-		const index = chapters.findIndex(c => c.id === chapter.id);
+		const index = chapters.findIndex((c) => c.id === chapter.id);
 		if (index === -1) return;
 
 		const newIndex = direction === 'up' ? index - 1 : index + 1;
@@ -495,7 +511,7 @@
 
 		// 順序を入れ替え
 		[chapters[index], chapters[newIndex]] = [chapters[newIndex], chapters[index]];
-		
+
 		// order を更新
 		for (let i = 0; i < chapters.length; i++) {
 			await chaptersDB.update(chapters[i].id, { order: i });
@@ -507,15 +523,18 @@
 
 	async function handleMoveScene(scene: Scene, direction: 'up' | 'down') {
 		const chapterScenes = [...(currentProjectStore.scenesByChapter.get(scene.chapterId) || [])];
-		const index = chapterScenes.findIndex(s => s.id === scene.id);
+		const index = chapterScenes.findIndex((s) => s.id === scene.id);
 		if (index === -1) return;
 
 		const newIndex = direction === 'up' ? index - 1 : index + 1;
 		if (newIndex < 0 || newIndex >= chapterScenes.length) return;
 
 		// 順序を入れ替え
-		[chapterScenes[index], chapterScenes[newIndex]] = [chapterScenes[newIndex], chapterScenes[index]];
-		
+		[chapterScenes[index], chapterScenes[newIndex]] = [
+			chapterScenes[newIndex],
+			chapterScenes[index]
+		];
+
 		// order を更新
 		for (let i = 0; i < chapterScenes.length; i++) {
 			await scenesDB.update(chapterScenes[i].id, { order: i });
@@ -523,8 +542,8 @@
 		}
 
 		// ストアを更新
-		const allScenes = currentProjectStore.scenes.map(s => {
-			const updated = chapterScenes.find(cs => cs.id === s.id);
+		const allScenes = currentProjectStore.scenes.map((s) => {
+			const updated = chapterScenes.find((cs) => cs.id === s.id);
 			return updated || s;
 		});
 		currentProjectStore.scenes = allScenes;
@@ -596,15 +615,15 @@
 	// contentEditable div用のコンテキストメニューハンドラ
 	function handleContextMenu(e: MouseEvent) {
 		e.preventDefault();
-		
+
 		const selection = window.getSelection();
 		const hasSelection = selection ? selection.toString().length > 0 : false;
 
 		const items = createEditorContextMenu({
 			scene: editorStore.currentScene,
-			chapter: currentProjectStore.chapters.find(c => 
-				c.id === editorStore.currentScene?.chapterId
-			) || null,
+			chapter:
+				currentProjectStore.chapters.find((c) => c.id === editorStore.currentScene?.chapterId) ||
+				null,
 			hasSelection,
 			onSave: handleSave,
 			onCopy: async () => {
@@ -648,9 +667,9 @@
 			onRename: () => handleRenameScene(editorStore.currentScene!),
 			onDelete: () => handleDeleteScene(editorStore.currentScene!),
 			onDuplicate: () => handleDuplicateScene(editorStore.currentScene!),
-			onExport: () => showPrintPreview = true,
-			onPrint: () => showPrintPreview = true,
-			onVersionHistory: () => showVersionManager = true
+			onExport: () => (showPrintPreview = true),
+			onPrint: () => (showPrintPreview = true),
+			onVersionHistory: () => (showVersionManager = true)
 		});
 
 		contextMenu = {
@@ -668,7 +687,7 @@
 			// カーソル位置を保存
 			const selection = window.getSelection();
 			let offset = 0;
-			
+
 			// 選択範囲が存在する場合のみカーソル位置を取得
 			if (selection && selection.rangeCount > 0) {
 				try {
@@ -678,15 +697,15 @@
 					// getRangeAt失敗時はoffset = 0のまま
 				}
 			}
-			
+
 			editorDiv.innerText = editorStore.content;
-			
+
 			// カーソル位置を復元（可能な限り）
 			try {
 				if (editorDiv.firstChild && selection) {
 					const newRange = document.createRange();
 					const textNode = editorDiv.firstChild;
-					const safeOffset = Math.min(offset, (textNode.textContent?.length ?? 0));
+					const safeOffset = Math.min(offset, textNode.textContent?.length ?? 0);
 					newRange.setStart(textNode, safeOffset);
 					newRange.collapse(true);
 					selection.removeAllRanges();
@@ -711,7 +730,7 @@
 			{#each currentProjectStore.chapters as chapter (chapter.id)}
 				<div class="mb:16">
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div 
+					<div
 						class="flex justify-content:space-between align-items:center mb:8"
 						oncontextmenu={(e) => handleChapterContextMenu(e, chapter)}
 					>
@@ -767,7 +786,9 @@
 				<!-- タイトルと保存状態 -->
 				<div class="flex justify-content:space-between align-items:center">
 					<div class="flex align-items:center gap:16">
-						<h3 class="font:16 font-weight:500 m:0 fg:theme-text">{editorStore.currentScene.title}</h3>
+						<h3 class="font:16 font-weight:500 m:0 fg:theme-text">
+							{editorStore.currentScene.title}
+						</h3>
 						<span class="font:13 fg:theme-text-secondary">{editorStore.characterCount}文字</span>
 					</div>
 					<div class="flex align-items:center gap:8">
@@ -783,21 +804,21 @@
 						<!-- Phase 2: 執筆支援ツール -->
 						<button
 							class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
-							onclick={() => showWritingAssistant = true}
+							onclick={() => (showWritingAssistant = true)}
 							title="執筆支援"
 						>
 							<Icon name="pencil-bolt" class="w:24px" />
 						</button>
 						<button
 							class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
-							onclick={() => showPrintPreview = true}
+							onclick={() => (showPrintPreview = true)}
 							title="印刷プレビュー"
 						>
 							<Icon name="printer" class="w:24px" />
 						</button>
 						<button
 							class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
-							onclick={() => showVersionManager = true}
+							onclick={() => (showVersionManager = true)}
 							title="バージョン履歴"
 						>
 							<Icon name="history" class="w:24px" />
@@ -814,9 +835,7 @@
 
 			<!-- エディタ -->
 			<div class="flex-grow:1 overflow-y:auto p:32 bg:editor-background">
-				<div
-					class="max-w:800 mx:auto bg:editor-background p:48 r:8 min-h:full h:fit"
-				>
+				<div class="max-w:800 mx:auto bg:editor-background p:48 r:8 min-h:full h:fit">
 					<!-- contentEditable div -->
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div
@@ -891,9 +910,9 @@
 
 <!-- Phase 2: 執筆支援モーダル -->
 {#if showWritingAssistant && editorStore.currentScene}
-	<Modal 
+	<Modal
 		isOpen={showWritingAssistant}
-		onClose={() => showWritingAssistant = false}
+		onClose={() => (showWritingAssistant = false)}
 		title="執筆支援"
 		size="large"
 	>
@@ -904,17 +923,17 @@
 <!-- Phase 2: 印刷プレビュー -->
 {#if showPrintPreview && currentProjectStore.project}
 	<PrintPreview
-		chapters={currentProjectStore.chapters.map(chapter => ({
+		chapters={currentProjectStore.chapters.map((chapter) => ({
 			title: chapter.title,
 			scenes: currentProjectStore.scenes
-				.filter(scene => scene.chapterId === chapter.id)
-				.map(scene => ({
+				.filter((scene) => scene.chapterId === chapter.id)
+				.map((scene) => ({
 					title: scene.title,
 					content: scene.content
 				}))
 		}))}
 		isOpen={showPrintPreview}
-		onClose={() => showPrintPreview = false}
+		onClose={() => (showPrintPreview = false)}
 	/>
 {/if}
 
@@ -922,7 +941,7 @@
 {#if showVersionManager && editorStore.currentScene && currentProjectStore.project}
 	<Modal
 		isOpen={showVersionManager}
-		onClose={() => showVersionManager = false}
+		onClose={() => (showVersionManager = false)}
 		title="バージョン履歴"
 		size="large"
 	>
@@ -1018,7 +1037,7 @@
 
 		<!-- ボタン -->
 		<div class="flex justify-content:flex-end gap:12">
-			<Button type="button" variant="secondary" onclick={() => showFormattingModal = false}>
+			<Button type="button" variant="secondary" onclick={() => (showFormattingModal = false)}>
 				キャンセル
 			</Button>
 			<Button type="button" onclick={updateFormatting}>保存</Button>
@@ -1053,7 +1072,7 @@
 	x={contextMenu.x}
 	y={contextMenu.y}
 	items={contextMenu.items}
-	onClose={() => contextMenu.visible = false}
+	onClose={() => (contextMenu.visible = false)}
 />
 
 <style>

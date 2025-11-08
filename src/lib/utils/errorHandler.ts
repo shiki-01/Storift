@@ -21,12 +21,12 @@ function saveErrorLog(error: ErrorLog): void {
 	try {
 		const logs = getErrorLogs();
 		logs.unshift(error);
-		
+
 		// 最大件数を超えたら古いものを削除
 		if (logs.length > MAX_ERROR_LOGS) {
 			logs.splice(MAX_ERROR_LOGS);
 		}
-		
+
 		localStorage.setItem(ERROR_LOGS_KEY, JSON.stringify(logs));
 	} catch (e) {
 		console.error('Failed to save error log:', e);
@@ -63,7 +63,7 @@ export function initializeErrorHandler(): void {
 	// 未処理のエラーをキャッチ
 	window.addEventListener('error', (event) => {
 		console.error('Uncaught error:', event.error);
-		
+
 		saveErrorLog({
 			timestamp: Date.now(),
 			type: 'error',
@@ -72,7 +72,7 @@ export function initializeErrorHandler(): void {
 			url: window.location.href,
 			userAgent: navigator.userAgent
 		});
-		
+
 		// エラーをユーザーに通知(オプション)
 		if (import.meta.env.DEV) {
 			alert(`エラーが発生しました: ${event.error?.message || event.message}`);
@@ -82,7 +82,7 @@ export function initializeErrorHandler(): void {
 	// 未処理のPromise拒否をキャッチ
 	window.addEventListener('unhandledrejection', (event) => {
 		console.error('Unhandled rejection:', event.reason);
-		
+
 		saveErrorLog({
 			timestamp: Date.now(),
 			type: 'unhandledrejection',
@@ -91,7 +91,7 @@ export function initializeErrorHandler(): void {
 			url: window.location.href,
 			userAgent: navigator.userAgent
 		});
-		
+
 		// エラーをユーザーに通知(オプション)
 		if (import.meta.env.DEV) {
 			alert(`Promise拒否: ${event.reason?.message || String(event.reason)}`);
@@ -107,7 +107,7 @@ export function initializeErrorHandler(): void {
 export function logError(error: Error | string, type: string = 'manual'): void {
 	const errorMessage = typeof error === 'string' ? error : error.message;
 	const errorStack = typeof error === 'string' ? undefined : error.stack;
-	
+
 	saveErrorLog({
 		timestamp: Date.now(),
 		type,

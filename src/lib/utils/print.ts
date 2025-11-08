@@ -78,13 +78,17 @@ export function generatePrintCSS(options: PrintOptions): string {
 			}
 
 			.print-content {
-				${isVertical ? `
+				${
+					isVertical
+						? `
 					writing-mode: vertical-rl;
 					-webkit-writing-mode: vertical-rl;
 					-ms-writing-mode: tb-rl;
-				` : `
+				`
+						: `
 					writing-mode: horizontal-tb;
-				`}
+				`
+				}
 			}
 
 			.chapter-title {
@@ -95,15 +99,19 @@ export function generatePrintCSS(options: PrintOptions): string {
 			}
 
 			.scene-break {
-				${isVertical ? `
+				${
+					isVertical
+						? `
 					width: 1px;
 					height: 3em;
 					margin: 2em auto;
-				` : `
+				`
+						: `
 					height: 1px;
 					width: 3em;
 					margin: 2em auto;
-				`}
+				`
+				}
 				background: #000;
 			}
 
@@ -128,13 +136,17 @@ export function generatePrintCSS(options: PrintOptions): string {
 				margin-top: ${options.margin.top * 2}mm;
 			}
 
-			${options.showPageNumber ? `
+			${
+				options.showPageNumber
+					? `
 				@page {
 					@bottom-center {
 						content: counter(page);
 					}
 				}
-			` : ''}
+			`
+					: ''
+			}
 		}
 	`;
 }
@@ -198,11 +210,15 @@ export function openPrintPreview(
 				}
 
 				.print-content {
-					${options.writingMode === 'vertical' ? `
+					${
+						options.writingMode === 'vertical'
+							? `
 						writing-mode: vertical-rl;
 						-webkit-writing-mode: vertical-rl;
 						height: calc(${paperSizes[options.paperSize].height}mm - 40mm);
-					` : ''}
+					`
+							: ''
+					}
 				}
 
 				@media print {
@@ -253,7 +269,7 @@ export function formatForPrint(
 		// シーン
 		for (let j = 0; j < chapter.scenes.length; j++) {
 			const scene = chapter.scenes[j];
-			
+
 			// シーン内容
 			html += `<div class="scene-content">${scene.content.replace(/\n/g, '<br>')}</div>`;
 

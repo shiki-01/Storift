@@ -48,11 +48,11 @@ export function onNetworkStatusChange(listener: (status: NetworkStatus) => void)
 
 const handleOnline = () => {
 	updateStatus('online');
-}
+};
 
 const handleOffline = () => {
 	updateStatus('offline');
-}
+};
 
 function updateStatus(status: NetworkStatus) {
 	if (currentStatus !== status) {
@@ -63,12 +63,12 @@ function updateStatus(status: NetworkStatus) {
 
 const notifyListeners = () => {
 	listeners.forEach((listener) => listener(currentStatus));
-}
+};
 
 /**
  * 接続速度をチェック（簡易版）
  */
-const checkConnection = async() => {
+const checkConnection = async () => {
 	if (!navigator.onLine) {
 		updateStatus('offline');
 		return;
@@ -88,4 +88,4 @@ const checkConnection = async() => {
 	} catch {
 		updateStatus('offline');
 	}
-}
+};

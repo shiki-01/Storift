@@ -9,12 +9,25 @@ import {
 	type EntityType,
 	type SyncableEntity
 } from '$lib/firebase/sync';
-import { autoResolveConflict, detectConflict, prepareConflictData, type ConflictData } from '$lib/firebase/conflict';
+import {
+	autoResolveConflict,
+	detectConflict,
+	prepareConflictData,
+	type ConflictData
+} from '$lib/firebase/conflict';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 import { startNetworkMonitoring, onNetworkStatusChange } from '$lib/utils/offline';
 import { debounceAsync } from '$lib/utils/debounce';
-import type { Project, Chapter, Scene, Character, Plot, Worldbuilding, ConflictResolutionPolicy } from '$lib/types';
+import type {
+	Project,
+	Chapter,
+	Scene,
+	Character,
+	Plot,
+	Worldbuilding,
+	ConflictResolutionPolicy
+} from '$lib/types';
 import type { Unsubscribe } from 'firebase/firestore';
 
 interface PendingChange {
@@ -51,22 +64,25 @@ async function resolveConflict(
 	policy: ConflictResolutionPolicy
 ): Promise<boolean> {
 	console.log(`⚠️ Conflict detected for ${type}: ${existing.id} (policy: ${policy})`);
-	
+
 	switch (policy) {
 		case 'local': {
 			console.log(`📍 Keeping local version (${type}/${existing.id})`);
 			return false; // ローカルを保持（更新しない）
 		}
-			
+
 		case 'remote': {
 			console.log(`☁️ Adopting remote version (${type}/${existing.id})`);
 			return true; // リモートを採用（更新する）
 		}
-			
+
 		case 'manual': {
 			console.log(`👤 Manual resolution required for ${type}/${existing.id}`);
 			// 競合データを保存して後で解決
-			const conflictData = prepareConflictData(existing as unknown as Record<string, unknown>, remote as unknown as Record<string, unknown>);
+			const conflictData = prepareConflictData(
+				existing as unknown as Record<string, unknown>,
+				remote as unknown as Record<string, unknown>
+			);
 			pendingConflicts.push({
 				type,
 				id: existing.id,
@@ -77,7 +93,7 @@ async function resolveConflict(
 			syncStore.status = 'conflict';
 			return false; // 一旦ローカルを保持
 		}
-			
+
 		default: {
 			console.warn(`Unknown policy: ${policy}, defaulting to manual`);
 			return false;
@@ -99,7 +115,7 @@ export async function resolveManualConflict(
 	conflictId: string,
 	resolution: 'local' | 'remote'
 ): Promise<void> {
-	const index = pendingConflicts.findIndex(c => c.id === conflictId);
+	const index = pendingConflicts.findIndex((c) => c.id === conflictId);
 	if (index === -1) {
 		console.warn(`Conflict not found: ${conflictId}`);
 		return;
@@ -126,7 +142,6 @@ export async function resolveManualConflict(
  * データに変更があるかチェック
  */
 
-
 /**
  * 同期システムの初期化
  */
@@ -138,7 +153,7 @@ export async function initializeSync(): Promise<void> {
 	}
 
 	const { isFirebaseInitialized } = await import('$lib/firebase');
-	
+
 	if (!isFirebaseInitialized()) {
 		console.log('ℹ️ Firebase not configured, sync system will not be initialized');
 		syncStore.status = 'offline';
@@ -160,11 +175,14 @@ export async function initializeSync(): Promise<void> {
 	});
 
 	// 定期同期（5分ごと）
-	syncInterval = window.setInterval(() => {
-		if (navigator.onLine && pendingChanges.length > 0) {
-			processPendingChanges();
-		}
-	}, 5 * 60 * 1000);
+	syncInterval = window.setInterval(
+		() => {
+			if (navigator.onLine && pendingChanges.length > 0) {
+				processPendingChanges();
+			}
+		},
+		5 * 60 * 1000
+	);
 
 	// プロジェクト一覧のリアルタイム同期のみを設定
 	// 他のエンティティはプロジェクトを開いた時に設定する
@@ -183,10 +201,10 @@ export async function initializeSync(): Promise<void> {
 	} catch (error) {
 		console.error('Failed to setup realtime sync:', error);
 	}
-	
+
 	// 初期化完了フラグを設定
 	isInitialized = true;
-	
+
 	// 初期化成功 - オンライン状態に設定
 	if (navigator.onLine) {
 		syncStore.status = 'synced';
@@ -210,9 +228,13 @@ export function stopSync(): void {
 /**
  * 変更を同期キューに追加
  */
-export async function queueChange(type: EntityType, id: string, action: 'create' | 'update' | 'delete'): Promise<void> {
+export async function queueChange(
+	type: EntityType,
+	id: string,
+	action: 'create' | 'update' | 'delete'
+): Promise<void> {
 	console.log(`📝 Queueing change: ${type}/${id} (${action})`);
-	
+
 	// 既存の変更があれば更新
 	const existingIndex = pendingChanges.findIndex((c) => c.type === type && c.id === id);
 	if (existingIndex >= 0) {
@@ -225,9 +247,9 @@ export async function queueChange(type: EntityType, id: string, action: 'create'
 	const { isFirebaseInitialized } = await import('$lib/firebase');
 	const firebaseReady = isFirebaseInitialized();
 	const online = navigator.onLine;
-	
+
 	console.log(`🔍 Firebase ready: ${firebaseReady}, Online: ${online}`);
-	
+
 	if (online && firebaseReady) {
 		console.log(`🚀 Syncing with debounce (3s)...`);
 		// デバウンス処理で同期（連続した変更をまとめる）
@@ -254,7 +276,7 @@ async function processPendingChanges(): Promise<void> {
 	}
 
 	console.log(`📤 Processing ${pendingChanges.length} pending change(s)...`);
-	
+
 	syncStore.isSyncing = true;
 	syncStore.status = 'syncing';
 
@@ -328,7 +350,7 @@ async function processChange(change: PendingChange): Promise<void> {
 		if (remoteData && detectConflict(localData, remoteData)) {
 			// 競合検出 - 自動解決
 			const resolution = autoResolveConflict(localData, remoteData);
-			
+
 			if (resolution.resolution === 'remote' && resolution.resolvedData) {
 				// リモートを採用 - ローカルを更新
 				await updateLocalData(type, resolution.resolvedData);
@@ -349,7 +371,10 @@ async function processChange(change: PendingChange): Promise<void> {
 /**
  * ローカルデータを更新
  */
-async function updateLocalData(type: EntityType, data: Project | Chapter | Scene | Character | Plot | Worldbuilding): Promise<void> {
+async function updateLocalData(
+	type: EntityType,
+	data: Project | Chapter | Scene | Character | Plot | Worldbuilding
+): Promise<void> {
 	switch (type) {
 		case 'projects':
 			await projectsDB.update(data.id, data as Project);
@@ -382,7 +407,7 @@ function setupCurrentProjectRealtimeSync(): void {
 
 	// 各エンティティのリアルタイム同期を設定
 	const entityTypes: EntityType[] = ['chapters', 'scenes', 'characters', 'plots', 'worldbuilding'];
-	
+
 	for (const type of entityTypes) {
 		setupRealtimeSync(
 			type,
@@ -420,40 +445,38 @@ export function resetCurrentProjectRealtimeSync(): void {
 	setupCurrentProjectRealtimeSync();
 }
 
-
-
 /**
  * 現在のプロジェクトのリアルタイム同期を開始
  * プロジェクトを開いた時に呼び出す
  */
 export async function startCurrentProjectSync(projectId: string): Promise<void> {
 	console.log(`🚀 Starting realtime sync for project: ${projectId}`);
-	
+
 	// 設定で同期が無効化されているか確認
 	const { settingsDB } = await import('$lib/db');
 	const settings = await settingsDB.get();
-	
+
 	if (!settings.syncEnabled) {
 		console.log('⏭️ Sync is disabled in settings, skipping project sync');
 		return;
 	}
-	
+
 	// Firebaseが初期化されているか確認
 	const { isFirebaseInitialized } = await import('$lib/firebase');
 	if (!isFirebaseInitialized()) {
 		console.warn('⚠️ Firebase not initialized, skipping project sync');
 		return;
 	}
-	
+
 	// 既存の監視を停止
 	stopCurrentProjectSync();
-	
+
 	// 章のリアルタイム同期
 	const chaptersUnsub = setupRealtimeSync(
 		'chapters',
 		async (chapters) => {
 			console.log(`🔄 Realtime sync: Received ${chapters.length} chapter(s) from Firestore`);
-			
+
 			const localChapters = await chaptersDB.getByProjectId(projectId);
 			const localChapterMap = new Map(localChapters.map((c) => [c.id, c]));
 
@@ -489,13 +512,13 @@ export async function startCurrentProjectSync(projectId: string): Promise<void> 
 		},
 		projectId
 	);
-	
+
 	// シーンのリアルタイム同期
 	const scenesUnsub = setupRealtimeSync(
 		'scenes',
 		async (scenes) => {
 			console.log(`🔄 Realtime sync: Received ${scenes.length} scene(s) from Firestore`);
-			
+
 			const localScenes = await scenesDB.getByProjectId(projectId);
 			const localSceneMap = new Map(localScenes.map((s) => [s.id, s]));
 
@@ -531,13 +554,13 @@ export async function startCurrentProjectSync(projectId: string): Promise<void> 
 		},
 		projectId
 	);
-	
+
 	// キャラクターのリアルタイム同期
 	const charactersUnsub = setupRealtimeSync(
 		'characters',
 		async (characters) => {
 			console.log(`🔄 Realtime sync: Received ${characters.length} character(s) from Firestore`);
-			
+
 			const localCharacters = await charactersDB.getByProjectId(projectId);
 			const localCharacterMap = new Map(localCharacters.map((c) => [c.id, c]));
 
@@ -569,13 +592,13 @@ export async function startCurrentProjectSync(projectId: string): Promise<void> 
 		},
 		projectId
 	);
-	
+
 	// プロットのリアルタイム同期
 	const plotsUnsub = setupRealtimeSync(
 		'plots',
 		async (plots) => {
 			console.log(`🔄 Realtime sync: Received ${plots.length} plot(s) from Firestore`);
-			
+
 			const localPlots = await plotsDB.getByProjectId(projectId);
 			const localPlotMap = new Map(localPlots.map((p) => [p.id, p]));
 
@@ -607,13 +630,15 @@ export async function startCurrentProjectSync(projectId: string): Promise<void> 
 		},
 		projectId
 	);
-	
+
 	// 世界設定のリアルタイム同期
 	const worldbuildingUnsub = setupRealtimeSync(
 		'worldbuilding',
 		async (worldbuildings) => {
-			console.log(`🔄 Realtime sync: Received ${worldbuildings.length} worldbuilding(s) from Firestore`);
-			
+			console.log(
+				`🔄 Realtime sync: Received ${worldbuildings.length} worldbuilding(s) from Firestore`
+			);
+
 			const localWorldbuildings = await worldbuildingDB.getByProjectId(projectId);
 			const localWorldbuildingMap = new Map(localWorldbuildings.map((w) => [w.id, w]));
 
@@ -645,8 +670,14 @@ export async function startCurrentProjectSync(projectId: string): Promise<void> 
 		},
 		projectId
 	);
-	
-	currentProjectUnsubscribers = [chaptersUnsub, scenesUnsub, charactersUnsub, plotsUnsub, worldbuildingUnsub];
+
+	currentProjectUnsubscribers = [
+		chaptersUnsub,
+		scenesUnsub,
+		charactersUnsub,
+		plotsUnsub,
+		worldbuildingUnsub
+	];
 	console.log(`✅ Realtime sync started for project: ${projectId}`);
 }
 
@@ -734,7 +765,7 @@ export async function downloadAllFromFirestore(): Promise<void> {
 
 	try {
 		// プロジェクト
-		const projects = await syncAllFromFirestore('projects') as Project[];
+		const projects = (await syncAllFromFirestore('projects')) as Project[];
 		console.log(`📦 Found ${projects.length} project(s) in Firestore`);
 		for (const project of projects) {
 			const existing = await projectsDB.getById(project.id);
@@ -756,7 +787,7 @@ export async function downloadAllFromFirestore(): Promise<void> {
 		}
 
 		// 章
-		const chapters = await syncAllFromFirestore('chapters') as Chapter[];
+		const chapters = (await syncAllFromFirestore('chapters')) as Chapter[];
 		console.log(`📦 Found ${chapters.length} chapter(s) in Firestore`);
 		for (const chapter of chapters) {
 			const existing = await chaptersDB.getById(chapter.id);
@@ -778,7 +809,7 @@ export async function downloadAllFromFirestore(): Promise<void> {
 		}
 
 		// シーン
-		const scenes = await syncAllFromFirestore('scenes') as Scene[];
+		const scenes = (await syncAllFromFirestore('scenes')) as Scene[];
 		console.log(`📦 Found ${scenes.length} scene(s) in Firestore`);
 		for (const scene of scenes) {
 			const existing = await scenesDB.getById(scene.id);
@@ -800,7 +831,7 @@ export async function downloadAllFromFirestore(): Promise<void> {
 		}
 
 		// キャラクター
-		const characters = await syncAllFromFirestore('characters') as Character[];
+		const characters = (await syncAllFromFirestore('characters')) as Character[];
 		console.log(`📦 Found ${characters.length} character(s) in Firestore`);
 		for (const character of characters) {
 			const existing = await charactersDB.getById(character.id);
@@ -822,7 +853,7 @@ export async function downloadAllFromFirestore(): Promise<void> {
 		}
 
 		// プロット
-		const plots = await syncAllFromFirestore('plots') as Plot[];
+		const plots = (await syncAllFromFirestore('plots')) as Plot[];
 		console.log(`📦 Found ${plots.length} plot(s) in Firestore`);
 		for (const plot of plots) {
 			const existing = await plotsDB.getById(plot.id);
@@ -844,7 +875,7 @@ export async function downloadAllFromFirestore(): Promise<void> {
 		}
 
 		// 世界設定
-		const worldbuildings = await syncAllFromFirestore('worldbuilding') as Worldbuilding[];
+		const worldbuildings = (await syncAllFromFirestore('worldbuilding')) as Worldbuilding[];
 		console.log(`📦 Found ${worldbuildings.length} worldbuilding(s) in Firestore`);
 		for (const worldbuilding of worldbuildings) {
 			const existing = await worldbuildingDB.getById(worldbuilding.id);
@@ -852,7 +883,12 @@ export async function downloadAllFromFirestore(): Promise<void> {
 				console.log(`➕ Adding worldbuilding: ${worldbuilding.id}`);
 				await worldbuildingDB.addFromRemote(worldbuilding);
 			} else if (detectConflict(existing, worldbuilding)) {
-				const shouldUpdate = await resolveConflict('worldbuilding', existing, worldbuilding, policy);
+				const shouldUpdate = await resolveConflict(
+					'worldbuilding',
+					existing,
+					worldbuilding,
+					policy
+				);
 				if (shouldUpdate) {
 					console.log(`🔄 Updating worldbuilding from remote: ${worldbuilding.id}`);
 					await worldbuildingDB.update(worldbuilding.id, worldbuilding);

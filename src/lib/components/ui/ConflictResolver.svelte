@@ -25,7 +25,7 @@
 </script>
 
 {#if conflictData}
-	<Modal bind:isOpen title="変更の競合" onClose={onClose}>
+	<Modal bind:isOpen title="変更の競合" {onClose}>
 		<div class="mb:24">
 			<p class="fg:gray-700 mb:16">
 				このデータが複数の端末で変更されています。どちらのバージョンを採用しますか?
@@ -81,7 +81,8 @@
 
 			<div class="mt:16 p:12 bg:yellow-50 border:1|solid|yellow-300 r:6">
 				<p class="font:12 fg:yellow-900">
-					⚠️ 採用しなかった変更は失われます。重要な内容がある場合は、事前にコピーしておいてください。
+					⚠️
+					採用しなかった変更は失われます。重要な内容がある場合は、事前にコピーしておいてください。
 				</p>
 			</div>
 		</div>

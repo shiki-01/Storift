@@ -5,6 +5,7 @@
 データ構造を変更しました:
 
 **旧形式:**
+
 ```
 users/{userId}/projects/{projectId}
 users/{userId}/chapters/{chapterId}
@@ -12,6 +13,7 @@ users/{userId}/chapters/{chapterId}
 ```
 
 **新形式:**
+
 ```
 projects/{projectId}
 chapters/{chapterId}
@@ -27,11 +29,13 @@ chapters/{chapterId}
 #### ステップ1: ローカルデータをクリア
 
 **Chrome:**
+
 1. F12でDevToolsを開く
 2. Application タブ
 3. Storage → IndexedDB → `storift` を右クリック → Delete
 
 **Edge:**
+
 1. F12でDevToolsを開く
 2. Application タブ
 3. Storage → IndexedDB → `storift` を右クリック → Delete
@@ -39,6 +43,7 @@ chapters/{chapterId}
 #### ステップ2: Firestoreデータをクリア
 
 **Firebase Console:**
+
 1. https://console.firebase.google.com/ を開く
 2. プロジェクトを選択
 3. Firestore Database を開く
@@ -87,6 +92,7 @@ service cloud.firestore {
 **新:** `projects/project1`
 
 Firebase Consoleで:
+
 1. 旧ドキュメントを開く
 2. データをコピー
 3. 新しいコレクション `projects` にドキュメントを作成

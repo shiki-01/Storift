@@ -77,10 +77,12 @@ export function createEditorContextMenu(params: {
 
 	// 削除
 	if (params.scene) {
-		items.push(
-			{ divider: true } as ContextMenuItem,
-			{ label: '削除', icon: '🗑️', action: params.onDelete, danger: true }
-		);
+		items.push({ divider: true } as ContextMenuItem, {
+			label: '削除',
+			icon: '🗑️',
+			action: params.onDelete,
+			danger: true
+		});
 	}
 
 	return items;
@@ -128,10 +130,12 @@ export function createChapterContextMenu(params: {
 		}
 	}
 
-	items.push(
-		{ divider: true } as ContextMenuItem,
-		{ label: '削除', icon: '🗑️', action: params.onDelete, danger: true }
-	);
+	items.push({ divider: true } as ContextMenuItem, {
+		label: '削除',
+		icon: '🗑️',
+		action: params.onDelete,
+		danger: true
+	});
 
 	return items;
 }
@@ -184,10 +188,12 @@ export function createSceneContextMenu(params: {
 		items.push({ label: 'チャプターを移動', icon: '📁', action: params.onMoveToChapter });
 	}
 
-	items.push(
-		{ divider: true } as ContextMenuItem,
-		{ label: '削除', icon: '🗑️', action: params.onDelete, danger: true }
-	);
+	items.push({ divider: true } as ContextMenuItem, {
+		label: '削除',
+		icon: '🗑️',
+		action: params.onDelete,
+		danger: true
+	});
 
 	return items;
 }
@@ -215,10 +221,12 @@ export function createProjectContextMenu(params: {
 		items.push({ label: 'アーカイブ', icon: '📦', action: params.onArchive });
 	}
 
-	items.push(
-		{ divider: true } as ContextMenuItem,
-		{ label: '削除', icon: '🗑️', action: params.onDelete, danger: true }
-	);
+	items.push({ divider: true } as ContextMenuItem, {
+		label: '削除',
+		icon: '🗑️',
+		action: params.onDelete,
+		danger: true
+	});
 
 	return items;
 }
@@ -241,10 +249,12 @@ export function createCharacterContextMenu(params: {
 		items.push({ label: '関係性を表示', icon: '🔗', action: params.onViewRelations });
 	}
 
-	items.push(
-		{ divider: true } as ContextMenuItem,
-		{ label: '削除', icon: '🗑️', action: params.onDelete, danger: true }
-	);
+	items.push({ divider: true } as ContextMenuItem, {
+		label: '削除',
+		icon: '🗑️',
+		action: params.onDelete,
+		danger: true
+	});
 
 	return items;
 }
@@ -267,10 +277,12 @@ export function createPlotContextMenu(params: {
 		items.push({ label: 'シーンにリンク', icon: '🔗', action: params.onLinkToScene });
 	}
 
-	items.push(
-		{ divider: true } as ContextMenuItem,
-		{ label: '削除', icon: '🗑️', action: params.onDelete, danger: true }
-	);
+	items.push({ divider: true } as ContextMenuItem, {
+		label: '削除',
+		icon: '🗑️',
+		action: params.onDelete,
+		danger: true
+	});
 
 	return items;
 }

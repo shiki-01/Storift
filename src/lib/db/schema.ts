@@ -24,7 +24,7 @@ export class StoriftDB extends Dexie {
 
 	constructor() {
 		super('StoriftDB');
-		
+
 		this.version(1).stores({
 			projects: 'id, title, status, createdAt, updatedAt, syncedAt',
 			chapters: 'id, projectId, order, createdAt, updatedAt',

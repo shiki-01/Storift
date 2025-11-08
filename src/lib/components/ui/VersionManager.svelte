@@ -30,23 +30,20 @@
 		loadRestorePoints();
 	});
 
-	const loadHistory = async() => {
+	const loadHistory = async () => {
 		history = await versionService.getEntityHistory(entityType, entityId);
-	}
+	};
 
 	const loadRestorePoints = () => {
 		restorePoints = versionService.getEntityRestorePoints(entityType, entityId);
-	}
+	};
 
-	const handleCompareVersions = async() => {
+	const handleCompareVersions = async () => {
 		if (!selectedOldVersion || !selectedNewVersion) {
 			return;
 		}
 
-		const comparison = await versionService.compareVersions(
-			selectedOldVersion,
-			selectedNewVersion
-		);
+		const comparison = await versionService.compareVersions(selectedOldVersion, selectedNewVersion);
 
 		if (comparison) {
 			diffs = comparison.diffs;
@@ -56,29 +53,25 @@
 			};
 			showDiffModal = true;
 		}
-	}
+	};
 
 	const handleCreateRestorePoint = () => {
 		if (!selectedHistory) {
 			return;
 		}
 
-		const historyEntry = history.find(h => h.id === selectedHistory);
+		const historyEntry = history.find((h) => h.id === selectedHistory);
 		if (!historyEntry) {
 			return;
 		}
 
-		versionService.createRestorePoint(
-			historyEntry,
-			restorePointName,
-			restorePointDescription
-		);
+		versionService.createRestorePoint(historyEntry, restorePointName, restorePointDescription);
 
 		restorePointName = '';
 		restorePointDescription = '';
 		showCreateRestorePoint = false;
 		loadRestorePoints();
-	}
+	};
 
 	async function handleRestore(restorePointId: string) {
 		if (confirm('この復元ポイントに戻しますか?')) {
@@ -129,9 +122,7 @@
 		<h3 class="font:18 font:semibold fg:gray-900 mb:16">変更履歴</h3>
 
 		{#if history.length === 0}
-			<p class="font:14 fg:gray-500 text-align:center py:20">
-				履歴はありません
-			</p>
+			<p class="font:14 fg:gray-500 text-align:center py:20">履歴はありません</p>
 		{:else}
 			<div class="space-y:8">
 				{#each history as entry}
@@ -201,9 +192,7 @@
 		<h3 class="font:18 font:semibold fg:gray-900 mb:16">復元ポイント</h3>
 
 		{#if restorePoints.length === 0}
-			<p class="font:14 fg:gray-500 text-align:center py:20">
-				復元ポイントはありません
-			</p>
+			<p class="font:14 fg:gray-500 text-align:center py:20">復元ポイントはありません</p>
 		{:else}
 			<div class="space-y:8">
 				{#each restorePoints as point}
@@ -222,16 +211,8 @@
 							</div>
 
 							<div class="flex gap:8">
-								<Button
-									variant="primary"
-									onclick={() => handleRestore(point.id)}
-								>
-									復元
-								</Button>
-								<Button
-									variant="danger"
-									onclick={() => handleDeleteRestorePoint(point.id)}
-								>
+								<Button variant="primary" onclick={() => handleRestore(point.id)}>復元</Button>
+								<Button variant="danger" onclick={() => handleDeleteRestorePoint(point.id)}>
 									削除
 								</Button>
 							</div>
@@ -245,11 +226,7 @@
 
 <!-- 差分表示モーダル -->
 {#if showDiffModal}
-	<Modal
-		title="バージョン比較"
-		onClose={() => showDiffModal = false}
-		size="large"
-	>
+	<Modal title="バージョン比較" onClose={() => (showDiffModal = false)} size="large">
 		<div class="diff-viewer">
 			<!-- 統計情報 -->
 			<div class="flex gap:16 mb:20 p:16 bg:gray-50 r:8">
@@ -277,16 +254,10 @@
 
 <!-- 復元ポイント作成モーダル -->
 {#if showCreateRestorePoint}
-	<Modal
-		title="復元ポイントを作成"
-		onClose={() => showCreateRestorePoint = false}
-		size="medium"
-	>
+	<Modal title="復元ポイントを作成" onClose={() => (showCreateRestorePoint = false)} size="medium">
 		<div class="space-y:16">
 			<div>
-				<label for="restorePointName" class="font:14 fg:gray-700 mb:6 block">
-					名前
-				</label>
+				<label for="restorePointName" class="font:14 fg:gray-700 mb:6 block"> 名前 </label>
 				<input
 					id="restorePointName"
 					type="text"
@@ -310,7 +281,7 @@
 			</div>
 
 			<div class="flex gap:12 justify-content:flex-end">
-				<Button variant="secondary" onclick={() => showCreateRestorePoint = false}>
+				<Button variant="secondary" onclick={() => (showCreateRestorePoint = false)}>
 					キャンセル
 				</Button>
 				<Button
@@ -349,5 +320,3 @@
 		color: #9ca3af;
 	}
 </style>
-
-

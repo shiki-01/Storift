@@ -43,7 +43,7 @@
 		}
 	});
 
-	const loadProjects = async() => {
+	const loadProjects = async () => {
 		projectsStore.isLoading = true;
 		try {
 			const projects = await projectsDB.getAll();
@@ -51,9 +51,9 @@
 		} finally {
 			projectsStore.isLoading = false;
 		}
-	}
+	};
 
-	const handleCreateProject = async() => {
+	const handleCreateProject = async () => {
 		if (!newProjectTitle.trim()) return;
 
 		isCreating = true;
@@ -77,7 +77,7 @@
 		} finally {
 			isCreating = false;
 		}
-	}
+	};
 
 	function handleSearchInput(e: Event) {
 		const target = e.target as HTMLInputElement;
@@ -125,12 +125,12 @@
 		contextMenu.targetProject = project;
 	}
 
-	const applyRename = async() => {
+	const applyRename = async () => {
 		if (!renameValue.trim() || !contextMenu.targetProject) return;
 
 		try {
 			await projectsDB.update(contextMenu.targetProject.id, { title: renameValue });
-			const index = projectsStore.projects.findIndex(p => p.id === contextMenu.targetProject!.id);
+			const index = projectsStore.projects.findIndex((p) => p.id === contextMenu.targetProject!.id);
 			if (index !== -1) {
 				projectsStore.projects[index] = { ...projectsStore.projects[index], title: renameValue };
 			}
@@ -141,16 +141,18 @@
 			console.error('Failed to rename project:', error);
 			alert('プロジェクト名の変更に失敗しました');
 		}
-	}
+	};
 
 	// 削除処理
 	async function handleDeleteProject(project: Project) {
-		if (!confirm(`プロジェクト「${project.title}」を削除しますか?\nこの操作は取り消せません。`)) return;
+		if (!confirm(`プロジェクト「${project.title}」を削除しますか?\nこの操作は取り消せません。`))
+			return;
 
 		try {
 			// プロジェクト関連のすべてのデータを削除
-			const { chaptersDB, scenesDB, charactersDB, plotsDB, worldbuildingDB, progressLogsDB } = await import('$lib/db');
-			
+			const { chaptersDB, scenesDB, charactersDB, plotsDB, worldbuildingDB, progressLogsDB } =
+				await import('$lib/db');
+
 			// 各種データを削除
 			const chapters = await chaptersDB.getByProjectId(project.id);
 			for (const chapter of chapters) {
@@ -190,7 +192,7 @@
 			await projectsDB.delete(project.id);
 			await queueChange('projects', project.id, 'delete');
 
-			projectsStore.projects = projectsStore.projects.filter(p => p.id !== project.id);
+			projectsStore.projects = projectsStore.projects.filter((p) => p.id !== project.id);
 		} catch (error) {
 			console.error('Failed to delete project:', error);
 			alert('プロジェクトの削除に失敗しました');
@@ -211,7 +213,7 @@
 			// チャプターとシーンも複製
 			const { chaptersDB, scenesDB } = await import('$lib/db');
 			const chapters = await chaptersDB.getByProjectId(project.id);
-			
+
 			for (const chapter of chapters) {
 				const newChapter = await chaptersDB.create({
 					projectId: newProject.id,
@@ -373,5 +375,5 @@
 	x={contextMenu.x}
 	y={contextMenu.y}
 	items={contextMenu.items}
-	onClose={() => contextMenu.visible = false}
+	onClose={() => (contextMenu.visible = false)}
 />

@@ -1,8 +1,4 @@
-import {
-	signInAnonymously,
-	onAuthStateChanged,
-	type User
-} from 'firebase/auth';
+import { signInAnonymously, onAuthStateChanged, type User } from 'firebase/auth';
 import { getAuthInstance } from './config';
 
 export async function signInAnonymousUser(): Promise<User> {

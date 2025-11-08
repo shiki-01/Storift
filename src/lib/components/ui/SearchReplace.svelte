@@ -23,12 +23,12 @@
 	let regexError = $state('');
 	let replaceCount = $state(0);
 
-	let selectedScopes = $state<Array<'scenes' | 'chapters' | 'characters' | 'plots' | 'worldbuilding'>>([
-		'scenes'
-	]);
+	let selectedScopes = $state<
+		Array<'scenes' | 'chapters' | 'characters' | 'plots' | 'worldbuilding'>
+	>(['scenes']);
 
 	// 検索実行
-	const handleSearch = async() => {
+	const handleSearch = async () => {
 		if (!searchQuery) return;
 
 		// 正規表現の検証
@@ -57,10 +57,10 @@
 		} finally {
 			isSearching = false;
 		}
-	}
+	};
 
 	// 置換実行
-	const handleReplace = async() => {
+	const handleReplace = async () => {
 		if (!searchQuery || !replaceWith) return;
 
 		const confirmed = confirm(
@@ -91,10 +91,10 @@
 		} catch (error) {
 			console.error('Replace failed:', error);
 		}
-	}
+	};
 
 	// スコープの切り替え
-	function toggleScope(scope: typeof selectedScopes[number]) {
+	function toggleScope(scope: (typeof selectedScopes)[number]) {
 		if (selectedScopes.includes(scope)) {
 			selectedScopes = selectedScopes.filter((s) => s !== scope);
 		} else {

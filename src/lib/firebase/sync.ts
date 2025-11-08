@@ -16,7 +16,13 @@ import { syncStore } from '$lib/stores/sync.svelte';
 import type { Project, Chapter, Scene, Character, Plot, Worldbuilding } from '$lib/types';
 
 export type SyncableEntity = Project | Chapter | Scene | Character | Plot | Worldbuilding;
-export type EntityType = 'projects' | 'chapters' | 'scenes' | 'characters' | 'plots' | 'worldbuilding';
+export type EntityType =
+	| 'projects'
+	| 'chapters'
+	| 'scenes'
+	| 'characters'
+	| 'plots'
+	| 'worldbuilding';
 
 let unsubscribers: Unsubscribe[] = [];
 
@@ -85,24 +91,26 @@ export async function syncAllFromFirestore(
 ): Promise<SyncableEntity[]> {
 	const db = getFirestoreInstance();
 	const collectionRef = collection(db, entityType);
-	
+
 	// クエリ条件を構築
 	const constraints = [];
-	
+
 	// プロジェクトIDでフィルタリング（プロジェクト以外）
 	if (projectId && entityType !== 'projects') {
 		constraints.push(where('projectId', '==', projectId));
 	}
-	
+
 	// 差分同期: 最終同期時刻以降のデータのみ取得
 	if (lastSyncTime) {
 		constraints.push(where('updatedAt', '>', lastSyncTime));
 	}
-	
+
 	const q = constraints.length > 0 ? query(collectionRef, ...constraints) : collectionRef;
 	const snapshot = await getDocs(q);
 
-	console.log(`📥 Fetched ${snapshot.docs.length} ${entityType} documents${projectId ? ` for project ${projectId}` : ''}${lastSyncTime ? ' (diff sync)' : ''}`);
+	console.log(
+		`📥 Fetched ${snapshot.docs.length} ${entityType} documents${projectId ? ` for project ${projectId}` : ''}${lastSyncTime ? ' (diff sync)' : ''}`
+	);
 
 	return snapshot.docs.map((doc) => {
 		const data = doc.data();
@@ -117,10 +125,12 @@ export async function syncAllFromFirestore(
 /**
  * プロジェクト用の差分同期
  */
-export async function syncProjectsFromFirestore(
-	lastSyncTime?: number
-): Promise<Project[]> {
-	const entities = await syncAllFromFirestore('projects', undefined, lastSyncTime || getLastSyncTime());
+export async function syncProjectsFromFirestore(lastSyncTime?: number): Promise<Project[]> {
+	const entities = await syncAllFromFirestore(
+		'projects',
+		undefined,
+		lastSyncTime || getLastSyncTime()
+	);
 	setLastSyncTime(Date.now());
 	return entities as Project[];
 }
@@ -128,10 +138,7 @@ export async function syncProjectsFromFirestore(
 /**
  * Firestoreから削除
  */
-export async function deleteFromFirestore(
-	entityType: EntityType,
-	entityId: string
-): Promise<void> {
+export async function deleteFromFirestore(entityType: EntityType, entityId: string): Promise<void> {
 	const db = getFirestoreInstance();
 	// 共有コレクションを使用
 	const docRef = doc(db, `${entityType}/${entityId}`);
@@ -157,7 +164,9 @@ export function setupRealtimeSync(
 	// プロジェクトIDでフィルタリング（プロジェクト以外）
 	let q: ReturnType<typeof query> | typeof collectionRef = collectionRef;
 	if (projectId && entityType !== 'projects') {
-		console.log(`🔍 Setting up realtime sync for ${entityType} filtered by projectId: ${projectId}`);
+		console.log(
+			`🔍 Setting up realtime sync for ${entityType} filtered by projectId: ${projectId}`
+		);
 		q = query(collectionRef, where('projectId', '==', projectId));
 	} else {
 		console.log(`🔍 Setting up realtime sync for ${entityType} (all)`);

@@ -7,11 +7,11 @@ const svgModules = import.meta.glob<string>('./*.svg', {
 export const getIcon = (name: string): string | undefined => {
 	const path = `./${name}.svg`;
 	return svgModules[path];
-}
+};
 
 export const getIconNames = (): string[] => {
 	return Object.keys(svgModules).map((path) => path.replace('./', '').replace('.svg', ''));
-}
+};
 
 export const getAllIcons = (): Record<string, string> => {
 	const icons: Record<string, string> = {};
@@ -20,4 +20,4 @@ export const getAllIcons = (): Record<string, string> => {
 		icons[name] = content;
 	}
 	return icons;
-}
+};

@@ -28,14 +28,14 @@
 		try {
 			// まずJSON形式をトライ
 			const config = JSON.parse(configText);
-			
+
 			if (config.apiKey) apiKey = config.apiKey;
 			if (config.authDomain) authDomain = config.authDomain;
 			if (config.projectId) projectId = config.projectId;
 			if (config.storageBucket) storageBucket = config.storageBucket;
 			if (config.messagingSenderId) messagingSenderId = config.messagingSenderId;
 			if (config.appId) appId = config.appId;
-			
+
 			configText = '';
 			error = '';
 		} catch {
@@ -61,9 +61,9 @@
 				error = '設定情報の解析に失敗しました';
 			}
 		}
-	}
+	};
 
-	const handleTest = async() => {
+	const handleTest = async () => {
 		error = '';
 		testResult = '';
 		isLoading = true;
@@ -90,9 +90,9 @@
 		} finally {
 			isLoading = false;
 		}
-	}
+	};
 
-	const handleSave = async() => {
+	const handleSave = async () => {
 		error = '';
 		isLoading = true;
 
@@ -134,7 +134,7 @@
 		} finally {
 			isLoading = false;
 		}
-	}
+	};
 </script>
 
 <div class="min-h:100vh bg:gray-50 flex align-items:center justify-content:center p:24">
@@ -161,9 +161,7 @@ projectId: 'your-project',
 					class="w:full p:12 r:6 border:1|solid|blue-300 font:14 font-family:monospace min-h:120 resize:vertical"
 				></textarea>
 				<div class="flex gap:8 mt:12">
-					<Button type="button" onclick={handlePaste} disabled={!configText}>
-						設定を読み込む
-					</Button>
+					<Button type="button" onclick={handlePaste} disabled={!configText}>設定を読み込む</Button>
 					<Button
 						type="button"
 						variant="secondary"
@@ -188,8 +186,7 @@ projectId: 'your-project',
 				</div>
 
 				<div>
-					<label class="display:block font-weight:500 m:0|0|8|0" for="authDomain"
-						>Auth Domain</label
+					<label class="display:block font-weight:500 m:0|0|8|0" for="authDomain">Auth Domain</label
 					>
 					<Input
 						bind:value={authDomain}
@@ -200,9 +197,7 @@ projectId: 'your-project',
 				</div>
 
 				<div>
-					<label class="display:block font-weight:500 m:0|0|8|0" for="projectId"
-						>Project ID</label
-					>
+					<label class="display:block font-weight:500 m:0|0|8|0" for="projectId">Project ID</label>
 					<Input bind:value={projectId} type="text" placeholder="your-project" required />
 				</div>
 

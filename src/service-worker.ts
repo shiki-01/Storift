@@ -211,7 +211,7 @@ async function handleSyncRequest(payload: { type?: string; data?: unknown }) {
 }
 
 // Background Sync
-const performBackgroundSync = async() => {
+const performBackgroundSync = async () => {
 	try {
 		console.log('🔄 Performing background sync...');
 
@@ -231,13 +231,13 @@ const performBackgroundSync = async() => {
 		console.error('❌ Background sync failed:', error);
 		throw error;
 	}
-}
+};
 
 // Periodic Sync
-const performPeriodicSync = async() => {
+const performPeriodicSync = async () => {
 	console.log('🔄 Performing periodic sync...');
 	return performBackgroundSync();
-}
+};
 
 // Service Worker Activation
 self.addEventListener('activate', (event) => {

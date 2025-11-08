@@ -42,7 +42,7 @@ export const plotsDB = {
 		await db.plots.update(id, {
 			...changes,
 			updatedAt: Date.now(),
-			_version: ((plot?._version || 0) + 1)
+			_version: (plot?._version || 0) + 1
 		});
 		if (plot) {
 			await touchProject(plot.projectId);
@@ -60,7 +60,7 @@ export const plotsDB = {
 	async reorder(projectId: string, plotIds: string[]): Promise<void> {
 		await db.transaction('rw', [db.plots, db.projects], async () => {
 			for (let i = 0; i < plotIds.length; i++) {
-				await db.plots.update(plotIds[i], { 
+				await db.plots.update(plotIds[i], {
 					order: i,
 					updatedAt: Date.now()
 				});

@@ -10,6 +10,7 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import { isValidFirebaseConfig } from '$lib/utils/validation';
 	import type { FirebaseConfig } from '$lib/types';
+	import Icon from '$lib/components/ui/Icon.svelte';
 
 	let apiKey = $state('');
 	let authDomain = $state('');
@@ -145,7 +146,9 @@
 
 			<!-- 一括ペーストセクション -->
 			<div class="bg:blue-50 p:16 r:8 mb:24 border:1|solid|blue-200">
-				<h3 class="font:16 font-weight:600 m:0|0|12|0 fg:blue-900">🚀 設定を一括入力</h3>
+				<h3 class="flex flex:row gap:.5em font:16 font-weight:600 m:0|0|12|0 fg:blue-900">
+					<Icon name="rocket" /> 設定を一括入力
+				</h3>
 				<p class="font:14 fg:blue-800 m:0|0|12|0">
 					Firebase Consoleからコピーした設定をそのまま貼り付けてください
 				</p>

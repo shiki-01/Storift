@@ -22,11 +22,11 @@
 
 {#if label}
 	{@const inputId = `input-${Math.random().toString(36).slice(2, 9)}`}
-	<div class="flex flex:col gap:8">
-		<label for={inputId} class="font:14 font:semibold fg:gray-700">{label}</label>
+	<div class="flex flex-direction:column gap:8">
+		<label for={inputId} class="font:14 font:semibold fg:theme-text">{label}</label>
 		<input
 			id={inputId}
-			class="w:full px:12 py:10 b:1|solid|gray-300 r:8 font:16 outline:none focus:b:blue-500 transition:all|.2s disabled:bg:gray-50"
+			class="w:full px:12 py:10 b:1|solid|theme-border bg:theme-background fg:theme-text r:8 font:16 outline:none focus:b:$(theme.primary) transition:all|.2s disabled:bg:theme-surface"
 			{type}
 			{placeholder}
 			{disabled}
@@ -37,7 +37,7 @@
 	</div>
 {:else}
 	<input
-		class="w:full px:12 py:10 b:1|solid|gray-300 r:8 font:16 outline:none focus:b:blue-500 transition:all|.2s disabled:bg:gray-50"
+		class="w:full px:12 py:10 b:1|solid|theme-border bg:theme-background fg:theme-text r:8 font:16 outline:none focus:b:$(theme.primary) transition:all|.2s disabled:bg:theme-surface"
 		{type}
 		{placeholder}
 		{disabled}

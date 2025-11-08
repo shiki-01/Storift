@@ -23,6 +23,8 @@
 		md: 'p:24',
 		lg: 'p:32'
 	};
+
+	const baseClass = 'bg:theme-surface b:2px|solid|theme-border fg:theme-text shadow:sm transition:all|.2s';
 </script>
 
 {#if onclick}
@@ -31,7 +33,7 @@
 			padding
 		]} {hoverable
 			? 'cursor:pointer'
-			: ''} {className}"
+			: ''} {baseClass} {className}"
 		type="button"
 		{onclick}
 		{oncontextmenu}
@@ -43,7 +45,7 @@
 {:else}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div 
-		class="r:8 {paddingClasses[padding]} {className}"
+		class="r:8 {paddingClasses[padding]} {baseClass} {className}"
 		{oncontextmenu}
 	>
 		{#if children}

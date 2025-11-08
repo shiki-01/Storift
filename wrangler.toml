@@ -1,4 +1,4 @@
 # wrangler.toml
-name = "Storift"
+name = "storift"
 compatibility_date = "2025-11-08"
 compatibility_flags = ["nodejs_compat"]

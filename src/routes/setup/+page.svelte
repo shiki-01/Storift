@@ -137,15 +137,13 @@
 	};
 </script>
 
-<div class="min-h:100vh bg:gray-50 flex align-items:center justify-content:center p:24">
+<div class="max-h:calc(100vh-66px) overflow-y:auto bg:theme-background flex ai:start jc:center p:24">
 	<div class="max-w:600 w:full">
-		<h1 class="font:36 font-weight:700 text-align:center m:0|0|32|0">Storift</h1>
-
 		<Card padding="lg">
 			<h2 class="font:24 font-weight:600 m:0|0|24|0">Firebase初期設定</h2>
 
 			<!-- 一括ペーストセクション -->
-			<div class="bg:blue-50 p:16 r:8 mb:24 border:1|solid|blue-200">
+			<div class="bg:theme-surface p:16 r:8 mb:24 b:1|solid|theme-border">
 				<h3 class="flex flex:row gap:.5em font:16 font-weight:600 m:0|0|12|0 fg:blue-900">
 					<Icon name="rocket" /> 設定を一括入力
 				</h3>
@@ -158,17 +156,10 @@
 authDomain: 'your-project.firebaseapp.com',
 projectId: 'your-project',
 ..."
-					class="w:full p:12 r:6 border:1|solid|blue-300 font:14 font-family:monospace min-h:120 resize:vertical"
+					class="w:full p:12 r:6 outline:none:focus font:14 font-family:monospace min-h:120 resize:vertical"
 				></textarea>
 				<div class="flex gap:8 mt:12">
 					<Button type="button" onclick={handlePaste} disabled={!configText}>設定を読み込む</Button>
-					<Button
-						type="button"
-						variant="secondary"
-						onclick={() => (showManualInput = !showManualInput)}
-					>
-						{showManualInput ? '手動入力を隠す' : '手動で入力'}
-					</Button>
 				</div>
 			</div>
 
@@ -226,19 +217,31 @@ projectId: 'your-project',
 				</div>
 
 				{#if error}
-					<div class="bg:red-50 fg:red-700 p:12|16 r:6 border:1|solid|red-200">
+					<div
+						class="fg:theme-error p:12|16 r:6 border:1|solid|theme-error"
+						style="background-color: color-mix(in srgb, var(--color-error) 10%, transparent);"
+					>
 						{error}
 					</div>
 				{/if}
 
 				{#if testResult}
-					<div class="bg:green-50 fg:green-700 p:12|16 r:6 border:1|solid|green-200">
+					<div
+						class="fg:theme-success p:12|16 r:6 border:1|solid|theme-success"
+						style="background-color: color-mix(in srgb, var(--color-success) 10%, transparent);"
+					>
 						{testResult}
 					</div>
 				{/if}
 
 				<div class="flex gap:12 mt:16">
-					<Button type="button" variant="secondary" onclick={handleTest} disabled={isLoading}>
+					<Button
+						type="button"
+						variant="secondary"
+						onclick={handleTest}
+						disabled={isLoading}
+						class="px:8px py:4px"
+					>
 						{isLoading ? '接続中...' : '接続テスト'}
 					</Button>
 					<Button type="submit" disabled={isLoading}>
@@ -249,9 +252,9 @@ projectId: 'your-project',
 
 			<!-- 設定が入力されたら表示 -->
 			{#if apiKey && !showManualInput}
-				<div class="mt:16 p:12 bg:gray-50 r:6 border:1|solid|gray-200">
+				<div class="mt:16 p:12 bg:theme-surface r:6 border:1|solid|theme-border">
 					<p class="font:14 font-weight:600 m:0|0|8|0">現在の設定:</p>
-					<ul class="font:13 fg:gray-700 m:0 p:0|0|0|20">
+					<ul class="font:13 fg:theme-text-secondary m:0 p:0|0|0|20">
 						<li>Project ID: <code>{projectId}</code></li>
 						<li>Auth Domain: <code>{authDomain}</code></li>
 					</ul>
@@ -259,7 +262,7 @@ projectId: 'your-project',
 						type="button"
 						variant="secondary"
 						onclick={() => (showManualInput = true)}
-						class="mt:8"
+						class="mt:8 px:8px py:4px"
 					>
 						手動で編集
 					</Button>

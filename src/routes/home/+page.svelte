@@ -282,7 +282,7 @@
 					padding="none"
 					onclick={() => goto(`/project/${project.id}/editor`)}
 					oncontextmenu={(e) => handleProjectContextMenu(e, project)}
-					class="w:200px h:fit p:0 flex flex:column gap:1rem"
+					class="w:200px h:fit p:0 flex flex:column gap:1rem bg:transparent b:none"
 				>
 					<div class="w:200px h:284px flex bg:gray r:8px"></div>
 					<div

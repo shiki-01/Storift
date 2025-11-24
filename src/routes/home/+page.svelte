@@ -9,6 +9,7 @@
 	import Input from '$lib/components/ui/Input.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
+	import DefoImg from '$lib/components/ui/DefoImg.svelte';
 	import SyncStatus from '$lib/components/ui/SyncStatus.svelte';
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
 	import { formatRelativeTime } from '$lib/utils/dateUtils';
@@ -284,7 +285,7 @@
 					oncontextmenu={(e) => handleProjectContextMenu(e, project)}
 					class="w:200px h:fit p:0 flex flex:column gap:1rem bg:transparent b:none"
 				>
-					<div class="w:200px h:284px flex bg:gray r:8px"></div>
+					<DefoImg />
 					<div
 						class="w:200px grid grid-template-cols:140px|60px flex justify-content:space-between align-items:start"
 					>

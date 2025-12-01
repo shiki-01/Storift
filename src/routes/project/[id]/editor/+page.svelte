@@ -940,6 +940,7 @@
 								tabindex="0"
 								oninput={handleEditorInput}
 								oncontextmenu={handleContextMenu}
+								onpaste={handlePaste}
 								class="w:full min-h:600 border:none outline:none bg:editor-background fg:$(editor.text) white-space:pre-wrap"
 								style="
 									font-family: {getFontFamily(settingsStore.editorFont)};

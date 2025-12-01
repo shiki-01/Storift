@@ -103,6 +103,8 @@
 	class:manuscript={settings.manuscriptMode}
 	class:orientation-upright={settings.writingMode === 'vertical' && settings.textOrientation === 'upright'}
 	class:orientation-sideways={settings.writingMode === 'vertical' && settings.textOrientation === 'sideways'}
+	bind:this={containerRef}
+	onwheel={handleWheel}
 	style="
 		--font-size: {settings.fontSize}px;
 		--line-height: {settings.lineHeight};

@@ -13,6 +13,56 @@
 	let activeTab = $state<'formatting' | 'ruby'>('formatting');
 	let rubyPreview = $state('');
 	let showRubyPreview = $state(false);
+	let selectedConvertFormat = $state('narou');
+
+	// 他形式からStorift形式へ変換するパターン
+	const convertPatterns = [
+		{
+			id: 'narou',
+			name: '小説家になろう形式',
+			description: '|親文字《ルビ》 → Storift形式',
+			// なろうの半角縦棒を全角に変換
+			convert: (t: string) => {
+				// 半角縦棒のルビを全角に変換
+				return t.replace(/\|([^《》\n]+)《([^》]+)》/g, '｜$1《$2》');
+			}
+		},
+		{
+			id: 'aozora',
+			name: '青空文庫形式',
+			description: '｜親文字《ルビ》 + 傍点注記 → Storift形式',
+			convert: (t: string) => {
+				let result = t;
+				// 青空文庫の傍点注記を変換: テキスト［＃「テキスト」に傍点］ → 《《テキスト》》
+				result = result.replace(/([^［]+)［＃「\1」に傍点］/g, '《《$1》》');
+				// シンプルな傍点パターン
+				result = result.replace(/［＃「([^」]+)」に傍点］/g, '《《$1》》');
+				return result;
+			}
+		},
+		{
+			id: 'pixiv',
+			name: 'pixiv形式',
+			description: '[[rb:親文字 > ルビ]] → Storift形式',
+			convert: (t: string) => {
+				// pixivのルビ記法を変換
+				return t.replace(/\[\[rb:\s*([^\s>]+)\s*>\s*([^\]]+)\]\]/g, '｜$1《$2》');
+			}
+		},
+		{
+			id: 'html',
+			name: 'HTML形式',
+			description: '<ruby>親文字<rt>ルビ</rt></ruby> → Storift形式',
+			convert: (t: string) => {
+				let result = t;
+				// HTMLのrubyタグを変換
+				result = result.replace(/<ruby>([^<]+)<rt>([^<]+)<\/rt><\/ruby>/g, '｜$1《$2》');
+				// 傍点spanを変換
+				result = result.replace(/<span class="bouten">([^<]+)<\/span>/g, '《《$1》》');
+				return result;
+			}
+		}
+	];
 
 	// 段落先頭の字下げを適用
 	function applyIndentation() {
@@ -54,6 +104,14 @@
 	// ルビを統一
 	function normalizeRubyFormat() {
 		text = normalizeRuby(text);
+	}
+
+	// 他形式からStorift形式に変換
+	function convertToStorift() {
+		const pattern = convertPatterns.find(p => p.id === selectedConvertFormat);
+		if (pattern) {
+			text = pattern.convert(text);
+		}
 	}
 
 	// 統計情報
@@ -155,6 +213,30 @@
 						<span class="flex align-items:center gap:6">
 							<Icon name="trash" class="w:16px" />
 							ルビ削除
+						</span>
+					</Button>
+				</div>
+			</div>
+
+			<!-- 他形式から変換 -->
+			<div>
+				<span class="display:block font-weight:500 m:0|0|12|0 fg:theme-text">他形式からStorift形式に変換</span>
+				<p class="font:13 fg:theme-text-secondary m:0|0|12|0">
+					他サービスからコピーしたテキストのルビ記法をStorift形式に変換します。
+				</p>
+				<div class="flex flex-direction:column gap:12">
+					<select
+						bind:value={selectedConvertFormat}
+						class="w:full p:10 r:6 b:1|solid|theme-border bg:theme-background fg:theme-text font:14"
+					>
+						{#each convertPatterns as pattern}
+							<option value={pattern.id}>{pattern.name}</option>
+						{/each}
+					</select>
+					<Button size="sm" onclick={convertToStorift}>
+						<span class="flex align-items:center gap:6">
+							<Icon name="refresh" class="w:16px" />
+							Storift形式に変換
 						</span>
 					</Button>
 				</div>

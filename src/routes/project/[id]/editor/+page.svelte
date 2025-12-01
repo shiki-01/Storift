@@ -50,8 +50,10 @@
 
 	// プレビュー機能
 	let viewMode = $state<ViewMode>('editor');
-	let showPreviewSettings = $state(false);
 	let previewSettings = $state<PreviewSettingsType>({ ...defaultPreviewSettings });
+
+	// 書式設定モーダルのタブ
+	let formattingTab = $state<'editor' | 'preview'>('editor');
 
 	// 表示モード切替
 	function cycleViewMode() {
@@ -857,15 +859,6 @@
 								<Icon name="eye" class="w:18px" />
 							</button>
 						</div>
-						{#if viewMode !== 'editor'}
-							<button
-								class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
-								onclick={() => (showPreviewSettings = true)}
-								title="プレビュー設定"
-							>
-								<Icon name="settings" class="w:24px" />
-							</button>
-						{/if}
 						<div class="w:1 h:20 bg:theme-text"></div>
 						<!-- Phase 2: 執筆支援ツール -->
 						<button
@@ -1040,94 +1033,119 @@
 {/if}
 
 <!-- 書式設定モーダル -->
-<Modal bind:isOpen={showFormattingModal} title="書式設定">
+<Modal bind:isOpen={showFormattingModal} title="書式設定" size="large">
 	<div class="flex flex-direction:column gap:24">
-		<!-- フォント -->
-		<div>
-			<span class="display:block font-weight:500 m:0|0|12|0 fg:theme-text">フォント</span>
-			<FontSelector value={settingsStore.editorFont} onchange={handleFontChange} />
-		</div>
-
-		<!-- フォントサイズ -->
-		<div>
-			<span class="display:block font-weight:500 m:0|0|8|0 fg:theme-text">
-				フォントサイズ: {localFormatting.fontSize}px
-			</span>
-			<input
-				type="range"
-				bind:value={localFormatting.fontSize}
-				min="12"
-				max="24"
-				step="1"
-				class="w:full"
-			/>
-			<div class="flex justify-content:space-between font:12 fg:theme-text-secondary mt:4">
-				<span>12px</span>
-				<span>24px</span>
-			</div>
-		</div>
-
-		<!-- 行間 -->
-		<div>
-			<span class="display:block font-weight:500 m:0|0|8|0 fg:theme-text">
-				行間: {(localFormatting.lineHeight ?? 2).toFixed(1)}
-			</span>
-			<input
-				type="range"
-				bind:value={localFormatting.lineHeight}
-				min="1.0"
-				max="3.0"
-				step="0.1"
-				class="w:full"
-			/>
-			<div class="flex justify-content:space-between font:12 fg:theme-text-secondary mt:4">
-				<span>1.0</span>
-				<span>3.0</span>
-			</div>
-		</div>
-
-		<!-- 字間 -->
-		<div>
-			<span class="display:block font-weight:500 m:0|0|8|0 fg:theme-text">
-				字間: {(localFormatting.letterSpacing ?? 0).toFixed(2)}em
-			</span>
-			<input
-				type="range"
-				bind:value={localFormatting.letterSpacing}
-				min="-0.05"
-				max="0.2"
-				step="0.01"
-				class="w:full"
-			/>
-			<div class="flex justify-content:space-between font:12 fg:theme-text-secondary mt:4">
-				<span>-0.05em</span>
-				<span>0.20em</span>
-			</div>
-		</div>
-
-		<!-- プレビュー -->
-		<div class="b:1|solid|theme-border r:8 p:16 bg:editor-background">
-			<div class="font:12 font-weight:500 mb:8 fg:theme-text-secondary">プレビュー</div>
-			<div
-				style="
-					font-family: {getFontFamily(settingsStore.editorFont)};
-					font-size: {localFormatting.fontSize ?? 16}px;
-					line-height: {localFormatting.lineHeight ?? 2};
-					letter-spacing: {localFormatting.letterSpacing ?? 0}em;
-				"
-				class="fg:$(editor.text)"
+		<!-- タブ -->
+		<div class="flex gap:4 bg:theme-background-secondary r:8 p:4">
+			<button
+				class="flex:1 p:12 r:6 font:14 font-weight:500 cursor:pointer transition:all|0.2s border:none {formattingTab === 'editor' ? 'bg:$(theme.primary) fg:white' : 'bg:transparent fg:theme-text hover:bg:theme-background'}"
+				onclick={() => (formattingTab = 'editor')}
 			>
-				吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。
-			</div>
+				エディター設定
+			</button>
+			<button
+				class="flex:1 p:12 r:6 font:14 font-weight:500 cursor:pointer transition:all|0.2s border:none {formattingTab === 'preview' ? 'bg:$(theme.primary) fg:white' : 'bg:transparent fg:theme-text hover:bg:theme-background'}"
+				onclick={() => (formattingTab = 'preview')}
+			>
+				プレビュー設定
+			</button>
 		</div>
 
-		<!-- ボタン -->
-		<div class="flex justify-content:flex-end gap:12">
-			<Button type="button" variant="secondary" onclick={() => (showFormattingModal = false)}>
-				キャンセル
-			</Button>
-			<Button type="button" onclick={updateFormatting}>保存</Button>
-		</div>
+		{#if formattingTab === 'editor'}
+			<!-- エディター設定 -->
+			<!-- フォント -->
+			<div>
+				<span class="display:block font-weight:500 m:0|0|12|0 fg:theme-text">フォント</span>
+				<FontSelector value={settingsStore.editorFont} onchange={handleFontChange} />
+			</div>
+
+			<!-- フォントサイズ -->
+			<div>
+				<span class="display:block font-weight:500 m:0|0|8|0 fg:theme-text">
+					フォントサイズ: {localFormatting.fontSize}px
+				</span>
+				<input
+					type="range"
+					bind:value={localFormatting.fontSize}
+					min="12"
+					max="24"
+					step="1"
+					class="w:full"
+				/>
+				<div class="flex justify-content:space-between font:12 fg:theme-text-secondary mt:4">
+					<span>12px</span>
+					<span>24px</span>
+				</div>
+			</div>
+
+			<!-- 行間 -->
+			<div>
+				<span class="display:block font-weight:500 m:0|0|8|0 fg:theme-text">
+					行間: {(localFormatting.lineHeight ?? 2).toFixed(1)}
+				</span>
+				<input
+					type="range"
+					bind:value={localFormatting.lineHeight}
+					min="1.0"
+					max="3.0"
+					step="0.1"
+					class="w:full"
+				/>
+				<div class="flex justify-content:space-between font:12 fg:theme-text-secondary mt:4">
+					<span>1.0</span>
+					<span>3.0</span>
+				</div>
+			</div>
+
+			<!-- 字間 -->
+			<div>
+				<span class="display:block font-weight:500 m:0|0|8|0 fg:theme-text">
+					字間: {(localFormatting.letterSpacing ?? 0).toFixed(2)}em
+				</span>
+				<input
+					type="range"
+					bind:value={localFormatting.letterSpacing}
+					min="-0.05"
+					max="0.2"
+					step="0.01"
+					class="w:full"
+				/>
+				<div class="flex justify-content:space-between font:12 fg:theme-text-secondary mt:4">
+					<span>-0.05em</span>
+					<span>0.20em</span>
+				</div>
+			</div>
+
+			<!-- プレビュー -->
+			<div class="b:1|solid|theme-border r:8 p:16 bg:editor-background">
+				<div class="font:12 font-weight:500 mb:8 fg:theme-text-secondary">プレビュー</div>
+				<div
+					style="
+						font-family: {getFontFamily(settingsStore.editorFont)};
+						font-size: {localFormatting.fontSize ?? 16}px;
+						line-height: {localFormatting.lineHeight ?? 2};
+						letter-spacing: {localFormatting.letterSpacing ?? 0}em;
+					"
+					class="fg:$(editor.text)"
+				>
+					吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。
+				</div>
+			</div>
+
+			<!-- ボタン -->
+			<div class="flex justify-content:flex-end gap:12">
+				<Button type="button" variant="secondary" onclick={() => (showFormattingModal = false)}>
+					キャンセル
+				</Button>
+				<Button type="button" onclick={updateFormatting}>保存</Button>
+			</div>
+		{:else}
+			<!-- プレビュー設定 -->
+			<PreviewSettings
+				settings={previewSettings}
+				onSettingsChange={(newSettings) => (previewSettings = newSettings)}
+			/>
+		{/if}
 	</div>
 </Modal>
 
@@ -1160,15 +1178,6 @@
 	items={contextMenu.items}
 	onClose={() => (contextMenu.visible = false)}
 />
-
-<!-- プレビュー設定モーダル -->
-<Modal bind:isOpen={showPreviewSettings} title="プレビュー設定" size="medium">
-	<PreviewSettings
-		settings={previewSettings}
-		onSettingsChange={(newSettings) => (previewSettings = newSettings)}
-		onClose={() => (showPreviewSettings = false)}
-	/>
-</Modal>
 
 <style>
 	/* contentEditable divのプレースホルダー */

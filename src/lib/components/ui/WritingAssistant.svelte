@@ -18,38 +18,6 @@
 	// 他形式からStorift形式へ変換するパターン
 	const convertPatterns = [
 		{
-			id: 'narou',
-			name: '小説家になろう形式',
-			description: '|親文字《ルビ》 → Storift形式',
-			// なろうの半角縦棒を全角に変換
-			convert: (t: string) => {
-				// 半角縦棒のルビを全角に変換
-				return t.replace(/\|([^《》\n]+)《([^》]+)》/g, '｜$1《$2》');
-			}
-		},
-		{
-			id: 'aozora',
-			name: '青空文庫形式',
-			description: '｜親文字《ルビ》 + 傍点注記 → Storift形式',
-			convert: (t: string) => {
-				let result = t;
-				// 青空文庫の傍点注記を変換: テキスト［＃「テキスト」に傍点］ → 《《テキスト》》
-				result = result.replace(/([^［]+)［＃「\1」に傍点］/g, '《《$1》》');
-				// シンプルな傍点パターン
-				result = result.replace(/［＃「([^」]+)」に傍点］/g, '《《$1》》');
-				return result;
-			}
-		},
-		{
-			id: 'pixiv',
-			name: 'pixiv形式',
-			description: '[[rb:親文字 > ルビ]] → Storift形式',
-			convert: (t: string) => {
-				// pixivのルビ記法を変換
-				return t.replace(/\[\[rb:\s*([^\s>]+)\s*>\s*([^\]]+)\]\]/g, '｜$1《$2》');
-			}
-		},
-		{
 			id: 'html',
 			name: 'HTML形式',
 			description: '<ruby>親文字<rt>ルビ</rt></ruby> → Storift形式',

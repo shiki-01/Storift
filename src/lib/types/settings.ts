@@ -10,6 +10,21 @@ export type EditorFont =
 
 export type ConflictResolutionPolicy = 'local' | 'remote' | 'manual';
 
+/**
+ * エクスポート時のルビ・傍点変換パターン
+ */
+export interface ExportFormatPattern {
+	id: string;
+	name: string;
+	description?: string;
+	// ルビ変換: $1=親文字, $2=ルビ文字
+	rubyPattern: string;
+	// 傍点変換: $1=傍点テキスト
+	boutenPattern: string;
+	// 縦棒付きルビ変換: $1=親文字, $2=ルビ文字
+	rubyWithBarPattern: string;
+}
+
 export interface EditorFormatting {
 	fontSize: number; // px
 	lineHeight: number; // 倍率
@@ -37,6 +52,7 @@ export interface AppSettings {
 	autoSaveInterval: number;
 	syncEnabled: boolean;
 	conflictResolution: ConflictResolutionPolicy;
+	exportPatterns: ExportFormatPattern[];
 	updatedAt: number;
 }
 

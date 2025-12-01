@@ -24,6 +24,7 @@ let settings = $state<AppSettings>({
 	autoSaveInterval: 30000,
 	syncEnabled: true,
 	conflictResolution: 'manual',
+	exportPatterns: [],
 	updatedAt: Date.now()
 });
 

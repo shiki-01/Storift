@@ -36,7 +36,8 @@
 			replace: 'Ctrl+H',
 			newChapter: 'Ctrl+Shift+N',
 			newScene: 'Ctrl+Alt+N'
-		}
+		},
+		exportPatterns: []
 	});
 
 	let showImportModal = $state(false);
@@ -167,6 +168,7 @@
 					newChapter: settings.shortcuts.newChapter,
 					newScene: settings.shortcuts.newScene
 				},
+				exportPatterns: existing?.exportPatterns || [],
 				updatedAt: Date.now()
 			};
 

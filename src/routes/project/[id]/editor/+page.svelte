@@ -15,13 +15,22 @@
 	import VersionManager from '$lib/components/ui/VersionManager.svelte';
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
 	import FontSelector from '$lib/components/ui/FontSelector.svelte';
+	import PreviewViewer from '$lib/components/preview/PreviewViewer.svelte';
+	import PreviewSettings from '$lib/components/preview/PreviewSettings.svelte';
 	import {
 		createEditorContextMenu,
 		createChapterContextMenu,
 		createSceneContextMenu,
 		type ContextMenuItem
 	} from '$lib/utils/contextMenu';
-	import type { Chapter, Scene, EditorFont } from '$lib/types';
+	import type {
+		Chapter,
+		Scene,
+		EditorFont,
+		PreviewSettings as PreviewSettingsType,
+		ViewMode
+	} from '$lib/types';
+	import { defaultPreviewSettings } from '$lib/types';
 	import Icon from '$lib/components/ui/Icon.svelte';
 
 	let isChapterModalOpen = $state(false);
@@ -38,6 +47,22 @@
 	let showPrintPreview = $state(false);
 	let showVersionManager = $state(false);
 	let showFormattingModal = $state(false);
+
+	// プレビュー機能
+	let viewMode = $state<ViewMode>('editor');
+	let showPreviewSettings = $state(false);
+	let previewSettings = $state<PreviewSettingsType>({ ...defaultPreviewSettings });
+
+	// 表示モード切替
+	function cycleViewMode() {
+		if (viewMode === 'editor') {
+			viewMode = 'split';
+		} else if (viewMode === 'split') {
+			viewMode = 'preview';
+		} else {
+			viewMode = 'editor';
+		}
+	}
 
 	// コンテキストメニュー
 	let contextMenu = $state<{
@@ -718,9 +743,9 @@
 	});
 </script>
 
-<div class="flex w:100% h:100%">
+<div class="grid grid-template-columns:17.5rem|1fr grid-template-rows:1fr w:100% h:100%">
 	<!-- サイドバー -->
-	<aside class="w:280 bg:theme-background br:2px|solid|theme-text flex flex-direction:column">
+	<aside class="w:100% bg:theme-background br:2px|solid|theme-text flex flex-direction:column">
 		<div class="flex-grow:1 overflow-y:auto p:16 pt:24px">
 			<div class="flex justify-content:space-between align-items:center mb:12">
 				<h3 class="font:14 font-weight:600 m:0 fg:theme-text">章・シーン</h3>
@@ -768,7 +793,9 @@
 	</aside>
 
 	<!-- エディタエリア -->
-	<div class="flex-grow:1 flex flex-direction:column">
+	<div
+		class="w:100% h:100% overflow-y:auto grid grid-template-rows:60px|1fr flex-grow:1 flex flex-direction:column"
+	>
 		{#if !editorStore.currentScene}
 			<div class="flex align-items:center justify-content:center h:full">
 				<div class="text-align:center">
@@ -781,7 +808,7 @@
 		{:else}
 			<!-- ツールバー -->
 			<div
-				class="bg:theme-background border-bottom:2|solid|theme-text p:12|16 flex flex-direction:column gap:8"
+				class="bg:theme-background border-bottom:2|solid|theme-text px:16 w:100% h:100% flex flex-direction:column jc:center gap:8"
 			>
 				<!-- タイトルと保存状態 -->
 				<div class="flex justify-content:space-between align-items:center">
@@ -800,6 +827,45 @@
 						>
 							<Icon name="palette" class="w:24px" />
 						</button>
+						<!-- プレビューボタン -->
+						<div class="flex align-items:center gap:2 bg:theme-background-secondary r:6 p:2">
+							<button
+								class="p:6 r:4 cursor:pointer transition:all|0.2s {viewMode === 'editor'
+									? 'bg:$(theme.primary) fg:theme-text-secondary'
+									: 'hover:bg:theme-background fg:theme-text'}"
+								onclick={() => (viewMode = 'editor')}
+								title="エディタのみ"
+							>
+								<Icon name="edit" class="w:18px" />
+							</button>
+							<button
+								class="p:6 r:4 cursor:pointer transition:all|0.2s {viewMode === 'split'
+									? 'bg:$(theme.primary) fg:theme-text-secondary'
+									: 'hover:bg:theme-background fg:theme-text'}"
+								onclick={() => (viewMode = 'split')}
+								title="二画面表示"
+							>
+								<Icon name="layout-columns" class="w:18px" />
+							</button>
+							<button
+								class="p:6 r:4 cursor:pointer transition:all|0.2s {viewMode === 'preview'
+									? 'bg:$(theme.primary) fg:theme-text-secondary'
+									: 'hover:bg:theme-background fg:theme-text'}"
+								onclick={() => (viewMode = 'preview')}
+								title="プレビューのみ"
+							>
+								<Icon name="eye" class="w:18px" />
+							</button>
+						</div>
+						{#if viewMode !== 'editor'}
+							<button
+								class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
+								onclick={() => (showPreviewSettings = true)}
+								title="プレビュー設定"
+							>
+								<Icon name="settings" class="w:24px" />
+							</button>
+						{/if}
 						<div class="w:1 h:20 bg:theme-text"></div>
 						<!-- Phase 2: 執筆支援ツール -->
 						<button
@@ -833,32 +899,52 @@
 				</div>
 			</div>
 
-			<!-- エディタ -->
-			<div class="flex-grow:1 overflow-y:auto p:32 bg:editor-background">
-				<div class="max-w:800 mx:auto bg:editor-background p:48 r:8 min-h:full h:fit">
-					<!-- contentEditable div -->
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<!-- エディタ & プレビューエリア -->
+			<div class="flex-grow:1 flex overflow:hidden">
+				<!-- エディタ -->
+				{#if viewMode !== 'preview'}
 					<div
-						bind:this={editorDiv}
-						contenteditable="true"
-						role="textbox"
-						aria-label="エディタ"
-						aria-multiline="true"
-						tabindex="0"
-						oninput={handleEditorInput}
-						oncontextmenu={handleContextMenu}
-						class="w:full min-h:600 border:none outline:none bg:editor-background fg:$(editor.text) white-space:pre-wrap"
-						style="
-							font-family: {getFontFamily(settingsStore.editorFont)};
-							font-size: {localFormatting.fontSize ?? 16}px;
-							line-height: {localFormatting.lineHeight ?? 2};
-							letter-spacing: {localFormatting.letterSpacing ?? 0}em;
-						"
-						data-placeholder="ここに執筆を開始..."
+						class="overflow-y:auto p:32 bg:editor-background {viewMode === 'split'
+							? 'w:50%'
+							: 'w:100%'} transition:width|0.3s"
 					>
-						{editorStore.content}
+						<div class="max-w:800 mx:auto bg:editor-background p:48 r:8 min-h:full h:fit">
+							<!-- contentEditable div -->
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<div
+								bind:this={editorDiv}
+								contenteditable="true"
+								role="textbox"
+								aria-label="エディタ"
+								aria-multiline="true"
+								tabindex="0"
+								oninput={handleEditorInput}
+								oncontextmenu={handleContextMenu}
+								class="w:full min-h:600 border:none outline:none bg:editor-background fg:$(editor.text) white-space:pre-wrap"
+								style="
+									font-family: {getFontFamily(settingsStore.editorFont)};
+									font-size: {localFormatting.fontSize ?? 16}px;
+									line-height: {localFormatting.lineHeight ?? 2};
+									letter-spacing: {localFormatting.letterSpacing ?? 0}em;
+								"
+								data-placeholder="ここに執筆を開始..."
+							>
+								{editorStore.content}
+							</div>
+						</div>
 					</div>
-				</div>
+				{/if}
+
+				<!-- プレビューエリア -->
+				{#if viewMode !== 'editor'}
+					<div
+						class="{viewMode === 'split'
+							? 'w:50% border-left:1|solid|theme-text'
+							: 'w:100%'} overflow:hidden"
+					>
+						<PreviewViewer content={editorStore.content} settings={previewSettings} />
+					</div>
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -1074,6 +1160,15 @@
 	items={contextMenu.items}
 	onClose={() => (contextMenu.visible = false)}
 />
+
+<!-- プレビュー設定モーダル -->
+<Modal bind:isOpen={showPreviewSettings} title="プレビュー設定" size="medium">
+	<PreviewSettings
+		settings={previewSettings}
+		onSettingsChange={(newSettings) => (previewSettings = newSettings)}
+		onClose={() => (showPreviewSettings = false)}
+	/>
+</Modal>
 
 <style>
 	/* contentEditable divのプレースホルダー */

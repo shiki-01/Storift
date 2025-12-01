@@ -30,29 +30,38 @@
 		}
 	}
 
-	// テキストをHTML形式に変換（ルビ・圏点対応）
+	// テキストをHTML形式に変換（ルビ・傍点対応）
 	function processContent(text: string, showRuby: boolean, showBouten: boolean): string {
 		let processed = text;
+
+		// 傍点処理を先に行う（ルビ処理より前に）
+		if (showBouten) {
+			// 傍点記法 《《テキスト》》 を一時的にプレースホルダーに変換
+			processed = processed.replace(
+				/《《([^》]+)》》/g,
+				'%%%BOUTEN_START%%%$1%%%BOUTEN_END%%%'
+			);
+		} else {
+			// 傍点記法を削除
+			processed = processed.replace(/《《([^》]+)》》/g, '$1');
+		}
 
 		// ルビ処理
 		if (showRuby) {
 			processed = rubyToHtml(processed);
 		} else {
-			// ルビ記法を削除
+			// ルビ記法を削除（｜付きと漢字のみ両方対応）
 			processed = processed
-				.replace(/\|?([^《（\[]+)《[^》]+》/g, '$1')
-				.replace(/\|?([^《（\[]+)（[^）]+）/g, '$1')
-				.replace(/\|?([^《（\[]+)\[[^\]]+\]/g, '$1');
+				.replace(/[｜|]([^《》\n]+)《[^》]+》/g, '$1')
+				.replace(/([一-龯々]+)《[^》]+》/g, '$1');
 		}
 
-		// 圏点処理 (《《文字》》形式)
+		// 傍点のプレースホルダーを実際のHTMLに変換
 		if (showBouten) {
 			processed = processed.replace(
-				/《《([^》]+)》》/g,
+				/%%%BOUTEN_START%%%([^%]+)%%%BOUTEN_END%%%/g,
 				'<span class="bouten">$1</span>'
 			);
-		} else {
-			processed = processed.replace(/《《([^》]+)》》/g, '$1');
 		}
 
 		// 改行を<br>に変換（段落として扱う）
@@ -201,6 +210,7 @@
 	.preview-container.horizontal .text-area {
 		max-width: calc(var(--line-length) * 1em);
 		flex: 1;
+		margin: 0 auto;
 	}
 
 	/* 行番号 */

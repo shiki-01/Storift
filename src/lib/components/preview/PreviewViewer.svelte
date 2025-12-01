@@ -10,6 +10,26 @@
 
 	let { content, settings }: Props = $props();
 
+	// プレビューコンテナへの参照
+	let containerRef = $state<HTMLDivElement | null>(null);
+
+	// 縦書きモードで縦スクロールを横スクロールに変換
+	function handleWheel(e: WheelEvent) {
+		if (settings.writingMode === 'vertical' && containerRef) {
+			// 縦スクロール（deltaY）がある場合、横スクロールに変換
+			if (e.deltaY !== 0) {
+				e.preventDefault();
+				// 縦書きは右から左に読むので、deltaYの符号を反転
+				containerRef.scrollLeft -= e.deltaY;
+			}
+			// 横スクロール（deltaX）がある場合も反転して適用
+			if (e.deltaX !== 0) {
+				e.preventDefault();
+				containerRef.scrollLeft -= e.deltaX;
+			}
+		}
+	}
+
 	// テキストをHTML形式に変換（ルビ・圏点対応）
 	function processContent(text: string, showRuby: boolean, showBouten: boolean): string {
 		let processed = text;

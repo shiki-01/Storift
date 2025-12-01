@@ -1,10 +1,4 @@
 <script lang="ts">
-	import {
-		proofread,
-		getProofreadingSummary,
-		applyProofreadingSuggestion,
-		type ProofreadingIssue
-	} from '$lib/utils/proofreading';
 	import { parseRuby, rubyToHtml, removeRuby, normalizeRuby } from '$lib/utils/ruby';
 	import Modal from './Modal.svelte';
 	import Button from './Button.svelte';
@@ -16,234 +10,165 @@
 
 	let { text = $bindable('') }: Props = $props();
 
-	let activeTab = $state<'proofreading' | 'ruby'>('proofreading');
-	let issues = $state<ProofreadingIssue[]>([]);
-	let selectedIssue = $state<ProofreadingIssue | null>(null);
+	let activeTab = $state<'formatting' | 'ruby'>('formatting');
 	let rubyPreview = $state('');
 	let showRubyPreview = $state(false);
 
-	// 校閲を実行
-	const runProofreading = () => {
-		issues = proofread(text);
-	};
-
-	// 修正を適用
-	function applySuggestion(issue: ProofreadingIssue) {
-		if (issue.suggestion) {
-			text = applyProofreadingSuggestion(text, issue);
-			// 再チェック
-			issues = proofread(text);
-		}
+	// 段落先頭の字下げを適用
+	function applyIndentation() {
+		const lines = text.split('\n');
+		const indentedLines = lines.map((line) => {
+			// 空行はそのまま
+			if (line.trim() === '') return line;
+			// すでに全角スペースまたは半角スペースで始まっている場合はスキップ
+			if (line.startsWith('　') || line.startsWith(' ')) return line;
+			// 記号で始まる行（会話文「」など）はスキップ
+			if (/^[「『（【〈《]/.test(line)) return line;
+			// その他の行は全角スペースを追加
+			return '　' + line;
+		});
+		text = indentedLines.join('\n');
 	}
 
-	// すべての修正を適用
-	const applyAllSuggestions = () => {
-		const suggestedIssues = issues.filter((i) => i.suggestion);
-		let newText = text;
-
-		// 後ろから適用
-		const sorted = [...suggestedIssues].sort((a, b) => b.position.start - a.position.start);
-		for (const issue of sorted) {
-			newText = applyProofreadingSuggestion(newText, issue);
-		}
-
-		text = newText;
-		issues = proofread(newText);
-	};
+	// 字下げを削除
+	function removeIndentation() {
+		const lines = text.split('\n');
+		const unindentedLines = lines.map((line) => {
+			// 行頭の全角スペースまたは半角スペースを削除
+			return line.replace(/^[　 ]+/, '');
+		});
+		text = unindentedLines.join('\n');
+	}
 
 	// ルビプレビュー
-	const previewRuby = () => {
+	function previewRuby() {
 		rubyPreview = rubyToHtml(text);
 		showRubyPreview = true;
-	};
+	}
 
 	// ルビを削除
-	const removeRubyFromText = () => {
+	function removeRubyFromText() {
 		text = removeRuby(text);
-	};
+	}
 
 	// ルビを統一
-	const normalizeRubyFormat = () => {
+	function normalizeRubyFormat() {
 		text = normalizeRuby(text);
-	};
-
-	// 重要度別の色
-	function getSeverityColor(severity: string): string {
-		switch (severity) {
-			case 'error':
-				return 'red';
-			case 'warning':
-				return 'orange';
-			case 'info':
-				return 'blue';
-			default:
-				return 'gray';
-		}
 	}
 
 	// 統計情報
-	let summary = $derived(getProofreadingSummary(issues));
+	let stats = $derived({
+		paragraphs: text.split('\n').filter((line) => line.trim() !== '').length,
+		indentedParagraphs: text.split('\n').filter((line) => /^[　 ]/.test(line)).length
+	});
 </script>
 
-<div class="writing-assistant bg:white r:12 shadow:0|2|8|rgba(0,0,0,0.1) overflow:hidden">
-	<!-- タブスイッチャー -->
-	<div class="flex border-bottom:1|solid|gray-200">
+<div class="flex flex-direction:column gap:24">
+	<!-- タブ -->
+	<div class="flex gap:4 bg:theme-background-secondary r:8 p:4">
 		<button
-			class="flex flex:grow gap:.5em py:12 px:24 font:14 font:semibold cursor:pointer border:none transition:all|0.2s {activeTab ===
-			'proofreading'
-				? 'bg:blue-50 fg:blue-600 border-bottom:2|solid|blue-600'
-				: 'bg:white fg:gray-600 hover:bg:gray-50'}"
-			onclick={() => (activeTab = 'proofreading')}
+			class="flex:1 flex align-items:center justify-content:center gap:8 p:12 r:6 font:14 font-weight:500 cursor:pointer transition:all|0.2s border:none {activeTab === 'formatting' ? 'bg:$(theme.primary) fg:white' : 'bg:transparent fg:theme-text hover:bg:theme-background'}"
+			onclick={() => (activeTab = 'formatting')}
 		>
-			<Icon name="pencil-bolt" class="w:20px" /> 校閲
-			{#if issues.length > 0}
-				<span class="ml:8 px:6 py:2 bg:red-100 fg:red-600 r:full font:12">
-					{issues.length}
-				</span>
-			{/if}
+			<Icon name="text-increase" class="w:18px" />
+			テキスト整形
 		</button>
 		<button
-			class="flex flex:grow gap:.5em py:12 px:24 font:14 font:semibold cursor:pointer border:none transition:all|0.2s {activeTab ===
-			'ruby'
-				? 'bg:blue-50 fg:blue-600 border-bottom:2|solid|blue-600'
-				: 'bg:white fg:gray-600 hover:bg:gray-50'}"
+			class="flex:1 flex align-items:center justify-content:center gap:8 p:12 r:6 font:14 font-weight:500 cursor:pointer transition:all|0.2s border:none {activeTab === 'ruby' ? 'bg:$(theme.primary) fg:white' : 'bg:transparent fg:theme-text hover:bg:theme-background'}"
 			onclick={() => (activeTab = 'ruby')}
 		>
-			<Icon name="abc" class="w:20px" /> ルビ
+			<Icon name="abc" class="w:18px" />
+			ルビ
 		</button>
 	</div>
 
-	<!-- コンテンツ -->
-	<div class="p:24">
-		{#if activeTab === 'proofreading'}
-			<div class="proofreading-panel">
-				<div class="flex align-items:center justify-content:space-between mb:16">
-					<h3 class="font:16 font:bold fg:gray-900">文章校閲</h3>
-					<div class="flex gap:8">
-						<Button
-							class="flex flex:row gap:.5em"
-							size="sm"
-							variant="secondary"
-							onclick={runProofreading}
-						>
-							<Icon name="search" /> チェック実行
-						</Button>
-						{#if issues.length > 0}
-							<Button
-								class="flex flex:row gap:.5em"
-								size="sm"
-								variant="primary"
-								onclick={applyAllSuggestions}
-							>
-								<Icon name="sparkles" /> すべて修正
-							</Button>
-						{/if}
-					</div>
+	{#if activeTab === 'formatting'}
+		<!-- テキスト整形 -->
+		<div class="flex flex-direction:column gap:20">
+			<!-- 字下げ -->
+			<div>
+				<span class="display:block font-weight:500 m:0|0|12|0 fg:theme-text">段落の字下げ</span>
+				<p class="font:13 fg:theme-text-secondary m:0|0|12|0">
+					段落の先頭に全角スペースを挿入します。会話文（「」で始まる行）はスキップされます。
+				</p>
+				<div class="flex gap:8">
+					<Button size="sm" onclick={applyIndentation}>
+						<span class="flex align-items:center gap:6">
+							<Icon name="indent-increase" class="w:16px" />
+							字下げを適用
+						</span>
+					</Button>
+					<Button size="sm" variant="secondary" onclick={removeIndentation}>
+						<span class="flex align-items:center gap:6">
+							<Icon name="indent-decrease" class="w:16px" />
+							字下げを削除
+						</span>
+					</Button>
 				</div>
-
-				{#if issues.length === 0}
-					<div class="text-align:center py:32 fg:gray-400">
-						<p class="font:14">問題は見つかりませんでした</p>
-						<p class="font:12 mt:8">「チェック実行」ボタンで文章を校閲できます</p>
-					</div>
-				{:else}
-					<!-- サマリー -->
-					<div class="bg:gray-50 r:8 p:12 mb:16 flex gap:16">
-						<div class="text-align:center">
-							<div class="font:20 font:bold fg:gray-900">{summary.total}</div>
-							<div class="font:12 fg:gray-600">合計</div>
-						</div>
-						<div class="text-align:center">
-							<div class="font:20 font:bold fg:red-600">{summary.bySeverity.error || 0}</div>
-							<div class="font:12 fg:gray-600">エラー</div>
-						</div>
-						<div class="text-align:center">
-							<div class="font:20 font:bold fg:orange-600">{summary.bySeverity.warning || 0}</div>
-							<div class="font:12 fg:gray-600">警告</div>
-						</div>
-						<div class="text-align:center">
-							<div class="font:20 font:bold fg:blue-600">{summary.bySeverity.info || 0}</div>
-							<div class="font:12 fg:gray-600">情報</div>
-						</div>
-					</div>
-
-					<!-- 問題リスト-->
-					<div class="space-y:8 max-h:400 overflow-y:auto">
-						{#each issues as issue}
-							<button
-								type="button"
-								class="w:full border:1|solid|gray-200 r:8 p:12 hover:bg:gray-50 transition:all|0.2s cursor:pointer text-align:left"
-								onclick={() => (selectedIssue = issue)}
-							>
-								<div class="flex align-items:start gap:12">
-									<div class="w:4 h:4 r:full bg:{getSeverityColor(issue.severity)}-500 mt:4"></div>
-									<div class="flex-grow">
-										<div class="font:14 fg:gray-900 mb:4">{issue.message}</div>
-										<div class="font:12 fg:gray-600 mb:8">
-											<code class="bg:gray-100 px:6 py:2 r:4">{issue.original}</code>
-											{#if issue.suggestion}
-												→ <code class="bg:green-100 px:6 py:2 r:4">{issue.suggestion}</code>
-											{/if}
-										</div>
-										{#if issue.suggestion}
-											<Button size="sm" variant="secondary" onclick={() => applySuggestion(issue)}>
-												修正を適用
-											</Button>
-										{/if}
-									</div>
-								</div>
-							</button>
-						{/each}
-					</div>
-				{/if}
 			</div>
-		{:else}
-			<div class="ruby-panel">
-				<div class="flex align-items:center justify-content:space-between mb:16">
-					<h3 class="font:16 font:bold fg:gray-900">ルビ（ふりがな）</h3>
-				</div>
 
-				<div class="space-y:12">
+			<!-- 統計情報 -->
+			<div class="b:1|solid|theme-border r:8 p:16 bg:theme-background-secondary">
+				<div class="font:12 font-weight:500 mb:12 fg:theme-text-secondary">現在の状態</div>
+				<div class="flex gap:24">
 					<div>
-						<h4 class="font:14 font:semibold fg:gray-700 mb:8">対応記法</h4>
-						<div class="bg:gray-50 r:8 p:12 font:12 fg:gray-600">
-							<p class="mb:4">• 漢字《かんじ》</p>
-							<p class="mb:4">• 漢字（かんじ）</p>
-							<p class="mb:4">• 漢字[かんじ]</p>
-							<p>• |漢字《かんじ》</p>
-						</div>
+						<div class="font:24 font-weight:600 fg:theme-text">{stats.paragraphs}</div>
+						<div class="font:12 fg:theme-text-secondary">段落数</div>
 					</div>
-
-					<div class="flex gap:8 flex-wrap">
-						<Button
-							class="flex flex:row gap:.5em"
-							size="sm"
-							variant="secondary"
-							onclick={previewRuby}
-						>
-							<Icon name="eye" /> プレビュー
-						</Button>
-						<Button
-							class="flex flex:row gap:.5em"
-							size="sm"
-							variant="secondary"
-							onclick={normalizeRubyFormat}
-						>
-							<Icon name="tool" /> 表記統一
-						</Button>
-						<Button
-							class="flex flex:row gap:.5em"
-							size="sm"
-							variant="secondary"
-							onclick={removeRubyFromText}
-						>
-							<Icon name="trash" /> ルビ削除
-						</Button>
+					<div>
+						<div class="font:24 font-weight:600 fg:theme-text">{stats.indentedParagraphs}</div>
+						<div class="font:12 fg:theme-text-secondary">字下げ済み</div>
 					</div>
 				</div>
 			</div>
-		{/if}
-	</div>
+		</div>
+	{:else}
+		<!-- ルビ -->
+		<div class="flex flex-direction:column gap:20">
+			<!-- 対応記法 -->
+			<div>
+				<span class="display:block font-weight:500 m:0|0|12|0 fg:theme-text">対応記法</span>
+				<div class="b:1|solid|theme-border r:8 p:16 bg:theme-background-secondary font:13 fg:theme-text-secondary">
+					<p class="m:0|0|8|0"><code class="bg:theme-background px:6 py:2 r:4">｜親文字《ルビ》</code> — 任意の文字列にルビ</p>
+					<p class="m:0|0|8|0"><code class="bg:theme-background px:6 py:2 r:4">漢字《かんじ》</code> — 漢字のみにルビ</p>
+					<p class="m:0"><code class="bg:theme-background px:6 py:2 r:4">《《傍点》》</code> — 傍点を付ける</p>
+				</div>
+			</div>
+
+			<!-- ルビ操作 -->
+			<div>
+				<span class="display:block font-weight:500 m:0|0|12|0 fg:theme-text">ルビ操作</span>
+				<div class="flex gap:8 flex-wrap">
+					<Button size="sm" onclick={previewRuby}>
+						<span class="flex align-items:center gap:6">
+							<Icon name="eye" class="w:16px" />
+							プレビュー
+						</span>
+					</Button>
+					<Button size="sm" variant="secondary" onclick={normalizeRubyFormat}>
+						<span class="flex align-items:center gap:6">
+							<Icon name="tool" class="w:16px" />
+							表記統一
+						</span>
+					</Button>
+					<Button size="sm" variant="secondary" onclick={removeRubyFromText}>
+						<span class="flex align-items:center gap:6">
+							<Icon name="trash" class="w:16px" />
+							ルビ削除
+						</span>
+					</Button>
+				</div>
+			</div>
+
+			<!-- 使い方のヒント -->
+			<div class="b:1|solid|theme-border r:8 p:16 bg:theme-background-secondary">
+				<div class="font:12 font-weight:500 mb:8 fg:theme-text-secondary">使い方のヒント</div>
+				<p class="font:13 fg:theme-text-secondary m:0">
+					例：<code class="bg:theme-background px:6 py:2 r:4">｜紅蓮の炎《ヘルフレイム》</code>と入力すると、プレビューでルビが表示されます。
+				</p>
+			</div>
+		</div>
+	{/if}
 </div>
 
 <!-- ルビプレビューモーダル -->
@@ -251,7 +176,7 @@
 	<Modal title="ルビプレビュー" onClose={() => (showRubyPreview = false)}>
 		<div
 			class="ruby-preview p:24"
-			style="writing-mode: vertical-rl; text-orientation: upright; line-height: 2;"
+			style="writing-mode: vertical-rl; text-orientation: mixed; line-height: 2;"
 		>
 			{@html rubyPreview}
 		</div>
@@ -259,15 +184,10 @@
 {/if}
 
 <style>
-	.writing-assistant {
-		min-width: 300px;
-		max-width: 500px;
-	}
-
 	.ruby-preview {
 		min-height: 300px;
 		font-size: 18px;
-		background: #f9fafb;
+		background: var(--color-background-secondary, #f9fafb);
 		border-radius: 8px;
 	}
 

@@ -17,6 +17,7 @@
 	import FontSelector from '$lib/components/ui/FontSelector.svelte';
 	import PreviewViewer from '$lib/components/preview/PreviewViewer.svelte';
 	import PreviewSettings from '$lib/components/preview/PreviewSettings.svelte';
+	import SceneExportModal from '$lib/components/ui/SceneExportModal.svelte';
 	import {
 		createEditorContextMenu,
 		createChapterContextMenu,
@@ -47,6 +48,7 @@
 	let showPrintPreview = $state(false);
 	let showVersionManager = $state(false);
 	let showFormattingModal = $state(false);
+	let showExportModal = $state(false);
 
 	// プレビュー機能
 	let viewMode = $state<ViewMode>('editor');
@@ -885,6 +887,13 @@
 						</button>
 						<button
 							class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
+							onclick={() => (showExportModal = true)}
+							title="エクスポート"
+						>
+							<Icon name="download" class="w:24px" />
+						</button>
+						<button
+							class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
 							onclick={() => (showPrintPreview = true)}
 							title="印刷プレビュー"
 						>
@@ -1044,6 +1053,22 @@
 			entityType="scene"
 			entityId={editorStore.currentScene.id}
 			projectId={currentProjectStore.project.id}
+		/>
+	</Modal>
+{/if}
+
+<!-- エクスポートモーダル -->
+{#if showExportModal && editorStore.currentScene}
+	<Modal
+		isOpen={showExportModal}
+		onClose={() => (showExportModal = false)}
+		title="シーンをエクスポート"
+		size="large"
+	>
+		<SceneExportModal
+			content={editorStore.content}
+			title={editorStore.currentScene.title}
+			onClose={() => (showExportModal = false)}
 		/>
 	</Modal>
 {/if}

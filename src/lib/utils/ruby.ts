@@ -1,5 +1,13 @@
 /**
- * ルビ（ふりがな）ユーティリティ
+ * ルビ（ふりがな）・傍点ユーティリティ
+ * 
+ * ルビ記法:
+ * - ｜親文字《ルビ文字》 または 親文字《ルビ文字》
+ * - 例：｜紅蓮の炎《ヘルフレイム》
+ * 
+ * 傍点記法:
+ * - 《《テキスト》》（二重山カッコ）
+ * - 例：これは《《重要》》です
  */
 
 export interface RubyText {
@@ -10,75 +18,64 @@ export interface RubyText {
 export interface RubySegment {
 	text: string;
 	ruby?: string;
+	bouten?: boolean; // 傍点フラグ
 }
 
 /**
- * ルビ記法をパース
+ * ルビ・傍点記法をパース
  * 対応形式:
  * - 漢字《かんじ》
- * - 漢字（かんじ）
- * - 漢字[かんじ]
- * - |漢字《かんじ》
+ * - ｜漢字《かんじ》（全角縦棒）
+ * - |漢字《かんじ》（半角縦棒）
+ * - 《《傍点テキスト》》（二重山カッコで傍点）
  */
 export function parseRuby(text: string): RubySegment[] {
 	const segments: RubySegment[] = [];
-	let currentIndex = 0;
+	const remaining = text;
 
-	// ルビのパターン
-	const patterns = [
-		/\|?([^《（\[]+)《([^》]+)》/g, // 漢字《かんじ》または|漢字《かんじ》
-		/\|?([^《（\[]+)（([^）]+)）/g, // 漢字（かんじ）
-		/\|?([^《（\[]+)\[([^\]]+)\]/g // 漢字[かんじ]
-	];
+	// 傍点とルビのパターン
+	// 傍点: 《《テキスト》》
+	// ルビ: ｜または|で始まる場合は任意の文字列、そうでなければ漢字のみ
+	const combinedPattern = /《《([^》]+)》》|[｜|]([^《》\n]+)《([^》]+)》|([一-龯々]+)《([^》]+)》/g;
 
-	let matches: Array<{ index: number; base: string; ruby: string; length: number }> = [];
+	let lastIndex = 0;
+	let match;
 
-	// すべてのパターンでマッチを検索
-	for (const pattern of patterns) {
-		pattern.lastIndex = 0;
-		let match;
-		while ((match = pattern.exec(text)) !== null) {
-			const base = match[1].replace(/^\|/, '');
-			matches.push({
-				index: match.index,
-				base,
-				ruby: match[2],
-				length: match[0].length
-			});
-		}
-	}
-
-	// インデックスでソート
-	matches.sort((a, b) => a.index - b.index);
-
-	// 重複を除去（同じ位置のマッチは最初のものを使用）
-	matches = matches.filter((match, index, array) => {
-		if (index === 0) return true;
-		return match.index !== array[index - 1].index;
-	});
-
-	// セグメントを構築
-	for (const match of matches) {
+	while ((match = combinedPattern.exec(remaining)) !== null) {
 		// マッチ前のテキスト
-		if (match.index > currentIndex) {
+		if (match.index > lastIndex) {
 			segments.push({
-				text: text.substring(currentIndex, match.index)
+				text: remaining.substring(lastIndex, match.index)
 			});
 		}
 
-		// ルビ付きテキスト
-		segments.push({
-			text: match.base,
-			ruby: match.ruby
-		});
+		if (match[1] !== undefined) {
+			// 傍点: 《《テキスト》》
+			segments.push({
+				text: match[1],
+				bouten: true
+			});
+		} else if (match[2] !== undefined && match[3] !== undefined) {
+			// ルビ（｜または|付き）: ｜親文字《ルビ》
+			segments.push({
+				text: match[2],
+				ruby: match[3]
+			});
+		} else if (match[4] !== undefined && match[5] !== undefined) {
+			// ルビ（漢字のみ）: 漢字《かんじ》
+			segments.push({
+				text: match[4],
+				ruby: match[5]
+			});
+		}
 
-		currentIndex = match.index + match.length;
+		lastIndex = match.index + match[0].length;
 	}
 
 	// 残りのテキスト
-	if (currentIndex < text.length) {
+	if (lastIndex < remaining.length) {
 		segments.push({
-			text: text.substring(currentIndex)
+			text: remaining.substring(lastIndex)
 		});
 	}
 
@@ -86,12 +83,16 @@ export function parseRuby(text: string): RubySegment[] {
 }
 
 /**
- * ルビをHTMLに変換
+ * ルビ・傍点をHTMLに変換
  */
 export function rubyToHtml(text: string): string {
 	const segments = parseRuby(text);
 	return segments
 		.map((segment) => {
+			if (segment.bouten) {
+				// 傍点: 各文字にドットを付ける
+				return `<span class="bouten">${segment.text}</span>`;
+			}
 			if (segment.ruby) {
 				return `<ruby>${segment.text}<rt>${segment.ruby}</rt></ruby>`;
 			}
@@ -101,23 +102,22 @@ export function rubyToHtml(text: string): string {
 }
 
 /**
- * ルビを削除してプレーンテキストに変換
+ * ルビ・傍点を削除してプレーンテキストに変換
  */
 export function removeRuby(text: string): string {
 	return text
-		.replace(/\|?([^《（\[]+)《[^》]+》/g, '$1')
-		.replace(/\|?([^《（\[]+)（[^）]+）/g, '$1')
-		.replace(/\|?([^《（\[]+)\[[^\]]+\]/g, '$1');
+		.replace(/《《([^》]+)》》/g, '$1') // 傍点を削除
+		.replace(/[｜|]([^《》\n]+)《[^》]+》/g, '$1') // ｜付きルビを削除
+		.replace(/([一-龯々]+)《[^》]+》/g, '$1'); // 漢字ルビを削除
 }
 
 /**
  * ルビ記法を標準化（すべて《》形式に変換）
  */
 export function normalizeRuby(text: string): string {
-	return text
-		.replace(/\|?([^《（\[]+)（([^）]+)）/g, '$1《$2》')
-		.replace(/\|?([^《（\[]+)\[([^\]]+)\]/g, '$1《$2》')
-		.replace(/\|([^《]+)《/g, '$1《'); // |を削除
+	// 傍点はそのまま保持
+	// ルビの｜を削除（漢字のみの場合は不要なため）
+	return text.replace(/[｜|]([一-龯々]+)《/g, '$1《');
 }
 
 /**

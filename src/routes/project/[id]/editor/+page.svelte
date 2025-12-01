@@ -639,6 +639,33 @@
 		editorStore.content = target.innerText;
 	}
 
+	// 貼り付け時にプレーンテキストとして処理
+	function handlePaste(e: ClipboardEvent) {
+		e.preventDefault();
+		const text = e.clipboardData?.getData('text/plain') ?? '';
+		
+		// 現在の選択範囲にテキストを挿入
+		const selection = window.getSelection();
+		if (selection && selection.rangeCount > 0) {
+			const range = selection.getRangeAt(0);
+			range.deleteContents();
+			const textNode = document.createTextNode(text);
+			range.insertNode(textNode);
+			
+			// カーソルを挿入したテキストの後ろに移動
+			range.setStartAfter(textNode);
+			range.setEndAfter(textNode);
+			selection.removeAllRanges();
+			selection.addRange(range);
+			
+			// contentを更新
+			if (editorDiv) {
+				editorStore.content = editorDiv.innerText;
+			}
+			editorStore.isDirty = true;
+		}
+	}
+
 	// contentEditable div用のコンテキストメニューハンドラ
 	function handleContextMenu(e: MouseEvent) {
 		e.preventDefault();

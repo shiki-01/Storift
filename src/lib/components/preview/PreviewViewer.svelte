@@ -13,6 +13,11 @@
 	// プレビューコンテナへの参照
 	let containerRef = $state<HTMLDivElement | null>(null);
 
+	export function scrollToTop() {
+		if (!containerRef) return;
+		containerRef.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+	}
+
 	// 縦書きモードで縦スクロールを横スクロールに変換
 	function handleWheel(e: WheelEvent) {
 		if (settings.writingMode === 'vertical' && containerRef) {

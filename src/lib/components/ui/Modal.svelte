@@ -57,12 +57,12 @@
 		tabindex="-1"
 	>
 		<div
-			class="bg:white r:12 {sizeClasses[
+			class="modal-container bg:white r:12 {sizeClasses[
 				size
 			]} w:90% max-h:90vh overflow:auto box-shadow:0|8|32|rgba(0,0,0,0.2)"
 		>
 			<div
-				class="flex justify-content:space-between align-items:center p:24 border-bottom:1|solid|gray-200"
+				class="modal-header flex justify-content:space-between align-items:center p:24 border-bottom:1|solid|gray-200"
 			>
 				<h2 class="font:20 font-weight:600 m:0">{title}</h2>
 				<button
@@ -73,17 +73,17 @@
 					×
 				</button>
 			</div>
-			<div class="p:24">
+			<div class="modal-body p:24">
 				{#if children}
 					{@render children()}
 				{/if}
 			</div>
 			{#if footer}
-				<div class="p:24 pt:0">
+				<div class="modal-footer p:24 pt:0">
 					{@render footer()}
 				</div>
 			{:else if onConfirm}
-				<div class="p:24 pt:0 flex gap:12 justify-content:flex-end">
+				<div class="modal-footer p:24 pt:0 flex gap:12 justify-content:flex-end">
 					<button
 						class="px:16 py:8 border:1|solid|gray-300 r:6 bg:white fg:gray-700 cursor:pointer bg:gray-50:hover"
 						onclick={handleClose}
@@ -110,3 +110,21 @@
 		</div>
 	</div>
 {/if}
+
+<style>
+	@media (max-width: 768px) {
+		.modal-container {
+			width: 100%;
+			max-width: none;
+			max-height: 100vh;
+			height: 100%;
+			border-radius: 0;
+		}
+
+		.modal-header,
+		.modal-body,
+		.modal-footer {
+			padding: 16px;
+		}
+	}
+</style>

@@ -248,4 +248,12 @@
 	.ruby-preview :global(rt) {
 		font-size: 0.6em;
 	}
+
+	@media (max-width: 768px) {
+		.ruby-preview {
+			min-height: 200px;
+			font-size: 16px;
+			padding: 16px;
+		}
+	}
 </style>

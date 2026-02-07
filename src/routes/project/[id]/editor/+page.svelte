@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
@@ -49,6 +49,7 @@
 	let showVersionManager = $state(false);
 	let showFormattingModal = $state(false);
 	let showExportModal = $state(false);
+	let isSidebarOpen = $state(true);
 
 	// プレビュー機能
 	let viewMode = $state<ViewMode>('editor');
@@ -80,6 +81,9 @@
 
 	let editorTextarea = $state<HTMLTextAreaElement | null>(null);
 	let editorDiv = $state<HTMLDivElement | null>(null);
+	let editorScrollContainer = $state<HTMLDivElement | null>(null);
+	let previewViewerRef = $state<{ scrollToTop?: () => void } | null>(null);
+	let lastSceneId = $state<string | null>(null);
 
 	// エディタツールバーの書式設定（ローカル状態）
 	let localFormatting = $state<{
@@ -165,6 +169,16 @@
 		};
 	});
 
+	$effect(() => {
+		const currentId = editorStore.currentScene?.id ?? null;
+		if (!currentId || currentId === lastSceneId) return;
+		lastSceneId = currentId;
+		void tick().then(() => {
+			editorScrollContainer?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+			previewViewerRef?.scrollToTop?.();
+		});
+	});
+
 	const handleCreateChapter = async () => {
 		if (!newChapterTitle.trim() || !currentProjectStore.project) return;
 
@@ -238,6 +252,9 @@
 
 	function handleSceneSelect(scene: (typeof currentProjectStore.scenes)[0]) {
 		editorStore.currentScene = scene;
+		if (window.matchMedia('(max-width: 1024px)').matches) {
+			isSidebarOpen = false;
+		}
 	}
 
 	function openSceneModal(chapterId: string) {
@@ -645,10 +662,10 @@
 	function handlePaste(e: ClipboardEvent) {
 		e.preventDefault();
 		const text = e.clipboardData?.getData('text/plain') ?? '';
-		
+
 		// execCommand を使用してテキストを挿入（ブラウザのUndo履歴に記録される）
 		document.execCommand('insertText', false, text);
-		
+
 		// contentを更新
 		if (editorDiv) {
 			editorStore.content = editorDiv.innerText;
@@ -762,9 +779,11 @@
 	});
 </script>
 
-<div class="grid grid-template-columns:17.5rem|1fr grid-template-rows:1fr w:100% h:100%">
+<div class="editor-layout w:100% h:100%" data-sidebar-open={isSidebarOpen ? 'true' : 'false'}>
 	<!-- サイドバー -->
-	<aside class="w:100% bg:theme-background br:2px|solid|theme-text flex flex-direction:column">
+	<aside
+		class="editor-sidebar w:100% bg:theme-background br:2px|solid|theme-text flex flex-direction:column"
+	>
 		<div class="flex-grow:1 overflow-y:auto p:16 pt:24px">
 			<div class="flex justify-content:space-between align-items:center mb:12">
 				<h3 class="font:14 font-weight:600 m:0 fg:theme-text">章・シーン</h3>
@@ -810,12 +829,26 @@
 			</div>
 		</div>
 	</aside>
+	<button
+		aria-label="scene list overlay"
+		onclick={() => (isSidebarOpen = false)}
+		class="sidebar-overlay"
+	></button>
 
 	<!-- エディタエリア -->
-	<div
-		class="w:100% h:100% overflow-y:auto grid grid-template-rows:60px|1fr flex-grow:1 flex flex-direction:column"
-	>
+	<div class="editor-main flex flex:column w:100% h:100% overflow-y:auto">
 		{#if !editorStore.currentScene}
+			<div class="mobile-sidebar-open">
+				<button
+					class="mobile-sidebar-button"
+					onclick={() => (isSidebarOpen = true)}
+					aria-label="章・シーンを開く"
+					title="章・シーンを開く"
+				>
+					<Icon name="list" class="w:18px" />
+					<span>章・シーン</span>
+				</button>
+			</div>
 			<div class="flex align-items:center justify-content:center h:full">
 				<div class="text-align:center">
 					<p class="fg:gray-600 font:16 mb:16">シーンを選択または作成してください</p>
@@ -827,17 +860,27 @@
 		{:else}
 			<!-- ツールバー -->
 			<div
-				class="bg:theme-background border-bottom:2|solid|theme-text px:16 w:100% h:100% flex flex-direction:column jc:center gap:8"
+				class="editor-toolbar bg:theme-background border-bottom:2|solid|theme-text px:16 w:100% h:60px flex flex-direction:column jc:center gap:8"
 			>
 				<!-- タイトルと保存状態 -->
-				<div class="flex justify-content:space-between align-items:center">
-					<div class="flex align-items:center gap:16">
-						<h3 class="font:16 font-weight:500 m:0 fg:theme-text">
+				<div class="editor-toolbar-row flex justify-content:space-between align-items:center">
+					<div class="editor-title-area flex align-items:center gap:16">
+						<button
+							class="sidebar-toggle p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
+							onclick={() => (isSidebarOpen = !isSidebarOpen)}
+							aria-label="章・シーンの表示切替"
+							title="章・シーンの表示切替"
+						>
+							<Icon name="list" class="w:20px" />
+						</button>
+						<h3 class="editor-title font:16 font-weight:500 m:0 fg:theme-text">
 							{editorStore.currentScene.title}
 						</h3>
-						<span class="font:13 fg:theme-text-secondary">{editorStore.characterCount}文字</span>
+						<span class="font:13 fg:theme-text-secondary white-space:nowrap">
+							{editorStore.characterCount}文字
+						</span>
 					</div>
-					<div class="flex align-items:center gap:8">
+					<div class="editor-toolbar-actions flex align-items:center gap:8">
 						<!-- 書式設定ボタン -->
 						<button
 							class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
@@ -908,24 +951,33 @@
 						</button>
 						<div class="w:1 h:20 bg:theme-text"></div>
 						<SyncStatus />
-						<span class="font:13 fg:theme-text-secondary">
+						<span class="font:13 white-space:nowrap fg:theme-text-secondary">
 							{editorStore.isDirty ? '未保存' : editorStore.isSaving ? '保存中...' : '保存済み'}
 						</span>
-						<Button size="sm" onclick={handleSave} disabled={!editorStore.isDirty}>保存</Button>
+						<Button
+							class="white-space:nowrap"
+							size="sm"
+							onclick={handleSave}
+							disabled={!editorStore.isDirty}>保存</Button
+						>
 					</div>
 				</div>
 			</div>
 
 			<!-- エディタ & プレビューエリア -->
-			<div class="flex-grow:1 flex overflow:hidden">
+			<div class="editor-panels flex-grow:1 flex overflow:hidden">
 				<!-- エディタ -->
 				{#if viewMode !== 'preview'}
 					<div
-						class="overflow-y:auto p:32 bg:editor-background {viewMode === 'split'
+						bind:this={editorScrollContainer}
+						class="editor-panel editor-panel--editor overflow-y:auto p:32 bg:editor-background {viewMode ===
+						'split'
 							? 'w:50%'
 							: 'w:100%'} transition:width|0.3s"
 					>
-						<div class="max-w:800 mx:auto bg:editor-background p:48 r:8 min-h:full h:fit">
+						<div
+							class="editor-page max-w:800 mx:auto bg:editor-background p:48 r:8 min-h:full h:fit"
+						>
 							<!-- contentEditable div -->
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<div
@@ -938,7 +990,7 @@
 								oninput={handleEditorInput}
 								oncontextmenu={handleContextMenu}
 								onpaste={handlePaste}
-								class="w:full min-h:600 border:none outline:none bg:editor-background fg:$(editor.text) white-space:pre-wrap"
+								class="editor-text w:full min-h:600 border:none outline:none bg:editor-background fg:$(editor.text) white-space:pre-wrap"
 								style="
 									font-family: {getFontFamily(settingsStore.editorFont)};
 									font-size: {localFormatting.fontSize ?? 16}px;
@@ -956,11 +1008,15 @@
 				<!-- プレビューエリア -->
 				{#if viewMode !== 'editor'}
 					<div
-						class="{viewMode === 'split'
+						class="editor-panel editor-panel--preview {viewMode === 'split'
 							? 'w:50% border-left:1|solid|theme-text'
 							: 'w:100%'} overflow:hidden"
 					>
-						<PreviewViewer content={editorStore.content} settings={previewSettings} />
+						<PreviewViewer
+							bind:this={previewViewerRef}
+							content={editorStore.content}
+							settings={previewSettings}
+						/>
 					</div>
 				{/if}
 			</div>
@@ -1079,13 +1135,19 @@
 		<!-- タブ -->
 		<div class="flex gap:4 bg:theme-background-secondary r:8 p:4">
 			<button
-				class="flex:1 p:12 r:6 font:14 font-weight:500 cursor:pointer transition:all|0.2s border:none {formattingTab === 'editor' ? 'bg:$(theme.primary) fg:white' : 'bg:transparent fg:theme-text hover:bg:theme-background'}"
+				class="flex:1 p:12 r:6 font:14 font-weight:500 cursor:pointer transition:all|0.2s border:none {formattingTab ===
+				'editor'
+					? 'bg:$(theme.primary) fg:white'
+					: 'bg:transparent fg:theme-text hover:bg:theme-background'}"
 				onclick={() => (formattingTab = 'editor')}
 			>
 				エディター設定
 			</button>
 			<button
-				class="flex:1 p:12 r:6 font:14 font-weight:500 cursor:pointer transition:all|0.2s border:none {formattingTab === 'preview' ? 'bg:$(theme.primary) fg:white' : 'bg:transparent fg:theme-text hover:bg:theme-background'}"
+				class="flex:1 p:12 r:6 font:14 font-weight:500 cursor:pointer transition:all|0.2s border:none {formattingTab ===
+				'preview'
+					? 'bg:$(theme.primary) fg:white'
+					: 'bg:transparent fg:theme-text hover:bg:theme-background'}"
 				onclick={() => (formattingTab = 'preview')}
 			>
 				プレビュー設定
@@ -1231,5 +1293,153 @@
 	/* フォーカス時のアウトライン除去 */
 	[contenteditable]:focus {
 		outline: none;
+	}
+
+	.editor-layout {
+		display: grid;
+		grid-template-columns: 17.5rem 1fr;
+		grid-template-rows: 1fr;
+		position: relative;
+	}
+
+	.editor-main {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+
+	.editor-panels {
+		flex: 1;
+		min-height: 0;
+	}
+
+	.sidebar-overlay {
+		display: none;
+	}
+
+	.sidebar-toggle {
+		display: none;
+	}
+
+	.mobile-sidebar-open {
+		display: none;
+	}
+
+	.mobile-sidebar-button {
+		display: none;
+	}
+
+	@media (max-width: 1024px) {
+		.editor-layout {
+			grid-template-columns: 1fr;
+		}
+
+		.editor-sidebar {
+			position: absolute;
+			top: 0;
+			left: 0;
+			height: 100%;
+			width: 17.5rem;
+			transform: translateX(-100%);
+			transition: transform 0.2s ease-in-out;
+			z-index: 3;
+			box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+		}
+
+		.editor-layout[data-sidebar-open='true'] .editor-sidebar {
+			transform: translateX(0);
+		}
+
+		.sidebar-overlay {
+			display: block;
+			position: absolute;
+			inset: 0;
+			background: rgba(0, 0, 0, 0.4);
+			opacity: 0;
+			pointer-events: none;
+			transition: opacity 0.2s ease-in-out;
+			z-index: 2;
+		}
+
+		.editor-layout[data-sidebar-open='true'] .sidebar-overlay {
+			opacity: 1;
+			pointer-events: auto;
+		}
+
+		.sidebar-toggle {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+		}
+
+		.mobile-sidebar-open {
+			display: block;
+			position: sticky;
+			top: 0;
+			z-index: 1;
+			padding: 8px 12px;
+			background: var(--color-background);
+			border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
+		}
+
+		.editor-layout[data-sidebar-open='true'] .mobile-sidebar-open {
+			display: none;
+		}
+
+		.mobile-sidebar-button {
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
+			padding: 6px 10px;
+			border-radius: 8px;
+			border: 1px solid var(--color-border, rgba(0, 0, 0, 0.12));
+			background: var(--color-background-secondary, #f9fafb);
+			color: var(--color-text);
+			font-size: 12px;
+			cursor: pointer;
+		}
+
+		.editor-panels {
+			flex-direction: column;
+		}
+
+		.editor-panel--editor,
+		.editor-panel--preview {
+			width: 100% !important;
+		}
+	}
+
+	@media (max-width: 768px) {
+		.editor-toolbar {
+			padding: 8px 12px;
+		}
+
+		.editor-toolbar-row {
+			height: 60px;
+			width: 100%;
+			overflow-x: auto;
+		}
+
+		.editor-title {
+			font-size: 14px;
+			white-space: nowrap;
+		}
+
+		.editor-toolbar-actions {
+			gap: 6px;
+		}
+
+		.editor-panel--editor {
+			padding: 16px;
+		}
+
+		.editor-page {
+			padding: 20px;
+			max-width: 100%;
+		}
+
+		.editor-text {
+			min-height: 420px;
+		}
 	}
 </style>

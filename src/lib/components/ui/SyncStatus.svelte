@@ -41,16 +41,16 @@
 	>
 		{config.icon}
 	</span>
-	<span class={config.color}>
+	<span class={config.color + " white-space:nowrap"}>
 		{config.text}
 	</span>
 	{#if syncStore.lastSyncTime}
-		<span class="fg:gray-500">
+		<span class="fg:gray-500 white-space:nowrap">
 			• {formatRelativeTime(syncStore.lastSyncTime)}
 		</span>
 	{/if}
 	{#if syncStore.error}
-		<span class="fg:red-600 font:12" title={syncStore.error}>
+		<span class="fg:red-600 font:12 white-space:nowrap" title={syncStore.error}>
 			({syncStore.error})
 		</span>
 	{/if}

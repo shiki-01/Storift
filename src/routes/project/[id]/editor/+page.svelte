@@ -779,6 +779,10 @@
 	});
 </script>
 
+<svelte:head>
+	<title>執筆 | Storift</title>
+</svelte:head>
+
 <div class="editor-layout w:100% h:100%" data-sidebar-open={isSidebarOpen ? 'true' : 'false'}>
 	<!-- サイドバー -->
 	<aside

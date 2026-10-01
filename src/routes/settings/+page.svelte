@@ -2,52 +2,119 @@
 	import { onMount } from 'svelte';
 	import { db } from '$lib/db';
 	import { themeStore, themes } from '$lib/stores/theme.svelte';
-	import { exportAllProjects, exportAsJson } from '$lib/services/export.service';
+	import { exportAllProjects } from '$lib/services/export.service';
 	import { importFromJson } from '$lib/services/import.service';
-	import Button from '$lib/components/ui/Button.svelte';
-	import Card from '$lib/components/ui/Card.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import NotificationSettings from '$lib/components/ui/NotificationSettings.svelte';
 	import type { AppSettings } from '$lib/types/settings';
 	import { isFirebaseInitialized } from '$lib/firebase/config';
-	import { setupRealtimeSync, stopAllRealtimeSync } from '$lib/firebase/sync';
+	import { stopAllRealtimeSync } from '$lib/firebase/sync';
 	import { syncStore } from '$lib/stores/sync.svelte';
+	import { conflictStore } from '$lib/stores/conflicts.svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
+	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { notificationService } from '$lib/services/notification.service';
+	import { toast } from '$lib/stores/toast.svelte';
+	import { confirmDialog } from '$lib/stores/confirm.svelte';
+	import {
+		DEFAULT_SHORTCUTS,
+		SHORTCUT_LABELS,
+		formatShortcut,
+		isValidShortcut,
+		type ShortcutAction
+	} from '$lib/utils/shortcuts';
+
+	const DEFAULT_FORMATTING = {
+		fontSize: 16,
+		lineHeight: 2,
+		letterSpacing: 0,
+		paragraphSpacing: 16
+	};
+
+	// 自動保存間隔は保存時はミリ秒（AppSettings.autoSaveInterval）、画面では秒で扱う
+	const MIN_AUTO_SAVE_SEC = 10;
+	const MAX_AUTO_SAVE_SEC = 300;
 
 	let settings = $state<Omit<AppSettings, 'id' | 'updatedAt'>>({
 		theme: themeStore.theme.id as 'light' | 'dark' | 'auto',
 		autoTheme: themeStore.isAutoTheme,
 		autoSave: true,
-		autoSaveInterval: 30,
+		autoSaveInterval: 30000,
 		syncEnabled: true,
 		conflictResolution: 'manual',
-		editorFormatting: {
-			fontSize: 16,
-			lineHeight: 2,
-			letterSpacing: 0,
-			paragraphSpacing: 16
-		},
-		shortcuts: {
-			save: 'Ctrl+S',
-			undo: 'Ctrl+Z',
-			redo: 'Ctrl+Y',
-			find: 'Ctrl+F',
-			replace: 'Ctrl+H',
-			newChapter: 'Ctrl+Shift+N',
-			newScene: 'Ctrl+Alt+N'
-		},
+		editorFormatting: { ...DEFAULT_FORMATTING },
+		shortcuts: { ...DEFAULT_SHORTCUTS },
 		exportPatterns: []
 	});
 
+	let autoSaveSeconds = $state(30);
+
 	let showImportModal = $state(false);
 	let showExportModal = $state(false);
-	let showClearDataModal = $state(false);
 	let importFile: File | null = $state(null);
 	let importProgress = $state('');
+	let isImporting = $state(false);
 	let exportFormat = $state<'json' | 'all'>('json');
 
-	// Phase 2: 通知システム初期化
+	// ショートカット編集
+	let recordingAction = $state<ShortcutAction | null>(null);
+	let shortcutError = $state('');
+
+	const formattingFields = [
+		{
+			key: 'fontSize',
+			label: 'フォントサイズ',
+			min: 12,
+			max: 24,
+			step: 1,
+			format: (v: number) => `${v}px`,
+			minLabel: '小 (12px)',
+			maxLabel: '大 (24px)'
+		},
+		{
+			key: 'lineHeight',
+			label: '行間',
+			min: 1,
+			max: 3,
+			step: 0.1,
+			format: (v: number) => v.toFixed(1),
+			minLabel: '狭い (1.0)',
+			maxLabel: '広い (3.0)'
+		},
+		{
+			key: 'letterSpacing',
+			label: '字間',
+			min: -0.05,
+			max: 0.2,
+			step: 0.01,
+			format: (v: number) => `${v.toFixed(2)}em`,
+			minLabel: '狭い (-0.05em)',
+			maxLabel: '広い (0.2em)'
+		},
+		{
+			key: 'paragraphSpacing',
+			label: '段落間隔',
+			min: 0,
+			max: 48,
+			step: 4,
+			format: (v: number) => `${v}px`,
+			minLabel: 'なし (0px)',
+			maxLabel: '広い (48px)'
+		}
+	] as const;
+
+	// UI 共通のクラス
+	const sectionClass = 'b:2|solid|theme-text r:8 p:24 flex flex:column gap:16';
+	const headingClass = 'font:18 font-weight:600 m:0';
+	const hintClass = 'font:13 fg:theme-text-secondary m:0';
+	const fieldClass =
+		'px:12 py:8 b:2|solid|theme-text r:6 bg:theme-background fg:theme-text font:14 outline:none';
+	const outlineButtonClass =
+		'px:16 py:8 r:6 b:2|solid|theme-text bg:theme-background fg:theme-text font:14 cursor:pointer';
+	const solidButtonClass =
+		'px:16 py:8 r:6 b:2|solid|theme-text bg:theme-text fg:theme-background font:14 cursor:pointer';
+
+	// 通知システム初期化
 	onMount(() => {
 		notificationService.initializeReminders();
 		return () => {
@@ -69,20 +136,23 @@
 		await saveSettings();
 	};
 
+	// 自動保存間隔（秒 → ミリ秒）
+	const handleAutoSaveIntervalChange = async () => {
+		const seconds = Number.isFinite(autoSaveSeconds) ? autoSaveSeconds : 30;
+		autoSaveSeconds = Math.min(MAX_AUTO_SAVE_SEC, Math.max(MIN_AUTO_SAVE_SEC, Math.round(seconds)));
+		settings.autoSaveInterval = autoSaveSeconds * 1000;
+		await saveSettings();
+	};
+
 	// 同期設定の変更
 	const handleSyncToggle = async () => {
 		const wasEnabled = settings.syncEnabled;
 		settings.syncEnabled = !settings.syncEnabled;
 		await saveSettings();
 
-		console.log(
-			`🔄 Sync toggle: ${wasEnabled ? 'ON' : 'OFF'} -> ${settings.syncEnabled ? 'ON' : 'OFF'}`
-		);
-
 		// Firebase同期の開始/停止
 		if (typeof window !== 'undefined') {
 			if (!isFirebaseInitialized()) {
-				console.log('ℹ️ Firebase not configured, sync setting saved but no action taken');
 				return;
 			}
 
@@ -95,7 +165,6 @@
 
 					let user = getCurrentUser();
 					if (!user) {
-						console.log('🔐 Re-authenticating user...');
 						user = await signInAnonymousUser();
 						authStore.user = user;
 						authStore.isInitialized = true;
@@ -110,16 +179,15 @@
 					if (projectId) {
 						const { startCurrentProjectSync } = await import('$lib/services/sync.service');
 						await startCurrentProjectSync(projectId);
-						console.log('✅ Firebase sync enabled for project:', projectId);
-					} else {
-						console.log('ℹ️ No project selected, sync will start when project is opened');
 					}
 
 					syncStore.status = 'synced';
+					toast.success('クラウド同期を有効にしました');
 				} catch (error) {
-					console.error('❌ Failed to start Firebase sync:', error);
+					console.error('Failed to start Firebase sync:', error);
 					syncStore.status = 'error';
 					syncStore.error = String(error);
+					toast.error('クラウド同期の開始に失敗しました');
 				}
 			} else if (!settings.syncEnabled && wasEnabled) {
 				// 同期を無効化した場合
@@ -129,24 +197,26 @@
 					stopSync();
 					stopAllRealtimeSync();
 					syncStore.status = 'offline'; // オフライン状態に
-					console.log('✅ Firebase sync disabled');
+					toast.info('クラウド同期を無効にしました');
 				} catch (error) {
-					console.error('❌ Failed to stop Firebase sync:', error);
+					console.error('Failed to stop Firebase sync:', error);
+					toast.error('クラウド同期の停止に失敗しました');
 				}
 			}
 		}
 	};
 
 	// 設定の保存
-	const saveSettings = async () => {
+	const saveSettings = async (): Promise<boolean> => {
 		try {
 			// 既存の設定を取得してFirebase設定を保持
 			const existing = await db.settings.get('app-settings');
 
 			// プレーンなオブジェクトに変換（Svelteのリアクティブプロパティを除去）
-			const plainSettings = {
+			const plainSettings: AppSettings = {
+				// editorFont / editorWritingMode / previewSettings など、この画面で扱わない項目はそのまま保持する
+				...existing,
 				id: 'app-settings' as const,
-				firebase: existing?.firebase,
 				theme: settings.theme,
 				autoTheme: settings.autoTheme,
 				autoSave: settings.autoSave,
@@ -159,22 +229,19 @@
 					letterSpacing: settings.editorFormatting.letterSpacing,
 					paragraphSpacing: settings.editorFormatting.paragraphSpacing
 				},
-				shortcuts: {
-					save: settings.shortcuts.save,
-					undo: settings.shortcuts.undo,
-					redo: settings.shortcuts.redo,
-					find: settings.shortcuts.find,
-					replace: settings.shortcuts.replace,
-					newChapter: settings.shortcuts.newChapter,
-					newScene: settings.shortcuts.newScene
-				},
+				shortcuts: { ...settings.shortcuts },
 				exportPatterns: existing?.exportPatterns || [],
 				updatedAt: Date.now()
 			};
 
 			await db.settings.put(plainSettings);
+			// 他の画面（エディタなど）が参照するストアにも反映する
+			settingsStore.settings = plainSettings;
+			return true;
 		} catch (error) {
 			console.error('Failed to save settings:', error);
+			toast.error('設定の保存に失敗しました');
+			return false;
 		}
 	};
 
@@ -185,29 +252,90 @@
 			if (saved) {
 				settings.theme = saved.theme;
 				settings.autoTheme = saved.autoTheme;
-				settings.autoSave = saved.autoSave;
-				settings.autoSaveInterval = saved.autoSaveInterval;
+				settings.autoSave = saved.autoSave ?? true;
+				// 古いデータは秒単位（<1000）で保存されていた可能性があるのでミリ秒へ補正する
+				const interval = saved.autoSaveInterval ?? 30000;
+				settings.autoSaveInterval = interval < 1000 ? interval * 1000 : interval;
+				autoSaveSeconds = Math.round(settings.autoSaveInterval / 1000);
 				settings.syncEnabled = saved.syncEnabled;
 				settings.conflictResolution = saved.conflictResolution || 'manual';
-				settings.editorFormatting = saved.editorFormatting || {
-					fontSize: 16,
-					lineHeight: 2,
-					letterSpacing: 0,
-					paragraphSpacing: 16
-				};
-				if (saved.shortcuts) {
-					settings.shortcuts.save = saved.shortcuts.save;
-					settings.shortcuts.undo = saved.shortcuts.undo;
-					settings.shortcuts.redo = saved.shortcuts.redo;
-					settings.shortcuts.find = saved.shortcuts.find;
-					settings.shortcuts.replace = saved.shortcuts.replace;
-					settings.shortcuts.newChapter = saved.shortcuts.newChapter;
-					settings.shortcuts.newScene = saved.shortcuts.newScene;
-				}
+				settings.editorFormatting = { ...DEFAULT_FORMATTING, ...saved.editorFormatting };
+				settings.shortcuts = { ...DEFAULT_SHORTCUTS, ...saved.shortcuts };
+				settingsStore.settings = { ...saved, autoSaveInterval: settings.autoSaveInterval };
 			}
 		} catch (error) {
 			console.error('Failed to load settings:', error);
+			toast.error('設定の読み込みに失敗しました');
 		}
+	};
+
+	// 書式設定のリセット
+	const resetFormatting = async () => {
+		settings.editorFormatting = { ...DEFAULT_FORMATTING };
+		if (await saveSettings()) toast.success('書式設定をデフォルトに戻しました');
+	};
+
+	// ショートカットの編集
+	const startRecording = (action: ShortcutAction) => {
+		shortcutError = '';
+		recordingAction = action;
+	};
+
+	const stopRecording = () => {
+		recordingAction = null;
+	};
+
+	const handleRecordKeydown = async (e: KeyboardEvent) => {
+		if (!recordingAction) return;
+		e.preventDefault();
+		e.stopPropagation();
+
+		if (e.key === 'Escape') {
+			stopRecording();
+			return;
+		}
+
+		const shortcut = formatShortcut(e);
+		if (!shortcut) return; // 修飾キーのみ
+
+		if (!isValidShortcut(shortcut)) {
+			shortcutError = 'Ctrl または Alt と組み合わせたキーを指定してください';
+			return;
+		}
+
+		const duplicate = (Object.keys(settings.shortcuts) as ShortcutAction[]).find(
+			(a) => a !== recordingAction && settings.shortcuts[a] === shortcut
+		);
+		if (duplicate) {
+			shortcutError = `${shortcut} は「${SHORTCUT_LABELS[duplicate]}」で使用中です`;
+			return;
+		}
+
+		const action = recordingAction;
+		settings.shortcuts[action] = shortcut;
+		stopRecording();
+		shortcutError = '';
+		if (await saveSettings())
+			toast.success(`「${SHORTCUT_LABELS[action]}」を ${shortcut} に変更しました`);
+	};
+
+	const resetShortcut = async (action: ShortcutAction) => {
+		const conflict = (Object.keys(settings.shortcuts) as ShortcutAction[]).find(
+			(a) => a !== action && settings.shortcuts[a] === DEFAULT_SHORTCUTS[action]
+		);
+		if (conflict) {
+			shortcutError = `${DEFAULT_SHORTCUTS[action]} は「${SHORTCUT_LABELS[conflict]}」で使用中のため戻せません`;
+			return;
+		}
+		shortcutError = '';
+		settings.shortcuts[action] = DEFAULT_SHORTCUTS[action];
+		await saveSettings();
+	};
+
+	const resetAllShortcuts = async () => {
+		shortcutError = '';
+		settings.shortcuts = { ...DEFAULT_SHORTCUTS };
+		if (await saveSettings()) toast.success('ショートカットをデフォルトに戻しました');
 	};
 
 	// エクスポート
@@ -217,9 +345,10 @@
 				await exportAllProjects();
 			}
 			showExportModal = false;
+			toast.success('エクスポートしました');
 		} catch (error) {
 			console.error('Export failed:', error);
-			alert('エクスポートに失敗しました');
+			toast.error('エクスポートに失敗しました');
 		}
 	};
 
@@ -228,382 +357,296 @@
 		if (!importFile) return;
 
 		try {
+			isImporting = true;
 			importProgress = 'インポート中...';
 			const result = await importFromJson(importFile);
 
 			if (result.success) {
-				importProgress = `${result.projectIds.length}件のプロジェクトをインポートしました`;
-				setTimeout(() => {
-					showImportModal = false;
-					importProgress = '';
-					importFile = null;
-				}, 2000);
+				toast.success(`${result.projectIds.length}件のプロジェクトをインポートしました`);
+				showImportModal = false;
+				importProgress = '';
+				importFile = null;
 			} else {
 				importProgress = `エラー: ${result.errors.join(', ')}`;
+				toast.error('インポートに失敗しました');
 			}
 		} catch (error) {
 			importProgress = `エラー: ${error}`;
+			toast.error('インポートに失敗しました');
+		} finally {
+			isImporting = false;
 		}
 	};
 
 	// キャッシュクリア
+	const clearCaches = async () => {
+		if ('caches' in window) {
+			const cacheNames = await caches.keys();
+			await Promise.all(cacheNames.map((name) => caches.delete(name)));
+		}
+	};
+
 	const handleClearCache = async () => {
 		try {
-			// Service Workerのキャッシュをクリア
-			if ('caches' in window) {
-				const cacheNames = await caches.keys();
-				await Promise.all(cacheNames.map((name) => caches.delete(name)));
-			}
-			alert('キャッシュをクリアしました');
-			showClearDataModal = false;
+			await clearCaches();
+			toast.success('キャッシュをクリアしました');
 		} catch (error) {
-			alert('キャッシュのクリアに失敗しました');
+			console.error('Failed to clear cache:', error);
+			toast.error('キャッシュのクリアに失敗しました');
 		}
 	};
 
 	// 全データ削除
 	const handleClearAllData = async () => {
+		const confirmed = await confirmDialog({
+			title: '全データを削除',
+			message:
+				'すべてのプロジェクト、キャラクター、プロット、設定資料が削除されます。\nこの操作は取り消せません。本当に削除しますか?',
+			confirmText: '削除',
+			danger: true
+		});
+		if (!confirmed) return;
+
 		try {
 			await db.delete();
 			await db.open();
-			await handleClearCache();
-			alert('全データを削除しました。ページをリロードします。');
-			window.location.href = '/';
+			await clearCaches();
+			toast.success('全データを削除しました。ページをリロードします。');
+			setTimeout(() => (window.location.href = '/'), 1200);
 		} catch (error) {
-			alert('データの削除に失敗しました');
+			console.error('Failed to clear all data:', error);
+			toast.error('データの削除に失敗しました');
 		}
 	};
 
 	// ページ読み込み時に設定を読み込む
-	$effect(() => {
-		(async () => {
-			await loadSettings();
-			// 設定読み込み後、同期状態を確認
-			if (typeof window !== 'undefined' && isFirebaseInitialized() && settings.syncEnabled) {
-				// 同期が有効な場合、現在のプロジェクトがあれば同期を確保
-				const projectId = currentProjectStore.project?.id;
-				if (projectId && syncStore.status === 'offline') {
-					console.log('🔄 Restoring sync on settings page');
-					const { startCurrentProjectSync } = await import('$lib/services/sync.service');
-					await startCurrentProjectSync(projectId);
-				}
+	onMount(async () => {
+		await loadSettings();
+		// 設定読み込み後、同期状態を確認
+		if (isFirebaseInitialized() && settings.syncEnabled) {
+			// 同期が有効な場合、現在のプロジェクトがあれば同期を確保
+			const projectId = currentProjectStore.project?.id;
+			if (projectId && syncStore.status === 'offline') {
+				const { startCurrentProjectSync } = await import('$lib/services/sync.service');
+				await startCurrentProjectSync(projectId);
 			}
-		})();
+		}
 	});
 </script>
 
-<div class="w:100% h:100% overflow-y:auto px:4rem py:2rem flex flex:column gap:2rem">
-	<h1 class="font:1.25rem">設定</h1>
+<svelte:head>
+	<title>設定 | Storift</title>
+</svelte:head>
 
-	<!-- テーマ設定 -->
-	<Card class="flex flex:column gap:1rem b:2px|solid|var(--color-text)">
-		<h2 class="font:bold">テーマ</h2>
+<svelte:window onkeydowncapture={handleRecordKeydown} />
 
-		<div class="px:4rem">
-			<label class="flex align-items:center gap:.5rem cursor:pointer">
-				<input
-					type="checkbox"
-					checked={settings.autoTheme}
-					onchange={handleAutoThemeToggle}
-					class="w-4 h-4"
-				/>
+<div class="w:100% h:100% overflow-y:auto px:24 py:24">
+	<div class="max-w:760 mx:auto flex flex:column gap:24">
+		<h1 class="font:24 font-weight:600 m:0">設定</h1>
+
+		<!-- テーマ設定 -->
+		<section class={sectionClass}>
+			<h2 class={headingClass}>テーマ</h2>
+
+			<label class="flex align-items:center gap:8 cursor:pointer">
+				<input type="checkbox" checked={settings.autoTheme} onchange={handleAutoThemeToggle} />
 				<span>システム設定に従う</span>
 			</label>
-		</div>
 
-		<div class="flex flex:column gap:.5rem px:4rem">
-			{#each Object.values(themes) as theme}
-				<button
-					onclick={() => handleThemeChange(theme.id)}
-					class="p:4 r:8px b:2px|solid|var(--color-text) cursor:pointer flex flex:row ai:center jc:center gap:2rem rel {settings.autoTheme
-						? 'opacity:.5'
-						: ''}"
-					style="background-color: {theme.colors.background}; color: {theme.colors.text};"
-					disabled={settings.autoTheme}
-				>
-					{#if settings.theme === theme.id && !settings.autoTheme}
-						<div class="abs top:50% left:1rem transform:translateY(-50%)">
-							<span
-								class="w:8px h:2px flex transform:rotate(45deg)|translate(0,6px)"
-								style="background-color: {theme.colors.text};"
+			<div class="flex flex:column gap:8">
+				{#each Object.values(themes) as theme (theme.id)}
+					<button
+						type="button"
+						onclick={() => handleThemeChange(theme.id)}
+						aria-pressed={settings.theme === theme.id && !settings.autoTheme}
+						class="p:12 r:8 b:2|solid|theme-text cursor:pointer flex ai:center jc:space-between gap:16 {settings.autoTheme
+							? 'opacity:.5 cursor:not-allowed'
+							: ''}"
+						style="background-color: {theme.colors.background}; color: {theme.colors.text};"
+						disabled={settings.autoTheme}
+					>
+						<span class="flex ai:center gap:8">
+							<span class="w:16 inline-block text-align:center">
+								{settings.theme === theme.id && !settings.autoTheme ? '✓' : ''}
+							</span>
+							{theme.name}
+						</span>
+						<span class="flex gap:8">
+							<span class="w:8 h:8 r:full" style="background-color: {theme.colors.primary};"></span>
+							<span class="w:8 h:8 r:full" style="background-color: {theme.colors.secondary};"
 							></span>
-							<span
-								class="w:16px h:2px flex transform:rotate(-45deg)"
-								style="background-color: {theme.colors.text};"
-							></span>
-						</div>
-					{/if}
-					<div class="">{theme.name}</div>
-					<div class="flex gap:1rem justify-content:center">
-						<div class="w:8px h:8px r:full" style="background-color: {theme.colors.primary};"></div>
-						<div
-							class="w:8px h:8px r:full"
-							style="background-color: {theme.colors.secondary};"
-						></div>
-						<div class="w:8px h:8px r:full" style="background-color: {theme.colors.accent};"></div>
-					</div>
-				</button>
-			{/each}
-		</div>
-	</Card>
-
-	<!-- Phase 2: 通知設定 -->
-	<Card class="b:2px|solid|var(--color-text)">
-		<h2 class="font:bold">通知とリマインダー</h2>
-		{#if currentProjectStore.project}
-			<NotificationSettings projectId={currentProjectStore.project.id} />
-		{:else}
-			<p class="text-gray-600">プロジェクトを開いて通知を設定してください</p>
-		{/if}
-	</Card>
-
-	<!-- エディタ設定 -->
-	<Card class="b:2px|solid|var(--color-text) flex flex:column gap:1rem">
-		<h2 class="font:bold">エディタ</h2>
-
-		<div class="flex flex:column gap:1rem">
-			<div>
-				<label class="flex ai:center gap:.5rem cursor:pointer">
-					<input
-						type="checkbox"
-						bind:checked={settings.autoSave}
-						onchange={saveSettings}
-						class="w:1rem h:1rem"
-					/>
-					<span>自動保存を有効にする</span>
-				</label>
+							<span class="w:8 h:8 r:full" style="background-color: {theme.colors.accent};"></span>
+						</span>
+					</button>
+				{/each}
 			</div>
+		</section>
+
+		<!-- 通知設定 -->
+		<section class={sectionClass}>
+			<h2 class={headingClass}>通知とリマインダー</h2>
+			{#if currentProjectStore.project}
+				<NotificationSettings projectId={currentProjectStore.project.id} />
+			{:else}
+				<p class={hintClass}>プロジェクトを開いて通知を設定してください</p>
+			{/if}
+		</section>
+
+		<!-- エディタ設定 -->
+		<section class={sectionClass}>
+			<h2 class={headingClass}>エディタ</h2>
+
+			<label class="flex ai:center gap:8 cursor:pointer">
+				<input type="checkbox" bind:checked={settings.autoSave} onchange={saveSettings} />
+				<span>自動保存を有効にする</span>
+			</label>
 
 			{#if settings.autoSave}
-				<div class="flex flex:column gap:.5rem">
-					<label for="autoSaveInterval" class="block">自動保存間隔 (秒)</label>
+				<div class="flex flex:column gap:8">
+					<label for="autoSaveInterval" class="font:14 font-weight:600">自動保存間隔 (秒)</label>
 					<input
 						id="autoSaveInterval"
 						type="number"
-						bind:value={settings.autoSaveInterval}
-						onchange={saveSettings}
-						min="10"
-						max="300"
-						class="px:.5rem py:.1rem b:2px|solid|theme-text r:8px"
+						bind:value={autoSaveSeconds}
+						onchange={handleAutoSaveIntervalChange}
+						min={MIN_AUTO_SAVE_SEC}
+						max={MAX_AUTO_SAVE_SEC}
+						class="{fieldClass} w:120"
 					/>
+					<p class={hintClass}>{MIN_AUTO_SAVE_SEC}〜{MAX_AUTO_SAVE_SEC}秒の範囲で指定できます。</p>
 				</div>
 			{/if}
-		</div>
-	</Card>
+		</section>
 
-	<!-- 書式設定 -->
-	<Card class="b:2px|solid|var(--color-text) flex flex:column gap:1rem">
-		<h2 class="font:bold">書式設定</h2>
-		<p class="fg:theme-text-secondary font:.875rem">
-			エディタのテキスト表示形式を一括で調整できます。
-		</p>
+		<!-- 書式設定 -->
+		<section class={sectionClass}>
+			<h2 class={headingClass}>書式設定</h2>
+			<p class={hintClass}>エディタのテキスト表示形式を一括で調整できます。</p>
 
-		<div class="flex flex:column gap:1.5rem">
-			<!-- フォントサイズ -->
-			<div class="flex flex:column gap:.5rem">
-				<div class="flex justify-content:space-between align-items:center">
-					<label for="fontSize" class="font-weight:500">フォントサイズ</label>
-					<span class="fg:theme-text-secondary font:.875rem"
-						>{settings.editorFormatting.fontSize}px</span
+			<div class="flex flex:column gap:24">
+				{#each formattingFields as field (field.key)}
+					<div class="flex flex:column gap:8">
+						<div class="flex justify-content:space-between align-items:center">
+							<label for={field.key} class="font:14 font-weight:600">{field.label}</label>
+							<span class="fg:theme-text-secondary font:14">
+								{field.format(settings.editorFormatting[field.key])}
+							</span>
+						</div>
+						<input
+							id={field.key}
+							type="range"
+							bind:value={settings.editorFormatting[field.key]}
+							onchange={saveSettings}
+							min={field.min}
+							max={field.max}
+							step={field.step}
+							class="w:100%"
+						/>
+						<div class="flex justify-content:space-between fg:theme-text-secondary font:12">
+							<span>{field.minLabel}</span>
+							<span>{field.maxLabel}</span>
+						</div>
+					</div>
+				{/each}
+
+				<!-- プレビュー -->
+				<div class="p:16 b:2|solid|theme-border r:8 bg:theme-surface">
+					<p class="font:12 fg:theme-text-secondary m:0|0|8">プレビュー</p>
+					<div
+						class="fg:theme-text"
+						style="
+							font-size: {settings.editorFormatting.fontSize}px;
+							line-height: {settings.editorFormatting.lineHeight};
+							letter-spacing: {settings.editorFormatting.letterSpacing}em;
+						"
 					>
+						<p style="margin: 0 0 {settings.editorFormatting.paragraphSpacing}px;">
+							吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。
+						</p>
+						<p style="margin: 0;">
+							何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。
+						</p>
+					</div>
 				</div>
-				<input
-					id="fontSize"
-					type="range"
-					bind:value={settings.editorFormatting.fontSize}
-					onchange={saveSettings}
-					min="12"
-					max="24"
-					step="1"
-					class="w:full"
-				/>
-				<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
-					<span>小 (12px)</span>
-					<span>大 (24px)</span>
-				</div>
+
+				<button type="button" onclick={resetFormatting} class="{outlineButtonClass} w:fit">
+					デフォルトに戻す
+				</button>
 			</div>
+		</section>
 
-			<!-- 行間 -->
-			<div class="flex flex:column gap:.5rem">
-				<div class="flex justify-content:space-between align-items:center">
-					<label for="lineHeight" class="font-weight:500">行間</label>
-					<span class="fg:theme-text-secondary font:.875rem"
-						>{settings.editorFormatting.lineHeight.toFixed(1)}</span
-					>
-				</div>
-				<input
-					id="lineHeight"
-					type="range"
-					bind:value={settings.editorFormatting.lineHeight}
-					onchange={saveSettings}
-					min="1.0"
-					max="3.0"
-					step="0.1"
-					class="w:full"
-				/>
-				<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
-					<span>狭い (1.0)</span>
-					<span>広い (3.0)</span>
-				</div>
-			</div>
+		<!-- 同期設定 -->
+		<section class={sectionClass}>
+			<h2 class={headingClass}>同期</h2>
 
-			<!-- 字間 -->
-			<div class="flex flex:column gap:.5rem">
-				<div class="flex justify-content:space-between align-items:center">
-					<label for="letterSpacing" class="font-weight:500">字間</label>
-					<span class="fg:theme-text-secondary font:.875rem"
-						>{settings.editorFormatting.letterSpacing.toFixed(2)}em</span
-					>
-				</div>
-				<input
-					id="letterSpacing"
-					type="range"
-					bind:value={settings.editorFormatting.letterSpacing}
-					onchange={saveSettings}
-					min="-0.05"
-					max="0.2"
-					step="0.01"
-					class="w:full"
-				/>
-				<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
-					<span>狭い (-0.05em)</span>
-					<span>広い (0.2em)</span>
-				</div>
-			</div>
-
-			<!-- 段落間隔 -->
-			<div class="flex flex:column gap:.5rem">
-				<div class="flex justify-content:space-between align-items:center">
-					<label for="paragraphSpacing" class="font-weight:500">段落間隔</label>
-					<span class="fg:theme-text-secondary font:.875rem"
-						>{settings.editorFormatting.paragraphSpacing}px</span
-					>
-				</div>
-				<input
-					id="paragraphSpacing"
-					type="range"
-					bind:value={settings.editorFormatting.paragraphSpacing}
-					onchange={saveSettings}
-					min="0"
-					max="48"
-					step="4"
-					class="w:full"
-				/>
-				<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
-					<span>なし (0px)</span>
-					<span>広い (48px)</span>
-				</div>
-			</div>
-
-			<!-- プレビュー -->
-			<div class="p:1rem b:2px|solid|theme-border r:8px bg:theme-background-secondary">
-				<p class="font:.75rem fg:theme-text-secondary mb:.5rem">プレビュー</p>
-				<div
-					class="fg:theme-text"
-					style="
-						font-size: {settings.editorFormatting.fontSize}px;
-						line-height: {settings.editorFormatting.lineHeight};
-						letter-spacing: {settings.editorFormatting.letterSpacing}em;
-					"
-				>
-					<p style="margin-bottom: {settings.editorFormatting.paragraphSpacing}px;">
-						吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。
-					</p>
-					<p>何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。</p>
-				</div>
-			</div>
-
-			<!-- リセットボタン -->
-			<Button
-				onclick={() => {
-					settings.editorFormatting = {
-						fontSize: 16,
-						lineHeight: 2,
-						letterSpacing: 0,
-						paragraphSpacing: 16
-					};
-					saveSettings();
-				}}
-				variant="secondary"
-				class="w:fit"
-			>
-				デフォルトに戻す
-			</Button>
-		</div>
-	</Card>
-
-	<!-- 同期設定 -->
-	<Card class="b:2px|solid|var(--color-text)  flex flex:column gap:1rem">
-		<h2 class="font:bold">同期</h2>
-
-		<div class="flex flex:column gap:1rem">
-			<div>
-				<label class="flex ai:center gap:.5rem cursor:pointer">
-					<input
-						type="checkbox"
-						checked={settings.syncEnabled}
-						onchange={handleSyncToggle}
-						class="w:1rem h:1rem"
-					/>
+			<div class="flex flex:column gap:4">
+				<label class="flex ai:center gap:8 cursor:pointer">
+					<input type="checkbox" checked={settings.syncEnabled} onchange={handleSyncToggle} />
 					<span>クラウド同期を有効にする</span>
 				</label>
-				<p class="">
+				<p class={hintClass}>
 					Firebase連携が設定されている場合、プロジェクトデータを自動的にクラウドに同期します。
 				</p>
 			</div>
 
-			<div class="flex flex:column gap:.5rem">
-				<label for="conflictResolution" class="font:bold">競合解決方法</label>
-				<p class="fg:theme-text-secondary font:.875rem">
-					同じデータが複数の端末で編集された場合の処理方法を選択します。
-				</p>
+			<div class="flex flex:column gap:8">
+				<label for="conflictResolution" class="font:14 font-weight:600">競合解決方法</label>
+				<p class={hintClass}>同じデータが複数の端末で編集された場合の処理方法を選択します。</p>
 				<select
 					id="conflictResolution"
 					bind:value={settings.conflictResolution}
 					onchange={saveSettings}
-					class="px:.75rem py:.5rem b:2px|solid|theme-text r:8px bg:theme-background fg:theme-text"
+					class={fieldClass}
 				>
 					<option value="manual">手動で選択（推奨）</option>
 					<option value="local">常にこの端末の変更を優先</option>
 					<option value="remote">常にクラウドの変更を優先</option>
 				</select>
-				<div
-					class="px:1rem py:.75rem r:6px"
-					style="background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);"
-				>
-					{#if settings.conflictResolution === 'manual'}
-						<p class="font:.875rem">
-							競合が発生した場合、どちらの変更を採用するか手動で選択できます。
-						</p>
-					{:else if settings.conflictResolution === 'local'}
-						<p class="font:.875rem fg:theme-warning">
-							⚠️ クラウドの変更が自動的に破棄されます。他の端末での編集が失われる可能性があります。
-						</p>
-					{:else if settings.conflictResolution === 'remote'}
-						<p class="font:.875rem fg:theme-warning">
-							⚠️ この端末の変更が自動的に破棄されます。ローカルでの編集が失われる可能性があります。
-						</p>
-					{/if}
-				</div>
+				{#if settings.conflictResolution === 'manual'}
+					<p class="font:13 m:0">
+						競合が発生した場合、どちらの変更を採用するか手動で選択できます。
+					</p>
+				{:else}
+					<p class="font:13 fg:theme-warning m:0">
+						{settings.conflictResolution === 'local'
+							? 'クラウドの変更が自動的に破棄されます。他の端末での編集が失われる可能性があります。'
+							: 'この端末の変更が自動的に破棄されます。ローカルでの編集が失われる可能性があります。'}
+					</p>
+				{/if}
 			</div>
 
+			{#if conflictStore.count > 0}
+				<div
+					class="p:16 b:2|solid|theme-error r:8 flex ai:center jc:space-between gap:16 flex-wrap:wrap"
+				>
+					<p class="font:14 fg:theme-error m:0">
+						未解決の競合が {conflictStore.count} 件あります。
+					</p>
+					<button type="button" onclick={() => conflictStore.open()} class={solidButtonClass}>
+						競合を解決する
+					</button>
+				</div>
+			{/if}
+
 			{#if isFirebaseInitialized()}
-				<div class="flex">
-					<div class="flex ai:center gap:.5rem">
+				<div class="flex flex:column gap:4">
+					<div class="flex ai:center gap:8">
 						<span
-							class="w:1rem h:1rem block r:full {syncStore.status === 'synced'
+							class="w:12 h:12 block r:full {syncStore.status === 'synced'
 								? 'bg:theme-success'
 								: syncStore.status === 'syncing'
-									? 'bg:theme-wraning'
-									: syncStore.status === 'error'
+									? 'bg:theme-warning'
+									: syncStore.status === 'error' || syncStore.status === 'conflict'
 										? 'bg:theme-error'
 										: 'bg:theme-border'}"
 						></span>
-						<span>
+						<span class="font:14">
 							{#if syncStore.status === 'synced'}
 								{settings.syncEnabled ? '同期済み' : '同期無効'}
 							{:else if syncStore.status === 'syncing'}
 								同期中...
+							{:else if syncStore.status === 'conflict'}
+								競合があります
 							{:else if syncStore.status === 'error'}
 								エラー: {syncStore.error}
 							{:else if syncStore.status === 'offline'}
@@ -614,162 +657,199 @@
 						</span>
 					</div>
 					{#if syncStore.lastSyncTime}
-						<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+						<p class={hintClass}>
 							最終同期: {new Date(syncStore.lastSyncTime).toLocaleString('ja-JP')}
 						</p>
 					{/if}
 				</div>
 			{:else}
-				<div
-					class="px:1rem py:1em b:2px|solid|theme-warning r:8px flex flex:column gap:1rem"
-					style="background-color: color-mix(in srgb, var(--color-warning) 10%, transparent);"
-				>
-					<p class="font:bold fg:theme-warning">Firebase連携が設定されていません</p>
-					<a href="/setup" class=""> Firebase設定ページへ → </a>
+				<div class="p:16 b:2|solid|theme-warning r:8 flex flex:column gap:8">
+					<p class="font:14 font-weight:600 fg:theme-warning m:0">
+						Firebase連携が設定されていません
+					</p>
+					<a href="/setup" class="fg:theme-primary font:14">Firebase設定ページへ →</a>
 				</div>
 			{/if}
-		</div>
-	</Card>
+		</section>
 
-	<!-- ショートカットキー -->
-	<Card class="b:2px|solid|var(--color-text)  flex flex:column gap:1rem">
-		<h2 class="font:bold">ショートカットキー</h2>
+		<!-- ショートカットキー -->
+		<section class={sectionClass}>
+			<h2 class={headingClass}>ショートカットキー</h2>
+			<p class={hintClass}>
+				「変更」を押してから、割り当てたいキーの組み合わせを押してください（Esc でキャンセル）。
+			</p>
 
-		<div class="flex flex:column gap:.6rem">
-			{#each Object.entries(settings.shortcuts) as [action, key]}
-				<div class="flex flex:row ai:center jc:space-between">
-					<span class="capitalize">{action.replace(/([A-Z])/g, ' $1')}</span>
-					<kbd class="px:.4rem py:.1rem bg:theme-border b:1px|solid|theme-text-secondary r:6px">
-						{key}
-					</kbd>
-				</div>
-			{/each}
-		</div>
-	</Card>
+			<div class="flex flex:column gap:8">
+				{#each Object.keys(settings.shortcuts) as action (action)}
+					{@const key = action as ShortcutAction}
+					<div class="flex ai:center jc:space-between gap:12 flex-wrap:wrap">
+						<span class="font:14">{SHORTCUT_LABELS[key]}</span>
+						<div class="flex ai:center gap:8">
+							{#if recordingAction === key}
+								<kbd class="px:8 py:2 b:2|dashed|theme-primary r:6 font:13 fg:theme-primary">
+									キーを押してください
+								</kbd>
+								<button type="button" onclick={stopRecording} class="{outlineButtonClass} font:13">
+									キャンセル
+								</button>
+							{:else}
+								<kbd class="px:8 py:2 bg:theme-surface b:1|solid|theme-border r:6 font:13">
+									{settings.shortcuts[key]}
+								</kbd>
+								<button
+									type="button"
+									onclick={() => startRecording(key)}
+									class="{outlineButtonClass} font:13"
+								>
+									変更
+								</button>
+								<button
+									type="button"
+									onclick={() => resetShortcut(key)}
+									disabled={settings.shortcuts[key] === DEFAULT_SHORTCUTS[key]}
+									class="{outlineButtonClass} font:13 opacity:.4:disabled cursor:not-allowed:disabled"
+								>
+									初期値
+								</button>
+							{/if}
+						</div>
+					</div>
+				{/each}
+			</div>
 
-	<!-- データ管理 -->
-	<Card class="b:2px|solid|var(--color-text)  flex flex:column gap:1rem">
-		<h2 class="font:bold">データ管理</h2>
+			{#if shortcutError}
+				<p class="font:13 fg:theme-error m:0" role="alert">{shortcutError}</p>
+			{/if}
 
-		<div class="flex flex:column gap:1rem">
-			<div class="flex flex:column gap:.6rem">
-				<Button
+			<button type="button" onclick={resetAllShortcuts} class="{outlineButtonClass} w:fit">
+				すべて初期値に戻す
+			</button>
+		</section>
+
+		<!-- データ管理 -->
+		<section class={sectionClass}>
+			<h2 class={headingClass}>データ管理</h2>
+
+			<div class="flex flex:column gap:4">
+				<button
+					type="button"
 					onclick={() => (showExportModal = true)}
-					class="p:.5rem|1rem b:2px|solid|theme-text"
+					class="{solidButtonClass} w:fit"
 				>
 					全データをエクスポート
-				</Button>
-				<p class="">すべてのプロジェクトをJSONファイルとしてバックアップします。</p>
+				</button>
+				<p class={hintClass}>すべてのプロジェクトをJSONファイルとしてバックアップします。</p>
 			</div>
 
-			<div class="flex flex:column gap:.6rem">
-				<Button
+			<div class="flex flex:column gap:4">
+				<button
+					type="button"
 					onclick={() => (showImportModal = true)}
-					variant="secondary"
-					class="p:.5rem|1rem b:2px|solid|theme-text"
+					class="{outlineButtonClass} w:fit"
 				>
 					データをインポート
-				</Button>
-				<p class="">バックアップファイルからプロジェクトを復元します。</p>
+				</button>
+				<p class={hintClass}>バックアップファイルからプロジェクトを復元します。</p>
 			</div>
 
-			<div class="flex flex:column gap:.6rem">
-				<Button
-					onclick={() => (showClearDataModal = true)}
-					variant="danger"
-					class="p:.5rem|1rem b:2px|solid|theme-text"
+			<div class="flex flex:column gap:4">
+				<button type="button" onclick={handleClearCache} class="{outlineButtonClass} w:fit">
+					キャッシュをクリア
+				</button>
+				<p class={hintClass}>アプリのキャッシュを削除します。作品のデータは削除されません。</p>
+			</div>
+
+			<div class="flex flex:column gap:4">
+				<button
+					type="button"
+					onclick={handleClearAllData}
+					class="px:16 py:8 r:6 b:2|solid|theme-error bg:theme-background fg:theme-error font:14 cursor:pointer w:fit"
 				>
 					全データを削除
-				</Button>
-				<p class="">すべてのプロジェクトとキャッシュを削除します。この操作は取り消せません。</p>
+				</button>
+				<p class={hintClass}>
+					すべてのプロジェクトとキャッシュを削除します。この操作は取り消せません。
+				</p>
 			</div>
-		</div>
-	</Card>
+		</section>
 
-	<!-- バージョン情報 -->
-	<Card class="b:2px|solid|var(--color-text)  flex flex:column gap:1rem">
-		<h2 class="font:bold">バージョン情報</h2>
-		<div class="fg:theme-text-secondary">
-			<p>Storift v0.0.1</p>
-			<p>&copy shiki 2025</p>
-		</div>
-	</Card>
+		<!-- バージョン情報 -->
+		<section class={sectionClass}>
+			<h2 class={headingClass}>バージョン情報</h2>
+			<div class="fg:theme-text-secondary font:14">
+				<p class="m:0">Storift v0.0.1</p>
+				<p class="m:0">&copy; shiki 2025</p>
+			</div>
+		</section>
+	</div>
 </div>
 
 <!-- エクスポートモーダル -->
-{#if showExportModal}
-	<Modal
-		title="データをエクスポート"
-		onClose={() => (showExportModal = false)}
-		onConfirm={handleExport}
-	>
-		<div class="space-y-4">
-			<p>すべてのプロジェクトをエクスポートします。</p>
+<Modal
+	bind:isOpen={showExportModal}
+	title="データをエクスポート"
+	onConfirm={handleExport}
+	confirmText="エクスポート"
+>
+	<div class="flex flex:column gap:16">
+		<p class="m:0">すべてのプロジェクトをエクスポートします。</p>
 
-			<div>
-				<label for="exportFormat" class="block mb-2">形式</label>
-				<select id="exportFormat" bind:value={exportFormat} class="w-full px-3 py-2 border rounded">
-					<option value="json">JSON (バックアップ用)</option>
-				</select>
-			</div>
+		<div class="flex flex:column gap:8">
+			<label for="exportFormat" class="font:14 font-weight:600">形式</label>
+			<select id="exportFormat" bind:value={exportFormat} class={fieldClass}>
+				<option value="json">JSON (バックアップ用)</option>
+			</select>
 		</div>
-	</Modal>
-{/if}
+	</div>
+</Modal>
 
 <!-- インポートモーダル -->
-{#if showImportModal}
-	<Modal
-		title="データをインポート"
-		onClose={() => {
-			showImportModal = false;
-			importProgress = '';
-			importFile = null;
-		}}
-		onConfirm={handleImport}
-	>
-		<div class="space-y-4">
-			<div>
-				<label for="importFile" class="block mb-2">バックアップファイルを選択</label>
-				<input
-					id="importFile"
-					type="file"
-					accept=".json"
-					onchange={(e) => {
-						const target = e.target as HTMLInputElement;
-						importFile = target.files?.[0] || null;
-					}}
-					class="w-full"
-				/>
+<Modal
+	bind:isOpen={showImportModal}
+	title="データをインポート"
+	onClose={() => {
+		importProgress = '';
+		importFile = null;
+	}}
+	onConfirm={handleImport}
+	confirmText="インポート"
+	confirmDisabled={!importFile || isImporting}
+>
+	<div class="flex flex:column gap:16">
+		<div class="flex flex:column gap:8">
+			<label for="importFile" class="font:14 font-weight:600">バックアップファイルを選択</label>
+			<input
+				id="importFile"
+				type="file"
+				accept=".json"
+				onchange={(e) => {
+					const target = e.target as HTMLInputElement;
+					importFile = target.files?.[0] || null;
+				}}
+				class="w:100%"
+			/>
+		</div>
+
+		{#if importProgress}
+			<div class="p:12 bg:theme-surface b:1|solid|theme-border r:6" role="status">
+				{importProgress}
 			</div>
+		{/if}
 
-			{#if importProgress}
-				<div class="p-3 bg-gray-100 rounded">
-					{importProgress}
-				</div>
-			{/if}
+		<p class={hintClass}>
+			※ 既存のプロジェクトと同じタイトルの場合、新しいプロジェクトとして追加されます。
+		</p>
+	</div>
+</Modal>
 
-			<p class="text-sm text-gray-600">
-				※ 既存のプロジェクトと同じタイトルの場合、新しいプロジェクトとして追加されます。
-			</p>
-		</div>
-	</Modal>
-{/if}
+<style>
+	input[type='checkbox'],
+	input[type='range'] {
+		accent-color: var(--color-primary);
+	}
 
-<!-- データ削除確認モーダル -->
-{#if showClearDataModal}
-	<Modal
-		title="全データを削除"
-		onClose={() => (showClearDataModal = false)}
-		onConfirm={handleClearAllData}
-		confirmText="削除"
-		confirmVariant="danger"
-	>
-		<div class="space-y-4">
-			<p class="text-red-600 font-semibold">
-				⚠️ すべてのプロジェクト、キャラクター、プロット、設定資料が削除されます。
-			</p>
-			<p>この操作は取り消すことができません。事前にバックアップを取ることをお勧めします。</p>
-			<p>本当に削除しますか?</p>
-		</div>
-	</Modal>
-{/if}
+	input[type='checkbox'] {
+		width: 1rem;
+		height: 1rem;
+	}
+</style>

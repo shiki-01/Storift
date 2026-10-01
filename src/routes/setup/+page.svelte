@@ -7,10 +7,10 @@
 	import { initializeSync } from '$lib/services/sync.service';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
-	import Card from '$lib/components/ui/Card.svelte';
 	import { isValidFirebaseConfig } from '$lib/utils/validation';
 	import type { FirebaseConfig } from '$lib/types';
 	import Icon from '$lib/components/ui/Icon.svelte';
+	import { toast } from '$lib/stores/toast.svelte';
 
 	let apiKey = $state('');
 	let authDomain = $state('');
@@ -84,7 +84,8 @@
 
 			initializeFirebase(config);
 			await signInAnonymousUser();
-			testResult = '✓ 接続成功!';
+			testResult = '接続に成功しました';
+			toast.success('Firebase に接続できました');
 		} catch (e: any) {
 			error = e.message || '接続に失敗しました';
 		} finally {
@@ -127,6 +128,7 @@
 				// 同期エラーでもアプリは使える
 			}
 
+			toast.success('Firebase の設定を保存しました');
 			// ホームへ遷移
 			goto('/home');
 		} catch (e: any) {
@@ -137,141 +139,130 @@
 	};
 </script>
 
-<div class="max-h:calc(100vh-66px) overflow-y:auto bg:theme-background flex ai:start jc:center p:24">
-	<div class="max-w:600 w:full">
-		<Card padding="lg">
-			<h2 class="font:24 font-weight:600 m:0|0|24|0">Firebase初期設定</h2>
+<svelte:head>
+	<title>Firebase初期設定 | Storift</title>
+</svelte:head>
 
-			<!-- 一括ペーストセクション -->
-			<div class="bg:theme-surface p:16 r:8 mb:24 b:1|solid|theme-border">
-				<h3 class="flex flex:row gap:.5em font:16 font-weight:600 m:0|0|12|0 fg:blue-900">
-					<Icon name="rocket" /> 設定を一括入力
-				</h3>
-				<p class="font:14 fg:blue-800 m:0|0|12|0">
-					Firebase Consoleからコピーした設定をそのまま貼り付けてください
-				</p>
-				<textarea
-					bind:value={configText}
-					placeholder="apiKey: 'AIzaSy...',
+<div
+	class="max-h:calc(100vh-66px) overflow-y:auto bg:theme-background flex ai:start jc:center p:24"
+>
+	<div class="max-w:600 w:full b:2|solid|theme-text r:8 p:32 flex flex:column gap:24">
+		<div class="flex flex:column gap:8">
+			<h1 class="font:24 font-weight:600 m:0">Firebase初期設定</h1>
+			<p class="font:14 fg:theme-text-secondary m:0">
+				Firebase Consoleで取得した設定情報を入力すると、端末間でデータを同期できます。
+			</p>
+		</div>
+
+		<!-- 一括ペーストセクション -->
+		<div class="bg:theme-surface p:16 r:8 b:1|solid|theme-border flex flex:column gap:12">
+			<h2 class="flex flex:row ai:center gap:8 font:16 font-weight:600 m:0">
+				<Icon name="rocket" /> 設定を一括入力
+			</h2>
+			<p class="font:14 fg:theme-text-secondary m:0">
+				Firebase Consoleからコピーした設定をそのまま貼り付けてください
+			</p>
+			<textarea
+				bind:value={configText}
+				aria-label="Firebase の設定"
+				placeholder="apiKey: 'AIzaSy...',
 authDomain: 'your-project.firebaseapp.com',
 projectId: 'your-project',
 ..."
-					class="w:full p:12 r:6 outline:none:focus font:14 font-family:monospace min-h:120 resize:vertical"
-				></textarea>
-				<div class="flex gap:8 mt:12">
-					<Button type="button" onclick={handlePaste} disabled={!configText}>設定を読み込む</Button>
-				</div>
+				class="w:full p:12 r:6 b:1|solid|theme-border bg:theme-background fg:theme-text outline:none border-color:theme-primary:focus font:14 font-family:monospace min-h:120 resize:vertical"
+			></textarea>
+			<div class="flex gap:8">
+				<Button
+					type="button"
+					onclick={handlePaste}
+					disabled={!configText}
+					class="b:2|solid|theme-text"
+				>
+					設定を読み込む
+				</Button>
 			</div>
+		</div>
 
+		{#if showManualInput || apiKey}
 			<form
 				onsubmit={(e) => {
 					e.preventDefault();
 					handleSave();
 				}}
 				class="flex flex-direction:column gap:16"
-				class:display\:none={!showManualInput && !apiKey}
 			>
-				<div>
-					<label class="display:block font-weight:500 m:0|0|8|0" for="apiKey">API Key</label>
-					<Input bind:value={apiKey} type="text" placeholder="AIza..." required />
-				</div>
-
-				<div>
-					<label class="display:block font-weight:500 m:0|0|8|0" for="authDomain">Auth Domain</label
-					>
-					<Input
-						bind:value={authDomain}
-						type="text"
-						placeholder="your-project.firebaseapp.com"
-						required
-					/>
-				</div>
-
-				<div>
-					<label class="display:block font-weight:500 m:0|0|8|0" for="projectId">Project ID</label>
-					<Input bind:value={projectId} type="text" placeholder="your-project" required />
-				</div>
-
-				<div>
-					<label class="display:block font-weight:500 m:0|0|8|0" for="storageBucket"
-						>Storage Bucket</label
-					>
-					<Input
-						bind:value={storageBucket}
-						type="text"
-						placeholder="your-project.appspot.com"
-						required
-					/>
-				</div>
-
-				<div>
-					<label class="display:block font-weight:500 m:0|0|8|0" for="messagingSenderId"
-						>Messaging Sender ID</label
-					>
-					<Input bind:value={messagingSenderId} type="text" placeholder="123456789" required />
-				</div>
-
-				<div>
-					<label class="display:block font-weight:500 m:0|0|8|0" for="appId">App ID</label>
-					<Input bind:value={appId} type="text" placeholder="1:123456789:web:..." required />
-				</div>
+				<Input bind:value={apiKey} label="API Key" placeholder="AIza..." required />
+				<Input
+					bind:value={authDomain}
+					label="Auth Domain"
+					placeholder="your-project.firebaseapp.com"
+					required
+				/>
+				<Input bind:value={projectId} label="Project ID" placeholder="your-project" required />
+				<Input
+					bind:value={storageBucket}
+					label="Storage Bucket"
+					placeholder="your-project.appspot.com"
+					required
+				/>
+				<Input
+					bind:value={messagingSenderId}
+					label="Messaging Sender ID"
+					placeholder="123456789"
+					required
+				/>
+				<Input bind:value={appId} label="App ID" placeholder="1:123456789:web:..." required />
 
 				{#if error}
-					<div
-						class="fg:theme-error p:12|16 r:6 border:1|solid|theme-error"
-						style="background-color: color-mix(in srgb, var(--color-error) 10%, transparent);"
-					>
+					<div class="fg:theme-error p:12|16 r:6 b:2|solid|theme-error font:14" role="alert">
 						{error}
 					</div>
 				{/if}
 
 				{#if testResult}
-					<div
-						class="fg:theme-success p:12|16 r:6 border:1|solid|theme-success"
-						style="background-color: color-mix(in srgb, var(--color-success) 10%, transparent);"
-					>
+					<div class="fg:theme-success p:12|16 r:6 b:2|solid|theme-success font:14" role="status">
 						{testResult}
 					</div>
 				{/if}
 
-				<div class="flex gap:12 mt:16">
+				<div class="flex gap:12 mt:8">
 					<Button
 						type="button"
 						variant="secondary"
 						onclick={handleTest}
 						disabled={isLoading}
-						class="px:8px py:4px"
+						class="b:2|solid|theme-text"
 					>
 						{isLoading ? '接続中...' : '接続テスト'}
 					</Button>
-					<Button type="submit" disabled={isLoading}>
+					<Button type="submit" disabled={isLoading} class="b:2|solid|theme-text">
 						{isLoading ? '保存中...' : '保存して開始'}
 					</Button>
 				</div>
 			</form>
+		{:else if error}
+			<div class="fg:theme-error p:12|16 r:6 b:2|solid|theme-error font:14" role="alert">
+				{error}
+			</div>
+		{/if}
 
-			<!-- 設定が入力されたら表示 -->
-			{#if apiKey && !showManualInput}
-				<div class="mt:16 p:12 bg:theme-surface r:6 border:1|solid|theme-border">
-					<p class="font:14 font-weight:600 m:0|0|8|0">現在の設定:</p>
-					<ul class="font:13 fg:theme-text-secondary m:0 p:0|0|0|20">
-						<li>Project ID: <code>{projectId}</code></li>
-						<li>Auth Domain: <code>{authDomain}</code></li>
-					</ul>
-					<Button
-						type="button"
-						variant="secondary"
-						onclick={() => (showManualInput = true)}
-						class="mt:8 px:8px py:4px"
-					>
-						手動で編集
-					</Button>
-				</div>
-			{/if}
-		</Card>
-
-		<p class="text-align:center fg:gray-600 font:14 mt:24">
-			Firebase Consoleで取得した設定情報を入力してください
-		</p>
+		<!-- 設定が入力されたら表示 -->
+		{#if apiKey && !showManualInput}
+			<div class="p:12 bg:theme-surface r:6 b:1|solid|theme-border flex flex:column gap:8">
+				<p class="font:14 font-weight:600 m:0">現在の設定</p>
+				<ul class="font:13 fg:theme-text-secondary m:0 p:0|0|0|20">
+					<li>Project ID: <code>{projectId}</code></li>
+					<li>Auth Domain: <code>{authDomain}</code></li>
+				</ul>
+				<Button
+					type="button"
+					variant="secondary"
+					onclick={() => (showManualInput = true)}
+					class="w:fit b:2|solid|theme-text"
+				>
+					手動で編集
+				</Button>
+			</div>
+		{/if}
 	</div>
 </div>

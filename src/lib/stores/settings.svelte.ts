@@ -18,7 +18,7 @@ let settings = $state<AppSettings>({
 		redo: 'Ctrl+Y',
 		find: 'Ctrl+F',
 		replace: 'Ctrl+H',
-		newChapter: 'Ctrl+Shift+C',
+		newChapter: 'Ctrl+Shift+N',
 		newScene: 'Ctrl+Shift+S'
 	},
 	autoSave: true,
@@ -60,10 +60,10 @@ export const settingsStore = {
 	get autoSave() {
 		return settings.autoSave ?? true;
 	},
-	/** 自動保存間隔(ミリ秒)。設定ページは秒単位で保存するため 1000 未満は秒として扱う */
+	/** 自動保存間隔(ミリ秒) */
 	get autoSaveIntervalMs() {
 		const value = settings.autoSaveInterval || 30000;
-		return Math.max(5000, value < 1000 ? value * 1000 : value);
+		return Math.max(5000, value);
 	},
 	get editorWritingMode() {
 		return settings.editorWritingMode ?? 'horizontal';

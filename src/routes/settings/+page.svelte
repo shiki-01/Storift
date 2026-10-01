@@ -253,9 +253,7 @@
 				settings.theme = saved.theme;
 				settings.autoTheme = saved.autoTheme;
 				settings.autoSave = saved.autoSave ?? true;
-				// 古いデータは秒単位（<1000）で保存されていた可能性があるのでミリ秒へ補正する
-				const interval = saved.autoSaveInterval ?? 30000;
-				settings.autoSaveInterval = interval < 1000 ? interval * 1000 : interval;
+				settings.autoSaveInterval = saved.autoSaveInterval ?? 30000;
 				autoSaveSeconds = Math.round(settings.autoSaveInterval / 1000);
 				settings.syncEnabled = saved.syncEnabled;
 				settings.conflictResolution = saved.conflictResolution || 'manual';

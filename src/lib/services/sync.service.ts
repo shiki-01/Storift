@@ -17,6 +17,8 @@ import {
 } from '$lib/firebase/conflict';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { currentProjectStore } from '$lib/stores/currentProject.svelte';
+import { conflictStore } from '$lib/stores/conflicts.svelte';
+import { projectsStore } from '$lib/stores/projects.svelte';
 import { startNetworkMonitoring, onNetworkStatusChange } from '$lib/utils/offline';
 import { debounceAsync } from '$lib/utils/debounce';
 import type {
@@ -83,6 +85,9 @@ async function resolveConflict(
 				existing as unknown as Record<string, unknown>,
 				remote as unknown as Record<string, unknown>
 			);
+			// 同じデータの競合が既にあれば最新のもので置き換える
+			const duplicate = pendingConflicts.findIndex((c) => c.type === type && c.id === existing.id);
+			if (duplicate >= 0) pendingConflicts.splice(duplicate, 1);
 			pendingConflicts.push({
 				type,
 				id: existing.id,
@@ -90,6 +95,7 @@ async function resolveConflict(
 				remote: remote,
 				conflictData: conflictData as unknown as ConflictData<typeof existing>
 			});
+			publishConflicts();
 			syncStore.status = 'conflict';
 			return false; // 一旦ローカルを保持
 		}
@@ -99,6 +105,28 @@ async function resolveConflict(
 			return false;
 		}
 	}
+}
+
+/**
+ * 競合の表示名を取得
+ */
+function conflictLabel(c: PendingConflict): string {
+	const data = c.local as unknown as Record<string, unknown>;
+	const name = data.title ?? data.name;
+	return typeof name === 'string' && name ? name : c.id;
+}
+
+/**
+ * pendingConflicts を UI 用のストアへ反映
+ */
+function publishConflicts(): void {
+	conflictStore.items = pendingConflicts.map((c) => ({
+		type: c.type,
+		id: c.id,
+		label: conflictLabel(c),
+		conflictData: c.conflictData
+	}));
+	if (conflictStore.items.length === 0) conflictStore.isOpen = false;
 }
 
 /**
@@ -113,16 +141,18 @@ export function getPendingConflicts(): PendingConflict[] {
  */
 export async function resolveManualConflict(
 	conflictId: string,
-	resolution: 'local' | 'remote'
+	resolution: 'local' | 'remote',
+	type?: EntityType
 ): Promise<void> {
-	const index = pendingConflicts.findIndex((c) => c.id === conflictId);
+	const index = pendingConflicts.findIndex(
+		(c) => c.id === conflictId && (type === undefined || c.type === type)
+	);
 	if (index === -1) {
 		console.warn(`Conflict not found: ${conflictId}`);
 		return;
 	}
 
 	const conflict = pendingConflicts[index];
-	pendingConflicts.splice(index, 1);
 
 	if (resolution === 'remote') {
 		// リモートを採用してローカルを更新
@@ -132,9 +162,43 @@ export async function resolveManualConflict(
 		console.log(`✅ Conflict resolved: ${conflict.type}/${conflictId} (kept local)`);
 	}
 
+	// 成功してから保留リストから外す
+	pendingConflicts.splice(index, 1);
+	publishConflicts();
+
+	// 採用した結果を画面側のストアにも反映する
+	await refreshStoresAfterResolve(conflict.type);
+
+	// ローカルを採用した場合は、クラウド側へも反映する
+	if (resolution === 'local') {
+		await queueChange(conflict.type, conflictId, 'update');
+	}
+
 	// すべての競合が解決されたら状態を更新
 	if (pendingConflicts.length === 0) {
 		syncStore.status = 'synced';
+	}
+}
+
+/**
+ * 競合解決後に画面側のストアを最新のローカルデータで更新
+ */
+async function refreshStoresAfterResolve(type: EntityType): Promise<void> {
+	try {
+		if (type === 'projects') {
+			projectsStore.projects = await projectsDB.getAll();
+		}
+		const projectId = currentProjectStore.project?.id;
+		if (!projectId) return;
+		if (type === 'projects') {
+			currentProjectStore.project = (await projectsDB.getById(projectId)) || null;
+		} else if (type === 'chapters') {
+			currentProjectStore.chapters = await chaptersDB.getByProjectId(projectId);
+		} else if (type === 'scenes') {
+			currentProjectStore.scenes = await scenesDB.getByProjectId(projectId);
+		}
+	} catch (error) {
+		console.warn('Failed to refresh stores after conflict resolution:', error);
 	}
 }
 
@@ -905,7 +969,6 @@ export async function downloadAllFromFirestore(): Promise<void> {
 
 		// projectsStore が存在すれば最新のローカル一覧で更新する（UI の反映）
 		try {
-			const { projectsStore } = await import('$lib/stores/projects.svelte');
 			projectsStore.projects = await projectsDB.getAll();
 		} catch (err) {
 			// 無理に依存を作らない。失敗しても処理を続行

@@ -4,6 +4,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { touchProject } from './utils';
 import { historyDB } from './history';
 
+/** 自動保存などで履歴が増え続けないよう、この間隔内の本文変更は履歴を追加しない */
+const HISTORY_MIN_INTERVAL_MS = 5 * 60 * 1000;
+
 export const scenesDB = {
 	async getByChapterId(chapterId: string): Promise<Scene[]> {
 		return await db.scenes.where('chapterId').equals(chapterId).sortBy('order');
@@ -69,15 +72,23 @@ export const scenesDB = {
 
 		// 変更履歴を保存（contentの変更のみ）
 		if (currentScene && changes.content !== undefined) {
-			// 内容に変化がある場合のみ履歴を保存
+			// 内容に変化があり、直近の履歴から十分時間が空いている場合のみ履歴を保存
 			if (currentScene.content !== changes.content) {
-				await historyDB.create(
-					'scene',
-					currentScene.id,
-					currentScene.projectId,
-					currentScene,
-					'update'
-				);
+				const past = await db.history.where('entityId').equals(currentScene.id).toArray();
+				const lastCreatedAt = past.reduce((max, h) => Math.max(max, h.createdAt), 0);
+				if (Date.now() - lastCreatedAt >= HISTORY_MIN_INTERVAL_MS) {
+					await historyDB.create(
+						'scene',
+						currentScene.id,
+						currentScene.projectId,
+						currentScene,
+						'update'
+					);
+					// 古い履歴を間引く（失敗しても保存自体には影響させない）
+					void import('$lib/services/version.service')
+						.then(({ versionService }) => versionService.thinHistory('scene', currentScene.id))
+						.catch((error) => console.warn('Failed to thin history:', error));
+				}
 			}
 		}
 	},

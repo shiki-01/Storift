@@ -34,6 +34,13 @@ export interface RestorePoint {
 	entityId: string;
 }
 
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+const WEEK_MS = 7 * DAY_MS;
+
+/** 履歴の間引き後に 1 エンティティで保持する最大件数 */
+const MAX_HISTORY_PER_ENTITY = 200;
+
 class VersionService {
 	/**
 	 * テキスト差分を計算(シンプルな行ベースdiff)
@@ -417,6 +424,73 @@ class VersionService {
 		});
 
 		console.log(`${pointsToDelete.length}個の古いスナップショットを削除しました`);
+	}
+
+	/**
+	 * エンティティの履歴を間引く
+	 *
+	 * - 直近 1 時間: すべて残す
+	 * - 24 時間以内: 1 時間に 1 件
+	 * - 30 日以内: 1 日に 1 件
+	 * - それ以前: 1 週間に 1 件
+	 * - 作成時の履歴と、復元ポイントから参照されている履歴は常に残す
+	 * - 上記の後でも最大件数を超える場合は古いものから削除する
+	 * @returns 削除した件数
+	 */
+	async thinHistory(entityType: string, entityId: string, now = Date.now()): Promise<number> {
+		const entries = (await db.history.where('entityId').equals(entityId).toArray()).filter(
+			(h) => h.entityType === entityType
+		);
+		if (entries.length <= 1) return 0;
+
+		const protectedIds = new Set(
+			this.getEntityRestorePoints(entityType, entityId).map((p) => p.historyId)
+		);
+		// 新しい順
+		entries.sort((a, b) => b.createdAt - a.createdAt);
+
+		const seenBuckets = new Set<string>();
+		const keep: History[] = [];
+		const remove: History[] = [];
+
+		for (const entry of entries) {
+			if (protectedIds.has(entry.id) || entry.changeType === 'create') {
+				keep.push(entry);
+				continue;
+			}
+			const age = now - entry.createdAt;
+			let bucket: string | null = null;
+			if (age >= WEEK_MS * 4 + DAY_MS * 2) {
+				bucket = `w${Math.floor(entry.createdAt / WEEK_MS)}`;
+			} else if (age >= DAY_MS) {
+				bucket = `d${Math.floor(entry.createdAt / DAY_MS)}`;
+			} else if (age >= HOUR_MS) {
+				bucket = `h${Math.floor(entry.createdAt / HOUR_MS)}`;
+			}
+			if (bucket === null) {
+				keep.push(entry);
+			} else if (seenBuckets.has(bucket)) {
+				remove.push(entry);
+			} else {
+				seenBuckets.add(bucket);
+				keep.push(entry);
+			}
+		}
+
+		// 件数の上限（keep は新しい順に近い。保護対象以外の古いものから削除）
+		if (keep.length > MAX_HISTORY_PER_ENTITY) {
+			const overflow = keep.length - MAX_HISTORY_PER_ENTITY;
+			const removable = keep
+				.filter((h) => !protectedIds.has(h.id) && h.changeType !== 'create')
+				.sort((a, b) => a.createdAt - b.createdAt)
+				.slice(0, overflow);
+			remove.push(...removable);
+		}
+
+		if (remove.length > 0) {
+			await db.history.bulkDelete(remove.map((h) => h.id));
+		}
+		return remove.length;
 	}
 }
 

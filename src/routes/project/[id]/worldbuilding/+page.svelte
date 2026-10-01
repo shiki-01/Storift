@@ -315,88 +315,86 @@
 	bind:isOpen={showFormModal}
 	title={editingWorldbuilding ? '設定資料編集' : '新規設定資料作成'}
 >
-	{#snippet children()}
-		<div class="flex flex-direction:column gap:16">
-			<FormField label="タイトル" required>
-				{#snippet children(id)}
+	<div class="flex flex-direction:column gap:16">
+		<FormField label="タイトル" required>
+			{#snippet children(id)}
+				<input
+					{id}
+					type="text"
+					bind:value={formData.title}
+					placeholder="用語名や場所名など"
+					class={fieldClass}
+				/>
+			{/snippet}
+		</FormField>
+
+		<FormField label="カテゴリ">
+			{#snippet children(id)}
+				<select {id} bind:value={formData.category} class={fieldClass}>
+					{#each Object.entries(categoryLabels) as [value, label] (value)}
+						<option {value}>{label}</option>
+					{/each}
+				</select>
+			{/snippet}
+		</FormField>
+
+		<FormField label="内容">
+			{#snippet children(id)}
+				<textarea
+					{id}
+					bind:value={formData.content}
+					class="{textareaClass} min-h:160"
+					placeholder="詳細な説明..."
+				></textarea>
+			{/snippet}
+		</FormField>
+
+		<FormField label="タグ">
+			{#snippet children(id)}
+				<div class="flex gap:8">
 					<input
 						{id}
 						type="text"
-						bind:value={formData.title}
-						placeholder="用語名や場所名など"
-						class={fieldClass}
+						bind:value={formData.tagInput}
+						placeholder="タグを入力してEnter"
+						class="{fieldClass} flex:1"
+						onkeydown={(e) => {
+							// 日本語入力の変換確定 Enter では追加しない
+							if (e.key === 'Enter' && !e.isComposing) {
+								e.preventDefault();
+								handleAddTag();
+							}
+						}}
 					/>
-				{/snippet}
-			</FormField>
-
-			<FormField label="カテゴリ">
-				{#snippet children(id)}
-					<select {id} bind:value={formData.category} class={fieldClass}>
-						{#each Object.entries(categoryLabels) as [value, label] (value)}
-							<option {value}>{label}</option>
+					<button
+						type="button"
+						class={buttonClass('secondary')}
+						disabled={!formData.tagInput.trim()}
+						onclick={handleAddTag}
+					>
+						追加
+					</button>
+				</div>
+				{#if formData.tags.length > 0}
+					<div class="flex flex-wrap:wrap gap:6">
+						{#each formData.tags as tag, index (tag)}
+							<span class="{badgeClass} flex align-items:center gap:6">
+								#{tag}
+								<button
+									type="button"
+									aria-label={`タグ「${tag}」を削除`}
+									class="w:18 h:18 r:full flex align-items:center justify-content:center b:none bg:transparent fg:theme-text-secondary cursor:pointer bg:theme-surface:hover"
+									onclick={() => handleRemoveTag(index)}
+								>
+									×
+								</button>
+							</span>
 						{/each}
-					</select>
-				{/snippet}
-			</FormField>
-
-			<FormField label="内容">
-				{#snippet children(id)}
-					<textarea
-						{id}
-						bind:value={formData.content}
-						class="{textareaClass} min-h:160"
-						placeholder="詳細な説明..."
-					></textarea>
-				{/snippet}
-			</FormField>
-
-			<FormField label="タグ">
-				{#snippet children(id)}
-					<div class="flex gap:8">
-						<input
-							{id}
-							type="text"
-							bind:value={formData.tagInput}
-							placeholder="タグを入力してEnter"
-							class="{fieldClass} flex:1"
-							onkeydown={(e) => {
-								// 日本語入力の変換確定 Enter では追加しない
-								if (e.key === 'Enter' && !e.isComposing) {
-									e.preventDefault();
-									handleAddTag();
-								}
-							}}
-						/>
-						<button
-							type="button"
-							class={buttonClass('secondary')}
-							disabled={!formData.tagInput.trim()}
-							onclick={handleAddTag}
-						>
-							追加
-						</button>
 					</div>
-					{#if formData.tags.length > 0}
-						<div class="flex flex-wrap:wrap gap:6">
-							{#each formData.tags as tag, index (tag)}
-								<span class="{badgeClass} flex align-items:center gap:6">
-									#{tag}
-									<button
-										type="button"
-										aria-label={`タグ「${tag}」を削除`}
-										class="w:18 h:18 r:full flex align-items:center justify-content:center b:none bg:transparent fg:theme-text-secondary cursor:pointer bg:theme-surface:hover"
-										onclick={() => handleRemoveTag(index)}
-									>
-										×
-									</button>
-								</span>
-							{/each}
-						</div>
-					{/if}
-				{/snippet}
-			</FormField>
-		</div>
-	{/snippet}
+				{/if}
+			{/snippet}
+		</FormField>
+	</div>
 
 	{#snippet footer()}
 		<ModalActions

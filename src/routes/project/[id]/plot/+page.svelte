@@ -439,65 +439,63 @@
 </div>
 
 <Modal bind:isOpen={showFormModal} title={editingPlot ? 'プロット編集' : '新規プロット作成'}>
-	{#snippet children()}
-		<div class="flex flex-direction:column gap:16">
-			<FormField label="タイトル" required>
+	<div class="flex flex-direction:column gap:16">
+		<FormField label="タイトル" required>
+			{#snippet children(id)}
+				<input
+					{id}
+					type="text"
+					bind:value={formData.title}
+					placeholder="プロット名を入力"
+					class={fieldClass}
+				/>
+			{/snippet}
+		</FormField>
+
+		<div class="grid grid-template-columns:repeat(2,minmax(0,1fr)) gap:16">
+			<FormField label="種類">
 				{#snippet children(id)}
-					<input
-						{id}
-						type="text"
-						bind:value={formData.title}
-						placeholder="プロット名を入力"
-						class={fieldClass}
-					/>
+					<select {id} bind:value={formData.type} class={fieldClass}>
+						{#each Object.entries(typeLabels) as [value, label] (value)}
+							<option {value}>{label}</option>
+						{/each}
+					</select>
 				{/snippet}
 			</FormField>
 
-			<div class="grid grid-template-columns:repeat(2,minmax(0,1fr)) gap:16">
-				<FormField label="種類">
-					{#snippet children(id)}
-						<select {id} bind:value={formData.type} class={fieldClass}>
-							{#each Object.entries(typeLabels) as [value, label] (value)}
-								<option {value}>{label}</option>
-							{/each}
-						</select>
-					{/snippet}
-				</FormField>
-
-				<FormField label="ステータス">
-					{#snippet children(id)}
-						<select {id} bind:value={formData.status} class={fieldClass}>
-							{#each statusOrder as value (value)}
-								<option {value}>{statusGroups[value].label}</option>
-							{/each}
-						</select>
-					{/snippet}
-				</FormField>
-			</div>
-
-			<FormField label="内容">
+			<FormField label="ステータス">
 				{#snippet children(id)}
-					<textarea
-						{id}
-						bind:value={formData.content}
-						class="{textareaClass} min-h:160"
-						placeholder="プロットの詳細を入力..."
-					></textarea>
-				{/snippet}
-			</FormField>
-
-			<FormField label="カラー">
-				{#snippet children(id)}
-					<input
-						{id}
-						type="color"
-						bind:value={formData.color}
-						class="w:full h:44 b:1|solid|theme-border bg:theme-background r:8 cursor:pointer"
-					/>
+					<select {id} bind:value={formData.status} class={fieldClass}>
+						{#each statusOrder as value (value)}
+							<option {value}>{statusGroups[value].label}</option>
+						{/each}
+					</select>
 				{/snippet}
 			</FormField>
 		</div>
-	{/snippet}
+
+		<FormField label="内容">
+			{#snippet children(id)}
+				<textarea
+					{id}
+					bind:value={formData.content}
+					class="{textareaClass} min-h:160"
+					placeholder="プロットの詳細を入力..."
+				></textarea>
+			{/snippet}
+		</FormField>
+
+		<FormField label="カラー">
+			{#snippet children(id)}
+				<input
+					{id}
+					type="color"
+					bind:value={formData.color}
+					class="w:full h:44 b:1|solid|theme-border bg:theme-background r:8 cursor:pointer"
+				/>
+			{/snippet}
+		</FormField>
+	</div>
 
 	{#snippet footer()}
 		<ModalActions

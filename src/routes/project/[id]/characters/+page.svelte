@@ -668,92 +668,90 @@
 	bind:isOpen={showFormModal}
 	title={editingCharacter ? 'キャラクター編集' : '新規キャラクター作成'}
 >
-	{#snippet children()}
-		<div class="flex flex-direction:column gap:16">
-			<FormField label="名前" required>
+	<div class="flex flex-direction:column gap:16">
+		<FormField label="名前" required>
+			{#snippet children(id)}
+				<input
+					{id}
+					type="text"
+					bind:value={formData.name}
+					placeholder="キャラクター名"
+					class={fieldClass}
+				/>
+			{/snippet}
+		</FormField>
+
+		<FormField label="役割">
+			{#snippet children(id)}
+				<input
+					{id}
+					type="text"
+					bind:value={formData.role}
+					placeholder="主人公、ヒロイン、悪役など"
+					class={fieldClass}
+				/>
+			{/snippet}
+		</FormField>
+
+		<div class="grid grid-template-columns:repeat(2,minmax(0,1fr)) gap:16">
+			<FormField label="年齢">
 				{#snippet children(id)}
 					<input
 						{id}
-						type="text"
-						bind:value={formData.name}
-						placeholder="キャラクター名"
+						type="number"
+						min="0"
+						bind:value={formData.age}
+						placeholder="年齢"
 						class={fieldClass}
 					/>
 				{/snippet}
 			</FormField>
-
-			<FormField label="役割">
+			<FormField label="性別">
 				{#snippet children(id)}
 					<input
 						{id}
 						type="text"
-						bind:value={formData.role}
-						placeholder="主人公、ヒロイン、悪役など"
+						bind:value={formData.gender}
+						placeholder="性別"
 						class={fieldClass}
 					/>
-				{/snippet}
-			</FormField>
-
-			<div class="grid grid-template-columns:repeat(2,minmax(0,1fr)) gap:16">
-				<FormField label="年齢">
-					{#snippet children(id)}
-						<input
-							{id}
-							type="number"
-							min="0"
-							bind:value={formData.age}
-							placeholder="年齢"
-							class={fieldClass}
-						/>
-					{/snippet}
-				</FormField>
-				<FormField label="性別">
-					{#snippet children(id)}
-						<input
-							{id}
-							type="text"
-							bind:value={formData.gender}
-							placeholder="性別"
-							class={fieldClass}
-						/>
-					{/snippet}
-				</FormField>
-			</div>
-
-			<FormField label="外見">
-				{#snippet children(id)}
-					<textarea
-						{id}
-						bind:value={formData.appearance}
-						class="{textareaClass} min-h:80"
-						placeholder="髪型、体格、服装など..."
-					></textarea>
-				{/snippet}
-			</FormField>
-
-			<FormField label="性格">
-				{#snippet children(id)}
-					<textarea
-						{id}
-						bind:value={formData.personality}
-						class="{textareaClass} min-h:80"
-						placeholder="性格の特徴..."
-					></textarea>
-				{/snippet}
-			</FormField>
-
-			<FormField label="背景">
-				{#snippet children(id)}
-					<textarea
-						{id}
-						bind:value={formData.background}
-						class="{textareaClass} min-h:80"
-						placeholder="生い立ち、経歴など..."
-					></textarea>
 				{/snippet}
 			</FormField>
 		</div>
-	{/snippet}
+
+		<FormField label="外見">
+			{#snippet children(id)}
+				<textarea
+					{id}
+					bind:value={formData.appearance}
+					class="{textareaClass} min-h:80"
+					placeholder="髪型、体格、服装など..."
+				></textarea>
+			{/snippet}
+		</FormField>
+
+		<FormField label="性格">
+			{#snippet children(id)}
+				<textarea
+					{id}
+					bind:value={formData.personality}
+					class="{textareaClass} min-h:80"
+					placeholder="性格の特徴..."
+				></textarea>
+			{/snippet}
+		</FormField>
+
+		<FormField label="背景">
+			{#snippet children(id)}
+				<textarea
+					{id}
+					bind:value={formData.background}
+					class="{textareaClass} min-h:80"
+					placeholder="生い立ち、経歴など..."
+				></textarea>
+			{/snippet}
+		</FormField>
+	</div>
 
 	{#snippet footer()}
 		<ModalActions
@@ -766,82 +764,80 @@
 </Modal>
 
 <Modal bind:isOpen={showRelationModal} title="キャラクター関係編集">
-	{#snippet children()}
-		{#if selectedCharacter}
-			<div class="flex flex-direction:column gap:16">
-				<div class="p:16 bg:theme-surface b:1|solid|theme-border r:8">
-					<p class="font:14 fg:theme-text-secondary m:0 mb:4">対象キャラクター</p>
-					<p class="font:18 font-weight:600 fg:theme-text m:0">{selectedCharacter.name}</p>
-				</div>
-
-				<section aria-label="現在の関係">
-					<h3 class="font:14 font-weight:600 m:0 mb:12">現在の関係</h3>
-					{#if selectedCharacter.relationships.length === 0}
-						<p class="fg:theme-text-secondary font:14 m:0">関係が登録されていません</p>
-					{:else}
-						<ul class="flex flex-direction:column gap:8 list-style:none p:0 m:0">
-							{#each getRelationships(selectedCharacter) as rel, index (index)}
-								<li
-									class="flex align-items:center justify-content:space-between gap:12 p:12 bg:theme-background b:1|solid|theme-border r:8"
-								>
-									<span class="font:14 fg:theme-text">
-										{rel.relation}
-										<span class="fg:theme-text-secondary">→</span>
-										<span class="font-weight:600">{rel.name}</span>
-									</span>
-									<button
-										type="button"
-										class={buttonClass('danger')}
-										aria-label={`「${rel.relation} → ${rel.name}」の関係を削除`}
-										onclick={() => handleRemoveRelation(selectedCharacter!, index)}
-									>
-										削除
-									</button>
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				</section>
-
-				<section aria-label="新しい関係を追加" class="flex flex-direction:column gap:12">
-					<h3 class="font:14 font-weight:600 m:0">新しい関係を追加</h3>
-					<div class="flex flex-wrap:wrap gap:8 align-items:center">
-						<FormField label="関係性">
-							{#snippet children(id)}
-								<input
-									{id}
-									type="text"
-									bind:value={relationText}
-									placeholder="例: 親友、ライバル"
-									class={fieldClass}
-								/>
-							{/snippet}
-						</FormField>
-						<FormField label="相手">
-							{#snippet children(id)}
-								<select {id} bind:value={relationTargetId} class={fieldClass}>
-									<option value="">キャラクターを選択</option>
-									{#each characters.filter((c) => c.id !== selectedCharacter?.id) as char (char.id)}
-										<option value={char.id}>{char.name}</option>
-									{/each}
-								</select>
-							{/snippet}
-						</FormField>
-					</div>
-					<div>
-						<button
-							type="button"
-							class={buttonClass('primary')}
-							disabled={!relationText.trim() || !relationTargetId}
-							onclick={handleAddRelation}
-						>
-							追加
-						</button>
-					</div>
-				</section>
+	{#if selectedCharacter}
+		<div class="flex flex-direction:column gap:16">
+			<div class="p:16 bg:theme-surface b:1|solid|theme-border r:8">
+				<p class="font:14 fg:theme-text-secondary m:0 mb:4">対象キャラクター</p>
+				<p class="font:18 font-weight:600 fg:theme-text m:0">{selectedCharacter.name}</p>
 			</div>
-		{/if}
-	{/snippet}
+
+			<section aria-label="現在の関係">
+				<h3 class="font:14 font-weight:600 m:0 mb:12">現在の関係</h3>
+				{#if selectedCharacter.relationships.length === 0}
+					<p class="fg:theme-text-secondary font:14 m:0">関係が登録されていません</p>
+				{:else}
+					<ul class="flex flex-direction:column gap:8 list-style:none p:0 m:0">
+						{#each getRelationships(selectedCharacter) as rel, index (index)}
+							<li
+								class="flex align-items:center justify-content:space-between gap:12 p:12 bg:theme-background b:1|solid|theme-border r:8"
+							>
+								<span class="font:14 fg:theme-text">
+									{rel.relation}
+									<span class="fg:theme-text-secondary">→</span>
+									<span class="font-weight:600">{rel.name}</span>
+								</span>
+								<button
+									type="button"
+									class={buttonClass('danger')}
+									aria-label={`「${rel.relation} → ${rel.name}」の関係を削除`}
+									onclick={() => handleRemoveRelation(selectedCharacter!, index)}
+								>
+									削除
+								</button>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</section>
+
+			<section aria-label="新しい関係を追加" class="flex flex-direction:column gap:12">
+				<h3 class="font:14 font-weight:600 m:0">新しい関係を追加</h3>
+				<div class="flex flex-wrap:wrap gap:8 align-items:center">
+					<FormField label="関係性">
+						{#snippet children(id)}
+							<input
+								{id}
+								type="text"
+								bind:value={relationText}
+								placeholder="例: 親友、ライバル"
+								class={fieldClass}
+							/>
+						{/snippet}
+					</FormField>
+					<FormField label="相手">
+						{#snippet children(id)}
+							<select {id} bind:value={relationTargetId} class={fieldClass}>
+								<option value="">キャラクターを選択</option>
+								{#each characters.filter((c) => c.id !== selectedCharacter?.id) as char (char.id)}
+									<option value={char.id}>{char.name}</option>
+								{/each}
+							</select>
+						{/snippet}
+					</FormField>
+				</div>
+				<div>
+					<button
+						type="button"
+						class={buttonClass('primary')}
+						disabled={!relationText.trim() || !relationTargetId}
+						onclick={handleAddRelation}
+					>
+						追加
+					</button>
+				</div>
+			</section>
+		</div>
+	{/if}
 
 	{#snippet footer()}
 		<div class="flex justify-content:flex-end">

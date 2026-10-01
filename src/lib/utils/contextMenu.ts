@@ -35,6 +35,8 @@ export function createEditorContextMenu(params: {
 	onExport: () => void;
 	onPrint: () => void;
 	onVersionHistory: () => void;
+	onSearch?: () => void;
+	onProofread?: () => void;
 }): ContextMenuItem[] {
 	const items: ContextMenuItem[] = [];
 
@@ -48,9 +50,17 @@ export function createEditorContextMenu(params: {
 
 	items.push({ label: '貼り付け', icon: 'files', action: params.onPaste, shortcut: 'Ctrl+V' });
 
-	if (params.hasSelection) {
+	items.push({ divider: true } as ContextMenuItem);
+	items.push({ label: 'すべて選択', icon: 'list', action: params.onSelectAll, shortcut: 'Ctrl+A' });
+
+	if (params.onSearch || params.onProofread) {
 		items.push({ divider: true } as ContextMenuItem);
-		items.push({ label: 'すべて選択', icon: 'list', action: params.onSelectAll, shortcut: 'Ctrl+A' });
+		if (params.onSearch) {
+			items.push({ label: '検索・置換', icon: 'search', action: params.onSearch });
+		}
+		if (params.onProofread) {
+			items.push({ label: '校正', icon: 'abc', action: params.onProofread });
+		}
 	}
 
 	// シーン固有の操作
@@ -152,6 +162,7 @@ export function createSceneContextMenu(params: {
 	onMoveUp?: () => void;
 	onMoveDown?: () => void;
 	onMoveToChapter?: () => void;
+	onSetTarget?: () => void;
 	canMoveUp: boolean;
 	canMoveDown: boolean;
 }): ContextMenuItem[] {
@@ -161,6 +172,10 @@ export function createSceneContextMenu(params: {
 		{ label: '名前を変更', icon: 'pencil', action: params.onRename },
 		{ label: '複製', icon: 'files', action: params.onDuplicate }
 	];
+
+	if (params.onSetTarget) {
+		items.push({ label: '目標文字数を設定', icon: 'timeline-event', action: params.onSetTarget });
+	}
 
 	// 並び替え
 	if (params.onMoveUp || params.onMoveDown) {

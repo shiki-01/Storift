@@ -48,7 +48,7 @@
 </script>
 
 {#if show}
-	<Modal
+	<Modal isOpen={true}
 		title="プロジェクトをエクスポート"
 		{onClose}
 		onConfirm={handleExport}

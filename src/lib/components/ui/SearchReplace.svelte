@@ -112,7 +112,7 @@
 </script>
 
 {#if show}
-	<Modal title="検索と置換" {onClose} size="large">
+	<Modal isOpen={true} title="検索と置換" {onClose} size="large">
 		<div class="space-y-4">
 			<!-- 検索フォーム -->
 			<div>

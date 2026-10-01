@@ -34,7 +34,7 @@
 </script>
 
 {#if isOpen}
-	<Modal title="印刷プレビュー設定" {onClose} size="medium">
+	<Modal isOpen={true} title="印刷プレビュー設定" {onClose} size="medium">
 		<div class="print-settings p:24 space-y:20">
 			<!-- 書式設定 -->
 			<div>

@@ -226,7 +226,7 @@
 
 <!-- 差分表示モーダル -->
 {#if showDiffModal}
-	<Modal title="バージョン比較" onClose={() => (showDiffModal = false)} size="large">
+	<Modal isOpen={true} title="バージョン比較" onClose={() => (showDiffModal = false)} size="large">
 		<div class="diff-viewer">
 			<!-- 統計情報 -->
 			<div class="flex gap:16 mb:20 p:16 bg:gray-50 r:8">
@@ -254,7 +254,7 @@
 
 <!-- 復元ポイント作成モーダル -->
 {#if showCreateRestorePoint}
-	<Modal title="復元ポイントを作成" onClose={() => (showCreateRestorePoint = false)} size="medium">
+	<Modal isOpen={true} title="復元ポイントを作成" onClose={() => (showCreateRestorePoint = false)} size="medium">
 		<div class="space-y:16">
 			<div>
 				<label for="restorePointName" class="font:14 fg:gray-700 mb:6 block"> 名前 </label>

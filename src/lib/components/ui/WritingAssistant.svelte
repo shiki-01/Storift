@@ -223,7 +223,7 @@
 
 <!-- ルビプレビューモーダル -->
 {#if showRubyPreview}
-	<Modal title="ルビプレビュー" onClose={() => (showRubyPreview = false)}>
+	<Modal isOpen={true} title="ルビプレビュー" onClose={() => (showRubyPreview = false)}>
 		<div
 			class="ruby-preview p:24"
 			style="writing-mode: vertical-rl; text-orientation: mixed; line-height: 2;"

@@ -22,6 +22,8 @@
 	import SyncStatus from '$lib/components/ui/SyncStatus.svelte';
 	import ToastHost from '$lib/components/ui/ToastHost.svelte';
 	import ConfirmHost from '$lib/components/ui/ConfirmHost.svelte';
+	import ConflictHost from '$lib/components/ui/ConflictHost.svelte';
+	import { conflictStore } from '$lib/stores/conflicts.svelte';
 	import { themes, themeStore } from '$lib/stores/theme.svelte';
 
 	let { children } = $props();
@@ -42,6 +44,11 @@
 	function isActive(path: string): boolean {
 		return $page.url.pathname.includes(`/project/${projectId}/${path}`);
 	}
+
+	let isHomeActive = $derived($page.url.pathname.startsWith('/home'));
+	let isSettingsActive = $derived($page.url.pathname.startsWith('/settings'));
+
+	const navLinkClass = 'px:12 py:6 r:6 font:14 white-space:nowrap';
 
 	onMount(() => {
 		// グローバルエラーハンドラーを初期化
@@ -121,12 +128,14 @@
 
 <ToastHost />
 <ConfirmHost />
+<ConflictHost />
 
 <div class="min-h:100vh bg:theme-background">
 	<header class="px:1.5rem py:1rem bb:2px|solid|theme-text">
 		<div class="gap:1.5rem mx:auto flex justify-content:start align-items:center">
 			<button
 				aria-label="メニューを開閉"
+				aria-expanded={editorStore.isOpen}
 				onclick={() => (editorStore.isOpen = !editorStore.isOpen)}
 				class="rel w:30px h:30px cursor:pointer"
 			>
@@ -151,7 +160,55 @@
 					{@html logo(themes[themeStore.theme.id].colors.text)}
 				</div>
 				<SyncStatus />
+				{#if conflictStore.count > 0}
+					<button
+						type="button"
+						onclick={() => conflictStore.open()}
+						class="px:12 py:4 r:6 b:2|solid|theme-error fg:theme-error bg:transparent font:13 cursor:pointer white-space:nowrap"
+					>
+						競合 {conflictStore.count} 件を解決
+					</button>
+				{/if}
 			</div>
+
+			<!-- デスクトップ用の常時表示ナビゲーション（狭い画面ではハンバーガーメニューを使う） -->
+			<nav
+				aria-label="メインナビゲーション"
+				class="desktop-nav flex-grow:1 align-items:center gap:4"
+			>
+				<a
+					href="/home"
+					aria-current={isHomeActive ? 'page' : undefined}
+					class="{navLinkClass} {isHomeActive
+						? 'fg:theme-primary font-weight:600'
+						: 'fg:theme-text'}"
+				>
+					ホーム
+				</a>
+				{#if isProjectPage}
+					<span class="w:1px h:16 bg:theme-border mx:8" aria-hidden="true"></span>
+					{#each projectNavItems as item}
+						<a
+							href="/project/{projectId}/{item.path}"
+							aria-current={isActive(item.path) ? 'page' : undefined}
+							class="{navLinkClass} {isActive(item.path)
+								? 'fg:theme-primary font-weight:600'
+								: 'fg:theme-text'}"
+						>
+							{item.label}
+						</a>
+					{/each}
+				{/if}
+				<a
+					href="/settings"
+					aria-current={isSettingsActive ? 'page' : undefined}
+					class="{navLinkClass} ml:auto {isSettingsActive
+						? 'fg:theme-primary font-weight:600'
+						: 'fg:theme-text'}"
+				>
+					設定
+				</a>
+			</nav>
 		</div>
 	</header>
 
@@ -183,6 +240,7 @@
 						<a
 							href="/project/{projectId}/{item.path}"
 							onclick={() => (editorStore.isOpen = false)}
+							aria-current={isActive(item.path) ? 'page' : undefined}
 							class="flex ai:center gap:12 px:16 py:12 r:8 mb:4 font:14 {isActive(item.path)
 								? 'fg:theme-primary'
 								: 'fg:theme-text'}"
@@ -208,7 +266,7 @@
 		</aside>
 
 		<button
-			aria-label="sidebar overlay"
+			aria-label="メニューを閉じる"
 			onclick={() => (editorStore.isOpen = false)}
 			class="w:100% h:100% abs z:1 bg:theme-text cursor:pointer transition:opacity|.2s|ease-in-out {editorStore.isOpen
 				? 'opacity:.5 pointer-events:auto'
@@ -221,3 +279,15 @@
 		</div>
 	</main>
 </div>
+
+<style>
+	.desktop-nav {
+		display: none;
+	}
+
+	@media (min-width: 900px) {
+		.desktop-nav {
+			display: flex;
+		}
+	}
+</style>

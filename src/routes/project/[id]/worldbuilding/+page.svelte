@@ -3,21 +3,36 @@
 	import { worldbuildingDB } from '$lib/db';
 	import { queueChange } from '$lib/services/sync.service';
 	import type { Worldbuilding } from '$lib/types';
+	import { toast } from '$lib/stores/toast.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import Input from '$lib/components/ui/Input.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
+	import PageHeader from '$lib/components/ui/PageHeader.svelte';
+	import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
+	import SearchBox from '$lib/components/ui/SearchBox.svelte';
+	import FormField from '$lib/components/ui/FormField.svelte';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import ModalActions from '$lib/components/ui/ModalActions.svelte';
+	import {
+		buttonClass,
+		badgeClass,
+		fieldClass,
+		textareaClass
+	} from '$lib/components/ui/formStyles';
+	import { deleteWithUndo } from '$lib/utils/undoDelete';
 	import { onMount } from 'svelte';
+
+	type CategoryFilter = Worldbuilding['category'] | 'all';
 
 	let worldbuildings = $state<Worldbuilding[]>([]);
 	let isLoading = $state(true);
-	let showCreateModal = $state(false);
-	let showEditModal = $state(false);
-	let editingWorldbuilding = $state<Worldbuilding | null>(null);
-	let activeCategory = $state<Worldbuilding['category'] | 'all'>('all');
+	let activeCategory = $state<CategoryFilter>('all');
 	let searchQuery = $state('');
 
-	// フォーム状態
+	// 作成・編集で共用するモーダル（editingWorldbuilding が null なら新規作成）
+	let showFormModal = $state(false);
+	let editingWorldbuilding = $state<Worldbuilding | null>(null);
+	let isSaving = $state(false);
+
 	let formData = $state({
 		title: '',
 		category: 'term' as Worldbuilding['category'],
@@ -26,45 +41,38 @@
 		tagInput: ''
 	});
 
-	const categoryLabels = {
+	const categoryLabels: Record<Worldbuilding['category'], string> = {
 		term: '用語',
 		timeline: '年表',
 		location: '場所',
 		other: 'その他'
 	};
 
-	const categoryColors = {
-		term: 'bg:$(theme.info)/.15 fg:$(theme.info)',
-		timeline: 'bg:$(theme.success)/.15 fg:$(theme.success)',
-		location: 'bg:$(theme.secondary)/.15 fg:$(theme.secondary)',
-		other: 'bg:theme-surface fg:theme-text-secondary'
-	};
+	let categoryOptions = $derived([
+		{ value: 'all' as CategoryFilter, label: 'すべて', count: worldbuildings.length },
+		...(Object.keys(categoryLabels) as Worldbuilding['category'][]).map((c) => ({
+			value: c as CategoryFilter,
+			label: categoryLabels[c],
+			count: worldbuildings.filter((w) => w.category === c).length
+		}))
+	]);
 
-	function actionButtonClass(variant: 'default' | 'secondary' | 'danger' = 'default'): string {
-		const base = 'px:12 py:8 r:6 b:1px|solid|theme-border bg:theme-background transition:all|.2s';
-		const variants = {
-			default: 'fg:theme-text hover:bg:$(theme.primary)/.12 hover:fg:$(theme.primary)',
-			secondary: 'fg:theme-text-secondary hover:bg:theme-surface',
-			danger: 'fg:theme-error hover:bg:$(theme.error)/.15'
-		} as const;
-		return `${base} ${variants[variant]}`;
-	}
+	let filteredWorldbuildings = $derived.by(() => {
+		const q = searchQuery.trim().toLowerCase();
+		return worldbuildings.filter((w) => {
+			const matchCategory = activeCategory === 'all' || w.category === activeCategory;
+			const matchSearch =
+				!q ||
+				w.title.toLowerCase().includes(q) ||
+				w.content.toLowerCase().includes(q) ||
+				w.tags.some((tag) => tag.toLowerCase().includes(q));
+			return matchCategory && matchSearch;
+		});
+	});
 
-	const textareaBaseClass =
-		'w:full px:12 py:10 b:1|solid|theme-border bg:theme-background r:8 outline:none focus:b:$(theme.primary) transition:all|.2s font-family:inherit fg:theme-text';
+	let isFiltering = $derived(searchQuery.trim() !== '' || activeCategory !== 'all');
 
-	const fieldBaseClass =
-		'w:full px:12 py:10 b:1|solid|theme-border bg:theme-background fg:theme-text r:8 outline:none focus:b:$(theme.primary) transition:all|.2s';
-
-	function filterButtonClass(category: Worldbuilding['category'] | 'all'): string {
-		const isActive = activeCategory === category;
-		return [
-			'px:16 py:10 r:8 font:14 transition:all|.2s b:1px|solid|theme-border',
-			isActive
-				? 'bg:$(theme.primary)/.15 fg:$(theme.primary)'
-				: 'bg:theme-background fg:theme-text-secondary hover:bg:theme-surface'
-		].join(' ');
-	}
+	let allTags = $derived(Array.from(new Set(worldbuildings.flatMap((w) => w.tags))).sort());
 
 	onMount(async () => {
 		await loadWorldbuildings();
@@ -75,20 +83,18 @@
 		isLoading = true;
 		try {
 			worldbuildings = await worldbuildingDB.getByProjectId(currentProjectStore.project.id);
+		} catch (error) {
+			console.error('Failed to load worldbuilding:', error);
+			toast.error('設定資料の読み込みに失敗しました');
 		} finally {
 			isLoading = false;
 		}
 	};
 
 	const openCreateModal = () => {
-		formData = {
-			title: '',
-			category: 'term',
-			content: '',
-			tags: [],
-			tagInput: ''
-		};
-		showCreateModal = true;
+		editingWorldbuilding = null;
+		formData = { title: '', category: 'term', content: '', tags: [], tagInput: '' };
+		showFormModal = true;
 	};
 
 	function openEditModal(worldbuilding: Worldbuilding) {
@@ -100,440 +106,304 @@
 			tags: [...worldbuilding.tags],
 			tagInput: ''
 		};
-		showEditModal = true;
+		showFormModal = true;
 	}
 
-	const handleCreate = async () => {
-		if (!currentProjectStore.project || !formData.title.trim()) return;
-
-		const worldbuilding = await worldbuildingDB.create({
-			projectId: currentProjectStore.project.id,
-			title: formData.title,
-			category: formData.category
-		});
-
-		// 追加情報を更新
-		await worldbuildingDB.update(worldbuilding.id, {
-			content: formData.content,
-			tags: [...formData.tags] // プレーンな配列に変換
-		});
-
-		// 同期キューに追加
-		await queueChange('worldbuilding', worldbuilding.id, 'create');
-
-		await loadWorldbuildings();
-		showCreateModal = false;
+	const handleSave = async () => {
+		if (!currentProjectStore.project || !formData.title.trim() || isSaving) return;
+		isSaving = true;
+		const title = formData.title.trim();
+		try {
+			if (editingWorldbuilding) {
+				await worldbuildingDB.update(editingWorldbuilding.id, {
+					title,
+					category: formData.category,
+					content: formData.content,
+					tags: [...formData.tags]
+				});
+				await queueChange('worldbuilding', editingWorldbuilding.id, 'update');
+				toast.success(`設定資料「${title}」を更新しました`);
+			} else {
+				const worldbuilding = await worldbuildingDB.create({
+					projectId: currentProjectStore.project.id,
+					title,
+					category: formData.category
+				});
+				await worldbuildingDB.update(worldbuilding.id, {
+					content: formData.content,
+					tags: [...formData.tags]
+				});
+				await queueChange('worldbuilding', worldbuilding.id, 'create');
+				toast.success(`設定資料「${title}」を作成しました`);
+			}
+			showFormModal = false;
+			editingWorldbuilding = null;
+			await loadWorldbuildings();
+		} catch (error) {
+			console.error('Failed to save worldbuilding:', error);
+			toast.error(
+				editingWorldbuilding ? '設定資料の更新に失敗しました' : '設定資料の作成に失敗しました'
+			);
+		} finally {
+			isSaving = false;
+		}
 	};
 
-	const handleUpdate = async () => {
-		if (!editingWorldbuilding) return;
-
-		await worldbuildingDB.update(editingWorldbuilding.id, {
-			title: formData.title,
-			category: formData.category,
-			content: formData.content,
-			tags: [...formData.tags] // プレーンな配列に変換
+	function handleDelete(worldbuilding: Worldbuilding) {
+		// 取り消し用に削除前のレコードを保持する
+		const snapshot = $state.snapshot(worldbuilding) as Worldbuilding;
+		return deleteWithUndo({
+			targetLabel: `設定資料「${snapshot.title}」`,
+			remove: async () => {
+				await worldbuildingDB.delete(snapshot.id);
+				await queueChange('worldbuilding', snapshot.id, 'delete');
+				await loadWorldbuildings();
+			},
+			restore: async () => {
+				await worldbuildingDB.addFromRemote(snapshot);
+				await queueChange('worldbuilding', snapshot.id, 'create');
+				await loadWorldbuildings();
+			}
 		});
-
-		// 同期キューに追加
-		await queueChange('worldbuilding', editingWorldbuilding.id, 'update');
-
-		await loadWorldbuildings();
-		showEditModal = false;
-		editingWorldbuilding = null;
-	};
-
-	async function handleDelete(id: string) {
-		if (!confirm('この設定資料を削除しますか?')) return;
-		await worldbuildingDB.delete(id);
-		// 同期キューに追加
-		await queueChange('worldbuilding', id, 'delete');
-		await loadWorldbuildings();
 	}
 
 	const handleAddTag = () => {
-		if (formData.tagInput.trim() && !formData.tags.includes(formData.tagInput.trim())) {
-			formData.tags = [...formData.tags, formData.tagInput.trim()];
-			formData.tagInput = '';
+		const tag = formData.tagInput.trim();
+		if (tag && !formData.tags.includes(tag)) {
+			formData.tags = [...formData.tags, tag];
 		}
+		formData.tagInput = '';
 	};
 
 	function handleRemoveTag(index: number) {
 		formData.tags = formData.tags.filter((_, i) => i !== index);
 	}
-
-	const getCategoryCounts = () => {
-		return {
-			all: worldbuildings.length,
-			term: worldbuildings.filter((w) => w.category === 'term').length,
-			timeline: worldbuildings.filter((w) => w.category === 'timeline').length,
-			location: worldbuildings.filter((w) => w.category === 'location').length,
-			other: worldbuildings.filter((w) => w.category === 'other').length
-		};
-	};
-
-	$effect(() => {
-		// フィルター処理
-		filteredWorldbuildings;
-	});
-
-	let filteredWorldbuildings = $derived(
-		worldbuildings.filter((w) => {
-			const matchCategory = activeCategory === 'all' || w.category === activeCategory;
-			const matchSearch =
-				!searchQuery ||
-				w.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-				w.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-				w.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()));
-			return matchCategory && matchSearch;
-		})
-	);
-
-	let allTags = $derived(Array.from(new Set(worldbuildings.flatMap((w) => w.tags))).sort());
 </script>
 
-<div class="flex w:100% h:100% bg:theme-background fg:theme-text">
-	<div class="flex-grow:1 flex flex-direction:column">
-		<header class="bg:theme-background border-bottom:2|solid|theme-text">
-			<div
-				class="max-w:1280 mx:auto w:100% px:24 py:20 flex justify-content:space-between align-items:center"
+<svelte:head>
+	<title>設定資料 | Storift</title>
+</svelte:head>
+
+<div class="flex flex-direction:column w:100% h:100% bg:theme-background fg:theme-text">
+	<PageHeader title="設定資料" description="世界観や用語の設定資料を管理します">
+		{#snippet actions()}
+			<button
+				type="button"
+				class={buttonClass('primary')}
+				onclick={openCreateModal}
+				disabled={!currentProjectStore.project}
 			>
-				<div>
-					<h1 class="font:26 font-weight:600 m:0 fg:theme-text">設定資料管理</h1>
-					<p class="font:14 fg:theme-text-secondary mt:8">世界観や用語の設定資料を管理します</p>
-				</div>
-				<Button
-					class="px:18 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8 font:14"
-					onclick={openCreateModal}
-					disabled={!currentProjectStore.project}
-				>
-					+ 新規資料
-				</Button>
+				+ 新規資料
+			</button>
+		{/snippet}
+	</PageHeader>
+
+	<main class="flex-grow:1 overflow-y:auto">
+		<div class="max-w:1280 mx:auto w:100% px:24 py:24 flex flex-direction:column gap:24">
+			<div class="flex flex-wrap:wrap align-items:center gap:12">
+				<SearchBox
+					bind:value={searchQuery}
+					placeholder="タイトル、内容、タグで検索..."
+					ariaLabel="設定資料を検索"
+				/>
+				<SegmentedControl
+					options={categoryOptions}
+					bind:value={activeCategory}
+					ariaLabel="カテゴリで絞り込み"
+				/>
 			</div>
-		</header>
 
-		<main class="flex-grow:1 overflow-y:auto">
-			<div class="max-w:1280 mx:auto w:100% px:24 py:24 flex flex-direction:column gap:24">
-				<div class="flex flex-wrap gap:16 justify-content:space-between align-items:center">
-					<div class="flex:1 min-w:240">
-						<Input bind:value={searchQuery} placeholder="タイトル、内容、タグで検索..." />
-					</div>
-					<div class="flex gap:8 flex-wrap">
-						{#if getCategoryCounts()}
-							{@const counts = getCategoryCounts()}
-							{#each Object.entries({ all: 'すべて', ...categoryLabels }) as [key, label]}
-								<button
-									class={filterButtonClass(key as typeof activeCategory)}
-									onclick={() => (activeCategory = key as typeof activeCategory)}
-								>
-									{label}
-									<span class="ml:8 font:12 fg:theme-text-secondary">
-										{counts[key as keyof typeof counts]}
-									</span>
-								</button>
-							{/each}
-						{/if}
-					</div>
+			{#if isLoading}
+				<div class="flex justify-content:center align-items:center h:320">
+					<p class="fg:theme-text-secondary font:14">読み込み中...</p>
 				</div>
+			{:else if worldbuildings.length === 0}
+				<EmptyState
+					message="設定資料がまだありません"
+					actionLabel="最初の資料を作成"
+					onaction={openCreateModal}
+				/>
+			{:else if isFiltering && filteredWorldbuildings.length === 0}
+				<EmptyState message="条件に一致する資料がありません" />
+			{:else}
+				<div
+					class="grid gap:16 grid-template-columns:repeat(1,minmax(0,1fr)) md:grid-template-columns:repeat(2,minmax(0,1fr)) xl:grid-template-columns:repeat(3,minmax(0,1fr))"
+				>
+					{#each filteredWorldbuildings as worldbuilding (worldbuilding.id)}
+						<Card class="flex flex-direction:column gap:12" padding="sm">
+							<div class="flex flex-direction:column align-items:start gap:8">
+								<span class={badgeClass}>{categoryLabels[worldbuilding.category]}</span>
+								<button
+									type="button"
+									class="font:18 font-weight:600 text-align:left bg:transparent b:none p:0 cursor:pointer fg:theme-text fg:theme-primary:hover"
+									onclick={() => openEditModal(worldbuilding)}
+								>
+									{worldbuilding.title}
+								</button>
+							</div>
 
-				{#if isLoading}
-					<div class="flex justify-content:center align-items:center h:320">
-						<p class="fg:theme-text-secondary font:14">読み込み中...</p>
-					</div>
-				{:else}
-					<div
-						class="grid gap:16 md:grid-template-columns:repeat(2,minmax(0,1fr)) xl:grid-template-columns:repeat(3,minmax(0,1fr))"
-					>
-						{#each filteredWorldbuildings as worldbuilding (worldbuilding.id)}
-							<Card class="flex flex-direction:column gap:16" padding="sm">
-								<div class="flex justify-content:space-between align-items:start">
-									<div class="flex flex-direction:column gap:8 flex:1">
-										<span
-											class={`px:12 py:6 r:6 font:12 ${categoryColors[worldbuilding.category]}`}
-										>
-											{categoryLabels[worldbuilding.category]}
-										</span>
-										<button
-											class="font:18 font-weight:600 text-align:left bg:transparent b:none fg:theme-text hover:fg:$(theme.primary)"
-											onclick={() => openEditModal(worldbuilding)}
-										>
-											{worldbuilding.title}
-										</button>
-									</div>
+							{#if worldbuilding.content}
+								<p
+									class="fg:theme-text-secondary font:14 m:0 white-space:pre-wrap"
+									style="display:-webkit-box;-webkit-line-clamp:3;line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;"
+								>
+									{worldbuilding.content}
+								</p>
+							{/if}
+
+							{#if worldbuilding.tags.length > 0}
+								<div class="flex flex-wrap:wrap gap:6">
+									{#each worldbuilding.tags as tag (tag)}
+										<span class={badgeClass}>#{tag}</span>
+									{/each}
 								</div>
+							{/if}
 
-								{#if worldbuilding.content}
-									<p class="fg:theme-text-secondary font:14 line-clamp:3 white-space:pre-wrap">
-										{worldbuilding.content}
-									</p>
-								{/if}
+							<div class="flex gap:8 mt:auto">
+								<button
+									type="button"
+									class={buttonClass('secondary', 'flex:1')}
+									onclick={() => openEditModal(worldbuilding)}
+								>
+									編集
+								</button>
+								<button
+									type="button"
+									class={buttonClass('danger')}
+									aria-label={`設定資料「${worldbuilding.title}」を削除`}
+									onclick={() => handleDelete(worldbuilding)}
+								>
+									削除
+								</button>
+							</div>
+						</Card>
+					{/each}
+				</div>
+			{/if}
 
-								{#if worldbuilding.tags.length > 0}
-									<div class="flex flex-wrap gap:6">
-										{#each worldbuilding.tags as tag}
-											<span
-												class="px:10 py:4 r:full bg:$(theme.primary)/.12 fg:$(theme.primary) font:12"
-											>
-												#{tag}
-											</span>
-										{/each}
-									</div>
-								{/if}
-
-								<div class="flex gap:8">
-									<button
-										class={`flex:1 ${actionButtonClass()}`}
-										onclick={() => openEditModal(worldbuilding)}
-									>
-										編集
-									</button>
-									<button
-										class={actionButtonClass('danger')}
-										onclick={() => handleDelete(worldbuilding.id)}
-									>
-										削除
-									</button>
-								</div>
-							</Card>
+			{#if allTags.length > 0}
+				<section
+					aria-label="タグ一覧"
+					class="p:16 bg:theme-surface b:1|solid|theme-border r:8 flex flex-direction:column gap:12"
+				>
+					<h2 class="font:16 font-weight:600 fg:theme-text m:0">タグ一覧</h2>
+					<div class="flex flex-wrap:wrap gap:8">
+						{#each allTags as tag (tag)}
+							<button
+								type="button"
+								aria-pressed={searchQuery === tag}
+								class="px:12 py:4 r:full b:1|solid|theme-border font:12 cursor:pointer transition:all|.2s {searchQuery ===
+								tag
+									? 'bg:theme-text fg:theme-background'
+									: 'bg:theme-background fg:theme-text bg:theme-surface:hover'}"
+								onclick={() => (searchQuery = searchQuery === tag ? '' : tag)}
+							>
+								#{tag}
+								<span class="ml:4 opacity:.7">
+									{worldbuildings.filter((w) => w.tags.includes(tag)).length}
+								</span>
+							</button>
 						{/each}
 					</div>
-
-					{#if filteredWorldbuildings.length === 0}
-						<div
-							class="flex flex-direction:column align-items:center justify-content:center h:320 gap:16 bg:theme-surface r:12 b:1px|solid|theme-border"
-						>
-							<p class="fg:theme-text-secondary font:16">
-								{searchQuery || activeCategory !== 'all'
-									? '該当する資料がありません'
-									: '設定資料がまだありません'}
-							</p>
-							<Button
-								class="px:18 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8"
-								onclick={openCreateModal}
-							>
-								最初の資料を作成
-							</Button>
-						</div>
-					{/if}
-				{/if}
-
-				{#if allTags.length > 0}
-					<div
-						class="p:20 bg:theme-surface b:1px|solid|theme-border r:12 flex flex-direction:column gap:12"
-					>
-						<h3 class="font:16 font-weight:600 fg:theme-text">タグ一覧</h3>
-						<div class="flex flex-wrap gap:8">
-							{#each allTags as tag}
-								<button
-									class="px:12 py:6 r:full bg:theme-background b:1px|solid|theme-border fg:theme-text font:12 transition:all|.2s hover:bg:$(theme.primary)/.12 hover:fg:$(theme.primary)"
-									onclick={() => (searchQuery = tag)}
-								>
-									#{tag}
-									<span class="ml:4 fg:theme-text-secondary">
-										{worldbuildings.filter((w) => w.tags.includes(tag)).length}
-									</span>
-								</button>
-							{/each}
-						</div>
-					</div>
-				{/if}
-			</div>
-		</main>
-	</div>
+				</section>
+			{/if}
+		</div>
+	</main>
 </div>
 
-<!-- 新規作成モーダル -->
-<Modal bind:isOpen={showCreateModal} title="新規設定資料作成">
+<Modal
+	bind:isOpen={showFormModal}
+	title={editingWorldbuilding ? '設定資料編集' : '新規設定資料作成'}
+>
 	{#snippet children()}
 		<div class="flex flex-direction:column gap:16">
-			<Input label="タイトル *" bind:value={formData.title} placeholder="用語名や場所名など" />
-
-			<div>
-				<label for="create-category" class="block mb:8 font:14 font-weight:600 fg:theme-text"
-					>カテゴリ</label
-				>
-				<select id="create-category" bind:value={formData.category} class={fieldBaseClass}>
-					{#each Object.entries(categoryLabels) as [value, label]}
-						<option {value}>{label}</option>
-					{/each}
-				</select>
-			</div>
-
-			<div>
-				<label for="create-content" class="block mb:8 font:14 font-weight:600 fg:theme-text"
-					>内容</label
-				>
-				<textarea
-					id="create-content"
-					bind:value={formData.content}
-					class={`${textareaBaseClass} min-h:200 resize:vertical`}
-					placeholder="詳細な説明..."
-				></textarea>
-			</div>
-
-			<div>
-				<label for="create-tag-input" class="block mb:8 font:14 font-weight:600 fg:theme-text"
-					>タグ</label
-				>
-				<div class="flex gap:8 mb:8">
+			<FormField label="タイトル" required>
+				{#snippet children(id)}
 					<input
-						id="create-tag-input"
+						{id}
 						type="text"
-						bind:value={formData.tagInput}
-						placeholder="タグを入力してEnter"
-						class={`flex:1 ${fieldBaseClass}`}
-						onkeydown={(e) => {
-							if (e.key === 'Enter') {
-								e.preventDefault();
-								handleAddTag();
-							}
-						}}
+						bind:value={formData.title}
+						placeholder="用語名や場所名など"
+						class={fieldClass}
 					/>
-					<Button
-						class="px:16 py:8 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:6"
-						onclick={handleAddTag}
-					>
-						追加
-					</Button>
-				</div>
-				{#if formData.tags.length > 0}
-					<div class="flex flex-wrap gap:6">
-						{#each formData.tags as tag, index}
-							<span
-								class="px:12 py:6 r:full bg:$(theme.primary)/.12 fg:$(theme.primary) font:12 flex align-items:center gap:6"
-							>
-								#{tag}
-								<button
-									class="w:18 h:18 r:full hover:bg:$(theme.primary)/.2 flex align-items:center justify-content:center b:none bg:transparent fg:$(theme.primary)"
-									onclick={() => handleRemoveTag(index)}
-								>
-									×
-								</button>
-							</span>
+				{/snippet}
+			</FormField>
+
+			<FormField label="カテゴリ">
+				{#snippet children(id)}
+					<select {id} bind:value={formData.category} class={fieldClass}>
+						{#each Object.entries(categoryLabels) as [value, label] (value)}
+							<option {value}>{label}</option>
 						{/each}
+					</select>
+				{/snippet}
+			</FormField>
+
+			<FormField label="内容">
+				{#snippet children(id)}
+					<textarea
+						{id}
+						bind:value={formData.content}
+						class="{textareaClass} min-h:160"
+						placeholder="詳細な説明..."
+					></textarea>
+				{/snippet}
+			</FormField>
+
+			<FormField label="タグ">
+				{#snippet children(id)}
+					<div class="flex gap:8">
+						<input
+							{id}
+							type="text"
+							bind:value={formData.tagInput}
+							placeholder="タグを入力してEnter"
+							class="{fieldClass} flex:1"
+							onkeydown={(e) => {
+								// 日本語入力の変換確定 Enter では追加しない
+								if (e.key === 'Enter' && !e.isComposing) {
+									e.preventDefault();
+									handleAddTag();
+								}
+							}}
+						/>
+						<button
+							type="button"
+							class={buttonClass('secondary')}
+							disabled={!formData.tagInput.trim()}
+							onclick={handleAddTag}
+						>
+							追加
+						</button>
 					</div>
-				{/if}
-			</div>
+					{#if formData.tags.length > 0}
+						<div class="flex flex-wrap:wrap gap:6">
+							{#each formData.tags as tag, index (tag)}
+								<span class="{badgeClass} flex align-items:center gap:6">
+									#{tag}
+									<button
+										type="button"
+										aria-label={`タグ「${tag}」を削除`}
+										class="w:18 h:18 r:full flex align-items:center justify-content:center b:none bg:transparent fg:theme-text-secondary cursor:pointer bg:theme-surface:hover"
+										onclick={() => handleRemoveTag(index)}
+									>
+										×
+									</button>
+								</span>
+							{/each}
+						</div>
+					{/if}
+				{/snippet}
+			</FormField>
 		</div>
 	{/snippet}
 
 	{#snippet footer()}
-		<div class="flex gap:12">
-			<Button
-				variant="secondary"
-				class={actionButtonClass('secondary')}
-				onclick={() => (showCreateModal = false)}>キャンセル</Button
-			>
-			<Button
-				class="px:18 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8"
-				onclick={handleCreate}
-				disabled={!formData.title.trim()}
-			>
-				作成
-			</Button>
-		</div>
+		<ModalActions
+			submitLabel={editingWorldbuilding ? '更新' : '作成'}
+			submitDisabled={!formData.title.trim() || isSaving}
+			onsubmit={handleSave}
+			oncancel={() => (showFormModal = false)}
+		/>
 	{/snippet}
 </Modal>
-
-<!-- 編集モーダル -->
-<Modal bind:isOpen={showEditModal} title="設定資料編集">
-	{#snippet children()}
-		<div class="flex flex-direction:column gap:16">
-			<Input label="タイトル *" bind:value={formData.title} placeholder="用語名や場所名など" />
-
-			<div>
-				<label for="edit-category" class="block mb:8 font:14 font-weight:600 fg:theme-text"
-					>カテゴリ</label
-				>
-				<select id="edit-category" bind:value={formData.category} class={fieldBaseClass}>
-					{#each Object.entries(categoryLabels) as [value, label]}
-						<option {value}>{label}</option>
-					{/each}
-				</select>
-			</div>
-
-			<div>
-				<label for="edit-content" class="block mb:8 font:14 font-weight:600 fg:theme-text"
-					>内容</label
-				>
-				<textarea
-					id="edit-content"
-					bind:value={formData.content}
-					class={`${textareaBaseClass} min-h:200 resize:vertical`}
-					placeholder="詳細な説明..."
-				></textarea>
-			</div>
-
-			<div>
-				<label for="edit-tag-input" class="block mb:8 font:14 font-weight:600 fg:theme-text"
-					>タグ</label
-				>
-				<div class="flex gap:8 mb:8">
-					<input
-						id="edit-tag-input"
-						type="text"
-						bind:value={formData.tagInput}
-						placeholder="タグを入力してEnter"
-						class={`flex:1 ${fieldBaseClass}`}
-						onkeydown={(e) => {
-							if (e.key === 'Enter') {
-								e.preventDefault();
-								handleAddTag();
-							}
-						}}
-					/>
-					<Button
-						class="px:16 py:8 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:6"
-						onclick={handleAddTag}
-					>
-						追加
-					</Button>
-				</div>
-				{#if formData.tags.length > 0}
-					<div class="flex flex-wrap gap:6">
-						{#each formData.tags as tag, index}
-							<span
-								class="px:12 py:6 r:full bg:$(theme.primary)/.12 fg:$(theme.primary) font:12 flex align-items:center gap:6"
-							>
-								#{tag}
-								<button
-									class="w:18 h:18 r:full hover:bg:$(theme.primary)/.2 flex align-items:center justify-content:center b:none bg:transparent fg:$(theme.primary)"
-									onclick={() => handleRemoveTag(index)}
-								>
-									×
-								</button>
-							</span>
-						{/each}
-					</div>
-				{/if}
-			</div>
-		</div>
-	{/snippet}
-
-	{#snippet footer()}
-		<div class="flex gap:12">
-			<Button
-				variant="secondary"
-				class={actionButtonClass('secondary')}
-				onclick={() => (showEditModal = false)}>キャンセル</Button
-			>
-			<Button
-				class="px:18 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8"
-				onclick={handleUpdate}
-				disabled={!formData.title.trim()}
-			>
-				更新
-			</Button>
-		</div>
-	{/snippet}
-</Modal>
-
-<style>
-	.line-clamp\:3 {
-		display: -webkit-box;
-		-webkit-line-clamp: 3;
-		line-clamp: 3;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-	}
-</style>

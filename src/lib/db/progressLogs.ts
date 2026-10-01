@@ -2,6 +2,7 @@ import { db } from './schema';
 import type { ProgressLog, ProgressStats } from '$lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import { touchProject } from './utils';
+import { format } from 'date-fns';
 
 export const progressLogsDB = {
 	async getByProjectId(projectId: string, limit?: number): Promise<ProgressLog[]> {
@@ -128,9 +129,42 @@ export const progressLogsDB = {
 	},
 
 	/**
+	 * 保存時の執筆文字数を、今日（端末のローカル日付）の進捗ログへ加算する。
+	 * deltaChars は「今回の保存で増えた文字数」（減った場合は負数）。日計は 0 を下回らない。
+	 * 増減がない場合は何もしない。
+	 */
+	async recordWritingProgress(
+		projectId: string,
+		deltaChars: number,
+		sceneId?: string
+	): Promise<void> {
+		const delta = Math.trunc(deltaChars);
+		if (!Number.isFinite(delta) || delta === 0) return;
+
+		const date = format(new Date(), 'yyyy-MM-dd');
+		await db.transaction('rw', [db.progressLogs, db.projects], async () => {
+			const log = await this.create(projectId, date);
+			const updates: Partial<ProgressLog> = {
+				charactersWritten: Math.max(0, log.charactersWritten + delta)
+			};
+			if (sceneId && !log.sceneIds.includes(sceneId)) {
+				updates.sceneIds = [...log.sceneIds, sceneId];
+			}
+			await this.update(log.id, updates);
+		});
+	},
+
+	/**
 	 * リモートからの進捗ログをそのまま追加（IDを保持）
 	 */
 	async addFromRemote(log: ProgressLog): Promise<void> {
 		await db.progressLogs.add(log);
 	}
 };
+
+/**
+ * エディタの保存処理から呼ぶ用の短縮形。
+ * 例: await recordWritingProgress(projectId, newCharacterCount - savedCharacterCount, scene.id)
+ */
+export const recordWritingProgress = (projectId: string, deltaChars: number, sceneId?: string) =>
+	progressLogsDB.recordWritingProgress(projectId, deltaChars, sceneId);

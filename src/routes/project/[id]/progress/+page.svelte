@@ -1,11 +1,16 @@
 <script lang="ts">
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
-	import { progressLogsDB } from '$lib/db';
-	import type { ProgressLog, ProgressStats } from '$lib/types';
+	import { progressLogsDB, projectsDB } from '$lib/db';
+	import { queueChange } from '$lib/services/sync.service';
+	import type { ProgressLog, ProgressStats, ProjectSettings } from '$lib/types';
+	import { toast } from '$lib/stores/toast.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
-	import Input from '$lib/components/ui/Input.svelte';
+	import PageHeader from '$lib/components/ui/PageHeader.svelte';
+	import FormField from '$lib/components/ui/FormField.svelte';
+	import ModalActions from '$lib/components/ui/ModalActions.svelte';
+	import { buttonClass, fieldClass } from '$lib/components/ui/formStyles';
+	import { deleteWithUndo } from '$lib/utils/undoDelete';
 	import { onMount } from 'svelte';
 	import {
 		format,
@@ -19,51 +24,37 @@
 	} from 'date-fns';
 	import { ja } from 'date-fns/locale';
 
+	type GoalType = ProjectSettings['goal']['type'];
+
 	let progressLogs = $state<ProgressLog[]>([]);
 	let isLoading = $state(true);
 	let currentMonth = $state(new Date());
 	let selectedDate = $state<Date | null>(null);
 	let showLogModal = $state(false);
-	let stats = $state<ProgressStats>({
-		totalCharacters: 0,
-		averageDaily: 0,
-		maxDaily: 0,
-		consecutiveDays: 0,
-		goalProgress: 0
-	});
+	let showGoalModal = $state(false);
+	let isSaving = $state(false);
 
-	// フォーム状態
-	let logForm = $state({
-		date: '',
-		charactersWritten: 0,
-		timeSpent: 0
-	});
+	let logForm = $state({ charactersWritten: 0, timeSpent: 0 });
+	let goalForm = $state<{ type: GoalType; target: number }>({ type: 'daily', target: 2000 });
 
-	onMount(async () => {
-		await loadProgressLogs();
-		calculateStats();
-	});
-
-	const loadProgressLogs = async () => {
-		if (!currentProjectStore.project) return;
-		isLoading = true;
-		try {
-			progressLogs = await progressLogsDB.getByProjectId(currentProjectStore.project.id);
-		} finally {
-			isLoading = false;
-		}
+	const goalTypeLabels: Record<GoalType, string> = {
+		daily: '1日あたりの目標',
+		total: '全体の目標'
 	};
 
-	const calculateStats = () => {
+	let goal = $derived(currentProjectStore.project?.settings?.goal ?? null);
+
+	let selectedLog = $derived(selectedDate ? getLogForDate(selectedDate) : undefined);
+
+	let stats = $derived.by<ProgressStats>(() => {
 		if (progressLogs.length === 0) {
-			stats = {
+			return {
 				totalCharacters: 0,
 				averageDaily: 0,
 				maxDaily: 0,
 				consecutiveDays: 0,
 				goalProgress: 0
 			};
-			return;
 		}
 
 		const totalCharacters = progressLogs.reduce((sum, log) => sum + log.charactersWritten, 0);
@@ -80,7 +71,7 @@
 			for (let i = 1; i < sortedLogs.length; i++) {
 				const prevDate = new Date(sortedLogs[i - 1].date);
 				const currDate = new Date(sortedLogs[i].date);
-				const diffDays = Math.floor(
+				const diffDays = Math.round(
 					(prevDate.getTime() - currDate.getTime()) / (1000 * 60 * 60 * 24)
 				);
 				if (diffDays === 1) {
@@ -92,38 +83,65 @@
 		}
 
 		// 目標進捗計算
-		const goal = currentProjectStore.project?.settings?.goal;
 		let goalProgress = 0;
-		if (goal) {
+		if (goal && goal.target > 0) {
 			if (goal.type === 'daily') {
 				const todayLog = progressLogs.find((log) => log.date === today);
 				goalProgress = todayLog
 					? Math.min(100, (todayLog.charactersWritten / goal.target) * 100)
 					: 0;
-			} else if (goal.type === 'total') {
+			} else {
 				goalProgress = Math.min(100, (totalCharacters / goal.target) * 100);
 			}
 		}
 
-		stats = {
+		return {
 			totalCharacters,
 			averageDaily,
 			maxDaily,
 			consecutiveDays,
 			goalProgress: Math.round(goalProgress)
 		};
-	};
+	});
 
-	const getCalendarDays = () => {
+	let recentLogs = $derived(
+		[...progressLogs].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 7)
+	);
+
+	let monthlyTotal = $derived(
+		progressLogs
+			.filter((log) => {
+				const logDate = parseISO(log.date);
+				return (
+					logDate.getMonth() === currentMonth.getMonth() &&
+					logDate.getFullYear() === currentMonth.getFullYear()
+				);
+			})
+			.reduce((sum, log) => sum + log.charactersWritten, 0)
+	);
+
+	let calendarDays = $derived.by(() => {
 		const start = startOfMonth(currentMonth);
-		const end = endOfMonth(currentMonth);
-		const days = eachDayOfInterval({ start, end });
+		const days = eachDayOfInterval({ start, end: endOfMonth(currentMonth) });
+		// 月初の曜日ぶんの空白を追加
+		return [...Array<null>(start.getDay()).fill(null), ...days];
+	});
 
-		// 月初の曜日を取得して空白を追加
-		const firstDayOfWeek = start.getDay();
-		const emptyDays = Array(firstDayOfWeek).fill(null);
+	onMount(async () => {
+		await loadProgressLogs();
+	});
 
-		return [...emptyDays, ...days];
+	const loadProgressLogs = async () => {
+		if (!currentProjectStore.project) return;
+		isLoading = true;
+		try {
+			progressLogs = await progressLogsDB.getByProjectId(currentProjectStore.project.id);
+		} catch (error) {
+			console.error('Failed to load progress logs:', error);
+			toast.error('進捗の読み込みに失敗しました');
+		} finally {
+			isLoading = false;
+		}
 	};
 
 	function getLogForDate(date: Date): ProgressLog | undefined {
@@ -149,354 +167,409 @@
 
 	function calendarDayClass(charactersWritten: number, isToday: boolean): string {
 		return [
-			'aspect:1/1 r:8 p:8 flex flex-direction:column align-items:center justify-content:center gap:4 transition:all|.2s cursor:pointer',
+			'w:full aspect:1/1 r:8 p:4 flex flex-direction:column align-items:center justify-content:center gap:2 transition:all|.2s cursor:pointer fg:theme-text',
 			getHeatmapColor(charactersWritten),
-			isToday ? 'b:2px|solid|$(theme.primary)' : 'b:1px|solid|theme-border',
-			'hover:bg:$(theme.primary)/.12'
+			isToday ? 'b:2|solid|theme-text' : 'b:1|solid|theme-border',
+			'bg:theme-surface:hover'
 		].join(' ');
 	}
 
-	const fieldBaseClass =
-		'w:full px:12 py:10 b:1|solid|theme-border bg:theme-background fg:theme-text r:8 outline:none focus:b:$(theme.primary) transition:all|.2s font:inherit';
-
 	function openLogModal(date: Date) {
 		selectedDate = date;
-		const dateStr = format(date, 'yyyy-MM-dd');
 		const existingLog = getLogForDate(date);
-
 		logForm = {
-			date: dateStr,
 			charactersWritten: existingLog?.charactersWritten || 0,
 			timeSpent: existingLog?.timeSpent || 0
 		};
-
 		showLogModal = true;
 	}
 
 	const handleSaveLog = async () => {
-		if (!currentProjectStore.project || !selectedDate) return;
-
+		if (!currentProjectStore.project || !selectedDate || isSaving) return;
+		isSaving = true;
 		const dateStr = format(selectedDate, 'yyyy-MM-dd');
-		const existingLog = await progressLogsDB.getByDate(currentProjectStore.project.id, dateStr);
-
-		if (existingLog) {
-			await progressLogsDB.update(existingLog.id, {
-				charactersWritten: logForm.charactersWritten,
-				timeSpent: logForm.timeSpent
-			});
-		} else {
-			const newLog = await progressLogsDB.create(currentProjectStore.project.id, dateStr);
-			await progressLogsDB.update(newLog.id, {
-				charactersWritten: logForm.charactersWritten,
-				timeSpent: logForm.timeSpent
-			});
+		const changes = {
+			charactersWritten: Math.max(0, Math.round(Number(logForm.charactersWritten) || 0)),
+			timeSpent: Math.max(0, Math.round(Number(logForm.timeSpent) || 0))
+		};
+		try {
+			const log = await progressLogsDB.create(currentProjectStore.project.id, dateStr);
+			await progressLogsDB.update(log.id, changes);
+			showLogModal = false;
+			await loadProgressLogs();
+			toast.success(`${format(selectedDate, 'M月d日', { locale: ja })}の進捗を記録しました`);
+		} catch (error) {
+			console.error('Failed to save progress log:', error);
+			toast.error('進捗の保存に失敗しました');
+		} finally {
+			isSaving = false;
 		}
+	};
 
-		await loadProgressLogs();
-		calculateStats();
+	async function handleDeleteLog() {
+		const log = selectedLog ? ($state.snapshot(selectedLog) as ProgressLog) : null;
+		if (!log) return;
 		showLogModal = false;
+		await deleteWithUndo({
+			targetLabel: `${format(parseISO(log.date), 'M月d日', { locale: ja })}の進捗記録`,
+			remove: async () => {
+				await progressLogsDB.delete(log.id);
+				await loadProgressLogs();
+			},
+			restore: async () => {
+				await progressLogsDB.addFromRemote(log);
+				await loadProgressLogs();
+			}
+		});
+	}
+
+	function openGoalModal() {
+		goalForm = {
+			type: goal?.type ?? 'daily',
+			target: goal?.target ?? 2000
+		};
+		showGoalModal = true;
+	}
+
+	const handleSaveGoal = async () => {
+		const project = currentProjectStore.project;
+		const target = Math.round(Number(goalForm.target));
+		if (!project || !(target > 0) || isSaving) return;
+		isSaving = true;
+		try {
+			const settings = {
+				...$state.snapshot(project.settings),
+				goal: { type: goalForm.type, target }
+			};
+			await projectsDB.update(project.id, { settings });
+			await queueChange('projects', project.id, 'update');
+			currentProjectStore.project = { ...project, settings };
+			showGoalModal = false;
+			toast.success('目標を保存しました');
+		} catch (error) {
+			console.error('Failed to save goal:', error);
+			toast.error('目標の保存に失敗しました');
+		} finally {
+			isSaving = false;
+		}
 	};
 
-	const previousMonth = () => {
-		currentMonth = subMonths(currentMonth, 1);
-	};
-
-	const nextMonth = () => {
-		currentMonth = addMonths(currentMonth, 1);
-	};
-
-	const goToToday = () => {
-		currentMonth = new Date();
-	};
-
-	$effect(() => {
-		calculateStats();
-	});
-
-	let recentLogs = $derived(
-		[...progressLogs].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 7)
-	);
-
-	let monthlyTotal = $derived(
-		progressLogs
-			.filter((log) => {
-				const logDate = parseISO(log.date);
-				return (
-					logDate.getMonth() === currentMonth.getMonth() &&
-					logDate.getFullYear() === currentMonth.getFullYear()
-				);
-			})
-			.reduce((sum, log) => sum + log.charactersWritten, 0)
-	);
+	const previousMonth = () => (currentMonth = subMonths(currentMonth, 1));
+	const nextMonth = () => (currentMonth = addMonths(currentMonth, 1));
+	const goToToday = () => (currentMonth = new Date());
 </script>
 
-<div class="flex w:100% h:100% bg:theme-background fg:theme-text">
-	<div class="flex-grow:1 flex flex-direction:column">
-		<header class="bg:theme-background border-bottom:2|solid|theme-text">
-			<div
-				class="max-w:1280 mx:auto w:100% px:24 py:20 flex justify-content:space-between align-items:center"
+<svelte:head>
+	<title>進捗 | Storift</title>
+</svelte:head>
+
+<div class="flex flex-direction:column w:100% h:100% bg:theme-background fg:theme-text">
+	<PageHeader title="進捗" description="執筆の進捗を記録・可視化します">
+		{#snippet actions()}
+			<button
+				type="button"
+				class={buttonClass('secondary')}
+				onclick={openGoalModal}
+				disabled={!currentProjectStore.project}
 			>
-				<div>
-					<h1 class="font:26 font-weight:600 m:0 fg:theme-text">進捗管理</h1>
-					<p class="font:14 fg:theme-text-secondary mt:8">執筆の進捗を記録・可視化します</p>
+				目標を設定
+			</button>
+			<button
+				type="button"
+				class={buttonClass('primary')}
+				onclick={() => openLogModal(new Date())}
+				disabled={!currentProjectStore.project}
+			>
+				今日の記録
+			</button>
+		{/snippet}
+	</PageHeader>
+
+	<main class="flex-grow:1 overflow-y:auto">
+		<div class="max-w:1280 mx:auto w:100% px:24 py:24 flex flex-direction:column gap:24">
+			{#if isLoading}
+				<div class="flex justify-content:center align-items:center h:320">
+					<p class="fg:theme-text-secondary font:14">読み込み中...</p>
 				</div>
-				<div class="flex align-items:center gap:12">
-					<Button
-						class="px:18 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8 font:14"
-						onclick={() => openLogModal(new Date())}
-						disabled={!currentProjectStore.project}
-					>
-						今日の記録
-					</Button>
+			{:else}
+				<div class="flex flex-wrap:wrap gap:16">
+					{#each [{ label: '累計文字数', value: stats.totalCharacters.toLocaleString(), unit: '文字' }, { label: '平均執筆量', value: stats.averageDaily.toLocaleString(), unit: '文字/日' }, { label: '最高記録', value: stats.maxDaily.toLocaleString(), unit: '文字/日' }, { label: '連続執筆', value: String(stats.consecutiveDays), unit: '日間' }] as item (item.label)}
+						<Card class="flex:1 min-w:160 text-align:center flex flex-direction:column gap:4">
+							<p class="font:14 fg:theme-text-secondary m:0">{item.label}</p>
+							<p class="font:28 font-weight:600 fg:theme-text m:0">{item.value}</p>
+							<p class="font:12 fg:theme-text-secondary m:0">{item.unit}</p>
+						</Card>
+					{/each}
+
+					<Card class="flex:1 min-w:240 flex flex-direction:column gap:8">
+						<div class="flex justify-content:space-between align-items:center">
+							<p class="font:14 fg:theme-text-secondary m:0">目標達成率</p>
+							<button
+								type="button"
+								class="font:12 bg:transparent b:none p:0 cursor:pointer fg:theme-text-secondary fg:theme-text:hover text-decoration:underline"
+								onclick={openGoalModal}
+							>
+								変更
+							</button>
+						</div>
+						{#if goal}
+							<p class="font:28 font-weight:600 fg:theme-text m:0">{stats.goalProgress}%</p>
+							<div
+								class="h:8 r:full bg:theme-background b:1|solid|theme-border overflow:hidden"
+								role="progressbar"
+								aria-label="目標達成率"
+								aria-valuemin="0"
+								aria-valuemax="100"
+								aria-valuenow={stats.goalProgress}
+							>
+								<div class="h:full bg:theme-text" style="width: {stats.goalProgress}%"></div>
+							</div>
+							<p class="font:12 fg:theme-text-secondary m:0">
+								{goalTypeLabels[goal.type]}: {goal.target.toLocaleString()}文字
+							</p>
+						{:else}
+							<p class="font:14 fg:theme-text-secondary m:0">目標が未設定です</p>
+						{/if}
+					</Card>
 				</div>
-			</div>
-		</header>
 
-		<main class="flex-grow:1 overflow-y:auto">
-			<div class="max-w:1280 mx:auto w:100% px:24 py:24 flex flex-direction:column gap:24">
-				{#if isLoading}
-					<div class="flex justify-content:center align-items:center h:320">
-						<p class="fg:theme-text-secondary font:14">読み込み中...</p>
-					</div>
-				{:else}
-					<div class="flex gap:16 flex-wrap:wrap justify-content:space-between">
-						<Card class="flex:1 min-w:200">
-							<div class="p:20 text-align:center flex flex-direction:column gap:8">
-								<p class="font:14 fg:theme-text-secondary">累計文字数</p>
-								<p class="font:30 font-weight:600 fg:theme-text">
-									{stats.totalCharacters.toLocaleString()}
-								</p>
-								<p class="font:12 fg:theme-text-secondary">文字</p>
-							</div>
-						</Card>
-
-						<Card class="flex:1 min-w:200">
-							<div class="p:20 text-align:center flex flex-direction:column gap:8">
-								<p class="font:14 fg:theme-text-secondary">平均執筆量</p>
-								<p class="font:30 font-weight:600 fg:theme-text">
-									{stats.averageDaily.toLocaleString()}
-								</p>
-								<p class="font:12 fg:theme-text-secondary">文字/日</p>
-							</div>
-						</Card>
-
-						<Card class="flex:1 min-w:200">
-							<div class="p:20 text-align:center flex flex-direction:column gap:8">
-								<p class="font:14 fg:theme-text-secondary">最高記録</p>
-								<p class="font:30 font-weight:600 fg:theme-text">
-									{stats.maxDaily.toLocaleString()}
-								</p>
-								<p class="font:12 fg:theme-text-secondary">文字/日</p>
-							</div>
-						</Card>
-
-						<Card class="flex:1 min-w:200">
-							<div class="p:20 text-align:center flex flex-direction:column gap:8">
-								<p class="font:14 fg:theme-text-secondary">連続執筆</p>
-								<p class="font:30 font-weight:600 fg:theme-text">{stats.consecutiveDays}</p>
-								<p class="font:12 fg:theme-text-secondary">日間</p>
-							</div>
-						</Card>
-
-						<Card class="flex:1 min-w:200">
-							<div class="p:20 text-align:center flex flex-direction:column gap:8">
-								<p class="font:14 fg:theme-text-secondary">目標達成率</p>
-								<p class="font:30 font-weight:600 fg:$(theme.primary)">{stats.goalProgress}%</p>
-								<p class="font:12 fg:theme-text-secondary">達成</p>
-							</div>
-						</Card>
-					</div>
-
-					<div class="grid gap:16 lg:grid-template-columns:repeat(3,minmax(0,1fr))">
-						<div class="lg:col:span-2">
-							<Card>
-								<div class="p:24 flex flex-direction:column gap:20">
-									<div class="flex justify-content:space-between align-items:center">
-										<h2 class="font:20 font-weight:600 fg:theme-text">
-											{format(currentMonth, 'yyyy年M月', { locale: ja })}
-										</h2>
-										<div class="flex gap:8">
-											<Button variant="secondary" class="px:12 py:8 font:12" onclick={previousMonth}
-												>←</Button
-											>
-											<Button variant="secondary" class="px:12 py:8 font:12" onclick={goToToday}
-												>今日</Button
-											>
-											<Button variant="secondary" class="px:12 py:8 font:12" onclick={nextMonth}
-												>→</Button
-											>
-										</div>
-									</div>
-
-									<div class="p:12 bg:$(theme.primary)/.12 r:8 b:1px|solid|theme-border">
-										<p class="font:14 fg:theme-text">
-											今月の合計: <span class="font-weight:600"
-												>{monthlyTotal.toLocaleString()}</span
-											> 文字
-										</p>
-									</div>
-
-									<div class="grid gap:4 grid-template-columns:repeat(7,minmax(0,1fr)) mb:8">
-										{#each ['日', '月', '火', '水', '木', '金', '土'] as day}
-											<div
-												class="text-align:center font:12 font-weight:600 fg:theme-text-secondary py:8"
-											>
-												{day}
-											</div>
-										{/each}
-									</div>
-
-									<div class="grid gap:4 grid-template-columns:repeat(7,minmax(0,1fr))">
-										{#each getCalendarDays() as day}
-											{#if day === null}
-												<div class="w:full aspect:1/1"></div>
-											{:else}
-												{@const log = getLogForDate(day)}
-												{@const isToday = isSameDay(day, new Date())}
-												<button
-													class={`w:full ${calendarDayClass(log?.charactersWritten || 0, isToday)}`}
-													onclick={() => openLogModal(day)}
-												>
-													<span class="font:14 font-weight:600 fg:theme-text"
-														>{format(day, 'd')}</span
-													>
-													{#if log}
-														<span class="font:10 fg:theme-text-secondary"
-															>{log.charactersWritten}</span
-														>
-													{/if}
-												</button>
-											{/if}
-										{/each}
-									</div>
-
-									<div
-										class="flex align-items:center gap:8 mt:16 pt:16 bt:1|solid|theme-border flex-wrap:wrap"
+				<div
+					class="grid gap:16 grid-template-columns:minmax(0,1fr) lg:grid-template-columns:repeat(3,minmax(0,1fr))"
+				>
+					<div class="calendar-col">
+						<Card class="flex flex-direction:column gap:16">
+							<div class="flex justify-content:space-between align-items:center">
+								<h2 class="font:20 font-weight:600 fg:theme-text m:0">
+									{format(currentMonth, 'yyyy年M月', { locale: ja })}
+								</h2>
+								<div class="flex gap:8">
+									<button
+										type="button"
+										class={buttonClass('secondary', 'px:12')}
+										aria-label="前の月"
+										onclick={previousMonth}>←</button
 									>
-										<span class="font:12 fg:theme-text-secondary">執筆量:</span>
-										{#each heatmapLegend as level}
-											<div class="flex align-items:center gap:4">
-												<div
-													class={`w:16 h:16 r:4 b:1px|solid|theme-border ${level.className}`}
-												></div>
-												<span class="font:12 fg:theme-text-secondary">{level.label}</span>
-											</div>
-										{/each}
-									</div>
+									<button
+										type="button"
+										class={buttonClass('secondary', 'px:12')}
+										onclick={goToToday}>今日</button
+									>
+									<button
+										type="button"
+										class={buttonClass('secondary', 'px:12')}
+										aria-label="次の月"
+										onclick={nextMonth}>→</button
+									>
 								</div>
-							</Card>
-						</div>
+							</div>
 
-						<div>
-							<Card>
-								<div class="p:24 flex flex-direction:column gap:16">
-									<h3 class="font:18 font-weight:600 fg:theme-text">最近の記録</h3>
-									<div class="flex flex-direction:column gap:12">
-										{#each recentLogs as log (log.id)}
-											<div
-												class="p:12 bg:theme-surface r:8 b:1px|solid|theme-border flex flex-direction:column gap:8"
-											>
-												<div class="flex justify-content:space-between align-items:start">
-													<span class="font:14 font-weight:600 fg:theme-text">
-														{format(parseISO(log.date), 'M月d日(E)', { locale: ja })}
-													</span>
-													<button
-														class="px:10 py:6 bg:$(theme.primary)/.12 fg:$(theme.primary) r:6 font:12 transition:all|.2s hover:bg:$(theme.primary)/.2"
-														onclick={() => openLogModal(parseISO(log.date))}
-													>
-														編集
-													</button>
-												</div>
-												<div class="flex flex-direction:column gap:4">
-													<div class="flex justify-content:space-between">
-														<span class="font:12 fg:theme-text-secondary">執筆量</span>
-														<span class="font:14 font-weight:600 fg:theme-text">
-															{log.charactersWritten.toLocaleString()}文字
-														</span>
-													</div>
-													{#if log.timeSpent > 0}
-														<div class="flex justify-content:space-between">
-															<span class="font:12 fg:theme-text-secondary">執筆時間</span>
-															<span class="font:14 font-weight:600 fg:theme-text">
-																{Math.floor(log.timeSpent / 60)}時間{log.timeSpent % 60}分
-															</span>
-														</div>
-													{/if}
-												</div>
-											</div>
-										{/each}
+							<div class="p:12 bg:theme-surface r:8 b:1|solid|theme-border">
+								<p class="font:14 fg:theme-text m:0">
+									今月の合計: <span class="font-weight:600">{monthlyTotal.toLocaleString()}</span> 文字
+								</p>
+							</div>
 
-										{#if recentLogs.length === 0}
-											<p class="fg:theme-text-secondary font:14 text-align:center py:20">
-												まだ記録がありません
-											</p>
-										{/if}
+							<div class="grid gap:4 grid-template-columns:repeat(7,minmax(0,1fr))">
+								{#each ['日', '月', '火', '水', '木', '金', '土'] as day (day)}
+									<div
+										class="text-align:center font:12 font-weight:600 fg:theme-text-secondary py:4"
+									>
+										{day}
 									</div>
-								</div>
-							</Card>
-						</div>
+								{/each}
+								{#each calendarDays as day, i (i)}
+									{#if day === null}
+										<div class="w:full aspect:1/1"></div>
+									{:else}
+										{@const log = getLogForDate(day)}
+										<button
+											type="button"
+											class={calendarDayClass(
+												log?.charactersWritten || 0,
+												isSameDay(day, new Date())
+											)}
+											aria-label={`${format(day, 'M月d日', { locale: ja })} ${
+												log ? `${log.charactersWritten.toLocaleString()}文字` : '記録なし'
+											}`}
+											onclick={() => openLogModal(day)}
+										>
+											<span class="font:14 font-weight:600">{format(day, 'd')}</span>
+											{#if log}
+												<span class="font:10 fg:theme-text-secondary">{log.charactersWritten}</span>
+											{/if}
+										</button>
+									{/if}
+								{/each}
+							</div>
+
+							<div
+								class="flex align-items:center gap:8 pt:16 bt:1|solid|theme-border flex-wrap:wrap"
+							>
+								<span class="font:12 fg:theme-text-secondary">執筆量:</span>
+								{#each heatmapLegend as level (level.label)}
+									<div class="flex align-items:center gap:4">
+										<div class="w:16 h:16 r:4 b:1|solid|theme-border {level.className}"></div>
+										<span class="font:12 fg:theme-text-secondary">{level.label}</span>
+									</div>
+								{/each}
+							</div>
+						</Card>
 					</div>
-				{/if}
-			</div>
-		</main>
-	</div>
+
+					<Card class="flex flex-direction:column gap:16">
+						<h2 class="font:18 font-weight:600 fg:theme-text m:0">最近の記録</h2>
+						<div class="flex flex-direction:column gap:12">
+							{#each recentLogs as log (log.id)}
+								<div
+									class="p:12 bg:theme-surface r:8 b:1|solid|theme-border flex flex-direction:column gap:8"
+								>
+									<div class="flex justify-content:space-between align-items:center">
+										<span class="font:14 font-weight:600 fg:theme-text">
+											{format(parseISO(log.date), 'M月d日(E)', { locale: ja })}
+										</span>
+										<button
+											type="button"
+											class={buttonClass('secondary', 'px:10 py:4 font:12')}
+											aria-label={`${format(parseISO(log.date), 'M月d日', { locale: ja })}の記録を編集`}
+											onclick={() => openLogModal(parseISO(log.date))}
+										>
+											編集
+										</button>
+									</div>
+									<div class="flex justify-content:space-between">
+										<span class="font:12 fg:theme-text-secondary">執筆量</span>
+										<span class="font:14 font-weight:600 fg:theme-text">
+											{log.charactersWritten.toLocaleString()}文字
+										</span>
+									</div>
+									{#if log.timeSpent > 0}
+										<div class="flex justify-content:space-between">
+											<span class="font:12 fg:theme-text-secondary">執筆時間</span>
+											<span class="font:14 font-weight:600 fg:theme-text">
+												{Math.floor(log.timeSpent / 60)}時間{log.timeSpent % 60}分
+											</span>
+										</div>
+									{/if}
+								</div>
+							{:else}
+								<p class="fg:theme-text-secondary font:14 text-align:center py:16 m:0">
+									まだ記録がありません
+								</p>
+							{/each}
+						</div>
+					</Card>
+				</div>
+			{/if}
+		</div>
+	</main>
 </div>
 
-<!-- 進捗記録モーダル -->
 <Modal bind:isOpen={showLogModal} title="進捗記録">
-	{#snippet children()}
-		{#if selectedDate}
-			<div class="flex flex-direction:column gap:16">
-				<div class="p:16 bg:theme-surface r:8 b:1px|solid|theme-border">
-					<p class="font:14 fg:theme-text-secondary mb:4">日付</p>
-					<p class="font:18 font-weight:600 fg:theme-text">
-						{format(selectedDate, 'yyyy年M月d日(E)', { locale: ja })}
-					</p>
-				</div>
+	{#if selectedDate}
+		<div class="flex flex-direction:column gap:16">
+			<div class="p:16 bg:theme-surface r:8 b:1|solid|theme-border">
+				<p class="font:14 fg:theme-text-secondary m:0 mb:4">日付</p>
+				<p class="font:18 font-weight:600 fg:theme-text m:0">
+					{format(selectedDate, 'yyyy年M月d日(E)', { locale: ja })}
+				</p>
+			</div>
 
-				<div>
-					<label for="characters-written" class="block mb:8 font:14 font-weight:600 fg:theme-text"
-						>執筆文字数</label
-					>
+			<FormField label="執筆文字数">
+				{#snippet children(id)}
 					<input
-						id="characters-written"
+						{id}
 						type="number"
+						min="0"
 						bind:value={logForm.charactersWritten}
 						placeholder="0"
-						class={fieldBaseClass}
+						class={fieldClass}
 					/>
-				</div>
+				{/snippet}
+			</FormField>
 
-				<div>
-					<label for="time-spent" class="block mb:8 font:14 font-weight:600 fg:theme-text"
-						>執筆時間(分)</label
-					>
+			<FormField label="執筆時間(分)">
+				{#snippet children(id)}
 					<input
-						id="time-spent"
+						{id}
 						type="number"
+						min="0"
 						bind:value={logForm.timeSpent}
 						placeholder="0"
-						class={fieldBaseClass}
+						class={fieldClass}
 					/>
-				</div>
-			</div>
-		{/if}
-	{/snippet}
+				{/snippet}
+			</FormField>
+		</div>
+	{/if}
 
 	{#snippet footer()}
-		<div class="flex gap:12">
-			<Button variant="secondary" class="px:16 py:8" onclick={() => (showLogModal = false)}
-				>キャンセル</Button
-			>
-			<Button
-				class="px:18 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8"
-				onclick={handleSaveLog}>保存</Button
-			>
-		</div>
+		<ModalActions
+			submitLabel="保存"
+			submitDisabled={isSaving}
+			onsubmit={handleSaveLog}
+			oncancel={() => (showLogModal = false)}
+		>
+			{#snippet extra()}
+				{#if selectedLog}
+					<button type="button" class={buttonClass('danger')} onclick={handleDeleteLog}>
+						記録を削除
+					</button>
+				{/if}
+			{/snippet}
+		</ModalActions>
+	{/snippet}
+</Modal>
+
+<Modal bind:isOpen={showGoalModal} title="執筆目標の設定">
+	<div class="flex flex-direction:column gap:16">
+		<FormField label="目標の種類">
+			{#snippet children(id)}
+				<select {id} bind:value={goalForm.type} class={fieldClass}>
+					{#each Object.entries(goalTypeLabels) as [value, label] (value)}
+						<option {value}>{label}</option>
+					{/each}
+				</select>
+			{/snippet}
+		</FormField>
+
+		<FormField
+			label="目標文字数"
+			required
+			hint={goalForm.type === 'daily'
+				? '1日に書く文字数の目標です。今日の執筆量との比較で達成率を計算します。'
+				: '作品全体の目標文字数です。累計文字数との比較で達成率を計算します。'}
+		>
+			{#snippet children(id)}
+				<input
+					{id}
+					type="number"
+					min="1"
+					step="100"
+					bind:value={goalForm.target}
+					placeholder="2000"
+					class={fieldClass}
+				/>
+			{/snippet}
+		</FormField>
+	</div>
+
+	{#snippet footer()}
+		<ModalActions
+			submitLabel="保存"
+			submitDisabled={!(Number(goalForm.target) > 0) || isSaving}
+			onsubmit={handleSaveGoal}
+			oncancel={() => (showGoalModal = false)}
+		/>
 	{/snippet}
 </Modal>
 
 <style>
+	@media (min-width: 1024px) {
+		.calendar-col {
+			grid-column: span 2;
+		}
+	}
+
 	.aspect\:1\/1 {
 		aspect-ratio: 1 / 1;
 	}

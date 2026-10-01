@@ -43,30 +43,78 @@
 			handleClose();
 		}
 	}
+	let dialogEl = $state<HTMLDivElement | null>(null);
+	let previousFocus: HTMLElement | null = null;
+	const titleId = `modal-title-${Math.random().toString(36).slice(2, 9)}`;
+
+	const FOCUSABLE =
+		'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+	// 開いたときに入力欄（なければ最初の操作要素）へフォーカスし、閉じたら元に戻す
+	$effect(() => {
+		if (isOpen && dialogEl) {
+			previousFocus = document.activeElement as HTMLElement | null;
+			const body = dialogEl.querySelector<HTMLElement>(
+				'.modal-body input, .modal-body textarea, .modal-body select'
+			);
+			(body ?? dialogEl.querySelector<HTMLElement>(FOCUSABLE) ?? dialogEl).focus();
+			return () => {
+				previousFocus?.focus?.();
+			};
+		}
+	});
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (!isOpen) return;
+		if (e.key === 'Escape') {
+			e.stopPropagation();
+			handleClose();
+			return;
+		}
+		if (e.key === 'Tab' && dialogEl) {
+			const items = Array.from(dialogEl.querySelectorAll<HTMLElement>(FOCUSABLE));
+			if (items.length === 0) {
+				e.preventDefault();
+				return;
+			}
+			const first = items[0];
+			const last = items[items.length - 1];
+			const active = document.activeElement;
+			if (e.shiftKey && (active === first || !dialogEl.contains(active))) {
+				e.preventDefault();
+				last.focus();
+			} else if (!e.shiftKey && (active === last || !dialogEl.contains(active))) {
+				e.preventDefault();
+				first.focus();
+			}
+		}
+	}
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 {#if isOpen}
 	<div
 		class="position:fixed inset:0 bg:rgba(0,0,0,0.5) z:1000 flex align-items:center justify-content:center"
 		onclick={handleBackdropClick}
-		onkeydown={(e) => {
-			if (e.key === 'Escape') handleClose();
-		}}
-		role="dialog"
-		aria-modal="true"
-		tabindex="-1"
+		role="presentation"
 	>
 		<div
-			class="modal-container bg:white r:12 {sizeClasses[
+			bind:this={dialogEl}
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby={titleId}
+			tabindex="-1"
+			class="modal-container bg:theme-background fg:theme-text b:2|solid|theme-text r:12 {sizeClasses[
 				size
-			]} w:90% max-h:90vh overflow:auto box-shadow:0|8|32|rgba(0,0,0,0.2)"
+			]} w:90% max-h:90vh overflow:auto outline:none"
 		>
 			<div
-				class="modal-header flex justify-content:space-between align-items:center p:24 border-bottom:1|solid|gray-200"
+				class="modal-header flex justify-content:space-between align-items:center p:24 border-bottom:1|solid|theme-border"
 			>
-				<h2 class="font:20 font-weight:600 m:0">{title}</h2>
+				<h2 id={titleId} class="font:20 font-weight:600 m:0">{title}</h2>
 				<button
-					class="bg:transparent border:none font:24 cursor:pointer p:8 fg:gray-600 fg:gray-900:hover"
+					class="bg:transparent border:none font:24 cursor:pointer p:8 fg:theme-text-secondary fg:theme-text:hover"
 					onclick={handleClose}
 					aria-label="閉じる"
 				>
@@ -85,19 +133,17 @@
 			{:else if onConfirm}
 				<div class="modal-footer p:24 pt:0 flex gap:12 justify-content:flex-end">
 					<button
-						class="px:16 py:8 border:1|solid|gray-300 r:6 bg:white fg:gray-700 cursor:pointer bg:gray-50:hover"
+						class="px:16 py:8 b:1|solid|theme-border r:6 bg:theme-background fg:theme-text cursor:pointer bg:theme-surface:hover"
 						onclick={handleClose}
 					>
 						{cancelText}
 					</button>
 					<button
-						class="px:16 py:8 border:none r:6 fg:white cursor:pointer"
-						class:bg:blue-600={confirmVariant === 'primary'}
-						class:bg:blue-700:hover={confirmVariant === 'primary'}
-						class:bg:gray-600={confirmVariant === 'secondary'}
-						class:bg:gray-700:hover={confirmVariant === 'secondary'}
-						class:bg:red-600={confirmVariant === 'danger'}
-						class:bg:red-700:hover={confirmVariant === 'danger'}
+						class="px:16 py:8 b:none r:6 cursor:pointer"
+						class:bg:theme-primary={confirmVariant === 'primary'}
+						class:bg:theme-text={confirmVariant === 'secondary'}
+						class:bg:theme-error={confirmVariant === 'danger'}
+						style="color: var(--color-background)"
 						class:opacity:0.5={confirmDisabled}
 						class:cursor:not-allowed={confirmDisabled}
 						onclick={onConfirm}

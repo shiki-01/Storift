@@ -20,6 +20,8 @@
 	import { initializeErrorHandler } from '$lib/utils/errorHandler';
 	import Button from '$lib/components/ui/Button.svelte';
 	import SyncStatus from '$lib/components/ui/SyncStatus.svelte';
+	import ToastHost from '$lib/components/ui/ToastHost.svelte';
+	import ConfirmHost from '$lib/components/ui/ConfirmHost.svelte';
 	import { themes, themeStore } from '$lib/stores/theme.svelte';
 
 	let { children } = $props();
@@ -117,11 +119,14 @@
 	<meta name="description" content="個人向け小説執筆アプリ" />
 </svelte:head>
 
+<ToastHost />
+<ConfirmHost />
+
 <div class="min-h:100vh bg:theme-background">
 	<header class="px:1.5rem py:1rem bb:2px|solid|theme-text">
 		<div class="gap:1.5rem mx:auto flex justify-content:start align-items:center">
 			<button
-				aria-label="mordal"
+				aria-label="メニューを開閉"
 				onclick={() => (editorStore.isOpen = !editorStore.isOpen)}
 				class="rel w:30px h:30px cursor:pointer"
 			>

@@ -1,3 +1,5 @@
+import type { PreviewSettings } from './preview';
+
 export type EditorFont =
 	| 'yu-gothic'
 	| 'gen-shin-mincho'
@@ -39,6 +41,10 @@ export interface AppSettings {
 	autoTheme: boolean;
 	editorFont?: EditorFont;
 	editorFormatting: EditorFormatting;
+	/** エディタ本文の書字方向（未設定は横書き） */
+	editorWritingMode?: 'horizontal' | 'vertical';
+	/** プレビューの表示設定（未設定は defaultPreviewSettings） */
+	previewSettings?: PreviewSettings;
 	shortcuts: {
 		save: string;
 		undo: string;

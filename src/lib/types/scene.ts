@@ -6,6 +6,8 @@ export interface Scene {
 	content: string;
 	order: number;
 	characterCount: number;
+	/** シーン別の目標文字数（未設定なら undefined） */
+	targetCharacterCount?: number;
 	tags: string[];
 	createdAt: number;
 	updatedAt: number;

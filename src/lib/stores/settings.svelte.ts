@@ -1,4 +1,5 @@
-import type { AppSettings, EditorFont } from '$lib/types';
+import type { AppSettings, EditorFont, PreviewSettings } from '$lib/types';
+import { defaultPreviewSettings } from '$lib/types';
 
 let settings = $state<AppSettings>({
 	id: 'app-settings',
@@ -52,6 +53,29 @@ export const settingsStore = {
 	},
 	set editorFormatting(value: AppSettings['editorFormatting']) {
 		settings.editorFormatting = value;
+	},
+	get shortcuts() {
+		return settings.shortcuts;
+	},
+	get autoSave() {
+		return settings.autoSave ?? true;
+	},
+	/** 自動保存間隔(ミリ秒)。設定ページは秒単位で保存するため 1000 未満は秒として扱う */
+	get autoSaveIntervalMs() {
+		const value = settings.autoSaveInterval || 30000;
+		return Math.max(5000, value < 1000 ? value * 1000 : value);
+	},
+	get editorWritingMode() {
+		return settings.editorWritingMode ?? 'horizontal';
+	},
+	set editorWritingMode(value: 'horizontal' | 'vertical') {
+		settings.editorWritingMode = value;
+	},
+	get previewSettings(): PreviewSettings {
+		return { ...defaultPreviewSettings, ...(settings.previewSettings ?? {}) };
+	},
+	set previewSettings(value: PreviewSettings) {
+		settings.previewSettings = value;
 	},
 	get hasFirebaseConfig() {
 		return settings.firebase !== undefined;

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
@@ -344,7 +345,7 @@
 	// ---------- 保存 ----------
 
 	// 進捗記録用: シーンごとの前回保存時の文字数（未保存なら DB 上の characterCount を基準にする）
-	const lastSavedCounts = new Map<string, number>();
+	const lastSavedCounts = new SvelteMap<string, number>();
 
 	const handleSave = async (options: { silent?: boolean } = {}) => {
 		const scene = editorStore.currentScene;
@@ -806,7 +807,7 @@
 		list.splice(Math.max(0, Math.min(index, list.length)), 0, moving);
 
 		try {
-			const fresh = new Map<string, Chapter>();
+			const fresh = new SvelteMap<string, Chapter>();
 			for (let i = 0; i < list.length; i++) {
 				if (list[i].order === i) continue;
 				await chaptersDB.update(list[i].id, { order: i });
@@ -830,7 +831,7 @@
 		const targetList = (byChapter.get(targetChapterId) ?? []).filter((s) => s.id !== sceneId);
 		targetList.splice(Math.max(0, Math.min(index, targetList.length)), 0, scene);
 
-		const changes = new Map<string, Partial<Scene>>();
+		const changes = new SvelteMap<string, Partial<Scene>>();
 		targetList.forEach((s, i) => {
 			if (s.order !== i || s.chapterId !== targetChapterId) {
 				changes.set(s.id, { order: i, chapterId: targetChapterId });
@@ -1118,6 +1119,8 @@
 	// 本文は 1 行 = 1 つの div で表現する（段落間隔を CSS で付けるため）
 	function renderContent(text: string) {
 		if (!editorDiv) return;
+		// contenteditable の中身は Svelte 管理外なので、直接 DOM を組み立てる
+		// eslint-disable-next-line svelte/no-dom-manipulating
 		editorDiv.replaceChildren(
 			...text.split('\n').map((line) => {
 				const div = document.createElement('div');
@@ -1629,7 +1632,6 @@
 								: ''}"
 						>
 							<!-- contentEditable div -->
-							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<div
 								bind:this={editorDiv}
 								contenteditable="true"

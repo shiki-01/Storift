@@ -16,6 +16,8 @@
 	import { createProjectContextMenu, type ContextMenuItem } from '$lib/utils/contextMenu';
 	import type { Project, ProjectCreateInput } from '$lib/types';
 	import { exportProject } from '$lib/services/export.service';
+	import { toast } from '$lib/stores/toast.svelte';
+	import { confirmDialog } from '$lib/stores/confirm.svelte';
 
 	let isCreateModalOpen = $state(false);
 	let isRenameModalOpen = $state(false);
@@ -72,9 +74,11 @@
 			// 同期キューに追加
 			await queueChange('projects', project.id, 'create');
 
+			toast.success(`「${project.title}」を作成しました`);
 			goto(`/project/${project.id}/editor`);
 		} catch (error) {
 			console.error('Failed to create project:', error);
+			toast.error('プロジェクトの作成に失敗しました');
 		} finally {
 			isCreating = false;
 		}
@@ -92,9 +96,9 @@
 	};
 
 	const statusColors = {
-		draft: 'bg:gray-100 fg:white',
-		writing: 'bg:blue-100 fg:blue-700',
-		completed: 'bg:green-100 fg:green-700'
+		draft: 'b:1|solid|theme-border fg:theme-text-secondary',
+		writing: 'b:1|solid|theme-primary fg:theme-primary',
+		completed: 'b:1|solid|theme-success fg:theme-success'
 	};
 
 	// コンテキストメニュー - プロジェクト
@@ -119,6 +123,16 @@
 		};
 	}
 
+	// カード右上のメニューボタンから、右クリックと同じメニューを開く（タッチ端末向け）
+	function handleProjectMenuButton(e: MouseEvent, project: Project) {
+		e.stopPropagation();
+		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		handleProjectContextMenu(
+			new MouseEvent('contextmenu', { clientX: rect.left, clientY: rect.bottom }),
+			project
+		);
+	}
+
 	// リネーム処理
 	function handleRenameProject(project: Project) {
 		renameValue = project.title;
@@ -138,16 +152,22 @@
 			await queueChange('projects', contextMenu.targetProject.id, 'update');
 			isRenameModalOpen = false;
 			renameValue = '';
+			toast.success('プロジェクト名を変更しました');
 		} catch (error) {
 			console.error('Failed to rename project:', error);
-			alert('プロジェクト名の変更に失敗しました');
+			toast.error('プロジェクト名の変更に失敗しました');
 		}
 	};
 
 	// 削除処理
 	async function handleDeleteProject(project: Project) {
-		if (!confirm(`プロジェクト「${project.title}」を削除しますか?\nこの操作は取り消せません。`))
-			return;
+		const confirmed = await confirmDialog({
+			title: 'プロジェクトを削除',
+			message: `プロジェクト「${project.title}」を削除しますか?\nこの操作は取り消せません。`,
+			confirmText: '削除',
+			danger: true
+		});
+		if (!confirmed) return;
 
 		try {
 			// プロジェクト関連のすべてのデータを削除
@@ -194,9 +214,10 @@
 			await queueChange('projects', project.id, 'delete');
 
 			projectsStore.projects = projectsStore.projects.filter((p) => p.id !== project.id);
+			toast.success(`「${project.title}」を削除しました`);
 		} catch (error) {
 			console.error('Failed to delete project:', error);
-			alert('プロジェクトの削除に失敗しました');
+			toast.error('プロジェクトの削除に失敗しました');
 		}
 	}
 
@@ -235,10 +256,10 @@
 				}
 			}
 
-			alert('プロジェクトを複製しました');
+			toast.success('プロジェクトを複製しました');
 		} catch (error) {
 			console.error('Failed to duplicate project:', error);
-			alert('プロジェクトの複製に失敗しました');
+			toast.error('プロジェクトの複製に失敗しました');
 		}
 	}
 
@@ -246,12 +267,17 @@
 	async function handleExportProject(project: Project) {
 		try {
 			await exportProject(project.id, { format: 'txt' });
+			toast.success('エクスポートしました');
 		} catch (error) {
 			console.error('Failed to export project:', error);
-			alert('エクスポートに失敗しました');
+			toast.error('エクスポートに失敗しました');
 		}
 	}
 </script>
+
+<svelte:head>
+	<title>ホーム | Storift</title>
+</svelte:head>
 
 <div class="px:60px py:24px">
 	<div class="mb:24">
@@ -264,11 +290,11 @@
 
 	{#if projectsStore.isLoading}
 		<div class="text-align:center p:48">
-			<p class="fg:gray-600">読み込み中...</p>
+			<p class="fg:theme-text-secondary">読み込み中...</p>
 		</div>
 	{:else if projectsStore.filteredProjects.length === 0}
 		<div class="text-align:center p:48">
-			<p class="fg:gray-600 font:18 mb:16">
+			<p class="fg:theme-text-secondary font:18 mb:16">
 				{projectsStore.searchQuery ? '作品が見つかりませんでした' : 'まだ作品がありません'}
 			</p>
 			{#if !projectsStore.searchQuery}
@@ -278,39 +304,51 @@
 	{:else}
 		<div class="display:flex flex-wrap:wrap gap:24">
 			{#each projectsStore.filteredProjects as project (project.id)}
-				<Card
-					hoverable
-					padding="none"
-					onclick={() => goto(`/project/${project.id}/editor`)}
-					oncontextmenu={(e) => handleProjectContextMenu(e, project)}
-					class="w:200px h:fit p:0 flex flex:column gap:1rem bg:transparent b:none"
-				>
-					<DefoImg />
-					<div
-						class="w:200px grid grid-template-cols:140px|60px flex justify-content:space-between align-items:start"
+				<div class="rel w:200px">
+					<Card
+						hoverable
+						padding="none"
+						onclick={() => goto(`/project/${project.id}/editor`)}
+						oncontextmenu={(e) => handleProjectContextMenu(e, project)}
+						class="w:200px h:fit p:0 flex flex:column gap:1rem bg:transparent b:none"
 					>
-						<div class="w:140px overflow:hidden position:relative">
-							<h3 class="font:20 font-weight:600 text-align:start white-space:nowrap">
-								{project.title}
-							</h3>
-							<div
-								class="position:absolute top:0 right:0 w:30px h:full bg:linear-gradient(to|right,transparent,white)"
-							></div>
+						<DefoImg />
+						<div
+							class="w:200px grid grid-template-cols:140px|60px flex justify-content:space-between align-items:start"
+						>
+							<div class="w:140px overflow:hidden position:relative">
+								<h3 class="font:20 font-weight:600 text-align:start white-space:nowrap">
+									{project.title}
+								</h3>
+								<div
+									class="position:absolute top:0 right:0 w:30px h:full"
+									style="background: linear-gradient(to right, transparent, var(--color-background))"
+								></div>
+							</div>
+							<span class="px:8 py:2 r:4 font:12 text-align:center {statusColors[project.status]}">
+								{statusLabels[project.status]}
+							</span>
 						</div>
-						<span class="py:6px r:4 font:12 {statusColors[project.status]}">
-							{statusLabels[project.status]}
-						</span>
-					</div>
-					{#if project.description}
-						<p class="text-align:start font:14 line-clamp:2">
-							{project.description}
-						</p>
-					{/if}
-					<div class="text-align:start font:12">
-						<p>作成: {formatRelativeTime(project.createdAt)}</p>
-						<p>更新: {formatRelativeTime(project.updatedAt)}</p>
-					</div>
-				</Card>
+						{#if project.description}
+							<p class="text-align:start font:14 line-clamp:2">
+								{project.description}
+							</p>
+						{/if}
+						<div class="text-align:start font:12">
+							<p>作成: {formatRelativeTime(project.createdAt)}</p>
+							<p>更新: {formatRelativeTime(project.updatedAt)}</p>
+						</div>
+					</Card>
+					<button
+						type="button"
+						aria-label="{project.title}のメニューを開く"
+						aria-haspopup="menu"
+						onclick={(e) => handleProjectMenuButton(e, project)}
+						class="abs top:8 right:8 w:32 h:32 r:full b:2|solid|theme-text bg:theme-background fg:theme-text cursor:pointer flex align-items:center justify-content:center font:16 line-height:1"
+					>
+						⋯
+					</button>
+				</div>
 			{/each}
 		</div>
 	{/if}
@@ -334,7 +372,7 @@
 			<textarea
 				bind:value={newProjectDescription}
 				placeholder="作品の説明や構想メモ"
-				class="w:full p:12|16 border:1|solid|gray-300 r:6 font:16 outline:none border-color:blue-500:focus min-h:100 resize:vertical"
+				class="w:full p:12|16 b:1|solid|theme-border bg:theme-background fg:theme-text r:6 font:16 outline:none border-color:theme-primary:focus min-h:100 resize:vertical"
 			></textarea>
 		</div>
 

@@ -7,7 +7,7 @@
 	} from '$lib/utils/print';
 	import Modal from './Modal.svelte';
 	import Button from './Button.svelte';
-	import Input from './Input.svelte';
+	import { toast } from '$lib/stores/toast.svelte';
 
 	interface Props {
 		chapters: Array<{
@@ -23,15 +23,12 @@
 	let options = $state<PrintOptions>({ ...defaultPrintOptions });
 
 	const handlePrint = () => {
-		console.log('印刷プレビュー開始:', { chapters, options });
-
 		if (!chapters || chapters.length === 0) {
-			alert('印刷するコンテンツがありません。先に章とシーンを作成してください。');
+			toast.error('印刷するコンテンツがありません。先に章とシーンを作成してください。');
 			return;
 		}
 
 		const content = formatForPrint(chapters, options);
-		console.log('フォーマット済みコンテンツ:', content);
 		openPrintPreview(content, options);
 	};
 </script>
@@ -41,33 +38,27 @@
 		<div class="print-settings p:24 space-y:20">
 			<!-- 書式設定 -->
 			<div>
-				<h3 class="font:16 font:semibold fg:gray-900 mb:12">書式設定</h3>
+				<h3 class="font:16 font:semibold fg:theme-text mb:12">書式設定</h3>
 
 				<div class="space-y:12">
 					<!-- 書字方向-->
 					<div>
-						<div class="font:14 fg:gray-700 mb:6">書字方向</div>
+						<div class="font:14 fg:theme-text mb:6">書字方向</div>
 						<div class="flex gap:8">
 							<button
-								class="flex-1 py:8 px:16 r:8 border:1|solid|{options.writingMode === 'horizontal'
-									? 'blue-500'
-									: 'gray-300'} bg:{options.writingMode === 'horizontal'
-									? 'blue-50'
-									: 'white'} fg:{options.writingMode === 'horizontal'
-									? 'blue-700'
-									: 'gray-700'} cursor:pointer transition:all|0.2s"
+								class="flex-1 py:8 px:16 r:8 cursor:pointer transition:all|.2s {options.writingMode ===
+								'horizontal'
+									? 'b:2|solid|theme-text bg:theme-text fg:theme-background'
+									: 'b:2|solid|theme-border bg:theme-background fg:theme-text'}"
 								onclick={() => (options.writingMode = 'horizontal')}
 							>
 								横書き
 							</button>
 							<button
-								class="flex-1 py:8 px:16 r:8 border:1|solid|{options.writingMode === 'vertical'
-									? 'blue-500'
-									: 'gray-300'} bg:{options.writingMode === 'vertical'
-									? 'blue-50'
-									: 'white'} fg:{options.writingMode === 'vertical'
-									? 'blue-700'
-									: 'gray-700'} cursor:pointer transition:all|0.2s"
+								class="flex-1 py:8 px:16 r:8 cursor:pointer transition:all|.2s {options.writingMode ===
+								'vertical'
+									? 'b:2|solid|theme-text bg:theme-text fg:theme-background'
+									: 'b:2|solid|theme-border bg:theme-background fg:theme-text'}"
 								onclick={() => (options.writingMode = 'vertical')}
 							>
 								縦書き
@@ -77,7 +68,7 @@
 
 					<!-- フォントサイズ -->
 					<div>
-						<label for="fontSize" class="font:14 fg:gray-700 mb:6 block">フォントサイズ</label>
+						<label for="fontSize" class="font:14 fg:theme-text mb:6 block">フォントサイズ</label>
 						<div class="flex align-items:center gap:12">
 							<input
 								id="fontSize"
@@ -88,13 +79,13 @@
 								bind:value={options.fontSize}
 								class="flex-grow"
 							/>
-							<span class="font:14 fg:gray-700 w:60 text-align:right">{options.fontSize}pt</span>
+							<span class="font:14 fg:theme-text w:60 text-align:right">{options.fontSize}pt</span>
 						</div>
 					</div>
 
 					<!-- 行間 -->
 					<div>
-						<label for="lineHeight" class="font:14 fg:gray-700 mb:6 block">行間</label>
+						<label for="lineHeight" class="font:14 fg:theme-text mb:6 block">行間</label>
 						<div class="flex align-items:center gap:12">
 							<input
 								id="lineHeight"
@@ -105,7 +96,7 @@
 								bind:value={options.lineHeight}
 								class="flex-grow"
 							/>
-							<span class="font:14 fg:gray-700 w:60 text-align:right"
+							<span class="font:14 fg:theme-text w:60 text-align:right"
 								>{options.lineHeight.toFixed(1)}</span
 							>
 						</div>
@@ -113,11 +104,11 @@
 
 					<!-- フォント -->
 					<div>
-						<label for="fontFamily" class="font:14 fg:gray-700 mb:6 block">フォント</label>
+						<label for="fontFamily" class="font:14 fg:theme-text mb:6 block">フォント</label>
 						<select
 							id="fontFamily"
 							bind:value={options.fontFamily}
-							class="w:full py:8 px:12 r:8 border:1|solid|gray-300 font:14"
+							class="w:full py:8 px:12 r:8 b:1|solid|theme-border bg:theme-background fg:theme-text font:14"
 						>
 							<option value="'游明朝', 'Yu Mincho', serif">游明朝</option>
 							<option value="'ヒラギノ明朝 ProN', 'Hiragino Mincho ProN', serif"
@@ -133,22 +124,19 @@
 
 			<!-- 用紙設定 -->
 			<div>
-				<h3 class="font:16 font:semibold fg:gray-900 mb:12">用紙設定</h3>
+				<h3 class="font:16 font:semibold fg:theme-text mb:12">用紙設定</h3>
 
 				<div class="space-y:12">
 					<!-- 用紙サイズ -->
 					<div>
-						<div class="font:14 fg:gray-700 mb:6">用紙サイズ</div>
+						<div class="font:14 fg:theme-text mb:6">用紙サイズ</div>
 						<div class="grid grid-cols:2 gap:8">
 							{#each ['A4', 'A5', 'B5', 'letter'] as size}
 								<button
-									class="py:8 px:16 r:8 border:1|solid|{options.paperSize === size
-										? 'blue-500'
-										: 'gray-300'} bg:{options.paperSize === size
-										? 'blue-50'
-										: 'white'} fg:{options.paperSize === size
-										? 'blue-700'
-										: 'gray-700'} cursor:pointer transition:all|0.2s"
+									class="py:8 px:16 r:8 cursor:pointer transition:all|.2s {options.paperSize ===
+									size
+										? 'b:2|solid|theme-text bg:theme-text fg:theme-background'
+										: 'b:2|solid|theme-border bg:theme-background fg:theme-text'}"
 									onclick={() => (options.paperSize = size as any)}
 								>
 									{size}
@@ -159,50 +147,55 @@
 
 					<!-- 余白 -->
 					<div>
-						<div class="font:14 fg:gray-700 mb:6">余白 (mm)</div>
+						<div class="font:14 fg:theme-text mb:6">余白 (mm)</div>
 						<div class="grid grid-cols:2 gap:8">
 							<div>
-								<label for="marginTop" class="font:12 fg:gray-600 mb:4 block">上</label>
+								<label for="marginTop" class="font:12 fg:theme-text-secondary mb:4 block">上</label>
 								<input
 									id="marginTop"
 									type="number"
 									bind:value={options.margin.top}
 									min="10"
 									max="50"
-									class="w:full py:6 px:10 r:6 border:1|solid|gray-300 font:14"
+									class="w:full py:6 px:10 r:6 b:1|solid|theme-border bg:theme-background fg:theme-text font:14"
 								/>
 							</div>
 							<div>
-								<label for="marginBottom" class="font:12 fg:gray-600 mb:4 block">下</label>
+								<label for="marginBottom" class="font:12 fg:theme-text-secondary mb:4 block"
+									>下</label
+								>
 								<input
 									id="marginBottom"
 									type="number"
 									bind:value={options.margin.bottom}
 									min="10"
 									max="50"
-									class="w:full py:6 px:10 r:6 border:1|solid|gray-300 font:14"
+									class="w:full py:6 px:10 r:6 b:1|solid|theme-border bg:theme-background fg:theme-text font:14"
 								/>
 							</div>
 							<div>
-								<label for="marginLeft" class="font:12 fg:gray-600 mb:4 block">左</label>
+								<label for="marginLeft" class="font:12 fg:theme-text-secondary mb:4 block">左</label
+								>
 								<input
 									id="marginLeft"
 									type="number"
 									bind:value={options.margin.left}
 									min="10"
 									max="50"
-									class="w:full py:6 px:10 r:6 border:1|solid|gray-300 font:14"
+									class="w:full py:6 px:10 r:6 b:1|solid|theme-border bg:theme-background fg:theme-text font:14"
 								/>
 							</div>
 							<div>
-								<label for="marginRight" class="font:12 fg:gray-600 mb:4 block">右</label>
+								<label for="marginRight" class="font:12 fg:theme-text-secondary mb:4 block"
+									>右</label
+								>
 								<input
 									id="marginRight"
 									type="number"
 									bind:value={options.margin.right}
 									min="10"
 									max="50"
-									class="w:full py:6 px:10 r:6 border:1|solid|gray-300 font:14"
+									class="w:full py:6 px:10 r:6 b:1|solid|theme-border bg:theme-background fg:theme-text font:14"
 								/>
 							</div>
 						</div>
@@ -212,23 +205,23 @@
 
 			<!-- 表示オプション -->
 			<div>
-				<h3 class="font:16 font:semibold fg:gray-900 mb:12">表示オプション</h3>
+				<h3 class="font:16 font:semibold fg:theme-text mb:12">表示オプション</h3>
 
 				<div class="space-y:8">
 					<label class="flex align-items:center gap:8 cursor:pointer">
 						<input type="checkbox" bind:checked={options.showPageNumber} class="w:18 h:18" />
-						<span class="font:14 fg:gray-700">ページ番号を表示</span>
+						<span class="font:14 fg:theme-text">ページ番号を表示</span>
 					</label>
 
 					<label class="flex align-items:center gap:8 cursor:pointer">
 						<input type="checkbox" bind:checked={options.showChapterNumber} class="w:18 h:18" />
-						<span class="font:14 fg:gray-700">章番号を表示</span>
+						<span class="font:14 fg:theme-text">章番号を表示</span>
 					</label>
 				</div>
 			</div>
 
 			<!-- アクションボタン -->
-			<div class="flex gap:12 justify-content:flex-end pt:16 border-top:1|solid|gray-200">
+			<div class="flex gap:12 justify-content:flex-end pt:16 border-top:1|solid|theme-border">
 				<Button variant="secondary" onclick={onClose}>キャンセル</Button>
 				<Button variant="primary" onclick={handlePrint}>🖨️ プレビュー表示</Button>
 			</div>
@@ -242,7 +235,7 @@
 		appearance: none;
 		height: 6px;
 		border-radius: 3px;
-		background: #e5e7eb;
+		background: var(--color-border);
 		outline: none;
 	}
 
@@ -252,7 +245,7 @@
 		width: 18px;
 		height: 18px;
 		border-radius: 50%;
-		background: #3b82f6;
+		background: var(--color-primary);
 		cursor: pointer;
 	}
 
@@ -260,13 +253,13 @@
 		width: 18px;
 		height: 18px;
 		border-radius: 50%;
-		background: #3b82f6;
+		background: var(--color-primary);
 		cursor: pointer;
 		border: none;
 	}
 
 	input[type='checkbox'] {
 		cursor: pointer;
-		accent-color: #3b82f6;
+		accent-color: var(--color-primary);
 	}
 </style>

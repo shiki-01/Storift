@@ -3,32 +3,48 @@
 	import { plotsDB } from '$lib/db';
 	import { queueChange } from '$lib/services/sync.service';
 	import type { Plot } from '$lib/types';
+	import { toast } from '$lib/stores/toast.svelte';
+	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import Input from '$lib/components/ui/Input.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
+	import PageHeader from '$lib/components/ui/PageHeader.svelte';
+	import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
+	import SearchBox from '$lib/components/ui/SearchBox.svelte';
+	import FormField from '$lib/components/ui/FormField.svelte';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import ModalActions from '$lib/components/ui/ModalActions.svelte';
+	import {
+		buttonClass,
+		badgeClass,
+		fieldClass,
+		textareaClass
+	} from '$lib/components/ui/formStyles';
+	import { deleteWithUndo } from '$lib/utils/undoDelete';
 	import { createPlotContextMenu, type ContextMenuItem } from '$lib/utils/contextMenu';
 	import { onMount } from 'svelte';
 
+	type ViewMode = 'board' | 'timeline';
+	type TypeFilter = Plot['type'] | 'all';
+
 	let plots = $state<Plot[]>([]);
 	let isLoading = $state(true);
-	type ViewMode = 'board' | 'timeline';
 	let viewMode = $state<ViewMode>('board');
-	let showCreateModal = $state(false);
-	let showEditModal = $state(false);
-	let editingPlot = $state<Plot | null>(null);
+	let searchQuery = $state('');
+	let typeFilter = $state<TypeFilter>('all');
 
-	// コンテキストメニュー
+	// 作成・編集で共用するモーダル（editingPlot が null なら新規作成）
+	let showFormModal = $state(false);
+	let editingPlot = $state<Plot | null>(null);
+	let isSaving = $state(false);
+
 	let contextMenu = $state<{
 		visible: boolean;
 		x: number;
 		y: number;
 		items: ContextMenuItem[];
-		targetPlot?: Plot;
 	}>({ visible: false, x: 0, y: 0, items: [] });
 
-	// フォーム状態
 	let formData = $state({
 		title: '',
 		type: 'scene' as Plot['type'],
@@ -37,48 +53,46 @@
 		color: '#3b82f6'
 	});
 
-	function viewToggleClass(mode: ViewMode): string {
-		return [
-			'px:16 py:8 r:8 font:13 transition:all|.2s|ease b:2px|solid|theme-border',
-			viewMode === mode
-				? 'bg:$(theme.primary)/.15 fg:$(theme.primary)'
-				: 'bg:theme-background fg:theme-text-secondary hover:bg:theme-surface'
-		].join(' ');
-	}
+	const statusOrder: Plot['status'][] = ['idea', 'planned', 'written', 'revised'];
 
-	function actionButtonClass(
-		variant: 'default' | 'secondary' | 'success' | 'danger' = 'default'
-	): string {
-		const base =
-			'px:12 py:8 r:6 b:2px|solid|theme-border bg:theme-background transition:all|.2s|ease';
-		const variants = {
-			default: 'fg:theme-text hover:bg:$(theme.primary)/.12 hover:fg:$(theme.primary)',
-			secondary: 'fg:theme-text-secondary hover:bg:theme-surface',
-			success: 'fg:theme-success hover:bg:$(theme.success)/.12',
-			danger: 'fg:theme-error hover:bg:theme-error hover:fg:theme-background'
-		} as const;
-		return `${base} ${variants[variant]}`;
-	}
-
-	const textareaBaseClass =
-		'w:full px:12 py:10 b:1|solid|theme-border bg:theme-background r:8 outline:none focus:b:$(theme.primary) transition:all|.2s font-family:inherit fg:theme-text';
-
-	const fieldBaseClass =
-		'px:12 py:10 b:1|solid|theme-border bg:theme-background fg:theme-text r:8 outline:none focus:b:$(theme.primary) transition:all|.2s';
-
-	// ステータスグループ
-	const statusGroups: Record<Plot['status'], { label: string; badgeClass: string }> = {
-		idea: { label: 'アイデア', badgeClass: 'bg:$(theme.info)/.15 fg:$(theme.info)' },
-		planned: { label: '計画中', badgeClass: 'bg:$(theme.secondary)/.15 fg:$(theme.secondary)' },
-		written: { label: '執筆済み', badgeClass: 'bg:$(theme.success)/.15 fg:$(theme.success)' },
-		revised: { label: '推敲済み', badgeClass: 'bg:$(theme.primary)/.18 fg:$(theme.primary)' }
+	const statusGroups: Record<Plot['status'], { label: string }> = {
+		idea: { label: 'アイデア' },
+		planned: { label: '計画中' },
+		written: { label: '執筆済み' },
+		revised: { label: '推敲済み' }
 	};
 
-	const typeLabels = {
+	const typeLabels: Record<Plot['type'], string> = {
 		scene: 'シーン',
 		chapter: '章',
 		arc: 'アーク'
 	};
+
+	const viewOptions: { value: ViewMode; label: string }[] = [
+		{ value: 'board', label: 'ボード' },
+		{ value: 'timeline', label: 'タイムライン' }
+	];
+
+	let typeOptions = $derived([
+		{ value: 'all' as TypeFilter, label: 'すべて', count: plots.length },
+		...(Object.keys(typeLabels) as Plot['type'][]).map((t) => ({
+			value: t as TypeFilter,
+			label: typeLabels[t],
+			count: plots.filter((p) => p.type === t).length
+		}))
+	]);
+
+	let filteredPlots = $derived.by(() => {
+		const q = searchQuery.trim().toLowerCase();
+		return plots.filter((p) => {
+			const matchType = typeFilter === 'all' || p.type === typeFilter;
+			const matchSearch =
+				!q || p.title.toLowerCase().includes(q) || p.content.toLowerCase().includes(q);
+			return matchType && matchSearch;
+		});
+	});
+
+	let isFiltering = $derived(searchQuery.trim() !== '' || typeFilter !== 'all');
 
 	onMount(async () => {
 		await loadPlots();
@@ -89,20 +103,22 @@
 		isLoading = true;
 		try {
 			plots = await plotsDB.getByProjectId(currentProjectStore.project.id);
+		} catch (error) {
+			console.error('Failed to load plots:', error);
+			toast.error('プロットの読み込みに失敗しました');
 		} finally {
 			isLoading = false;
 		}
 	};
 
+	function getPlotsByStatus(status: Plot['status']) {
+		return filteredPlots.filter((p) => p.status === status);
+	}
+
 	const openCreateModal = () => {
-		formData = {
-			title: '',
-			type: 'scene',
-			status: 'idea',
-			content: '',
-			color: '#3b82f6'
-		};
-		showCreateModal = true;
+		editingPlot = null;
+		formData = { title: '', type: 'scene', status: 'idea', content: '', color: '#3b82f6' };
+		showFormModal = true;
 	};
 
 	function openEditModal(plot: Plot) {
@@ -114,97 +130,113 @@
 			content: plot.content,
 			color: plot.color
 		};
-		showEditModal = true;
+		showFormModal = true;
 	}
 
-	const handleCreate = async () => {
-		if (!currentProjectStore.project || !formData.title.trim()) return;
-
-		const plot = await plotsDB.create({
-			projectId: currentProjectStore.project.id,
-			title: formData.title,
-			type: formData.type,
-			status: formData.status
-		});
-
-		// 同期キューに追加
-		await queueChange('plots', plot.id, 'create');
-
-		await loadPlots();
-		showCreateModal = false;
+	const handleSave = async () => {
+		if (!currentProjectStore.project || !formData.title.trim() || isSaving) return;
+		isSaving = true;
+		const title = formData.title.trim();
+		try {
+			if (editingPlot) {
+				await plotsDB.update(editingPlot.id, {
+					title,
+					type: formData.type,
+					status: formData.status,
+					content: formData.content,
+					color: formData.color
+				});
+				await queueChange('plots', editingPlot.id, 'update');
+				toast.success(`プロット「${title}」を更新しました`);
+			} else {
+				const plot = await plotsDB.create({
+					projectId: currentProjectStore.project.id,
+					title,
+					type: formData.type,
+					status: formData.status
+				});
+				await plotsDB.update(plot.id, { content: formData.content, color: formData.color });
+				await queueChange('plots', plot.id, 'create');
+				toast.success(`プロット「${title}」を作成しました`);
+			}
+			showFormModal = false;
+			editingPlot = null;
+			await loadPlots();
+		} catch (error) {
+			console.error('Failed to save plot:', error);
+			toast.error(editingPlot ? 'プロットの更新に失敗しました' : 'プロットの作成に失敗しました');
+		} finally {
+			isSaving = false;
+		}
 	};
 
-	const handleUpdate = async () => {
-		if (!editingPlot) return;
-
-		await plotsDB.update(editingPlot.id, {
-			title: formData.title,
-			type: formData.type,
-			status: formData.status,
-			content: formData.content,
-			color: formData.color
+	function handleDelete(plot: Plot) {
+		// 取り消し用に削除前のレコードを保持する
+		const snapshot = $state.snapshot(plot) as Plot;
+		return deleteWithUndo({
+			targetLabel: `プロット「${snapshot.title}」`,
+			remove: async () => {
+				await plotsDB.delete(snapshot.id);
+				await queueChange('plots', snapshot.id, 'delete');
+				await loadPlots();
+			},
+			restore: async () => {
+				await plotsDB.addFromRemote(snapshot);
+				await queueChange('plots', snapshot.id, 'create');
+				await loadPlots();
+			}
 		});
-
-		// 同期キューに追加
-		await queueChange('plots', editingPlot.id, 'update');
-
-		await loadPlots();
-		showEditModal = false;
-		editingPlot = null;
-	};
-
-	async function handleDelete(id: string) {
-		if (!confirm('このプロットを削除しますか?')) return;
-		await plotsDB.delete(id);
-		// 同期キューに追加
-		await queueChange('plots', id, 'delete');
-		await loadPlots();
 	}
 
-	async function handleStatusChange(plot: Plot, newStatus: Plot['status']) {
+	async function changeStatus(plot: Plot, newStatus: Plot['status'], silent = false) {
 		const previousStatus = plot.status;
-		plots = plots.map((p) => (p.id === plot.id ? { ...p, status: newStatus } : p));
-
 		try {
 			await plotsDB.update(plot.id, { status: newStatus });
 			await queueChange('plots', plot.id, 'update');
+			await loadPlots();
+			if (silent) return;
+			toast.success(`「${plot.title}」を${statusGroups[newStatus].label}にしました`, {
+				action: {
+					label: '元に戻す',
+					onclick: () => changeStatus(plot, previousStatus, true)
+				}
+			});
 		} catch (error) {
 			console.error('Failed to update plot status:', error);
-			plots = plots.map((p) => (p.id === plot.id ? { ...p, status: previousStatus } : p));
-			alert('ステータスの更新に失敗しました');
-		} finally {
+			toast.error('ステータスの更新に失敗しました');
 			await loadPlots();
 		}
 	}
 
-	function getPlotsByStatus(status: Plot['status']) {
-		return plots.filter((p) => p.status === status);
+	// 「次へ」: 誤操作でステータスが進まないよう確認する (C-12)
+	async function advanceStatus(plot: Plot) {
+		const next = statusOrder[statusOrder.indexOf(plot.status) + 1];
+		if (!next) return;
+		const ok = await confirmDialog({
+			title: 'ステータスを進める',
+			message: `「${plot.title}」を「${statusGroups[plot.status].label}」から「${statusGroups[next].label}」に進めますか?`,
+			confirmText: '進める'
+		});
+		if (ok) await changeStatus(plot, next);
 	}
 
-	// コンテキストメニュー - プロット
 	function handlePlotContextMenu(e: MouseEvent, plot: Plot) {
 		e.preventDefault();
 		e.stopPropagation();
-
-		const items = createPlotContextMenu({
-			onEdit: () => openEditModal(plot),
-			onDuplicate: () => handleDuplicatePlot(plot),
-			onDelete: () => handleDelete(plot.id)
-		});
-
 		contextMenu = {
 			visible: true,
 			x: e.clientX,
 			y: e.clientY,
-			items,
-			targetPlot: plot
+			items: createPlotContextMenu({
+				onEdit: () => openEditModal(plot),
+				onDuplicate: () => handleDuplicatePlot(plot),
+				onDelete: () => handleDelete(plot)
+			})
 		};
 	}
 
-	// 複製処理
 	async function handleDuplicatePlot(plot: Plot) {
 		if (!currentProjectStore.project) return;
-
 		try {
 			const newPlot = await plotsDB.create({
 				projectId: currentProjectStore.project.id,
@@ -212,331 +244,271 @@
 				type: plot.type,
 				status: plot.status
 			});
-
-			await plotsDB.update(newPlot.id, {
-				content: plot.content,
-				color: plot.color
-			});
-
+			await plotsDB.update(newPlot.id, { content: plot.content, color: plot.color });
 			await queueChange('plots', newPlot.id, 'create');
 			await loadPlots();
+			toast.success('プロットを複製しました');
 		} catch (error) {
 			console.error('Failed to duplicate plot:', error);
-			alert('プロットの複製に失敗しました');
+			toast.error('プロットの複製に失敗しました');
 		}
 	}
 </script>
 
-<div class="flex w:100% h:100% bg:theme-background fg:theme-text">
-	<div class="flex-grow:1 flex flex-direction:column">
-		<header class="bg:theme-background border-bottom:2|solid|theme-text">
-			<div
-				class="max-w:1280 mx:auto w:100% px:24 py:20 flex justify-content:space-between align-items:center"
-			>
-				<div>
-					<h1 class="font:26 font-weight:600 m:0 fg:theme-text">プロット管理</h1>
-					<p class="font:14 fg:theme-text-secondary mt:8">作品の構成を計画・管理します</p>
-				</div>
-				<div class="flex align-items:center gap:12">
-					<div class="flex bg:theme-surface b:2px|solid|theme-border r:10 p:6 gap:8">
-						<button class={viewToggleClass('board')} onclick={() => (viewMode = 'board')}>
-							ボード
-						</button>
-						<button class={viewToggleClass('timeline')} onclick={() => (viewMode = 'timeline')}>
-							タイムライン
-						</button>
-					</div>
-					<Button
-						class="px:16 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8 font:14"
-						onclick={openCreateModal}
-					>
-						+ 新規プロット
-					</Button>
-				</div>
-			</div>
-		</header>
+<svelte:head>
+	<title>プロット | Storift</title>
+</svelte:head>
 
-		<main class="flex-grow:1 overflow-y:auto">
-			<div class="max-w:1280 mx:auto w:100% px:24 py:24 flex flex-direction:column gap:24">
-				{#if isLoading}
-					<div class="flex flex-direction:column gap:16">
-						<div class="h:140 bg:theme-surface b:1px|solid|theme-border r:12 animate:pulse"></div>
-						<div class="h:140 bg:theme-surface b:1px|solid|theme-border r:12 animate:pulse"></div>
-						<div class="h:140 bg:theme-surface b:1px|solid|theme-border r:12 animate:pulse"></div>
-					</div>
-				{:else if viewMode === 'board'}
-					<div
-						class="grid gap:16 md:grid-template-columns:repeat(2,minmax(0,1fr)) xl:grid-template-columns:repeat(4,minmax(0,1fr))"
-					>
-						{#each Object.entries(statusGroups) as [status, config]}
-							<div class="flex flex-direction:column gap:12">
-								<div class="flex align-items:center justify-content:space-between">
-									<h3 class="font:18 font-weight:600 fg:theme-text">{config.label}</h3>
-									<span
-										class="px:10 py:4 r:999 b:1px|solid|theme-border bg:theme-background font:12 fg:theme-text-secondary"
+<div class="flex flex-direction:column w:100% h:100% bg:theme-background fg:theme-text">
+	<PageHeader title="プロット" description="作品の構成を計画・管理します">
+		{#snippet actions()}
+			<button
+				type="button"
+				class={buttonClass('primary')}
+				onclick={openCreateModal}
+				disabled={!currentProjectStore.project}
+			>
+				+ 新規プロット
+			</button>
+		{/snippet}
+	</PageHeader>
+
+	<main class="flex-grow:1 overflow-y:auto">
+		<div class="max-w:1280 mx:auto w:100% px:24 py:24 flex flex-direction:column gap:24">
+			<div class="flex flex-wrap:wrap align-items:center gap:12">
+				<SearchBox
+					bind:value={searchQuery}
+					placeholder="タイトル・内容で検索..."
+					ariaLabel="プロットを検索"
+				/>
+				<SegmentedControl
+					options={typeOptions}
+					bind:value={typeFilter}
+					ariaLabel="種類で絞り込み"
+				/>
+				<SegmentedControl options={viewOptions} bind:value={viewMode} ariaLabel="表示切り替え" />
+			</div>
+
+			{#if isLoading}
+				<div class="flex flex-direction:column gap:16" aria-busy="true">
+					{#each [1, 2, 3] as n (n)}
+						<div class="h:96 bg:theme-surface b:1|solid|theme-border r:8 animate:pulse"></div>
+					{/each}
+				</div>
+			{:else if plots.length === 0}
+				<EmptyState
+					message="プロットがまだありません"
+					actionLabel="最初のプロットを作成"
+					onaction={openCreateModal}
+				/>
+			{:else if isFiltering && filteredPlots.length === 0}
+				<EmptyState message="条件に一致するプロットがありません" />
+			{:else if viewMode === 'board'}
+				<div
+					class="grid gap:16 grid-template-columns:repeat(1,minmax(0,1fr)) md:grid-template-columns:repeat(2,minmax(0,1fr)) xl:grid-template-columns:repeat(4,minmax(0,1fr))"
+				>
+					{#each statusOrder as status (status)}
+						{@const items = getPlotsByStatus(status)}
+						<section
+							aria-label={statusGroups[status].label}
+							class="flex flex-direction:column gap:12"
+						>
+							<div class="flex align-items:center justify-content:space-between">
+								<h2 class="font:16 font-weight:600 m:0 fg:theme-text">
+									{statusGroups[status].label}
+								</h2>
+								<span class={badgeClass}>{items.length}</span>
+							</div>
+							<div
+								class="flex flex-direction:column gap:12 min-h:120 p:12 bg:theme-surface b:1|solid|theme-border r:8"
+							>
+								{#each items as plot (plot.id)}
+									<Card
+										padding="sm"
+										class="flex flex-direction:column gap:12"
+										oncontextmenu={(e) => handlePlotContextMenu(e, plot)}
 									>
-										{getPlotsByStatus(status as Plot['status']).length}
-									</span>
-								</div>
-								<div
-									class="flex flex-direction:column gap:12 min-h:420 p:12 bg:theme-surface b:1px|solid|theme-border r:12"
-								>
-									{#each getPlotsByStatus(status as Plot['status']) as plot (plot.id)}
-										<Card
-											padding="sm"
-											hoverable={true}
-											class="flex flex-direction:column gap:12"
-											oncontextmenu={(e) => handlePlotContextMenu(e, plot)}
+										<div class="flex align-items:center gap:8">
+											<span
+												class="w:12 h:12 r:full flex-shrink:0"
+												style="background-color: {plot.color}"
+												aria-hidden="true"
+											></span>
+											<span class={badgeClass}>{typeLabels[plot.type]}</span>
+										</div>
+										<button
+											type="button"
+											class="font:16 font-weight:600 text-align:left bg:transparent b:none p:0 cursor:pointer fg:theme-text fg:theme-primary:hover"
+											onclick={() => openEditModal(plot)}
 										>
-											<div class="flex justify-content:space-between align-items:start">
-												<div class="flex align-items:center gap:8">
-													<div
-														class="w:12 h:12 r:full"
-														style="background-color: {plot.color}"
-													></div>
-													<span
-														class="px:8 py:4 r:6 bg:theme-background b:1px|solid|theme-border font:12 fg:theme-text-secondary"
-													>
-														{typeLabels[plot.type]}
-													</span>
-												</div>
-											</div>
+											{plot.title}
+										</button>
+										{#if plot.content}
+											<p
+												class="font:14 fg:theme-text-secondary m:0"
+												style="display:-webkit-box;-webkit-line-clamp:3;line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;"
+											>
+												{plot.content}
+											</p>
+										{/if}
+										<div class="flex gap:8">
 											<button
-												class="font:16 font-weight:600 text-align:left bg:transparent b:none fg:theme-text hover:fg:$(theme.primary)"
+												type="button"
+												class={buttonClass('secondary', 'flex:1')}
 												onclick={() => openEditModal(plot)}
 											>
-												{plot.title}
+												編集
 											</button>
-											{#if plot.content}
-												<p class="font:14 fg:theme-text-secondary line-clamp:3">
-													{plot.content}
-												</p>
-											{/if}
-											<div class="flex gap:8">
-												<button
-													class={`flex:1 ${actionButtonClass()}`}
-													onclick={() => openEditModal(plot)}
-												>
-													編集
-												</button>
-												<button
-													class={actionButtonClass('danger')}
-													onclick={() => handleDelete(plot.id)}
-												>
-													削除
-												</button>
-											</div>
-											{#if status !== 'revised'}
-												<button
-													class={`w:full ${actionButtonClass('success')}`}
-													onclick={() => {
-														const statuses: Plot['status'][] = [
-															'idea',
-															'planned',
-															'written',
-															'revised'
-														];
-														const currentIndex = statuses.indexOf(plot.status);
-														if (currentIndex < statuses.length - 1) {
-															handleStatusChange(plot, statuses[currentIndex + 1]);
-														}
-													}}
-												>
-													次へ →
-												</button>
-											{/if}
-										</Card>
-									{:else}
-										<p class="fg:theme-text-secondary text-align:center py:24 font:14">
-											まだプロットがありません
-										</p>
-									{/each}
-								</div>
-							</div>
-						{/each}
-					</div>
-				{:else}
-					<div class="flex flex-direction:column gap:16">
-						{#each plots as plot (plot.id)}
-							<Card
-								oncontextmenu={(e) => handlePlotContextMenu(e, plot)}
-								class="flex flex-direction:column gap:16"
-							>
-								<div class="flex gap:16">
-									<div
-										class="w:4 r:2 flex-shrink:0 bg:theme-border"
-										style="background-color: {plot.color}"
-									></div>
-									<div class="flex:1">
-										<div class="flex justify-content:space-between align-items:start mb:12">
-											<div>
-												<div class="flex align-items:center gap:8 mb:8">
-													<span
-														class="px:12 py:6 r:6 bg:theme-background b:1px|solid|theme-border font:14 fg:theme-text-secondary"
-													>
-														{typeLabels[plot.type]}
-													</span>
-													<span
-														class={`px:12 py:6 r:6 font:14 ${statusGroups[plot.status].badgeClass}`}
-													>
-														{statusGroups[plot.status].label}
-													</span>
-												</div>
-												<h3 class="font:20 font-weight:600 fg:theme-text">{plot.title}</h3>
-											</div>
-											<div class="flex gap:8">
-												<button class={actionButtonClass()} onclick={() => openEditModal(plot)}
-													>編集</button
-												>
-												<button
-													class={actionButtonClass('danger')}
-													onclick={() => handleDelete(plot.id)}>削除</button
-												>
-											</div>
+											<button
+												type="button"
+												class={buttonClass('danger')}
+												aria-label={`プロット「${plot.title}」を削除`}
+												onclick={() => handleDelete(plot)}
+											>
+												削除
+											</button>
 										</div>
-										{#if plot.content}
-											<p class="fg:theme-text font:16 white-space:pre-wrap">{plot.content}</p>
+										{#if status !== 'revised'}
+											<button
+												type="button"
+												class={buttonClass('secondary', 'w:full')}
+												aria-label={`「${plot.title}」を次のステータスへ進める`}
+												onclick={() => advanceStatus(plot)}
+											>
+												次へ →
+											</button>
 										{/if}
+									</Card>
+								{:else}
+									<p class="fg:theme-text-secondary text-align:center py:16 font:14 m:0">
+										プロットがありません
+									</p>
+								{/each}
+							</div>
+						</section>
+					{/each}
+				</div>
+			{:else}
+				<div class="flex flex-direction:column gap:12">
+					{#each filteredPlots as plot (plot.id)}
+						<Card oncontextmenu={(e) => handlePlotContextMenu(e, plot)} class="flex gap:16">
+							<div
+								class="w:4 r:2 flex-shrink:0"
+								style="background-color: {plot.color}"
+								aria-hidden="true"
+							></div>
+							<div class="flex:1 flex flex-direction:column gap:12 min-w:0">
+								<div
+									class="flex flex-wrap:wrap justify-content:space-between align-items:start gap:12"
+								>
+									<div class="flex flex-direction:column gap:8">
+										<div class="flex align-items:center gap:8">
+											<span class={badgeClass}>{typeLabels[plot.type]}</span>
+											<span class={badgeClass}>{statusGroups[plot.status].label}</span>
+										</div>
+										<h3 class="font:20 font-weight:600 fg:theme-text m:0">{plot.title}</h3>
+									</div>
+									<div class="flex gap:8">
+										<button
+											type="button"
+											class={buttonClass('secondary')}
+											onclick={() => openEditModal(plot)}
+										>
+											編集
+										</button>
+										<button
+											type="button"
+											class={buttonClass('danger')}
+											aria-label={`プロット「${plot.title}」を削除`}
+											onclick={() => handleDelete(plot)}
+										>
+											削除
+										</button>
 									</div>
 								</div>
-							</Card>
-						{/each}
-					</div>
-				{/if}
-
-				{#if plots.length === 0 && !isLoading}
-					<div
-						class="flex flex-direction:column align-items:center justify-content:center h:400 gap:16"
-					>
-						<p class="fg:theme-text-secondary font:18">プロットがまだありません</p>
-						<Button
-							class="px:20 py:12 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:10 font:14"
-							onclick={openCreateModal}
-						>
-							最初のプロットを作成
-						</Button>
-					</div>
-				{/if}
-			</div>
-		</main>
-	</div>
+								{#if plot.content}
+									<p class="fg:theme-text font:16 white-space:pre-wrap m:0">{plot.content}</p>
+								{/if}
+							</div>
+						</Card>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	</main>
 </div>
 
-<!-- 新規作成モーダル -->
-<Modal bind:isOpen={showCreateModal} title="新規プロット作成">
+<Modal bind:isOpen={showFormModal} title={editingPlot ? 'プロット編集' : '新規プロット作成'}>
 	{#snippet children()}
 		<div class="flex flex-direction:column gap:16">
-			<Input label="タイトル" bind:value={formData.title} placeholder="プロット名を入力" />
+			<FormField label="タイトル" required>
+				{#snippet children(id)}
+					<input
+						{id}
+						type="text"
+						bind:value={formData.title}
+						placeholder="プロット名を入力"
+						class={fieldClass}
+					/>
+				{/snippet}
+			</FormField>
 
-			<div>
-				<label for="type-select" class="block mb:8 font:14 font:semibold">種類</label>
-				<select id="type-select" bind:value={formData.type} class={`w:full ${fieldBaseClass}`}>
-					<option value="scene">シーン</option>
-					<option value="chapter">章</option>
-					<option value="arc">アーク</option>
-				</select>
+			<div class="grid grid-template-columns:repeat(2,minmax(0,1fr)) gap:16">
+				<FormField label="種類">
+					{#snippet children(id)}
+						<select {id} bind:value={formData.type} class={fieldClass}>
+							{#each Object.entries(typeLabels) as [value, label] (value)}
+								<option {value}>{label}</option>
+							{/each}
+						</select>
+					{/snippet}
+				</FormField>
+
+				<FormField label="ステータス">
+					{#snippet children(id)}
+						<select {id} bind:value={formData.status} class={fieldClass}>
+							{#each statusOrder as value (value)}
+								<option {value}>{statusGroups[value].label}</option>
+							{/each}
+						</select>
+					{/snippet}
+				</FormField>
 			</div>
 
-			<div>
-				<label for="status-select" class="block mb:8 font:14 font:semibold">ステータス</label>
-				<select id="status-select" bind:value={formData.status} class={`w:full ${fieldBaseClass}`}>
-					<option value="idea">アイデア</option>
-					<option value="planned">計画中</option>
-					<option value="written">執筆済み</option>
-					<option value="revised">推敲済み</option>
-				</select>
-			</div>
+			<FormField label="内容">
+				{#snippet children(id)}
+					<textarea
+						{id}
+						bind:value={formData.content}
+						class="{textareaClass} min-h:160"
+						placeholder="プロットの詳細を入力..."
+					></textarea>
+				{/snippet}
+			</FormField>
+
+			<FormField label="カラー">
+				{#snippet children(id)}
+					<input
+						{id}
+						type="color"
+						bind:value={formData.color}
+						class="w:full h:44 b:1|solid|theme-border bg:theme-background r:8 cursor:pointer"
+					/>
+				{/snippet}
+			</FormField>
 		</div>
 	{/snippet}
 
 	{#snippet footer()}
-		<div class="flex gap:12">
-			<Button
-				variant="ghost"
-				class={actionButtonClass('secondary')}
-				onclick={() => (showCreateModal = false)}>キャンセル</Button
-			>
-			<Button
-				class="px:20 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8 font:14"
-				onclick={handleCreate}
-				disabled={!formData.title.trim()}
-			>
-				作成
-			</Button>
-		</div>
+		<ModalActions
+			submitLabel={editingPlot ? '更新' : '作成'}
+			submitDisabled={!formData.title.trim() || isSaving}
+			onsubmit={handleSave}
+			oncancel={() => (showFormModal = false)}
+		/>
 	{/snippet}
 </Modal>
 
-<!-- 編集モーダル -->
-<Modal bind:isOpen={showEditModal} title="プロット編集">
-	{#snippet children()}
-		<div class="flex flex-direction:column gap:16">
-			<Input label="タイトル" bind:value={formData.title} placeholder="プロット名を入力" />
-
-			<div>
-				<label for="edit-type-select" class="block mb:8 font:14 font:semibold">種類</label>
-				<select id="edit-type-select" bind:value={formData.type} class={`w:full ${fieldBaseClass}`}>
-					<option value="scene">シーン</option>
-					<option value="chapter">章</option>
-					<option value="arc">アーク</option>
-				</select>
-			</div>
-
-			<div>
-				<label for="edit-status-select" class="block mb:8 font:14 font:semibold">ステータス</label>
-				<select
-					id="edit-status-select"
-					bind:value={formData.status}
-					class={`w:full ${fieldBaseClass}`}
-				>
-					<option value="idea">アイデア</option>
-					<option value="planned">計画中</option>
-					<option value="written">執筆済み</option>
-					<option value="revised">推敲済み</option>
-				</select>
-			</div>
-
-			<div>
-				<label for="edit-content" class="block mb:8 font:14 font:semibold">内容</label>
-				<textarea
-					id="edit-content"
-					bind:value={formData.content}
-					class={`${textareaBaseClass} min-h:200 resize:vertical`}
-					placeholder="プロットの詳細を入力..."
-				></textarea>
-			</div>
-
-			<div>
-				<label for="edit-color" class="block mb:8 font:14 font:semibold">カラー</label>
-				<input
-					id="edit-color"
-					type="color"
-					bind:value={formData.color}
-					class="w:full h:48 b:1|solid|theme-border bg:theme-background r:8 cursor:pointer"
-				/>
-			</div>
-		</div>
-	{/snippet}
-
-	{#snippet footer()}
-		<div class="flex gap:12">
-			<Button
-				variant="ghost"
-				class={actionButtonClass('secondary')}
-				onclick={() => (showEditModal = false)}>キャンセル</Button
-			>
-			<Button
-				class="px:20 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8 font:14"
-				onclick={handleUpdate}
-				disabled={!formData.title.trim()}
-			>
-				更新
-			</Button>
-		</div>
-	{/snippet}
-</Modal>
-
-<!-- コンテキストメニュー -->
 <ContextMenu
 	visible={contextMenu.visible}
 	x={contextMenu.x}
@@ -544,13 +516,3 @@
 	items={contextMenu.items}
 	onClose={() => (contextMenu.visible = false)}
 />
-
-<style>
-	.line-clamp\:3 {
-		display: -webkit-box;
-		-webkit-line-clamp: 3;
-		line-clamp: 3;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-	}
-</style>

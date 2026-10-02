@@ -283,7 +283,7 @@
 					padding="none"
 					onclick={() => goto(`/project/${project.id}/editor`)}
 					oncontextmenu={(e) => handleProjectContextMenu(e, project)}
-					class="w:200px h:fit p:0 flex flex:column gap:1rem bg:transparent b:none"
+					class="w:200px h:fit p:0 flex flex-direction:column gap:1rem bg:transparent b:none"
 				>
 					<DefoImg />
 					<div
@@ -334,7 +334,7 @@
 			<textarea
 				bind:value={newProjectDescription}
 				placeholder="作品の説明や構想メモ"
-				class="w:full p:12|16 border:1|solid|gray-300 r:6 font:16 outline:none border-color:blue-500:focus min-h:100 resize:vertical"
+				class="w:full p:12|16 border:1|solid|gray-300 r:6 font:16 outline:none focus:border-color:blue-500 min-h:100 resize:vertical"
 			></textarea>
 		</div>
 

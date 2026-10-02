@@ -66,7 +66,7 @@
 			>
 				<h2 class="font:20 font-weight:600 m:0">{title}</h2>
 				<button
-					class="bg:transparent border:none font:24 cursor:pointer p:8 fg:gray-600 fg:gray-900:hover"
+					class="bg:transparent border:none font:24 cursor:pointer p:8 fg:gray-600 hover:fg:gray-900"
 					onclick={handleClose}
 					aria-label="閉じる"
 				>
@@ -85,7 +85,7 @@
 			{:else if onConfirm}
 				<div class="modal-footer p:24 pt:0 flex gap:12 justify-content:flex-end">
 					<button
-						class="px:16 py:8 border:1|solid|gray-300 r:6 bg:white fg:gray-700 cursor:pointer bg:gray-50:hover"
+						class="px:16 py:8 border:1|solid|gray-300 r:6 bg:white fg:gray-700 cursor:pointer hover:bg:gray-50"
 						onclick={handleClose}
 					>
 						{cancelText}
@@ -93,11 +93,11 @@
 					<button
 						class="px:16 py:8 border:none r:6 fg:white cursor:pointer"
 						class:bg:blue-600={confirmVariant === 'primary'}
-						class:bg:blue-700:hover={confirmVariant === 'primary'}
+						class:hover:bg:blue-700={confirmVariant === 'primary'}
 						class:bg:gray-600={confirmVariant === 'secondary'}
-						class:bg:gray-700:hover={confirmVariant === 'secondary'}
+						class:hover:bg:gray-700={confirmVariant === 'secondary'}
 						class:bg:red-600={confirmVariant === 'danger'}
-						class:bg:red-700:hover={confirmVariant === 'danger'}
+						class:hover:bg:red-700={confirmVariant === 'danger'}
 						class:opacity:0.5={confirmDisabled}
 						class:cursor:not-allowed={confirmDisabled}
 						onclick={onConfirm}

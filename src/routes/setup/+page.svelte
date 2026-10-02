@@ -144,7 +144,7 @@
 
 			<!-- 一括ペーストセクション -->
 			<div class="bg:theme-surface p:16 r:8 mb:24 b:1|solid|theme-border">
-				<h3 class="flex flex:row gap:.5em font:16 font-weight:600 m:0|0|12|0 fg:blue-900">
+				<h3 class="flex flex-direction:row gap:.5em font:16 font-weight:600 m:0|0|12|0 fg:blue-900">
 					<Icon name="rocket" /> 設定を一括入力
 				</h3>
 				<p class="font:14 fg:blue-800 m:0|0|12|0">
@@ -156,7 +156,7 @@
 authDomain: 'your-project.firebaseapp.com',
 projectId: 'your-project',
 ..."
-					class="w:full p:12 r:6 outline:none:focus font:14 font-family:monospace min-h:120 resize:vertical"
+					class="w:full p:12 r:6 focus:outline:none font:14 font-family:monospace min-h:120 resize:vertical"
 				></textarea>
 				<div class="flex gap:8 mt:12">
 					<Button type="button" onclick={handlePaste} disabled={!configText}>設定を読み込む</Button>

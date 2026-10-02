@@ -48,7 +48,8 @@
 	},
 	"dependencies": {
 		"@master/css": "2.0.0-rc.69",
-		"@master/css.vite": "^2.0.0-rc.69",
+		"@master/css-runtime": "2.0.0-rc.69",
+		"@master/css.vite": "2.0.0-rc.69",
 		"@master/normal.css": "^3.2.0",
 		"@types/marked": "^6.0.0",
 		"chart.js": "^4.5.1",

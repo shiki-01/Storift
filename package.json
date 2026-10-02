@@ -44,6 +44,12 @@
 		"vite": "^7.1.10",
 		"vite-plugin-pwa": "^1.1.0",
 		"vitest": "^4.0.6",
+		"workbox-background-sync": "^7.4.1",
+		"workbox-cacheable-response": "^7.4.1",
+		"workbox-expiration": "^7.4.1",
+		"workbox-precaching": "^7.4.1",
+		"workbox-routing": "^7.4.1",
+		"workbox-strategies": "^7.4.1",
 		"workbox-window": "^7.3.0"
 	},
 	"dependencies": {

@@ -157,7 +157,7 @@
 	}
 
 	const fieldBaseClass =
-		'w:full px:12 py:10 b:1|solid|theme-border bg:theme-background fg:theme-text r:8 outline:none focus:b:$(theme.primary) transition:all|.2s font:inherit';
+		'w:full px:12 py:10 b:1|solid|theme-border bg:theme-background fg:theme-text r:8 outline:none focus:border-color:theme-primary transition:all|.2s font:inherit';
 
 	function openLogModal(date: Date) {
 		selectedDate = date;

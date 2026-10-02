@@ -153,7 +153,7 @@
 	<main class="mx:auto h:calc(100vh-66px) rel">
 		<!-- サイドバー -->
 		<aside
-			class="w:240 h:100% bg:theme-background flex flex:column abs z:2 top:0 transition:left|.2s|ease-in-out border-right:2px|solid|theme-text {editorStore.isOpen
+			class="w:240 h:100% bg:theme-background flex flex-direction:column abs z:2 top:0 transition:left|.2s|ease-in-out border-right:2px|solid|theme-text {editorStore.isOpen
 				? 'left:0'
 				: 'left:-240px'}"
 		>

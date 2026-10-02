@@ -799,7 +799,7 @@
 					>
 						<h4 class="font:14 font-weight:500 m:0 fg:theme-text">{chapter.title}</h4>
 						<button
-							class="bg:transparent border:none cursor:pointer fg:theme-text-secondary fg:$(theme.primary):hover font:12 p:4"
+							class="bg:transparent border:none cursor:pointer fg:theme-text-secondary hover:fg:$(theme.primary) font:12 p:4"
 							onclick={() => openSceneModal(chapter.id)}
 						>
 							+ シーン
@@ -811,7 +811,7 @@
 							class="w:full text-align:left p:8 bg:transparent border:none cursor:pointer r:4 {editorStore
 								.currentScene?.id === scene.id
 								? 'bg:$(theme.primary)/.1 fg:$(theme.primary)'
-								: 'fg:theme-text bg:theme-background:hover'}"
+								: 'fg:theme-text hover:bg:theme-background'}"
 							onclick={() => handleSceneSelect(scene)}
 							oncontextmenu={(e) => handleSceneContextMenu(e, scene)}
 						>
@@ -836,7 +836,7 @@
 	></button>
 
 	<!-- エディタエリア -->
-	<div class="editor-main flex flex:column w:100% h:100% overflow-y:auto">
+	<div class="editor-main flex flex-direction:column w:100% h:100% overflow-y:auto">
 		{#if !editorStore.currentScene}
 			<div class="mobile-sidebar-open">
 				<button

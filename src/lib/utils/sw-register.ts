@@ -27,7 +27,7 @@ export async function registerServiceWorker(): Promise<void> {
 
 	try {
 		// Workboxインスタンスを作成
-		wb = new Workbox('/service-worker.js');
+		wb = new Workbox('/sw.js');
 
 		// Service Workerの更新を検知
 		wb.addEventListener('waiting', () => {

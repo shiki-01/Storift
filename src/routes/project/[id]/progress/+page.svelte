@@ -234,13 +234,13 @@
 	<div class="flex-grow:1 flex flex-direction:column">
 		<header class="bg:theme-background border-bottom:2|solid|theme-text">
 			<div
-				class="max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 justify-content:space-between align-items:center"
+				class="page-header max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 justify-content:space-between align-items:center"
 			>
 				<div>
 					<h1 class="font:26 font-weight:600 m:0 fg:theme-text">進捗管理</h1>
 					<p class="font:14 fg:theme-text-secondary mt:8">執筆の進捗を記録・可視化します</p>
 				</div>
-				<div class="flex align-items:center gap:12">
+				<div class="flex flex-wrap:wrap align-items:center gap:12 max-w:100%">
 					<Button
 						class="px:18 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8 font:14"
 						onclick={() => openLogModal(new Date())}
@@ -253,7 +253,9 @@
 		</header>
 
 		<main class="flex-grow:1 overflow-y:auto">
-			<div class="max-w:1280 mx:auto w:100% px:24 py:24 flex flex-direction:column gap:24">
+			<div
+				class="page-body max-w:1280 mx:auto w:100% px:24 py:24 flex flex-direction:column gap:24"
+			>
 				{#if isLoading}
 					<div class="flex justify-content:center align-items:center h:320">
 						<p class="fg:theme-text-secondary font:14">読み込み中...</p>
@@ -499,5 +501,29 @@
 <style>
 	.aspect\:1\/1 {
 		aspect-ratio: 1 / 1;
+	}
+
+	.page-header :global(button) {
+		white-space: nowrap;
+	}
+
+	@media (max-width: 768px) {
+		.page-header {
+			padding: 12px 16px;
+		}
+
+		.page-header h1 {
+			font-size: 20px;
+		}
+
+		.page-body {
+			padding: 12px 16px 24px;
+			min-width: 0;
+		}
+
+		.page-header > :global(*) {
+			min-width: 0;
+			max-width: 100%;
+		}
 	}
 </style>

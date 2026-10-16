@@ -9,3 +9,4 @@ export { progressLogsDB } from './progressLogs';
 export { settingsDB } from './settings';
 export { historyDB } from './history';
 export { touchProject, touchChapter } from './utils';
+export { relationMapsDB } from './relationMaps';

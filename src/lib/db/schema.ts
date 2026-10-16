@@ -8,7 +8,8 @@ import type {
 	Worldbuilding,
 	History,
 	ProgressLog,
-	AppSettings
+	AppSettings,
+	RelationMap
 } from '$lib/types';
 
 export class StoriftDB extends Dexie {
@@ -21,6 +22,7 @@ export class StoriftDB extends Dexie {
 	history!: Table<History>;
 	progressLogs!: Table<ProgressLog>;
 	settings!: Table<AppSettings>;
+	relationMaps!: Table<RelationMap>;
 
 	constructor() {
 		super('StoriftDB');
@@ -35,6 +37,11 @@ export class StoriftDB extends Dexie {
 			history: 'id, projectId, [entityType+entityId], createdAt',
 			progressLogs: 'id, projectId, date, createdAt',
 			settings: 'id'
+		});
+
+		// v2: 相関図キャンバスの配置情報
+		this.version(2).stores({
+			relationMaps: 'id, projectId, updatedAt'
 		});
 	}
 }

@@ -58,6 +58,7 @@
 		"@master/css.vite": "2.0.0-rc.69",
 		"@master/normal.css": "^3.2.0",
 		"@types/marked": "^6.0.0",
+		"@xyflow/svelte": "^1.7.0",
 		"chart.js": "^4.5.1",
 		"date-fns": "^4.1.0",
 		"dexie": "^4.2.1",

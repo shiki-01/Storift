@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { toast } from '$lib/stores/toast.svelte';
 	import { onMount } from 'svelte';
 	import { db } from '$lib/db';
 	import { themeStore, themes } from '$lib/stores/theme.svelte';
@@ -219,7 +220,7 @@
 			showExportModal = false;
 		} catch (error) {
 			console.error('Export failed:', error);
-			alert('エクスポートに失敗しました');
+			toast.error('エクスポートに失敗しました');
 		}
 	};
 
@@ -254,10 +255,10 @@
 				const cacheNames = await caches.keys();
 				await Promise.all(cacheNames.map((name) => caches.delete(name)));
 			}
-			alert('キャッシュをクリアしました');
+			toast.success('キャッシュをクリアしました');
 			showClearDataModal = false;
 		} catch (error) {
-			alert('キャッシュのクリアに失敗しました');
+			toast.error('キャッシュのクリアに失敗しました');
 		}
 	};
 
@@ -267,10 +268,10 @@
 			await db.delete();
 			await db.open();
 			await handleClearCache();
-			alert('全データを削除しました。ページをリロードします。');
+			toast.success('全データを削除しました。ページをリロードします。');
 			window.location.href = '/';
 		} catch (error) {
-			alert('データの削除に失敗しました');
+			toast.error('データの削除に失敗しました');
 		}
 	};
 

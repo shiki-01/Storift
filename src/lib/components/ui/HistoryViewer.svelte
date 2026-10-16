@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmDialog } from '$lib/stores/toast.svelte';
 	import { onMount } from 'svelte';
 	import Modal from './Modal.svelte';
 	import Button from './Button.svelte';
@@ -37,7 +38,7 @@
 	};
 
 	async function handleRestore(history: History) {
-		if (confirm('このバージョンに復元しますか?')) {
+		if (await confirmDialog('このバージョンに復元しますか?')) {
 			const snapshot = await historyDB.restore(history.id);
 			onRestore?.(snapshot);
 			isOpen = false;
@@ -54,22 +55,22 @@
 <Modal bind:isOpen title="変更履歴" {onClose}>
 	{#if isLoading}
 		<div class="text-align:center p:32">
-			<p class="fg:gray-600">読み込み中...</p>
+			<p class="fg:theme-text-secondary">読み込み中...</p>
 		</div>
 	{:else if histories.length === 0}
 		<div class="text-align:center p:32">
-			<p class="fg:gray-600">変更履歴がありません</p>
+			<p class="fg:theme-text-secondary">変更履歴がありません</p>
 		</div>
 	{:else}
 		<div class="max-h:500 overflow-y:auto">
 			{#each histories as history (history.id)}
-				<div class="border:1|solid|gray-200 r:8 p:16 mb:12 bg:white">
+				<div class="border:1|solid|theme-border r:8 p:16 mb:12 bg:theme-background">
 					<div class="flex justify-content:space-between align-items:start mb:12">
 						<div>
 							<div class="font:14 font-weight:600 mb:4">
 								{changeTypeLabels[history.changeType]}
 							</div>
-							<div class="font:12 fg:gray-600">
+							<div class="font:12 fg:theme-text-secondary">
 								{formatDate(history.createdAt)}
 							</div>
 						</div>
@@ -79,12 +80,12 @@
 					</div>
 
 					{#if selectedHistory?.id === history.id}
-						<div class="bg:gray-50 p:12 r:6 font:12 white-space:pre-wrap overflow-x:auto">
+						<div class="bg:theme-surface p:12 r:6 font:12 white-space:pre-wrap overflow-x:auto">
 							{JSON.stringify(history.snapshot, null, 2)}
 						</div>
 					{:else}
 						<button
-							class="bg:transparent border:none cursor:pointer fg:blue-600 font:12 p:0"
+							class="bg:transparent border:none cursor:pointer fg:theme-primary font:12 p:0"
 							onclick={() => (selectedHistory = history)}
 						>
 							詳細を表示

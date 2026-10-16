@@ -18,6 +18,8 @@
 	import { registerServiceWorker } from '$lib/utils/sw-register';
 	import { initializeErrorHandler } from '$lib/utils/errorHandler';
 	import SyncStatus from '$lib/components/ui/SyncStatus.svelte';
+	import ToastHost from '$lib/components/ui/ToastHost.svelte';
+	import ConflictHost from '$lib/components/ui/ConflictHost.svelte';
 	import { themes, themeStore } from '$lib/stores/theme.svelte';
 
 	let { children } = $props();
@@ -232,6 +234,9 @@
 		</nav>
 	{/if}
 </div>
+
+<ToastHost />
+<ConflictHost />
 
 <style>
 	.app-shell {

@@ -27,24 +27,24 @@
 {#if conflictData}
 	<Modal bind:isOpen title="変更の競合" {onClose}>
 		<div class="mb:24">
-			<p class="fg:gray-700 mb:16">
+			<p class="fg:theme-text-secondary mb:16">
 				このデータが複数の端末で変更されています。どちらのバージョンを採用しますか?
 			</p>
 
 			<div class="display:grid grid-template-columns:1fr|1fr gap:16">
 				<!-- ローカル版 -->
-				<div class="border:1|solid|gray-300 r:8 p:16">
-					<h3 class="font:16 font-weight:600 mb:12 fg:blue-700">この端末の変更</h3>
+				<div class="border:1|solid|theme-border r:8 p:16">
+					<h3 class="font:16 font-weight:600 mb:12 fg:theme-primary">この端末の変更</h3>
 					{#if conflictData.local.updatedAt}
-						<p class="font:12 fg:gray-600 mb:12">
+						<p class="font:12 fg:theme-text-secondary mb:12">
 							更新: {formatDate(conflictData.local.updatedAt)}
 						</p>
 					{/if}
-					<div class="bg:gray-50 p:12 r:6 max-h:300 overflow-y:auto">
+					<div class="bg:theme-surface p:12 r:6 max-h:300 overflow-y:auto">
 						{#each conflictData.conflictFields as field}
 							<div class="mb:12">
-								<div class="font:12 font-weight:600 fg:gray-700 mb:4">{field}:</div>
-								<div class="font:13 fg:gray-900 white-space:pre-wrap">
+								<div class="font:12 font-weight:600 fg:theme-text-secondary mb:4">{field}:</div>
+								<div class="font:13 fg:theme-text white-space:pre-wrap">
 									{JSON.stringify(conflictData.local[field], null, 2)}
 								</div>
 							</div>
@@ -56,18 +56,18 @@
 				</div>
 
 				<!-- リモート版 -->
-				<div class="border:1|solid|gray-300 r:8 p:16">
-					<h3 class="font:16 font-weight:600 mb:12 fg:green-700">他の端末の変更</h3>
+				<div class="border:1|solid|theme-border r:8 p:16">
+					<h3 class="font:16 font-weight:600 mb:12 fg:theme-success">他の端末の変更</h3>
 					{#if conflictData.remote.updatedAt}
-						<p class="font:12 fg:gray-600 mb:12">
+						<p class="font:12 fg:theme-text-secondary mb:12">
 							更新: {formatDate(conflictData.remote.updatedAt)}
 						</p>
 					{/if}
-					<div class="bg:gray-50 p:12 r:6 max-h:300 overflow-y:auto">
+					<div class="bg:theme-surface p:12 r:6 max-h:300 overflow-y:auto">
 						{#each conflictData.conflictFields as field}
 							<div class="mb:12">
-								<div class="font:12 font-weight:600 fg:gray-700 mb:4">{field}:</div>
-								<div class="font:13 fg:gray-900 white-space:pre-wrap">
+								<div class="font:12 font-weight:600 fg:theme-text-secondary mb:4">{field}:</div>
+								<div class="font:13 fg:theme-text white-space:pre-wrap">
 									{JSON.stringify(conflictData.remote[field], null, 2)}
 								</div>
 							</div>

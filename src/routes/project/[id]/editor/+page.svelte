@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 	import { onMount, tick } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
@@ -20,6 +21,7 @@
 	import PreviewViewer from '$lib/components/preview/PreviewViewer.svelte';
 	import PreviewSettings from '$lib/components/preview/PreviewSettings.svelte';
 	import SceneExportModal from '$lib/components/ui/SceneExportModal.svelte';
+	import SearchReplace from '$lib/components/ui/SearchReplace.svelte';
 	import Sheet from '$lib/components/mobile/Sheet.svelte';
 	import AssistBar from '$lib/components/mobile/AssistBar.svelte';
 	import GoalRing from '$lib/components/mobile/GoalRing.svelte';
@@ -57,6 +59,7 @@
 	let showVersionManager = $state(false);
 	let showFormattingModal = $state(false);
 	let showExportModal = $state(false);
+	let showSearch = $state(false);
 	let isSidebarOpen = $state(false);
 
 	// プレビュー機能
@@ -131,6 +134,11 @@
 
 		// キーボードショートカット: Ctrl+S で保存
 		const handleKeyDown = (e: KeyboardEvent) => {
+			if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+				e.preventDefault();
+				void openSearch();
+				return;
+			}
 			if ((e.ctrlKey || e.metaKey) && e.key === 's') {
 				e.preventDefault();
 				if (editorStore.currentScene && editorStore.isDirty) {
@@ -198,11 +206,13 @@
 			currentProjectStore.chapters = [...currentProjectStore.chapters, chapter];
 			isChapterModalOpen = false;
 			newChapterTitle = '';
+			toast.success('章を作成しました');
 
 			// 同期キューに追加
 			await queueChange('chapters', chapter.id, 'create');
 		} catch (error) {
 			console.error('Failed to create chapter:', error);
+			toast.error('章の作成に失敗しました');
 		}
 	};
 
@@ -222,11 +232,13 @@
 			newSceneTitle = '';
 			editorStore.currentScene = scene;
 			rememberLastScene(scene.id);
+			toast.success('シーンを作成しました');
 
 			// 同期キューに追加
 			await queueChange('scenes', scene.id, 'create');
 		} catch (error) {
 			console.error('Failed to create scene:', error);
+			toast.error('シーンの作成に失敗しました');
 		}
 	};
 
@@ -274,6 +286,41 @@
 			editorStore.isSaving = false;
 		}
 	};
+
+	// 検索・置換はDBを直接書き換えるため、開く前に保存し、閉じたら画面側のデータを読み直す
+	async function openSearch() {
+		await flushSave();
+		showSearch = true;
+	}
+
+	async function closeSearch() {
+		showSearch = false;
+		const project = currentProjectStore.project;
+		if (!project) return;
+		try {
+			const [chapters, scenes] = await Promise.all([
+				chaptersDB.getByProjectId(project.id),
+				scenesDB.getByProjectId(project.id)
+			]);
+			currentProjectStore.chapters = chapters;
+			currentProjectStore.scenes = scenes;
+			const currentId = editorStore.currentScene?.id;
+			if (currentId) {
+				const fresh = scenes.find((s) => s.id === currentId);
+				// 内容が変わっていれば本文も差し替える
+				if (fresh && fresh.content !== editorStore.content) editorStore.currentScene = fresh;
+			}
+		} catch (error) {
+			console.error('Failed to reload after search:', error);
+		}
+	}
+
+	async function openSceneById(sceneId: string) {
+		// closeSearch の読み直しが終わってから開く
+		await closeSearch();
+		const scene = currentProjectStore.scenes.find((s) => s.id === sceneId);
+		if (scene) await goToScene(scene);
+	}
 
 	// 未保存の変更があれば保存してから次の操作へ進む
 	async function flushSave() {
@@ -418,15 +465,22 @@
 			}
 			isRenameModalOpen = false;
 			renameValue = '';
+			toast.success('名前を変更しました');
 		} catch (error) {
 			console.error('Failed to rename:', error);
-			alert('名前の変更に失敗しました');
+			toast.error('名前の変更に失敗しました');
 		}
 	};
 
 	// 削除処理
 	async function handleDeleteChapter(chapter: Chapter) {
-		if (!confirm(`章「${chapter.title}」とそのシーンを削除しますか？`)) return;
+		if (
+			!(await confirmDialog({
+				message: `章「${chapter.title}」とそのシーンを削除しますか？`,
+				danger: true
+			}))
+		)
+			return;
 
 		try {
 			// チャプター内のシーンを削除
@@ -449,14 +503,18 @@
 			if (editorStore.currentScene?.chapterId === chapter.id) {
 				editorStore.currentScene = null;
 			}
+			toast.success(`章「${chapter.title}」を削除しました`);
 		} catch (error) {
 			console.error('Failed to delete chapter:', error);
-			alert('章の削除に失敗しました');
+			toast.error('章の削除に失敗しました');
 		}
 	}
 
 	async function handleDeleteScene(scene: Scene) {
-		if (!confirm(`シーン「${scene.title}」を削除しますか？`)) return;
+		if (
+			!(await confirmDialog({ message: `シーン「${scene.title}」を削除しますか？`, danger: true }))
+		)
+			return;
 
 		try {
 			await scenesDB.delete(scene.id);
@@ -467,9 +525,10 @@
 			if (editorStore.currentScene?.id === scene.id) {
 				editorStore.currentScene = null;
 			}
+			toast.success(`シーン「${scene.title}」を削除しました`);
 		} catch (error) {
 			console.error('Failed to delete scene:', error);
-			alert('シーンの削除に失敗しました');
+			toast.error('シーンの削除に失敗しました');
 		}
 	}
 
@@ -501,7 +560,7 @@
 			}
 		} catch (error) {
 			console.error('Failed to duplicate chapter:', error);
-			alert('章の複製に失敗しました');
+			toast.error('章の複製に失敗しました');
 		}
 	}
 
@@ -518,9 +577,10 @@
 
 			currentProjectStore.scenes = [...currentProjectStore.scenes, newScene];
 			await queueChange('scenes', newScene.id, 'create');
+			toast.success('シーンを複製しました');
 		} catch (error) {
 			console.error('Failed to duplicate scene:', error);
-			alert('シーンの複製に失敗しました');
+			toast.error('シーンの複製に失敗しました');
 		}
 	}
 
@@ -919,7 +979,8 @@
 
 	// --- 入力時の挙動 ---
 	function onTyped() {
-		if (viewport.isMobile) chromeHidden = true;
+		// ソフトウェアキーボードで入力しているときだけ隠す(物理キーボードでは隠さない)
+		if (viewport.isMobile && viewport.isKeyboardOpen) chromeHidden = true;
 		requestAnimationFrame(() => {
 			if (!editorScrollContainer) return;
 			if (editorStore.typewriter) typewriterScroll(editorScrollContainer);
@@ -1388,6 +1449,14 @@
 							</button>
 							<button
 								class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
+								onclick={openSearch}
+								aria-label="検索・置換 (Ctrl+Shift+F)"
+								title="検索・置換 (Ctrl+Shift+F)"
+							>
+								<Icon name="search" class="w:24px" />
+							</button>
+							<button
+								class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
 								onclick={() => (editorStore.focusMode = true)}
 								aria-label="集中モード"
 								title="集中モード"
@@ -1620,6 +1689,16 @@
 	</div>
 </Sheet>
 
+<!-- 検索・置換 -->
+{#if currentProjectStore.project}
+	<SearchReplace
+		projectId={currentProjectStore.project.id}
+		show={showSearch}
+		onClose={closeSearch}
+		onOpenScene={openSceneById}
+	/>
+{/if}
+
 <!-- 目標の設定 -->
 <Sheet bind:open={showGoalSheet} title="執筆の目標" size="auto">
 	<form
@@ -1663,6 +1742,7 @@
 		<button onclick={() => runAction(() => void handleSave())} disabled={!editorStore.isDirty}>
 			今すぐ保存
 		</button>
+		<button onclick={() => runAction(() => void openSearch())}>検索・置換</button>
 		<button onclick={() => runAction(() => (editorStore.focusMode = true))}>集中モード</button>
 		<button onclick={() => runAction(() => (showWritingAssistant = true))}
 			>執筆支援(字下げ・ルビ)</button

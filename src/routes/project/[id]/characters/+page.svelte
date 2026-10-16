@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { charactersDB } from '$lib/db';
 	import { queueChange } from '$lib/services/sync.service';
@@ -14,6 +15,16 @@
 
 	let characters = $state<Character[]>([]);
 	let isLoading = $state(true);
+	let characterQuery = $state('');
+	let visibleCharacters = $derived.by(() => {
+		const q = characterQuery.trim().toLowerCase();
+		if (!q) return characters;
+		return characters.filter((c) =>
+			[c.name, c.role, c.personality, c.appearance, c.background].some((t) =>
+				t?.toLowerCase().includes(q)
+			)
+		);
+	});
 	let showCreateModal = $state(false);
 	let showEditModal = $state(false);
 	let showRelationModal = $state(false);
@@ -161,7 +172,8 @@
 	};
 
 	async function handleDelete(id: string) {
-		if (!confirm('このキャラクターを削除しますか?')) return;
+		if (!(await confirmDialog({ message: 'このキャラクターを削除しますか?', danger: true })))
+			return;
 		await charactersDB.delete(id);
 		// 同期キューに追加
 		await queueChange('characters', id, 'delete');
@@ -266,7 +278,7 @@
 			await loadCharacters();
 		} catch (error) {
 			console.error('Failed to duplicate character:', error);
-			alert('キャラクターの複製に失敗しました');
+			toast.error('キャラクターの複製に失敗しました');
 		}
 	}
 </script>
@@ -310,9 +322,16 @@
 						<p class="fg:theme-text-secondary">読み込み中...</p>
 					</div>
 				{:else if viewMode === 'grid'}
+					<input
+						class="character-search"
+						type="search"
+						placeholder="名前・役割・性格などで検索..."
+						aria-label="キャラクターを検索"
+						bind:value={characterQuery}
+					/>
 					<!-- グリッドビュー -->
 					<div class="grid cols:3 gap:20">
-						{#each characters as character (character.id)}
+						{#each visibleCharacters as character (character.id)}
 							<Card
 								class="bg:theme-surface b:2px|solid|theme-border shadow:sm p:24 flex flex-direction:column gap:16"
 								oncontextmenu={(e) => handleCharacterContextMenu(e, character)}
@@ -389,9 +408,16 @@
 						{/each}
 					</div>
 				{:else if viewMode === 'list'}
+					<input
+						class="character-search"
+						type="search"
+						placeholder="名前・役割・性格などで検索..."
+						aria-label="キャラクターを検索"
+						bind:value={characterQuery}
+					/>
 					<!-- リストビュー -->
 					<div class="flex flex-direction:column gap:16">
-						{#each characters as character (character.id)}
+						{#each visibleCharacters as character (character.id)}
 							<Card
 								class="bg:theme-surface b:2px|solid|theme-border shadow:sm p:24"
 								oncontextmenu={(e) => handleCharacterContextMenu(e, character)}
@@ -721,6 +747,18 @@
 		line-clamp: 2;
 		-webkit-box-orient: vertical;
 		overflow: hidden;
+	}
+
+	.character-search {
+		width: 100%;
+		max-width: 480px;
+		padding: 10px 12px;
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		background: var(--color-background);
+		color: var(--color-text);
+		font-size: 16px;
+		font-family: inherit;
 	}
 
 	.page-header :global(button) {

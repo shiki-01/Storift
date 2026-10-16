@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { toast } from '$lib/stores/toast.svelte';
 	import {
 		openPrintPreview,
 		formatForPrint,
@@ -26,7 +27,7 @@
 		console.log('印刷プレビュー開始:', { chapters, options });
 
 		if (!chapters || chapters.length === 0) {
-			alert('印刷するコンテンツがありません。先に章とシーンを作成してください。');
+			toast.error('印刷するコンテンツがありません。先に章とシーンを作成してください。');
 			return;
 		}
 
@@ -41,12 +42,12 @@
 		<div class="print-settings p:24 space-y:20">
 			<!-- 書式設定 -->
 			<div>
-				<h3 class="font:16 font:semibold fg:gray-900 mb:12">書式設定</h3>
+				<h3 class="font:16 font:semibold fg:theme-text mb:12">書式設定</h3>
 
 				<div class="space-y:12">
 					<!-- 書字方向-->
 					<div>
-						<div class="font:14 fg:gray-700 mb:6">書字方向</div>
+						<div class="font:14 fg:theme-text-secondary mb:6">書字方向</div>
 						<div class="flex gap:8">
 							<button
 								class="flex-1 py:8 px:16 r:8 border:1|solid|{options.writingMode === 'horizontal'
@@ -77,7 +78,9 @@
 
 					<!-- フォントサイズ -->
 					<div>
-						<label for="fontSize" class="font:14 fg:gray-700 mb:6 block">フォントサイズ</label>
+						<label for="fontSize" class="font:14 fg:theme-text-secondary mb:6 block"
+							>フォントサイズ</label
+						>
 						<div class="flex align-items:center gap:12">
 							<input
 								id="fontSize"
@@ -88,13 +91,15 @@
 								bind:value={options.fontSize}
 								class="flex-grow"
 							/>
-							<span class="font:14 fg:gray-700 w:60 text-align:right">{options.fontSize}pt</span>
+							<span class="font:14 fg:theme-text-secondary w:60 text-align:right"
+								>{options.fontSize}pt</span
+							>
 						</div>
 					</div>
 
 					<!-- 行間 -->
 					<div>
-						<label for="lineHeight" class="font:14 fg:gray-700 mb:6 block">行間</label>
+						<label for="lineHeight" class="font:14 fg:theme-text-secondary mb:6 block">行間</label>
 						<div class="flex align-items:center gap:12">
 							<input
 								id="lineHeight"
@@ -105,7 +110,7 @@
 								bind:value={options.lineHeight}
 								class="flex-grow"
 							/>
-							<span class="font:14 fg:gray-700 w:60 text-align:right"
+							<span class="font:14 fg:theme-text-secondary w:60 text-align:right"
 								>{options.lineHeight.toFixed(1)}</span
 							>
 						</div>
@@ -113,11 +118,13 @@
 
 					<!-- フォント -->
 					<div>
-						<label for="fontFamily" class="font:14 fg:gray-700 mb:6 block">フォント</label>
+						<label for="fontFamily" class="font:14 fg:theme-text-secondary mb:6 block"
+							>フォント</label
+						>
 						<select
 							id="fontFamily"
 							bind:value={options.fontFamily}
-							class="w:full py:8 px:12 r:8 border:1|solid|gray-300 font:14"
+							class="w:full py:8 px:12 r:8 border:1|solid|theme-border font:14"
 						>
 							<option value="'游明朝', 'Yu Mincho', serif">游明朝</option>
 							<option value="'ヒラギノ明朝 ProN', 'Hiragino Mincho ProN', serif"
@@ -133,12 +140,12 @@
 
 			<!-- 用紙設定 -->
 			<div>
-				<h3 class="font:16 font:semibold fg:gray-900 mb:12">用紙設定</h3>
+				<h3 class="font:16 font:semibold fg:theme-text mb:12">用紙設定</h3>
 
 				<div class="space-y:12">
 					<!-- 用紙サイズ -->
 					<div>
-						<div class="font:14 fg:gray-700 mb:6">用紙サイズ</div>
+						<div class="font:14 fg:theme-text-secondary mb:6">用紙サイズ</div>
 						<div class="grid grid-cols:2 gap:8">
 							{#each ['A4', 'A5', 'B5', 'letter'] as size}
 								<button
@@ -159,50 +166,55 @@
 
 					<!-- 余白 -->
 					<div>
-						<div class="font:14 fg:gray-700 mb:6">余白 (mm)</div>
+						<div class="font:14 fg:theme-text-secondary mb:6">余白 (mm)</div>
 						<div class="grid grid-cols:2 gap:8">
 							<div>
-								<label for="marginTop" class="font:12 fg:gray-600 mb:4 block">上</label>
+								<label for="marginTop" class="font:12 fg:theme-text-secondary mb:4 block">上</label>
 								<input
 									id="marginTop"
 									type="number"
 									bind:value={options.margin.top}
 									min="10"
 									max="50"
-									class="w:full py:6 px:10 r:6 border:1|solid|gray-300 font:14"
+									class="w:full py:6 px:10 r:6 border:1|solid|theme-border font:14"
 								/>
 							</div>
 							<div>
-								<label for="marginBottom" class="font:12 fg:gray-600 mb:4 block">下</label>
+								<label for="marginBottom" class="font:12 fg:theme-text-secondary mb:4 block"
+									>下</label
+								>
 								<input
 									id="marginBottom"
 									type="number"
 									bind:value={options.margin.bottom}
 									min="10"
 									max="50"
-									class="w:full py:6 px:10 r:6 border:1|solid|gray-300 font:14"
+									class="w:full py:6 px:10 r:6 border:1|solid|theme-border font:14"
 								/>
 							</div>
 							<div>
-								<label for="marginLeft" class="font:12 fg:gray-600 mb:4 block">左</label>
+								<label for="marginLeft" class="font:12 fg:theme-text-secondary mb:4 block">左</label
+								>
 								<input
 									id="marginLeft"
 									type="number"
 									bind:value={options.margin.left}
 									min="10"
 									max="50"
-									class="w:full py:6 px:10 r:6 border:1|solid|gray-300 font:14"
+									class="w:full py:6 px:10 r:6 border:1|solid|theme-border font:14"
 								/>
 							</div>
 							<div>
-								<label for="marginRight" class="font:12 fg:gray-600 mb:4 block">右</label>
+								<label for="marginRight" class="font:12 fg:theme-text-secondary mb:4 block"
+									>右</label
+								>
 								<input
 									id="marginRight"
 									type="number"
 									bind:value={options.margin.right}
 									min="10"
 									max="50"
-									class="w:full py:6 px:10 r:6 border:1|solid|gray-300 font:14"
+									class="w:full py:6 px:10 r:6 border:1|solid|theme-border font:14"
 								/>
 							</div>
 						</div>
@@ -212,17 +224,17 @@
 
 			<!-- 表示オプション -->
 			<div>
-				<h3 class="font:16 font:semibold fg:gray-900 mb:12">表示オプション</h3>
+				<h3 class="font:16 font:semibold fg:theme-text mb:12">表示オプション</h3>
 
 				<div class="space-y:8">
 					<label class="flex align-items:center gap:8 cursor:pointer">
 						<input type="checkbox" bind:checked={options.showPageNumber} class="w:18 h:18" />
-						<span class="font:14 fg:gray-700">ページ番号を表示</span>
+						<span class="font:14 fg:theme-text-secondary">ページ番号を表示</span>
 					</label>
 
 					<label class="flex align-items:center gap:8 cursor:pointer">
 						<input type="checkbox" bind:checked={options.showChapterNumber} class="w:18 h:18" />
-						<span class="font:14 fg:gray-700">章番号を表示</span>
+						<span class="font:14 fg:theme-text-secondary">章番号を表示</span>
 					</label>
 				</div>
 			</div>

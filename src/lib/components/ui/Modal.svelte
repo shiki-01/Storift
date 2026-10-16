@@ -92,12 +92,12 @@
 					</button>
 					<button
 						class="px:16 py:8 border:none r:6 fg:white cursor:pointer"
-						class:bg:blue-600={confirmVariant === 'primary'}
-						class:hover:bg:blue-700={confirmVariant === 'primary'}
+						class:bg:theme-primary={confirmVariant === 'primary'}
+						class:hover:bg:theme-primary={confirmVariant === 'primary'}
 						class:bg:gray-600={confirmVariant === 'secondary'}
 						class:hover:bg:gray-700={confirmVariant === 'secondary'}
-						class:bg:red-600={confirmVariant === 'danger'}
-						class:hover:bg:red-700={confirmVariant === 'danger'}
+						class:bg:theme-error={confirmVariant === 'danger'}
+						class:hover:bg:theme-error={confirmVariant === 'danger'}
 						class:opacity:0.5={confirmDisabled}
 						class:cursor:not-allowed={confirmDisabled}
 						onclick={onConfirm}

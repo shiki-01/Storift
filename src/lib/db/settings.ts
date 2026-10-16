@@ -24,6 +24,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 	autoSaveInterval: 30000, // 30秒
 	syncEnabled: true,
 	conflictResolution: 'manual',
+	exportPatterns: [],
 	updatedAt: Date.now()
 };
 

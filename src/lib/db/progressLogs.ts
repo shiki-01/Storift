@@ -13,7 +13,12 @@ export const progressLogsDB = {
 	},
 
 	async getByDate(projectId: string, date: string): Promise<ProgressLog | undefined> {
-		return await db.progressLogs.where(['projectId', 'date']).equals([projectId, date]).first();
+		// 複合インデックスは未定義のため、projectId で絞ってから日付を比較する
+		return await db.progressLogs
+			.where('projectId')
+			.equals(projectId)
+			.and((log) => log.date === date)
+			.first();
 	},
 
 	async getById(id: string): Promise<ProgressLog | undefined> {

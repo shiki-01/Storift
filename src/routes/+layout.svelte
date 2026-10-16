@@ -1,7 +1,5 @@
 <script lang="ts">
 	import '../app.css';
-	import favicon from '$lib/assets/favicon.svg';
-	import title from '$lib/assets/title.svg';
 	import { logo } from '$lib/assets/logo';
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
@@ -15,10 +13,10 @@
 	import { settingsDB } from '$lib/db';
 	import { initializeFirebase, signInAnonymousUser, isFirebaseInitialized } from '$lib/firebase';
 	import { authStore } from '$lib/stores/auth.svelte';
+	import { viewport, initViewport } from '$lib/stores/viewport.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
 	import { registerServiceWorker } from '$lib/utils/sw-register';
 	import { initializeErrorHandler } from '$lib/utils/errorHandler';
-	import Button from '$lib/components/ui/Button.svelte';
 	import SyncStatus from '$lib/components/ui/SyncStatus.svelte';
 	import { themes, themeStore } from '$lib/stores/theme.svelte';
 
@@ -41,7 +39,42 @@
 		return $page.url.pathname.includes(`/project/${projectId}/${path}`);
 	}
 
+	// ページタイトル(タブ名)
+	const staticTitles: Record<string, string> = {
+		'/home': 'ホーム',
+		'/settings': '設定',
+		'/setup': 'セットアップ'
+	};
+	let sectionLabel = $derived.by(() => {
+		const path = $page.url.pathname;
+		if (isProjectPage) {
+			return projectNavItems.find((item) => path.includes(`/project/${projectId}/${item.path}`))
+				?.label;
+		}
+		return staticTitles[path];
+	});
+	let pageTitle = $derived(
+		sectionLabel ? `${sectionLabel} - Storift` : 'Storift - 小説執筆PWAアプリ'
+	);
+
+	// スマホのエディタは専用の上部バーを自前で持つため、共通ヘッダーを出さない
+	let isEditorRoute = $derived(isProjectPage && $page.url.pathname.endsWith('/editor'));
+	let showGlobalHeader = $derived(!(viewport.isMobile && isEditorRoute) && !editorStore.focusMode);
+	let showBottomNav = $derived(
+		viewport.isMobile && isProjectPage && !viewport.isKeyboardOpen && !editorStore.focusMode
+	);
+
+	// キーボード表示中は画面全体を visualViewport に合わせ、入力欄がキーボードに隠れないようにする
+	let shellStyle = $derived(
+		viewport.isMobile && viewport.isKeyboardOpen
+			? `height:${viewport.height}px;transform:translateY(${viewport.offsetTop}px);`
+			: ''
+	);
+
 	onMount(() => {
+		// ビューポート(スマホ判定・キーボード高さ)の監視を開始
+		const stopViewport = initViewport();
+
 		// グローバルエラーハンドラーを初期化
 		initializeErrorHandler();
 
@@ -105,6 +138,7 @@
 
 		// クリーンアップ
 		return () => {
+			stopViewport();
 			unsubscribe();
 			stopNetworkMonitoring();
 			stopSync();
@@ -113,106 +147,181 @@
 </script>
 
 <svelte:head>
-	<title>Storift - 小説執筆PWAアプリ</title>
+	<title>{pageTitle}</title>
 	<meta name="description" content="個人向け小説執筆アプリ" />
 </svelte:head>
 
-<div class="min-h:100vh bg:theme-background">
-	<header class="px:1.5rem py:1rem bb:2px|solid|theme-text">
-		<div class="gap:1.5rem mx:auto flex justify-content:start align-items:center">
-			<button
-				aria-label="mordal"
-				onclick={() => (editorStore.isOpen = !editorStore.isOpen)}
-				class="rel w:30px h:30px cursor:pointer"
-			>
-				<span
-					class="w:20px h:2px flex bg:theme-text abs top:50% left:0 transition:all|.2s|ease-in-out {editorStore.isOpen
-						? 'rotate(45deg)'
-						: 'transform:translateY(-6px)'}"
-				></span>
-				<span
-					class="w:20px h:2px flex bg:theme-text abs top:50% left:0 transition:all|.2s|ease-in-out {editorStore.isOpen
-						? 'rotate(90deg) opacity:0'
-						: 'transform:translateY(0) opacity:1'}"
-				></span>
-				<span
-					class="w:20px h:2px flex bg:theme-text abs top:50% left:0 transition:all|.2s|ease-in-out {editorStore.isOpen
-						? 'rotate(-45deg)'
-						: 'transform:translateY(6px)'}"
-				></span>
-			</button>
-			<div class="flex align-items:center gap:24">
-				<div class="w:100px">
-					{@html logo(themes[themeStore.theme.id].colors.text)}
-				</div>
-				<SyncStatus />
-			</div>
-		</div>
-	</header>
-
-	<main class="mx:auto h:calc(100vh-66px) rel">
-		<!-- サイドバー -->
-		<aside
-			class="w:240 h:100% bg:theme-background flex flex-direction:column abs z:2 top:0 transition:left|.2s|ease-in-out border-right:2px|solid|theme-text {editorStore.isOpen
-				? 'left:0'
-				: 'left:-240px'}"
-		>
-			<!-- ナビゲーション -->
-			<nav class="p:12 flex-grow:1">
-				<a
-					href="/home"
-					onclick={() => (editorStore.isOpen = false)}
-					class="flex align-items:center gap:12 px:16 py:12 r:8 mb:4 font:14 fg:theme-text"
-				>
-					<span>ホーム</span>
-				</a>
-
-				{#if isProjectPage}
-					<!-- プロジェクトページ用のナビゲーション -->
-					<div class="mt:16 mb:8 px:16">
-						<div class="font:12 font-weight:600 fg:theme-text-secondary text-transform:uppercase">
-							プロジェクト
-						</div>
-					</div>
-					{#each projectNavItems as item}
-						<a
-							href="/project/{projectId}/{item.path}"
-							onclick={() => (editorStore.isOpen = false)}
-							class="flex ai:center gap:12 px:16 py:12 r:8 mb:4 font:14 {isActive(item.path)
-								? 'fg:theme-primary'
-								: 'fg:theme-text'}"
-							style={isActive(item.path)
-								? 'background-color: color-mix(in srgb, var(--color-primary) 20%, transparent)'
-								: ''}
-						>
-							<span>{item.label}</span>
+<div class="app-shell bg:theme-background" style={shellStyle}>
+	{#if showGlobalHeader}
+		<header class="app-header bb:1px|solid|theme-border">
+			{#if viewport.isMobile}
+				<!-- スマホ: 細い1本のバー -->
+				<div class="app-header-inner flex ai:center gap:8 px:12">
+					{#if isProjectPage}
+						<a href="/home" class="icon-btn" aria-label="ホームへ戻る">
+							<svg
+								viewBox="0 0 24 24"
+								width="22"
+								height="22"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg
+							>
 						</a>
-					{/each}
-				{/if}
-			</nav>
+						<span class="font:15 font-weight:600 fg:theme-text flex:1">{sectionLabel ?? ''}</span>
+					{:else}
+						<a href="/home" class="w:90px flex" aria-label="ホーム">
+							{@html logo(themes[themeStore.theme.id].colors.text)}
+						</a>
+						<span class="flex:1"></span>
+					{/if}
+					<SyncStatus />
+					{#if !isProjectPage}
+						<a href="/settings" class="font:13 fg:theme-text px:8 py:6">設定</a>
+					{/if}
+				</div>
+			{:else}
+				<!-- デスクトップ: ロゴ + 常時表示のナビゲーション -->
+				<div class="app-header-inner flex ai:center gap:24 px:24">
+					<a href="/home" class="w:100px flex" aria-label="ホーム">
+						{@html logo(themes[themeStore.theme.id].colors.text)}
+					</a>
+					{#if isProjectPage}
+						<nav class="flex ai:center gap:4 flex:1" aria-label="プロジェクト">
+							{#each projectNavItems as item}
+								<a
+									href="/project/{projectId}/{item.path}"
+									aria-current={isActive(item.path) ? 'page' : undefined}
+									class="nav-link {isActive(item.path) ? 'is-active' : ''}"
+								>
+									{item.label}
+								</a>
+							{/each}
+						</nav>
+					{:else}
+						<span class="flex:1"></span>
+					{/if}
+					<SyncStatus />
+					<a
+						href="/settings"
+						class="nav-link {$page.url.pathname === '/settings' ? 'is-active' : ''}">設定</a
+					>
+				</div>
+			{/if}
+		</header>
+	{/if}
 
-			<div class="p:12 border-top:1px|solid|theme-border">
-				<a
-					href="/settings"
-					onclick={() => (editorStore.isOpen = false)}
-					class="flex align-items:center gap:12 px:16 py:12 r:8 mb:4 font:14 fg:theme-text"
-				>
-					<span>設定</span>
-				</a>
-			</div>
-		</aside>
-
-		<button
-			aria-label="sidebar overlay"
-			onclick={() => (editorStore.isOpen = false)}
-			class="w:100% h:100% abs z:1 bg:theme-text cursor:pointer transition:opacity|.2s|ease-in-out {editorStore.isOpen
-				? 'opacity:.5 pointer-events:auto'
-				: 'opacity:0 pointer-events:none'}"
-		></button>
-
-		<!-- メインコンテンツ -->
-		<div class="w:100% h:100%">
-			{@render children()}
-		</div>
+	<main class="app-main rel">
+		{@render children()}
 	</main>
+
+	{#if showBottomNav}
+		<nav class="bottom-nav bt:1px|solid|theme-border" aria-label="プロジェクト">
+			{#each projectNavItems as item}
+				<a
+					href="/project/{projectId}/{item.path}"
+					aria-current={isActive(item.path) ? 'page' : undefined}
+					class="bottom-nav-item {isActive(item.path) ? 'is-active' : ''}"
+				>
+					<span class="bottom-nav-label">{item.label}</span>
+				</a>
+			{/each}
+		</nav>
+	{/if}
 </div>
+
+<style>
+	.app-shell {
+		display: flex;
+		flex-direction: column;
+		height: 100vh;
+		height: 100dvh;
+		overflow: hidden;
+	}
+
+	.app-header {
+		flex: none;
+		background: var(--color-background);
+		padding-top: var(--safe-top);
+		padding-left: var(--safe-left);
+		padding-right: var(--safe-right);
+	}
+
+	.app-header-inner {
+		height: var(--bar-height);
+		min-height: var(--bar-height);
+	}
+
+	.app-main {
+		flex: 1;
+		min-height: 0;
+		overflow: hidden;
+	}
+
+	.icon-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		margin-left: -8px;
+		color: var(--color-text);
+		border-radius: 8px;
+	}
+
+	.nav-link {
+		padding: 6px 12px;
+		border-radius: 8px;
+		font-size: 14px;
+		color: var(--color-text-secondary);
+		white-space: nowrap;
+	}
+
+	.nav-link:hover {
+		color: var(--color-text);
+	}
+
+	.nav-link.is-active {
+		color: var(--color-primary);
+		background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+	}
+
+	.bottom-nav {
+		flex: none;
+		display: flex;
+		background: var(--color-background);
+		padding-bottom: var(--safe-bottom);
+		padding-left: var(--safe-left);
+		padding-right: var(--safe-right);
+	}
+
+	.bottom-nav-item {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: var(--bottom-nav-height);
+		font-size: 12px;
+		color: var(--color-text-secondary);
+		position: relative;
+	}
+
+	.bottom-nav-item.is-active {
+		color: var(--color-primary);
+		font-weight: 600;
+	}
+
+	.bottom-nav-item.is-active::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 25%;
+		right: 25%;
+		height: 2px;
+		border-radius: 0 0 2px 2px;
+		background: var(--color-primary);
+	}
+</style>

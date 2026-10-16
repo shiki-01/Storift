@@ -137,7 +137,7 @@
 	};
 </script>
 
-<div class="max-h:calc(100vh-66px) overflow-y:auto bg:theme-background flex ai:start jc:center p:24">
+<div class="h:100% overflow-y:auto bg:theme-background flex ai:start jc:center p:24">
 	<div class="max-w:600 w:full">
 		<Card padding="lg">
 			<h2 class="font:24 font-weight:600 m:0|0|24|0">Firebase初期設定</h2>

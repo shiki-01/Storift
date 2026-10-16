@@ -274,7 +274,7 @@
 	<div class="flex-grow:1 flex flex-direction:column">
 		<header class="bg:theme-background border-bottom:2|solid|theme-text">
 			<div
-				class="max-w:1280 mx:auto w:100% px:24 py:20 flex justify-content:space-between align-items:center"
+				class="max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 justify-content:space-between align-items:center"
 			>
 				<div>
 					<h1 class="font:26 font-weight:600 m:0 fg:theme-text">キャラクター管理</h1>

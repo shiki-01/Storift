@@ -57,16 +57,16 @@
 		tabindex="-1"
 	>
 		<div
-			class="modal-container bg:white r:12 {sizeClasses[
+			class="modal-container bg:theme-background fg:theme-text r:12 {sizeClasses[
 				size
-			]} w:90% max-h:90vh overflow:auto box-shadow:0|8|32|rgba(0,0,0,0.2)"
+			]} w:90% max-h:90dvh overflow:auto box-shadow:0|8|32|rgba(0,0,0,0.2)"
 		>
 			<div
-				class="modal-header flex justify-content:space-between align-items:center p:24 border-bottom:1|solid|gray-200"
+				class="modal-header flex justify-content:space-between align-items:center p:24 border-bottom:1|solid|theme-border"
 			>
 				<h2 class="font:20 font-weight:600 m:0">{title}</h2>
 				<button
-					class="bg:transparent border:none font:24 cursor:pointer p:8 fg:gray-600 hover:fg:gray-900"
+					class="bg:transparent border:none font:24 cursor:pointer p:8 fg:theme-text-secondary hover:fg:theme-text"
 					onclick={handleClose}
 					aria-label="閉じる"
 				>
@@ -85,7 +85,7 @@
 			{:else if onConfirm}
 				<div class="modal-footer p:24 pt:0 flex gap:12 justify-content:flex-end">
 					<button
-						class="px:16 py:8 border:1|solid|gray-300 r:6 bg:white fg:gray-700 cursor:pointer hover:bg:gray-50"
+						class="px:16 py:8 border:1|solid|theme-border r:6 bg:theme-background fg:theme-text cursor:pointer hover:bg:theme-surface"
 						onclick={handleClose}
 					>
 						{cancelText}
@@ -116,7 +116,7 @@
 		.modal-container {
 			width: 100%;
 			max-width: none;
-			max-height: 100vh;
+			max-height: 100dvh;
 			height: 100%;
 			border-radius: 0;
 		}
@@ -125,6 +125,14 @@
 		.modal-body,
 		.modal-footer {
 			padding: 16px;
+		}
+
+		.modal-header {
+			padding-top: calc(16px + var(--safe-top));
+		}
+
+		.modal-body {
+			padding-bottom: calc(16px + var(--safe-bottom));
 		}
 	}
 </style>

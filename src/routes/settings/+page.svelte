@@ -292,7 +292,7 @@
 	});
 </script>
 
-<div class="w:100% h:100% overflow-y:auto px:4rem py:2rem flex flex-direction:column gap:2rem">
+<div class="w:100% h:100% overflow-y:auto settings-page flex flex-direction:column gap:2rem">
 	<h1 class="font:1.25rem">設定</h1>
 
 	<!-- テーマ設定 -->
@@ -773,3 +773,15 @@
 		</div>
 	</Modal>
 {/if}
+
+<style>
+	.settings-page {
+		padding: 2rem 4rem;
+	}
+
+	@media (max-width: 768px) {
+		.settings-page {
+			padding: 1rem;
+		}
+	}
+</style>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmDialog } from '$lib/stores/toast.svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { worldbuildingDB } from '$lib/db';
 	import { queueChange } from '$lib/services/sync.service';
@@ -144,7 +145,7 @@
 	};
 
 	async function handleDelete(id: string) {
-		if (!confirm('この設定資料を削除しますか?')) return;
+		if (!(await confirmDialog({ message: 'この設定資料を削除しますか?', danger: true }))) return;
 		await worldbuildingDB.delete(id);
 		// 同期キューに追加
 		await queueChange('worldbuilding', id, 'delete');

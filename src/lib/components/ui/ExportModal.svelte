@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { toast } from '$lib/stores/toast.svelte';
 	import { exportProject, type ExportOptions } from '$lib/services/export.service';
 	import Modal from './Modal.svelte';
 	import Button from './Button.svelte';
@@ -40,7 +41,7 @@
 			}, 500);
 		} catch (error) {
 			console.error('Export failed:', error);
-			alert('エクスポートに失敗しました');
+			toast.error('エクスポートに失敗しました');
 		} finally {
 			isExporting = false;
 		}

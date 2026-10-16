@@ -45,6 +45,6 @@
 <div class="flex align-items:center justify-content:center h:100%">
 	<div class="text-align:center">
 		<h1 class="font:32 font-weight:700 m:0|0|16|0">Storift</h1>
-		<p class="fg:gray-600">読み込み中...</p>
+		<p class="fg:theme-text-secondary">読み込み中...</p>
 	</div>
 </div>

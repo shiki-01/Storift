@@ -5,7 +5,7 @@
 	import { editorStore } from '$lib/stores/editor.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
-	import { chaptersDB, scenesDB, settingsDB, progressLogsDB } from '$lib/db';
+	import { chaptersDB, scenesDB, settingsDB, progressLogsDB, projectsDB } from '$lib/db';
 	import { getDateKey } from '$lib/utils/dateUtils';
 	import { queueChange } from '$lib/services/sync.service';
 	import { AutoSave, enableUnsavedWarning, enableVisibilityAutoSave } from '$lib/utils/autoSave';
@@ -818,6 +818,32 @@
 	);
 	let goalRatio = $derived<number | null>(goal && goal.target > 0 ? goalDone / goal.target : null);
 
+	// --- 目標の設定 ---
+	let showGoalSheet = $state(false);
+	let goalType = $state<'daily' | 'total'>('daily');
+	let goalTarget = $state(2000);
+
+	function openGoalSheet() {
+		goalType = goal?.type ?? 'daily';
+		goalTarget = goal?.target ?? 2000;
+		showGoalSheet = true;
+	}
+
+	async function saveGoal() {
+		const project = currentProjectStore.project;
+		if (!project) return;
+		const target = Math.max(100, Math.round(Number(goalTarget)) || 2000);
+		const settings = { ...project.settings, goal: { type: goalType, target } };
+		try {
+			await projectsDB.update(project.id, { settings });
+			currentProjectStore.project = { ...project, settings };
+			await queueChange('projects', project.id, 'update');
+			showGoalSheet = false;
+		} catch (error) {
+			console.error('Failed to save goal:', error);
+		}
+	}
+
 	// スマホは iOS の自動ズームを避けるため 16px 未満にしない
 	let effectiveFontSize = $derived(
 		viewport.isMobile
@@ -1273,11 +1299,14 @@
 								{editorStore.characterCount}文字
 							</span>
 							{#if goalRatio !== null}
-								<GoalRing
-									ratio={goalRatio}
-									size={16}
-									label={`${goal?.type === 'total' ? '全体' : '今日'} ${goalDone.toLocaleString()} / ${goal?.target.toLocaleString()}字`}
-								/>
+								<button
+									class="goal-btn"
+									onclick={openGoalSheet}
+									title={`${goal?.type === 'total' ? '全体' : '今日'} ${goalDone.toLocaleString()} / ${goal?.target.toLocaleString()}字(クリックで目標を変更)`}
+									aria-label="目標を設定"
+								>
+									<GoalRing ratio={goalRatio} size={16} />
+								</button>
 							{/if}
 						</div>
 						<div class="editor-toolbar-actions flex align-items:center gap:8">
@@ -1591,11 +1620,36 @@
 	</div>
 </Sheet>
 
+<!-- 目標の設定 -->
+<Sheet bind:open={showGoalSheet} title="執筆の目標" size="auto">
+	<form
+		class="goal-form"
+		onsubmit={(e) => {
+			e.preventDefault();
+			void saveGoal();
+		}}
+	>
+		<div class="seg" role="group" aria-label="目標の種類">
+			<button type="button" class:on={goalType === 'daily'} onclick={() => (goalType = 'daily')}>
+				1日あたり
+			</button>
+			<button type="button" class:on={goalType === 'total'} onclick={() => (goalType = 'total')}>
+				作品全体
+			</button>
+		</div>
+		<label class="goal-field">
+			<span>目標文字数</span>
+			<input type="number" inputmode="numeric" min="100" step="100" bind:value={goalTarget} />
+		</label>
+		<button class="done-btn wide" type="submit">保存</button>
+	</form>
+</Sheet>
+
 <!-- スマホ: その他の操作 -->
 <Sheet bind:open={showActionSheet} title="操作" size="auto">
 	<div class="actions">
 		{#if goalRatio !== null}
-			<div class="goal-line">
+			<button class="goal-line" onclick={() => runAction(openGoalSheet)}>
 				<GoalRing ratio={goalRatio} size={20} />
 				<span>
 					{goal?.type === 'total' ? '全体' : '今日'}
@@ -1603,7 +1657,8 @@
 						goalRatio * 100
 					)}%)
 				</span>
-			</div>
+				<span class="goal-edit">目標を変更</span>
+			</button>
 		{/if}
 		<button onclick={() => runAction(() => void handleSave())} disabled={!editorStore.isDirty}>
 			今すぐ保存
@@ -2486,7 +2541,56 @@
 		background: var(--color-border);
 	}
 
+	.goal-btn {
+		display: inline-flex;
+		align-items: center;
+		padding: 4px;
+		border: none;
+		border-radius: 6px;
+		background: transparent;
+		cursor: pointer;
+	}
+
+	.goal-form {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+		padding: 0 16px 16px;
+	}
+
+	.goal-field {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		font-size: 13px;
+		color: var(--color-text-secondary);
+	}
+
+	.goal-field input {
+		padding: 10px 12px;
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		background: var(--color-background);
+		color: var(--color-text);
+		font-size: 16px;
+	}
+
+	.done-btn.wide {
+		width: 100%;
+		height: 44px;
+	}
+
+	.goal-edit {
+		margin-left: auto;
+		color: var(--color-primary);
+	}
+
 	.goal-line {
+		width: 100%;
+		border: none;
+		background: transparent;
+		text-align: left;
+		cursor: pointer;
 		display: flex;
 		align-items: center;
 		gap: 10px;

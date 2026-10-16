@@ -231,13 +231,13 @@
 	<div class="flex-grow:1 flex flex-direction:column">
 		<header class="bg:theme-background border-bottom:2|solid|theme-text">
 			<div
-				class="max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 justify-content:space-between align-items:center"
+				class="page-header max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 justify-content:space-between align-items:center"
 			>
 				<div>
 					<h1 class="font:26 font-weight:600 m:0 fg:theme-text">プロット管理</h1>
 					<p class="font:14 fg:theme-text-secondary mt:8">作品の構成を計画・管理します</p>
 				</div>
-				<div class="flex align-items:center gap:12">
+				<div class="flex flex-wrap:wrap align-items:center gap:12 max-w:100%">
 					<div class="flex bg:theme-surface b:2px|solid|theme-border r:10 p:6 gap:8">
 						<button class={viewToggleClass('board')} onclick={() => (viewMode = 'board')}>
 							ボード
@@ -257,7 +257,9 @@
 		</header>
 
 		<main class="flex-grow:1 overflow-y:auto">
-			<div class="max-w:1280 mx:auto w:100% px:24 py:24 flex flex-direction:column gap:24">
+			<div
+				class="page-body max-w:1280 mx:auto w:100% px:24 py:24 flex flex-direction:column gap:24"
+			>
 				{#if isLoading}
 					<div class="flex flex-direction:column gap:16">
 						<div class="h:140 bg:theme-surface b:1px|solid|theme-border r:12 animate:pulse"></div>
@@ -552,5 +554,29 @@
 		line-clamp: 3;
 		-webkit-box-orient: vertical;
 		overflow: hidden;
+	}
+
+	.page-header :global(button) {
+		white-space: nowrap;
+	}
+
+	@media (max-width: 768px) {
+		.page-header {
+			padding: 12px 16px;
+		}
+
+		.page-header h1 {
+			font-size: 20px;
+		}
+
+		.page-body {
+			padding: 12px 16px 24px;
+			min-width: 0;
+		}
+
+		.page-header > :global(*) {
+			min-width: 0;
+			max-width: 100%;
+		}
 	}
 </style>

@@ -82,7 +82,7 @@
 {#if visible}
 	<div
 		bind:this={menuElement}
-		class="context-menu bg:white z:9999"
+		class="context-menu bg:theme-background fg:theme-text z:9999"
 		style="left: {x}px; top: {y}px;"
 		role="menu"
 		tabindex="-1"
@@ -120,7 +120,7 @@
 <style>
 	.context-menu {
 		position: fixed;
-		border: 1px solid var(--border);
+		border: 1px solid var(--color-border);
 		border-radius: 8px;
 		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 		min-width: 200px;
@@ -147,7 +147,7 @@
 		padding: 8px 12px;
 		border: none;
 		background: none;
-		color: var(--text);
+		color: var(--color-text);
 		font-size: 14px;
 		text-align: left;
 		cursor: pointer;
@@ -156,7 +156,7 @@
 	}
 
 	.menu-item:hover:not(.disabled) {
-		background: var(--hover);
+		background: var(--color-surface);
 	}
 
 	.menu-item.disabled {
@@ -165,7 +165,7 @@
 	}
 
 	.menu-item.danger {
-		color: var(--error);
+		color: var(--color-error);
 	}
 
 	.menu-item.danger:hover:not(.disabled) {

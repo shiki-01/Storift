@@ -1,37 +1,63 @@
 <script lang="ts">
+	import { confirmDialog, toast } from '$lib/stores/toast.svelte';
 	import { searchInProject, replaceInProject, validateRegex } from '$lib/services/search.service';
 	import type { SearchOptions, SearchResult } from '$lib/services/search.service';
-	import Button from '$lib/components/ui/Button.svelte';
-	import Modal from '$lib/components/ui/Modal.svelte';
+	import Sheet from '$lib/components/mobile/Sheet.svelte';
+
+	type Scope = 'scenes' | 'chapters' | 'characters' | 'plots' | 'worldbuilding';
 
 	interface Props {
 		projectId: string;
 		show: boolean;
 		onClose: () => void;
+		/** 結果のシーンをタップしたとき */
+		onOpenScene?: (sceneId: string) => void;
 	}
 
-	let { projectId, show, onClose }: Props = $props();
+	let { projectId, show, onClose, onOpenScene }: Props = $props();
 
 	let searchQuery = $state('');
 	let replaceWith = $state('');
 	let caseSensitive = $state(false);
 	let wholeWord = $state(false);
 	let useRegex = $state(false);
+	let showReplace = $state(false);
 	let searchResults = $state<SearchResult[]>([]);
 	let isSearching = $state(false);
-	let showReplace = $state(false);
+	let hasSearched = $state(false);
 	let regexError = $state('');
-	let replaceCount = $state(0);
+	let selectedScopes = $state<Scope[]>(['scenes']);
 
-	let selectedScopes = $state<
-		Array<'scenes' | 'chapters' | 'characters' | 'plots' | 'worldbuilding'>
-	>(['scenes']);
+	const scopeLabels: { id: Scope; label: string }[] = [
+		{ id: 'scenes', label: 'シーン' },
+		{ id: 'chapters', label: '章' },
+		{ id: 'characters', label: 'キャラクター' },
+		{ id: 'plots', label: 'プロット' },
+		{ id: 'worldbuilding', label: '設定資料' }
+	];
 
-	// 検索実行
-	const handleSearch = async () => {
+	const typeLabels: Record<SearchResult['type'], string> = {
+		scene: 'シーン',
+		chapter: '章',
+		character: 'キャラクター',
+		plot: 'プロット',
+		worldbuilding: '設定資料'
+	};
+
+	let open = $derived(show);
+
+	function buildOptions(): SearchOptions {
+		return {
+			query: searchQuery,
+			caseSensitive,
+			wholeWord,
+			regex: useRegex,
+			scopes: selectedScopes
+		};
+	}
+
+	async function handleSearch() {
 		if (!searchQuery) return;
-
-		// 正規表現の検証
 		if (useRegex) {
 			const validation = validateRegex(searchQuery);
 			if (!validation.valid) {
@@ -40,258 +66,306 @@
 			}
 		}
 		regexError = '';
-
 		isSearching = true;
 		try {
-			const options: SearchOptions = {
-				query: searchQuery,
-				caseSensitive,
-				wholeWord,
-				regex: useRegex,
-				scopes: selectedScopes
-			};
-
-			searchResults = await searchInProject(projectId, options);
+			searchResults = await searchInProject(projectId, buildOptions());
+			hasSearched = true;
 		} catch (error) {
 			console.error('Search failed:', error);
+			toast.error('検索に失敗しました');
 		} finally {
 			isSearching = false;
 		}
-	};
+	}
 
-	// 置換実行
-	const handleReplace = async () => {
-		if (!searchQuery || !replaceWith) return;
-
-		const confirmed = confirm(
-			`"${searchQuery}" を "${replaceWith}" に置換します。よろしいですか？`
-		);
-		if (!confirmed) return;
-
+	async function handleReplace() {
+		if (!searchQuery) return;
+		const total = searchResults.reduce((n, r) => n + r.matches, 0);
+		const ok = await confirmDialog({
+			title: '一括置換',
+			message: `「${searchQuery}」を「${replaceWith}」に置換します(${total}か所)。この操作は元に戻せません。`,
+			confirmText: '置換する',
+			danger: true
+		});
+		if (!ok) return;
 		try {
-			const options = {
-				query: searchQuery,
+			const result = await replaceInProject(projectId, {
+				...buildOptions(),
 				replaceWith,
-				caseSensitive,
-				wholeWord,
-				regex: useRegex,
-				replaceAll: true,
-				scopes: selectedScopes
-			};
-
-			const result = await replaceInProject(projectId, options);
-			replaceCount = result.replaced;
-
-			// 置換後に再検索
+				replaceAll: true
+			});
+			toast.success(`${result.replaced}か所を置換しました`);
 			await handleSearch();
-
-			setTimeout(() => {
-				replaceCount = 0;
-			}, 3000);
 		} catch (error) {
 			console.error('Replace failed:', error);
-		}
-	};
-
-	// スコープの切り替え
-	function toggleScope(scope: (typeof selectedScopes)[number]) {
-		if (selectedScopes.includes(scope)) {
-			selectedScopes = selectedScopes.filter((s) => s !== scope);
-		} else {
-			selectedScopes = [...selectedScopes, scope];
+			toast.error('置換に失敗しました');
 		}
 	}
 
-	// Enterキーで検索
-	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Enter' && !e.shiftKey) {
+	function toggleScope(scope: Scope) {
+		selectedScopes = selectedScopes.includes(scope)
+			? selectedScopes.filter((s) => s !== scope)
+			: [...selectedScopes, scope];
+	}
+
+	function onKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter' && !e.isComposing) {
 			e.preventDefault();
-			handleSearch();
+			void handleSearch();
+		}
+	}
+
+	function openResult(result: SearchResult) {
+		if (result.type === 'scene' && onOpenScene) {
+			onClose();
+			onOpenScene(result.id);
 		}
 	}
 </script>
 
-{#if show}
-	<Modal title="検索と置換" {onClose} size="large">
-		<div class="space-y-4">
-			<!-- 検索フォーム -->
-			<div>
-				<label for="searchQuery" class="block mb-2 font-semibold">検索</label>
-				<input
-					id="searchQuery"
-					type="text"
-					bind:value={searchQuery}
-					onkeydown={handleKeydown}
-					placeholder="検索ワードを入力..."
-					class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-primary"
-				/>
-				{#if regexError}
-					<p class="text-red-600 text-sm mt-1">{regexError}</p>
-				{/if}
-			</div>
+<Sheet {open} title="検索と置換" size="full" onClose={() => onClose()}>
+	<div class="search">
+		<label class="field">
+			<span>検索</span>
+			<input
+				type="search"
+				bind:value={searchQuery}
+				onkeydown={onKeydown}
+				placeholder="検索ワード"
+				enterkeyhint="search"
+			/>
+		</label>
+		{#if regexError}<p class="error" role="alert">{regexError}</p>{/if}
 
-			<!-- 置換フォーム -->
+		{#if showReplace}
+			<label class="field">
+				<span>置換後</span>
+				<input type="text" bind:value={replaceWith} placeholder="置換後のテキスト" />
+			</label>
+		{/if}
+
+		<div class="chips" role="group" aria-label="検索範囲">
+			{#each scopeLabels as scope (scope.id)}
+				<button
+					class="chip"
+					class:on={selectedScopes.includes(scope.id)}
+					aria-pressed={selectedScopes.includes(scope.id)}
+					onclick={() => toggleScope(scope.id)}
+				>
+					{scope.label}
+				</button>
+			{/each}
+		</div>
+
+		<div class="options">
+			<label><input type="checkbox" bind:checked={caseSensitive} />大文字小文字を区別</label>
+			<label><input type="checkbox" bind:checked={wholeWord} />単語単位</label>
+			<label><input type="checkbox" bind:checked={useRegex} />正規表現</label>
+			<label><input type="checkbox" bind:checked={showReplace} />置換</label>
+		</div>
+
+		<div class="actions">
+			<button class="primary" onclick={handleSearch} disabled={isSearching || !searchQuery}>
+				{isSearching ? '検索中...' : '検索'}
+			</button>
 			{#if showReplace}
-				<div>
-					<label for="replaceWith" class="block mb-2 font-semibold">置換</label>
-					<input
-						id="replaceWith"
-						type="text"
-						bind:value={replaceWith}
-						placeholder="置換後のテキストを入力..."
-						class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-primary"
-					/>
-				</div>
-			{/if}
-
-			<!-- オプション -->
-			<div class="flex flex-wrap gap-4">
-				<label class="flex items-center gap-2 cursor-pointer">
-					<input type="checkbox" bind:checked={caseSensitive} class="w-4 h-4" />
-					<span>大文字小文字を区別</span>
-				</label>
-
-				<label class="flex items-center gap-2 cursor-pointer">
-					<input type="checkbox" bind:checked={wholeWord} class="w-4 h-4" />
-					<span>単語単位で検索</span>
-				</label>
-
-				<label class="flex items-center gap-2 cursor-pointer">
-					<input type="checkbox" bind:checked={useRegex} class="w-4 h-4" />
-					<span>正規表現を使用</span>
-				</label>
-
-				<label class="flex items-center gap-2 cursor-pointer">
-					<input type="checkbox" bind:checked={showReplace} class="w-4 h-4" />
-					<span>置換を表示</span>
-				</label>
-			</div>
-
-			<!-- 検索範囲 -->
-			<div>
-				<div class="block mb-2 font-semibold">検索範囲</div>
-				<div class="flex flex-wrap gap-2">
-					<button
-						onclick={() => toggleScope('scenes')}
-						class="px-3 py-1 rounded border transition-colors"
-						class:bg-primary={selectedScopes.includes('scenes')}
-						class:text-white={selectedScopes.includes('scenes')}
-						class:bg-gray-100={!selectedScopes.includes('scenes')}
-					>
-						シーン
-					</button>
-					<button
-						onclick={() => toggleScope('chapters')}
-						class="px-3 py-1 rounded border transition-colors"
-						class:bg-primary={selectedScopes.includes('chapters')}
-						class:text-white={selectedScopes.includes('chapters')}
-						class:bg-gray-100={!selectedScopes.includes('chapters')}
-					>
-						章
-					</button>
-					<button
-						onclick={() => toggleScope('characters')}
-						class="px-3 py-1 rounded border transition-colors"
-						class:bg-primary={selectedScopes.includes('characters')}
-						class:text-white={selectedScopes.includes('characters')}
-						class:bg-gray-100={!selectedScopes.includes('characters')}
-					>
-						キャラクター
-					</button>
-					<button
-						onclick={() => toggleScope('plots')}
-						class="px-3 py-1 rounded border transition-colors"
-						class:bg-primary={selectedScopes.includes('plots')}
-						class:text-white={selectedScopes.includes('plots')}
-						class:bg-gray-100={!selectedScopes.includes('plots')}
-					>
-						プロット
-					</button>
-					<button
-						onclick={() => toggleScope('worldbuilding')}
-						class="px-3 py-1 rounded border transition-colors"
-						class:bg-primary={selectedScopes.includes('worldbuilding')}
-						class:text-white={selectedScopes.includes('worldbuilding')}
-						class:bg-gray-100={!selectedScopes.includes('worldbuilding')}
-					>
-						設定資料
-					</button>
-				</div>
-			</div>
-
-			<!-- アクションボタン -->
-			<div class="flex gap-2">
-				<Button onclick={handleSearch} disabled={isSearching || !searchQuery} class="flex-1">
-					{isSearching ? '検索中...' : '検索'}
-				</Button>
-
-				{#if showReplace}
-					<Button
-						onclick={handleReplace}
-						variant="secondary"
-						disabled={!searchQuery || !replaceWith}
-						class="flex-1"
-					>
-						すべて置換
-					</Button>
-				{/if}
-			</div>
-
-			<!-- 置換結果 -->
-			{#if replaceCount > 0}
-				<div class="p-3 bg-green-100 text-green-800 rounded">
-					{replaceCount}箇所を置換しました
-				</div>
-			{/if}
-
-			<!-- 検索結果 -->
-			{#if searchResults.length > 0}
-				<div>
-					<h3 class="font-semibold mb-2">検索結果 ({searchResults.length}件)</h3>
-					<div class="max-h-96 overflow-y-auto space-y-2">
-						{#each searchResults as result}
-							<div class="p-3 bg-gray-50 rounded hover:bg-gray-100 cursor-pointer">
-								<div class="flex items-center justify-between mb-1">
-									<span class="font-semibold">{result.title}</span>
-									<span class="text-sm text-gray-600">
-										{result.type === 'scene'
-											? 'シーン'
-											: result.type === 'chapter'
-												? '章'
-												: result.type === 'character'
-													? 'キャラクター'
-													: result.type === 'plot'
-														? 'プロット'
-														: '設定資料'}
-										・{result.matches}件
-									</span>
-								</div>
-								<p class="text-sm text-gray-700 line-clamp-2">{result.preview}</p>
-							</div>
-						{/each}
-					</div>
-				</div>
-			{:else if searchQuery && !isSearching}
-				<div class="text-center text-gray-600 py-8">検索結果がありません</div>
+				<button
+					class="danger"
+					onclick={handleReplace}
+					disabled={!searchQuery || searchResults.length === 0}
+				>
+					すべて置換
+				</button>
 			{/if}
 		</div>
-	</Modal>
-{/if}
+
+		{#if searchResults.length > 0}
+			<h3>検索結果 ({searchResults.length}件)</h3>
+			<ul class="results">
+				{#each searchResults as result (result.type + result.id)}
+					<li>
+						<button
+							class="result"
+							disabled={result.type !== 'scene' || !onOpenScene}
+							onclick={() => openResult(result)}
+						>
+							<span class="result-head">
+								<strong>{result.title}</strong>
+								<small>{typeLabels[result.type]}・{result.matches}件</small>
+							</span>
+							<span class="preview">{result.preview}</span>
+						</button>
+					</li>
+				{/each}
+			</ul>
+		{:else if hasSearched && searchQuery && !isSearching}
+			<p class="empty">検索結果がありません</p>
+		{/if}
+	</div>
+</Sheet>
 
 <style>
-	.bg-primary {
-		background-color: var(--color-primary);
+	.search {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		padding: 0 16px 24px;
 	}
 
-	.text-white {
-		color: white;
+	.field {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		font-size: 13px;
+		color: var(--color-text-secondary);
 	}
 
-	.line-clamp-2 {
+	.field input {
+		padding: 10px 12px;
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		background: var(--color-background);
+		color: var(--color-text);
+		font-size: 16px;
+		font-family: inherit;
+	}
+
+	.error {
+		margin: 0;
+		font-size: 13px;
+		color: var(--color-error);
+	}
+
+	.chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.chip {
+		height: 32px;
+		padding: 0 12px;
+		border: 1px solid var(--color-border);
+		border-radius: 999px;
+		background: var(--color-background);
+		color: var(--color-text-secondary);
+		font-size: 13px;
+		cursor: pointer;
+	}
+
+	.chip.on {
+		border-color: var(--color-primary);
+		background: color-mix(in srgb, var(--color-primary) 14%, var(--color-background));
+		color: var(--color-primary);
+		font-weight: 600;
+	}
+
+	.options {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px 16px;
+		font-size: 13px;
+	}
+
+	.options label {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		cursor: pointer;
+	}
+
+	.actions {
+		display: flex;
+		gap: 8px;
+	}
+
+	.actions button {
+		flex: 1;
+		height: 44px;
+		border-radius: 12px;
+		font-size: 14px;
+		cursor: pointer;
+	}
+
+	.actions .primary {
+		border: none;
+		background: var(--color-primary);
+		color: #fff;
+		font-weight: 600;
+	}
+
+	.actions .danger {
+		border: 1px solid var(--color-border);
+		background: var(--color-background);
+		color: var(--color-error);
+	}
+
+	.actions button:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+
+	h3 {
+		margin: 4px 0 0;
+		font-size: 14px;
+	}
+
+	.results {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.results li {
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.result {
+		width: 100%;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		padding: 12px 4px;
+		border: none;
+		background: transparent;
+		color: var(--color-text);
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.result:disabled {
+		cursor: default;
+	}
+
+	.result-head {
+		display: flex;
+		justify-content: space-between;
+		gap: 12px;
+		align-items: baseline;
+	}
+
+	.result-head small {
+		flex: none;
+		color: var(--color-text-secondary);
+	}
+
+	.preview {
+		font-size: 13px;
+		line-height: 1.6;
+		color: var(--color-text-secondary);
 		display: -webkit-box;
 		-webkit-line-clamp: 2;
 		line-clamp: 2;
 		-webkit-box-orient: vertical;
 		overflow: hidden;
+	}
+
+	.empty {
+		margin: 24px 0;
+		text-align: center;
+		font-size: 14px;
+		color: var(--color-text-secondary);
 	}
 </style>

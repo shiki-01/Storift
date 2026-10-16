@@ -1,3 +1,4 @@
+import { toast } from '$lib/stores/toast.svelte';
 /**
  * グローバルエラーハンドラー
  */
@@ -75,7 +76,7 @@ export function initializeErrorHandler(): void {
 
 		// エラーをユーザーに通知(オプション)
 		if (import.meta.env.DEV) {
-			alert(`エラーが発生しました: ${event.error?.message || event.message}`);
+			toast.error(`エラーが発生しました: ${event.error?.message || event.message}`);
 		}
 	});
 
@@ -94,7 +95,7 @@ export function initializeErrorHandler(): void {
 
 		// エラーをユーザーに通知(オプション)
 		if (import.meta.env.DEV) {
-			alert(`Promise拒否: ${event.reason?.message || String(event.reason)}`);
+			toast.error(`Promise拒否: ${event.reason?.message || String(event.reason)}`);
 		}
 	});
 

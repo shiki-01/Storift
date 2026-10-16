@@ -91,6 +91,7 @@ async function resolveConflict(
 				conflictData: conflictData as unknown as ConflictData<typeof existing>
 			});
 			syncStore.status = 'conflict';
+			syncStore.conflictCount = pendingConflicts.length;
 			return false; // 一旦ローカルを保持
 		}
 
@@ -123,6 +124,7 @@ export async function resolveManualConflict(
 
 	const conflict = pendingConflicts[index];
 	pendingConflicts.splice(index, 1);
+	syncStore.conflictCount = pendingConflicts.length;
 
 	if (resolution === 'remote') {
 		// リモートを採用してローカルを更新

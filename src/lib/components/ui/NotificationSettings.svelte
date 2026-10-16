@@ -114,7 +114,7 @@
 <div class="notification-settings space-y:20">
 	<!-- 通知権限 -->
 	<Card>
-		<h3 class="font:16 font:semibold fg:gray-900 mb:12">通知権限</h3>
+		<h3 class="font:16 font:semibold fg:theme-text mb:12">通知権限</h3>
 
 		<div class="space-y:12">
 			{#if permission === 'granted'}
@@ -129,13 +129,13 @@
 				<div class="flex align-items:center gap:8 p:12 bg:red-50 border:1|solid|red-200 r:8">
 					<span class="font:20">✗</span>
 					<div class="flex-grow">
-						<p class="font:14 fg:red-800">通知が無効です</p>
-						<p class="font:12 fg:red-600 mt:4">ブラウザの設定から通知を許可してください</p>
+						<p class="font:14 fg:theme-error">通知が無効です</p>
+						<p class="font:12 fg:theme-error mt:4">ブラウザの設定から通知を許可してください</p>
 					</div>
 				</div>
 			{:else}
 				<div class="space-y:12">
-					<p class="font:14 fg:gray-700">
+					<p class="font:14 fg:theme-text-secondary">
 						通知を有効にすると、執筆リマインダーや同期ステータスなどの通知を受け取れます。
 					</p>
 					<Button variant="primary" onclick={handleRequestPermission}>通知を許可</Button>
@@ -152,12 +152,14 @@
 
 	<!-- 執筆目標とリマインダー -->
 	<Card>
-		<h3 class="font:16 font:semibold fg:gray-900 mb:12">執筆目標とリマインダー</h3>
+		<h3 class="font:16 font:semibold fg:theme-text mb:12">執筆目標とリマインダー</h3>
 
 		<div class="space-y:16">
 			<!-- 1日の目標文字数 -->
 			<div>
-				<label for="dailyGoal" class="font:14 fg:gray-700 mb:6 block"> 1日の目標文字数 </label>
+				<label for="dailyGoal" class="font:14 fg:theme-text-secondary mb:6 block">
+					1日の目標文字数
+				</label>
 				<div class="flex align-items:center gap:12">
 					<input
 						id="dailyGoal"
@@ -168,7 +170,7 @@
 						bind:value={dailyWordCount}
 						class="flex-grow"
 					/>
-					<span class="font:14 fg:gray-700 w:80 text-align:right"
+					<span class="font:14 fg:theme-text-secondary w:80 text-align:right"
 						>{dailyWordCount.toLocaleString()}文字</span
 					>
 				</div>
@@ -183,19 +185,19 @@
 						class="w:18 h:18"
 						disabled={permission !== 'granted'}
 					/>
-					<span class="font:14 fg:gray-700">執筆リマインダーを有効にする</span>
+					<span class="font:14 fg:theme-text-secondary">執筆リマインダーを有効にする</span>
 				</label>
 
 				{#if reminderEnabled}
 					<div class="ml:26">
-						<label for="reminderTime" class="font:14 fg:gray-700 mb:6 block">
+						<label for="reminderTime" class="font:14 fg:theme-text-secondary mb:6 block">
 							リマインダー時刻
 						</label>
 						<input
 							id="reminderTime"
 							type="time"
 							bind:value={reminderTime}
-							class="py:8 px:12 r:8 border:1|solid|gray-300 font:14"
+							class="py:8 px:12 r:8 border:1|solid|theme-border font:14"
 						/>
 					</div>
 				{/if}
@@ -212,7 +214,7 @@
 		<div class="flex justify-content:space-between align-items:center mb:12">
 			<h3 class="font:16 font:semibold">通知履歴</h3>
 			<button
-				class="font:14 fg:blue-600 cursor:pointer hover:fg:blue-700"
+				class="font:14 fg:theme-primary cursor:pointer hover:fg:theme-primary"
 				onclick={() => (showHistory = !showHistory)}
 			>
 				{showHistory ? '非表示' : '表示'}
@@ -222,23 +224,25 @@
 		{#if showHistory}
 			<div class="space-y:8">
 				{#if notificationHistory.length === 0}
-					<p class="font:14 fg:gray-500 text-align:center py:16">通知履歴はありません</p>
+					<p class="font:14 fg:theme-text-secondary text-align:center py:16">
+						通知履歴はありません
+					</p>
 				{:else}
 					{#each notificationHistory as notification}
-						<div class="p:12 border:1|solid|gray-200 r:8">
+						<div class="p:12 border:1|solid|theme-border r:8">
 							<div class="flex justify-content:space-between align-items:start mb:4">
 								<div class="flex-grow">
 									<div class="flex align-items:center gap:8 mb:4">
-										<span class="font:14 font:semibold fg:gray-900">
+										<span class="font:14 font:semibold fg:theme-text">
 											{notification.title}
 										</span>
 										<span class="px:6 py:2 bg:theme-text fg:theme-background font:11 r:4">
 											{getNotificationTypeLabel(notification.type)}
 										</span>
 									</div>
-									<p class="font:13 fg:gray-700">{notification.body}</p>
+									<p class="font:13 fg:theme-text-secondary">{notification.body}</p>
 								</div>
-								<span class="font:12 fg:gray-500 whitespace:nowrap ml:12">
+								<span class="font:12 fg:theme-text-secondary whitespace:nowrap ml:12">
 									{formatTimestamp(notification.timestamp)}
 								</span>
 							</div>

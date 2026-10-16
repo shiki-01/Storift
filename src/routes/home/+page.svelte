@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 	import title from '$lib/assets/title.svg';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -92,9 +93,9 @@
 	};
 
 	const statusColors = {
-		draft: 'bg:gray-100 fg:white',
-		writing: 'bg:blue-100 fg:blue-700',
-		completed: 'bg:green-100 fg:green-700'
+		draft: 'bg:theme-surface fg:theme-text-secondary',
+		writing: 'bg:theme-surface fg:theme-primary',
+		completed: 'bg:theme-surface fg:theme-success'
 	};
 
 	// コンテキストメニュー - プロジェクト
@@ -140,14 +141,13 @@
 			renameValue = '';
 		} catch (error) {
 			console.error('Failed to rename project:', error);
-			alert('プロジェクト名の変更に失敗しました');
+			toast.error('プロジェクト名の変更に失敗しました');
 		}
 	};
 
 	// 削除処理
 	async function handleDeleteProject(project: Project) {
-		if (!confirm(`プロジェクト「${project.title}」を削除しますか?\nこの操作は取り消せません。`))
-			return;
+		if (!(await confirmDialog({ message: `プロジェクト「${project.title}」を削除しますか?\nこの操作は取り消せません。`, danger: true }))) return;
 
 		try {
 			// プロジェクト関連のすべてのデータを削除
@@ -196,7 +196,7 @@
 			projectsStore.projects = projectsStore.projects.filter((p) => p.id !== project.id);
 		} catch (error) {
 			console.error('Failed to delete project:', error);
-			alert('プロジェクトの削除に失敗しました');
+			toast.error('プロジェクトの削除に失敗しました');
 		}
 	}
 
@@ -235,10 +235,10 @@
 				}
 			}
 
-			alert('プロジェクトを複製しました');
+			toast.success('プロジェクトを複製しました');
 		} catch (error) {
 			console.error('Failed to duplicate project:', error);
-			alert('プロジェクトの複製に失敗しました');
+			toast.error('プロジェクトの複製に失敗しました');
 		}
 	}
 
@@ -248,7 +248,7 @@
 			await exportProject(project.id, { format: 'txt' });
 		} catch (error) {
 			console.error('Failed to export project:', error);
-			alert('エクスポートに失敗しました');
+			toast.error('エクスポートに失敗しました');
 		}
 	}
 </script>
@@ -264,11 +264,11 @@
 
 	{#if projectsStore.isLoading}
 		<div class="text-align:center p:48">
-			<p class="fg:gray-600">読み込み中...</p>
+			<p class="fg:theme-text-secondary">読み込み中...</p>
 		</div>
 	{:else if projectsStore.filteredProjects.length === 0}
 		<div class="text-align:center p:48">
-			<p class="fg:gray-600 font:18 mb:16">
+			<p class="fg:theme-text-secondary font:18 mb:16">
 				{projectsStore.searchQuery ? '作品が見つかりませんでした' : 'まだ作品がありません'}
 			</p>
 			{#if !projectsStore.searchQuery}
@@ -294,7 +294,7 @@
 								{project.title}
 							</h3>
 							<div
-								class="position:absolute top:0 right:0 w:30px h:full bg:linear-gradient(to|right,transparent,white)"
+								class="position:absolute top:0 right:0 w:30px h:full bg:linear-gradient(to|right,transparent,var(--color-surface))"
 							></div>
 						</div>
 						<span class="py:6px r:4 font:12 {statusColors[project.status]}">
@@ -334,7 +334,7 @@
 			<textarea
 				bind:value={newProjectDescription}
 				placeholder="作品の説明や構想メモ"
-				class="w:full p:12|16 border:1|solid|gray-300 r:6 font:16 outline:none focus:border-color:blue-500 min-h:100 resize:vertical"
+				class="w:full p:12|16 border:1|solid|theme-border r:6 font:16 outline:none focus:border-color:theme-primary min-h:100 resize:vertical"
 			></textarea>
 		</div>
 

@@ -1,3 +1,4 @@
+import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 import { db } from '$lib/db';
 import type { Project, Chapter, Scene, Character, Plot, Worldbuilding } from '$lib/types';
 import type { ProgressLog } from '$lib/types/progress';
@@ -122,11 +123,13 @@ export async function restoreFromBackup(data: BackupData): Promise<void> {
 	}
 
 	// 確認
-	const confirm = window.confirm(
-		`${data.projects.length}個のプロジェクトを復元します。既存のデータは上書きされる可能性があります。続行しますか?`
-	);
+	const proceed = await confirmDialog({
+		title: 'バックアップの復元',
+		message: `${data.projects.length}個のプロジェクトを復元します。既存のデータは上書きされる可能性があります。続行しますか?`,
+		confirmText: '復元する'
+	});
 
-	if (!confirm) {
+	if (!proceed) {
 		return;
 	}
 
@@ -137,9 +140,11 @@ export async function restoreFromBackup(data: BackupData): Promise<void> {
 
 		if (existing) {
 			// 上書き確認
-			const overwrite = window.confirm(
-				`プロジェクト「${projectData.project.title}」は既に存在します。上書きしますか?`
-			);
+			const overwrite = await confirmDialog({
+				message: `プロジェクト「${projectData.project.title}」は既に存在します。上書きしますか?`,
+				confirmText: '上書き',
+				danger: true
+			});
 
 			if (!overwrite) {
 				continue;
@@ -164,7 +169,7 @@ export async function restoreFromBackup(data: BackupData): Promise<void> {
 		await db.progressLogs.bulkPut(projectData.progressLogs as ProgressLog[]);
 	}
 
-	alert('バックアップの復元が完了しました');
+	toast.success('バックアップの復元が完了しました');
 }
 
 /**

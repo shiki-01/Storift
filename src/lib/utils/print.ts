@@ -1,3 +1,4 @@
+import { toast } from '$lib/stores/toast.svelte';
 /**
  * 印刷プレビュー用のユーティリティ
  */
@@ -160,7 +161,7 @@ export function openPrintPreview(
 ): void {
 	const printWindow = window.open('', '_blank');
 	if (!printWindow) {
-		alert('ポップアップがブロックされました。ポップアップを許可してください。');
+		toast.error('ポップアップがブロックされました。ポップアップを許可してください。');
 		return;
 	}
 

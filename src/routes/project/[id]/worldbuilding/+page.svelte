@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmDialog } from '$lib/stores/toast.svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { worldbuildingDB } from '$lib/db';
 	import { queueChange } from '$lib/services/sync.service';
@@ -144,7 +145,7 @@
 	};
 
 	async function handleDelete(id: string) {
-		if (!confirm('この設定資料を削除しますか?')) return;
+		if (!(await confirmDialog({ message: 'この設定資料を削除しますか?', danger: true }))) return;
 		await worldbuildingDB.delete(id);
 		// 同期キューに追加
 		await queueChange('worldbuilding', id, 'delete');
@@ -196,7 +197,7 @@
 	<div class="flex-grow:1 flex flex-direction:column">
 		<header class="bg:theme-background border-bottom:2|solid|theme-text">
 			<div
-				class="max-w:1280 mx:auto w:100% px:24 py:20 flex justify-content:space-between align-items:center"
+				class="page-header max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 justify-content:space-between align-items:center"
 			>
 				<div>
 					<h1 class="font:26 font-weight:600 m:0 fg:theme-text">設定資料管理</h1>
@@ -213,7 +214,9 @@
 		</header>
 
 		<main class="flex-grow:1 overflow-y:auto">
-			<div class="max-w:1280 mx:auto w:100% px:24 py:24 flex flex-direction:column gap:24">
+			<div
+				class="page-body max-w:1280 mx:auto w:100% px:24 py:24 flex flex-direction:column gap:24"
+			>
 				<div class="flex flex-wrap gap:16 justify-content:space-between align-items:center">
 					<div class="flex:1 min-w:240">
 						<Input bind:value={searchQuery} placeholder="タイトル、内容、タグで検索..." />
@@ -535,5 +538,29 @@
 		line-clamp: 3;
 		-webkit-box-orient: vertical;
 		overflow: hidden;
+	}
+
+	.page-header :global(button) {
+		white-space: nowrap;
+	}
+
+	@media (max-width: 768px) {
+		.page-header {
+			padding: 12px 16px;
+		}
+
+		.page-header h1 {
+			font-size: 20px;
+		}
+
+		.page-body {
+			padding: 12px 16px 24px;
+			min-width: 0;
+		}
+
+		.page-header > :global(*) {
+			min-width: 0;
+			max-width: 100%;
+		}
 	}
 </style>

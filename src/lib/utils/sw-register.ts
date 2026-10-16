@@ -1,3 +1,4 @@
+import { toast } from '$lib/stores/toast.svelte';
 import { Workbox } from 'workbox-window';
 
 let wb: Workbox | null = null;
@@ -34,9 +35,10 @@ export async function registerServiceWorker(): Promise<void> {
 			console.log('🔄 New Service Worker available');
 
 			// 新しいService Workerがあることをユーザーに通知
-			if (confirm('新しいバージョンが利用可能です。更新しますか?')) {
-				wb?.messageSkipWaiting();
-			}
+			toast.info('新しいバージョンが利用できます', {
+				duration: 0,
+				action: { label: '更新', onClick: () => wb?.messageSkipWaiting() }
+			});
 		});
 
 		// Service Workerがコントロールを取得

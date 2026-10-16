@@ -57,7 +57,7 @@
 	<select
 		{value}
 		onchange={handleChange}
-		class="p:8|12 r:6 border:1|solid|gray-300 bg:white cursor:pointer font:13 outline:none focus:border:blue-500 transition:all|0.2s"
+		class="p:8|12 r:6 border:1|solid|theme-border bg:theme-background cursor:pointer font:13 outline:none focus:border:theme-primary transition:all|0.2s"
 	>
 		{#each fonts as font (font.value)}
 			<option value={font.value} style="font-family: {font.fontFamily};">

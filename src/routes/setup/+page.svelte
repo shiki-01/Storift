@@ -137,17 +137,17 @@
 	};
 </script>
 
-<div class="max-h:calc(100vh-66px) overflow-y:auto bg:theme-background flex ai:start jc:center p:24">
+<div class="h:100% overflow-y:auto bg:theme-background flex ai:start jc:center p:24">
 	<div class="max-w:600 w:full">
 		<Card padding="lg">
 			<h2 class="font:24 font-weight:600 m:0|0|24|0">Firebase初期設定</h2>
 
 			<!-- 一括ペーストセクション -->
 			<div class="bg:theme-surface p:16 r:8 mb:24 b:1|solid|theme-border">
-				<h3 class="flex flex-direction:row gap:.5em font:16 font-weight:600 m:0|0|12|0 fg:blue-900">
+				<h3 class="flex flex-direction:row gap:.5em font:16 font-weight:600 m:0|0|12|0 fg:theme-primary">
 					<Icon name="rocket" /> 設定を一括入力
 				</h3>
-				<p class="font:14 fg:blue-800 m:0|0|12|0">
+				<p class="font:14 fg:theme-primary m:0|0|12|0">
 					Firebase Consoleからコピーした設定をそのまま貼り付けてください
 				</p>
 				<textarea
@@ -270,7 +270,7 @@ projectId: 'your-project',
 			{/if}
 		</Card>
 
-		<p class="text-align:center fg:gray-600 font:14 mt:24">
+		<p class="text-align:center fg:theme-text-secondary font:14 mt:24">
 			Firebase Consoleで取得した設定情報を入力してください
 		</p>
 	</div>

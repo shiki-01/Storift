@@ -34,9 +34,9 @@
 </script>
 
 <button
-	class="r:6 cursor:pointer transition:all|.2s|ease px:8px py:4px {variantClasses[variant]} {sizeClasses[
-		size
-	]} disabled:opacity:.5 disabled:cursor:not-allowed {className}"
+	class="r:6 cursor:pointer transition:all|.2s|ease px:8px py:4px {variantClasses[
+		variant
+	]} {sizeClasses[size]} disabled:opacity:.5 disabled:cursor:not-allowed {className}"
 	{type}
 	{disabled}
 	{onclick}

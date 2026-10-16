@@ -71,7 +71,7 @@ export const scenesDB = {
 		if (currentScene && changes.content !== undefined) {
 			// 内容に変化がある場合のみ履歴を保存
 			if (currentScene.content !== changes.content) {
-				await historyDB.create(
+				await historyDB.createThrottled(
 					'scene',
 					currentScene.id,
 					currentScene.projectId,

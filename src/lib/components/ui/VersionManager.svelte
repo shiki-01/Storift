@@ -1,4 +1,5 @@
 ﻿<script lang="ts">
+	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 	import { onMount } from 'svelte';
 	import { versionService, type TextDiff, type RestorePoint } from '$lib/services/version.service';
 	import type { History } from '$lib/types';
@@ -74,19 +75,19 @@
 	};
 
 	async function handleRestore(restorePointId: string) {
-		if (confirm('この復元ポイントに戻しますか?')) {
+		if (await confirmDialog('この復元ポイントに戻しますか?')) {
 			const success = await versionService.restoreFromPoint(restorePointId);
 			if (success) {
-				alert('復元しました');
+				toast.success('復元しました');
 				await loadHistory();
 			} else {
-				alert('復元に失敗しました');
+				toast.error('復元に失敗しました');
 			}
 		}
 	}
 
-	function handleDeleteRestorePoint(restorePointId: string) {
-		if (confirm('この復元ポイントを削除しますか?')) {
+	async function handleDeleteRestorePoint(restorePointId: string) {
+		if (await confirmDialog({ message: 'この復元ポイントを削除しますか?', danger: true })) {
 			versionService.deleteRestorePoint(restorePointId);
 			loadRestorePoints();
 		}
@@ -118,29 +119,31 @@
 
 <div class="version-manager space-y:20">
 	<!-- 履歴リスト -->
-	<div class="bg:white r:12 p:20 shadow:0|2|8|rgba(0,0,0,0.1)">
-		<h3 class="font:18 font:semibold fg:gray-900 mb:16">変更履歴</h3>
+	<div class="bg:theme-background r:12 p:20 shadow:0|2|8|rgba(0,0,0,0.1)">
+		<h3 class="font:18 font:semibold fg:theme-text mb:16">変更履歴</h3>
 
 		{#if history.length === 0}
-			<p class="font:14 fg:gray-500 text-align:center py:20">履歴はありません</p>
+			<p class="font:14 fg:theme-text-secondary text-align:center py:20">履歴はありません</p>
 		{:else}
 			<div class="space-y:8">
 				{#each history as entry}
-					<div class="p:12 border:1|solid|gray-200 r:8 hover:bg:gray-50 transition:all|0.2s">
+					<div
+						class="p:12 border:1|solid|theme-border r:8 hover:bg:theme-surface transition:all|0.2s"
+					>
 						<div class="flex justify-content:space-between align-items:start">
 							<div class="flex-grow">
 								<div class="flex align-items:center gap:8 mb:4">
-									<span class="px:8 py:2 bg:blue-100 fg:blue-700 font:12 r:4">
+									<span class="px:8 py:2 bg:theme-surface fg:theme-primary font:12 r:4">
 										{getChangeTypeLabel(entry.changeType)}
 									</span>
-									<span class="font:14 fg:gray-600">
+									<span class="font:14 fg:theme-text-secondary">
 										{formatDate(entry.createdAt)}
 									</span>
 								</div>
 							</div>
 
 							<div class="flex gap:8">
-								<label class="font:12 fg:gray-600 cursor:pointer">
+								<label class="font:12 fg:theme-text-secondary cursor:pointer">
 									<input
 										type="radio"
 										name="oldVersion"
@@ -150,7 +153,7 @@
 									/>
 									旧
 								</label>
-								<label class="font:12 fg:gray-600 cursor:pointer">
+								<label class="font:12 fg:theme-text-secondary cursor:pointer">
 									<input
 										type="radio"
 										name="newVersion"
@@ -161,7 +164,7 @@
 									新
 								</label>
 								<button
-									class="px:8 py:2 bg:gray-100 fg:gray-700 font:12 r:4 hover:bg:gray-200 cursor:pointer"
+									class="px:8 py:2 bg:theme-surface fg:theme-text-secondary font:12 r:4 hover:bg:gray-200 cursor:pointer"
 									onclick={() => {
 										selectedHistory = entry.id;
 										showCreateRestorePoint = true;
@@ -188,24 +191,26 @@
 	</div>
 
 	<!-- 復元ポイント -->
-	<div class="bg:white r:12 p:20 shadow:0|2|8|rgba(0,0,0,0.1)">
-		<h3 class="font:18 font:semibold fg:gray-900 mb:16">復元ポイント</h3>
+	<div class="bg:theme-background r:12 p:20 shadow:0|2|8|rgba(0,0,0,0.1)">
+		<h3 class="font:18 font:semibold fg:theme-text mb:16">復元ポイント</h3>
 
 		{#if restorePoints.length === 0}
-			<p class="font:14 fg:gray-500 text-align:center py:20">復元ポイントはありません</p>
+			<p class="font:14 fg:theme-text-secondary text-align:center py:20">
+				復元ポイントはありません
+			</p>
 		{:else}
 			<div class="space-y:8">
 				{#each restorePoints as point}
-					<div class="p:12 border:1|solid|gray-200 r:8">
+					<div class="p:12 border:1|solid|theme-border r:8">
 						<div class="flex justify-content:space-between align-items:start mb:8">
 							<div class="flex-grow">
-								<h4 class="font:15 font:semibold fg:gray-900 mb:4">
+								<h4 class="font:15 font:semibold fg:theme-text mb:4">
 									{point.name}
 								</h4>
 								{#if point.description}
-									<p class="font:13 fg:gray-600 mb:4">{point.description}</p>
+									<p class="font:13 fg:theme-text-secondary mb:4">{point.description}</p>
 								{/if}
-								<p class="font:12 fg:gray-500">
+								<p class="font:12 fg:theme-text-secondary">
 									{formatDate(point.createdAt)}
 								</p>
 							</div>
@@ -229,18 +234,18 @@
 	<Modal title="バージョン比較" onClose={() => (showDiffModal = false)} size="large">
 		<div class="diff-viewer">
 			<!-- 統計情報 -->
-			<div class="flex gap:16 mb:20 p:16 bg:gray-50 r:8">
+			<div class="flex gap:16 mb:20 p:16 bg:theme-surface r:8">
 				<div class="text-align:center">
-					<div class="font:24 font:bold fg:green-600">{diffStats.additions}</div>
-					<div class="font:12 fg:gray-600">追加</div>
+					<div class="font:24 font:bold fg:theme-success">{diffStats.additions}</div>
+					<div class="font:12 fg:theme-text-secondary">追加</div>
 				</div>
 				<div class="text-align:center">
-					<div class="font:24 font:bold fg:red-600">{diffStats.deletions}</div>
-					<div class="font:12 fg:gray-600">削除</div>
+					<div class="font:24 font:bold fg:theme-error">{diffStats.deletions}</div>
+					<div class="font:12 fg:theme-text-secondary">削除</div>
 				</div>
 				<div class="text-align:center">
-					<div class="font:24 font:bold fg:blue-600">{diffStats.totalChanges}</div>
-					<div class="font:12 fg:gray-600">変更</div>
+					<div class="font:24 font:bold fg:theme-primary">{diffStats.totalChanges}</div>
+					<div class="font:12 fg:theme-text-secondary">変更</div>
 				</div>
 			</div>
 
@@ -257,18 +262,20 @@
 	<Modal title="復元ポイントを作成" onClose={() => (showCreateRestorePoint = false)} size="medium">
 		<div class="space-y:16">
 			<div>
-				<label for="restorePointName" class="font:14 fg:gray-700 mb:6 block"> 名前 </label>
+				<label for="restorePointName" class="font:14 fg:theme-text-secondary mb:6 block">
+					名前
+				</label>
 				<input
 					id="restorePointName"
 					type="text"
 					bind:value={restorePointName}
 					placeholder="復元ポイントの名前"
-					class="w:full py:8 px:12 r:8 border:1|solid|gray-300 font:14"
+					class="w:full py:8 px:12 r:8 border:1|solid|theme-border font:14"
 				/>
 			</div>
 
 			<div>
-				<label for="restorePointDescription" class="font:14 fg:gray-700 mb:6 block">
+				<label for="restorePointDescription" class="font:14 fg:theme-text-secondary mb:6 block">
 					説明(任意)
 				</label>
 				<textarea
@@ -276,7 +283,7 @@
 					bind:value={restorePointDescription}
 					placeholder="復元ポイントの説明"
 					rows="3"
-					class="w:full py:8 px:12 r:8 border:1|solid|gray-300 font:14 resize:vertical"
+					class="w:full py:8 px:12 r:8 border:1|solid|theme-border font:14 resize:vertical"
 				></textarea>
 			</div>
 

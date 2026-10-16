@@ -76,7 +76,7 @@
 
 	// 他形式からStorift形式に変換
 	function convertToStorift() {
-		const pattern = convertPatterns.find(p => p.id === selectedConvertFormat);
+		const pattern = convertPatterns.find((p) => p.id === selectedConvertFormat);
 		if (pattern) {
 			text = pattern.convert(text);
 		}
@@ -93,14 +93,20 @@
 	<!-- タブ -->
 	<div class="flex gap:4 bg:theme-background-secondary r:8 p:4">
 		<button
-			class="flex:1 flex align-items:center justify-content:center gap:8 p:12 r:6 font:14 font-weight:500 cursor:pointer transition:all|0.2s border:none {activeTab === 'formatting' ? 'bg:$(theme.primary) fg:white' : 'bg:transparent fg:theme-text hover:bg:theme-background'}"
+			class="flex:1 flex align-items:center justify-content:center gap:8 p:12 r:6 font:14 font-weight:500 cursor:pointer transition:all|0.2s border:none {activeTab ===
+			'formatting'
+				? 'bg:$(theme.primary) fg:white'
+				: 'bg:transparent fg:theme-text hover:bg:theme-background'}"
 			onclick={() => (activeTab = 'formatting')}
 		>
 			<Icon name="text-increase" class="w:18px" />
 			テキスト整形
 		</button>
 		<button
-			class="flex:1 flex align-items:center justify-content:center gap:8 p:12 r:6 font:14 font-weight:500 cursor:pointer transition:all|0.2s border:none {activeTab === 'ruby' ? 'bg:$(theme.primary) fg:white' : 'bg:transparent fg:theme-text hover:bg:theme-background'}"
+			class="flex:1 flex align-items:center justify-content:center gap:8 p:12 r:6 font:14 font-weight:500 cursor:pointer transition:all|0.2s border:none {activeTab ===
+			'ruby'
+				? 'bg:$(theme.primary) fg:white'
+				: 'bg:transparent fg:theme-text hover:bg:theme-background'}"
 			onclick={() => (activeTab = 'ruby')}
 		>
 			<Icon name="abc" class="w:18px" />
@@ -154,10 +160,18 @@
 			<!-- 対応記法 -->
 			<div>
 				<span class="display:block font-weight:500 m:0|0|12|0 fg:theme-text">対応記法</span>
-				<div class="b:1|solid|theme-border r:8 p:16 bg:theme-background-secondary font:13 fg:theme-text-secondary">
-					<p class="m:0|0|8|0"><code class="bg:theme-background px:6 py:2 r:4">｜親文字《ルビ》</code> — 任意の文字列にルビ</p>
-					<p class="m:0|0|8|0"><code class="bg:theme-background px:6 py:2 r:4">漢字《かんじ》</code> — 漢字のみにルビ</p>
-					<p class="m:0"><code class="bg:theme-background px:6 py:2 r:4">《《傍点》》</code> — 傍点を付ける</p>
+				<div
+					class="b:1|solid|theme-border r:8 p:16 bg:theme-background-secondary font:13 fg:theme-text-secondary"
+				>
+					<p class="m:0|0|8|0">
+						<code class="bg:theme-background px:6 py:2 r:4">｜親文字《ルビ》</code> — 任意の文字列にルビ
+					</p>
+					<p class="m:0|0|8|0">
+						<code class="bg:theme-background px:6 py:2 r:4">漢字《かんじ》</code> — 漢字のみにルビ
+					</p>
+					<p class="m:0">
+						<code class="bg:theme-background px:6 py:2 r:4">《《傍点》》</code> — 傍点を付ける
+					</p>
 				</div>
 			</div>
 
@@ -188,7 +202,9 @@
 
 			<!-- 他形式から変換 -->
 			<div>
-				<span class="display:block font-weight:500 m:0|0|12|0 fg:theme-text">他形式からStorift形式に変換</span>
+				<span class="display:block font-weight:500 m:0|0|12|0 fg:theme-text"
+					>他形式からStorift形式に変換</span
+				>
 				<p class="font:13 fg:theme-text-secondary m:0|0|12|0">
 					他サービスからコピーしたテキストのルビ記法をStorift形式に変換します。
 				</p>
@@ -214,7 +230,8 @@
 			<div class="b:1|solid|theme-border r:8 p:16 bg:theme-background-secondary">
 				<div class="font:12 font-weight:500 mb:8 fg:theme-text-secondary">使い方のヒント</div>
 				<p class="font:13 fg:theme-text-secondary m:0">
-					例：<code class="bg:theme-background px:6 py:2 r:4">｜紅蓮の炎《ヘルフレイム》</code>と入力すると、プレビューでルビが表示されます。
+					例：<code class="bg:theme-background px:6 py:2 r:4">｜紅蓮の炎《ヘルフレイム》</code
+					>と入力すると、プレビューでルビが表示されます。
 				</p>
 			</div>
 		</div>

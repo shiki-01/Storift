@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { charactersDB } from '$lib/db';
 	import { queueChange } from '$lib/services/sync.service';
@@ -8,11 +9,22 @@
 	import Input from '$lib/components/ui/Input.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
+	import RelationCanvas from '$lib/components/relation/RelationCanvas.svelte';
 	import { createCharacterContextMenu, type ContextMenuItem } from '$lib/utils/contextMenu';
 	import { onMount } from 'svelte';
 
 	let characters = $state<Character[]>([]);
 	let isLoading = $state(true);
+	let characterQuery = $state('');
+	let visibleCharacters = $derived.by(() => {
+		const q = characterQuery.trim().toLowerCase();
+		if (!q) return characters;
+		return characters.filter((c) =>
+			[c.name, c.role, c.personality, c.appearance, c.background].some((t) =>
+				t?.toLowerCase().includes(q)
+			)
+		);
+	});
 	let showCreateModal = $state(false);
 	let showEditModal = $state(false);
 	let showRelationModal = $state(false);
@@ -160,7 +172,8 @@
 	};
 
 	async function handleDelete(id: string) {
-		if (!confirm('このキャラクターを削除しますか?')) return;
+		if (!(await confirmDialog({ message: 'このキャラクターを削除しますか?', danger: true })))
+			return;
 		await charactersDB.delete(id);
 		// 同期キューに追加
 		await queueChange('characters', id, 'delete');
@@ -265,7 +278,7 @@
 			await loadCharacters();
 		} catch (error) {
 			console.error('Failed to duplicate character:', error);
-			alert('キャラクターの複製に失敗しました');
+			toast.error('キャラクターの複製に失敗しました');
 		}
 	}
 </script>
@@ -274,13 +287,13 @@
 	<div class="flex-grow:1 flex flex-direction:column">
 		<header class="bg:theme-background border-bottom:2|solid|theme-text">
 			<div
-				class="max-w:1280 mx:auto w:100% px:24 py:20 flex justify-content:space-between align-items:center"
+				class="page-header max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 justify-content:space-between align-items:center"
 			>
 				<div>
 					<h1 class="font:26 font-weight:600 m:0 fg:theme-text">キャラクター管理</h1>
 					<p class="font:14 fg:theme-text-secondary mt:8">登場人物の情報と相関図を管理します</p>
 				</div>
-				<div class="flex align-items:center gap:12">
+				<div class="flex flex-wrap:wrap align-items:center gap:12 max-w:100%">
 					<div class="flex bg:theme-surface b:2px|solid|theme-border r:10 p:6 gap:8">
 						<button class={viewToggleClass('grid')} onclick={() => (viewMode = 'grid')}>
 							グリッド
@@ -303,15 +316,22 @@
 		</header>
 
 		<main class="flex-grow:1 overflow-y:auto">
-			<div class="max-w:1280 mx:auto px:24 py:24 flex flex-direction:column gap:24">
+			<div class="page-body max-w:1280 mx:auto px:24 py:24 flex flex-direction:column gap:24">
 				{#if isLoading}
 					<div class="flex justify-content:center align-items:center h:400">
 						<p class="fg:theme-text-secondary">読み込み中...</p>
 					</div>
 				{:else if viewMode === 'grid'}
+					<input
+						class="character-search"
+						type="search"
+						placeholder="名前・役割・性格などで検索..."
+						aria-label="キャラクターを検索"
+						bind:value={characterQuery}
+					/>
 					<!-- グリッドビュー -->
 					<div class="grid cols:3 gap:20">
-						{#each characters as character (character.id)}
+						{#each visibleCharacters as character (character.id)}
 							<Card
 								class="bg:theme-surface b:2px|solid|theme-border shadow:sm p:24 flex flex-direction:column gap:16"
 								oncontextmenu={(e) => handleCharacterContextMenu(e, character)}
@@ -388,9 +408,16 @@
 						{/each}
 					</div>
 				{:else if viewMode === 'list'}
+					<input
+						class="character-search"
+						type="search"
+						placeholder="名前・役割・性格などで検索..."
+						aria-label="キャラクターを検索"
+						bind:value={characterQuery}
+					/>
 					<!-- リストビュー -->
 					<div class="flex flex-direction:column gap:16">
-						{#each characters as character (character.id)}
+						{#each visibleCharacters as character (character.id)}
 							<Card
 								class="bg:theme-surface b:2px|solid|theme-border shadow:sm p:24"
 								oncontextmenu={(e) => handleCharacterContextMenu(e, character)}
@@ -456,41 +483,15 @@
 						{/each}
 					</div>
 				{:else}
-					<!-- 相関図ビュー -->
-					<Card class="bg:theme-surface b:2px|solid|theme-border shadow:sm p:24">
-						<div class="flex flex-wrap gap:24 justify-content:center">
-							{#each characters as character (character.id)}
-								<div class="flex flex-direction:column align-items:center gap:8">
-									<button
-										class="w:80 h:80 r:full b:2px|solid|theme-border bg:$(theme.primary)/.18 fg:$(theme.primary) flex align-items:center justify-content:center font:22 transition:all|.2s|ease hover:bg:$(theme.primary)/.25"
-										onclick={() => openRelationModal(character)}
-									>
-										{character.name.charAt(0)}
-									</button>
-									<p class="font:14 font-weight:600 fg:theme-text m:0">{character.name}</p>
-									<p class="font:12 fg:theme-text-secondary m:0">{character.role}</p>
-									{#if character.relationships.length > 0}
-										<div class="mt:12 flex flex-direction:column gap:6 w:200">
-											{#each getRelationships(character) as rel}
-												<div
-													class="flex align-items:center gap:8 px:12 py:6 bg:theme-background b:1px|solid|theme-border r:8"
-												>
-													<span class="font:12 fg:theme-text-secondary">{rel.relation}</span>
-													<span class="font:12 font-weight:600 fg:theme-text-secondary">→</span>
-													<span class="font:12 fg:theme.primary">{rel.name}</span>
-												</div>
-											{/each}
-										</div>
-									{/if}
-								</div>
-							{/each}
-						</div>
-						{#if characters.length === 0}
-							<div class="flex justify-content:center align-items:center h:300">
-								<p class="fg:theme-text-secondary">キャラクターがありません</p>
-							</div>
-						{/if}
-					</Card>
+					<!-- 相関図ビュー: ドラッグで動かせるキャンバス -->
+					{#if currentProjectStore.project}
+						<RelationCanvas
+							{characters}
+							projectId={currentProjectStore.project.id}
+							onChanged={loadCharacters}
+							onOpenCharacter={openRelationModal}
+						/>
+					{/if}
 				{/if}
 
 				{#if characters.length === 0 && !isLoading}
@@ -746,5 +747,41 @@
 		line-clamp: 2;
 		-webkit-box-orient: vertical;
 		overflow: hidden;
+	}
+
+	.character-search {
+		width: 100%;
+		max-width: 480px;
+		padding: 10px 12px;
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		background: var(--color-background);
+		color: var(--color-text);
+		font-size: 16px;
+		font-family: inherit;
+	}
+
+	.page-header :global(button) {
+		white-space: nowrap;
+	}
+
+	@media (max-width: 768px) {
+		.page-header {
+			padding: 12px 16px;
+		}
+
+		.page-header h1 {
+			font-size: 20px;
+		}
+
+		.page-body {
+			padding: 12px 16px 24px;
+			min-width: 0;
+		}
+
+		.page-header > :global(*) {
+			min-width: 0;
+			max-width: 100%;
+		}
 	}
 </style>

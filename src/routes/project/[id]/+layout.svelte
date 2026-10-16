@@ -34,12 +34,12 @@
 </script>
 
 {#if currentProjectStore.isLoading}
-	<div class="flex align-items:center justify-content:center h:100vh">
-		<p class="fg:gray-600">読み込み中...</p>
+	<div class="flex align-items:center justify-content:center h:100%">
+		<p class="fg:theme-text-secondary">読み込み中...</p>
 	</div>
 {:else if !currentProjectStore.project}
-	<div class="flex align-items:center justify-content:center h:100vh">
-		<p class="fg:red-600">プロジェクトが見つかりません</p>
+	<div class="flex align-items:center justify-content:center h:100%">
+		<p class="fg:theme-error">プロジェクトが見つかりません</p>
 	</div>
 {:else}
 	<div class="w:100% h:100%">

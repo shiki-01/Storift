@@ -24,6 +24,8 @@
 	import { syncStore } from '$lib/stores/sync.svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { notificationService } from '$lib/services/notification.service';
+	import { version as buildVersion } from '$app/environment';
+	import { getServiceWorkerVersion, checkForUpdate } from '$lib/utils/sw-register';
 
 	let settings = $state<Omit<AppSettings, 'id' | 'updatedAt'>>({
 		theme: themeStore.theme.id as 'light' | 'dark' | 'auto',
@@ -47,6 +49,19 @@
 	let recordingAction = $state<ShortcutAction | null>(null);
 	let conflicts = $derived(findConflicts(settings.shortcuts));
 
+	let swVersion = $state<string | null>(null);
+	let checkingUpdate = $state(false);
+
+	async function handleCheckUpdate() {
+		checkingUpdate = true;
+		try {
+			await checkForUpdate();
+			toast.info('更新を確認しました。新しいバージョンがあれば自動で切り替わります');
+		} finally {
+			checkingUpdate = false;
+		}
+	}
+
 	let showImportModal = $state(false);
 	let showExportModal = $state(false);
 	let showClearDataModal = $state(false);
@@ -56,6 +71,7 @@
 
 	// Phase 2: 通知システム初期化
 	onMount(() => {
+		void getServiceWorkerVersion().then((v) => (swVersion = v));
 		notificationService.initializeReminders();
 		return () => {
 			notificationService.cleanup();
@@ -742,6 +758,15 @@
 		<h2 class="font:bold">バージョン情報</h2>
 		<div class="fg:theme-text-secondary">
 			<p>Storift v0.0.1</p>
+			<p class="font:.875rem">ビルド: {buildVersion}</p>
+			<p class="font:.875rem">
+				オフライン対応: {swVersion
+					? `有効 (${swVersion})`
+					: '未有効(初回の読み込み後に有効になります)'}
+			</p>
+			<button class="link-btn" onclick={handleCheckUpdate} disabled={checkingUpdate}>
+				更新を確認
+			</button>
 			<p>&copy shiki 2025</p>
 		</div>
 	</Card>

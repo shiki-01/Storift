@@ -15,7 +15,8 @@
 	import { authStore } from '$lib/stores/auth.svelte';
 	import { viewport, initViewport } from '$lib/stores/viewport.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
-	import { registerServiceWorker } from '$lib/utils/sw-register';
+	import { registerServiceWorker, checkForUpdate } from '$lib/utils/sw-register';
+	import { updated } from '$app/state';
 	import { initializeErrorHandler } from '$lib/utils/errorHandler';
 	import SyncStatus from '$lib/components/ui/SyncStatus.svelte';
 	import ToastHost from '$lib/components/ui/ToastHost.svelte';
@@ -23,6 +24,11 @@
 	import { themes, themeStore } from '$lib/stores/theme.svelte';
 
 	let { children } = $props();
+
+	// 配信元に新しいバージョンが出たことを検知したら、すぐ Service Worker の更新を確認する
+	$effect(() => {
+		if (updated.current) void checkForUpdate();
+	});
 
 	// プロジェクトページのナビゲーションアイテム
 	const projectNavItems = [

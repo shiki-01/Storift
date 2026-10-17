@@ -1854,7 +1854,7 @@
 	>
 		<div class="mb:16">
 			<label class="display:block font-weight:500 m:0|0|8|0" for="chapterTitle">章のタイトル</label>
-			<Input bind:value={newChapterTitle} placeholder="第1章" required />
+			<Input id="chapterTitle" bind:value={newChapterTitle} placeholder="第1章" required />
 		</div>
 		<div class="flex justify-content:flex-end gap:12">
 			<Button type="button" variant="secondary" onclick={() => (isChapterModalOpen = false)}>
@@ -1877,7 +1877,7 @@
 			<label class="display:block font-weight:500 m:0|0|8|0" for="sceneTitle"
 				>シーンのタイトル</label
 			>
-			<Input bind:value={newSceneTitle} placeholder="オープニング" required />
+			<Input id="sceneTitle" bind:value={newSceneTitle} placeholder="オープニング" required />
 		</div>
 		<div class="flex justify-content:flex-end gap:12">
 			<Button type="button" variant="secondary" onclick={() => (isSceneModalOpen = false)}>
@@ -2079,7 +2079,7 @@
 	>
 		<div class="mb:16">
 			<label class="display:block font-weight:500 m:0|0|8|0" for="renameValue">新しい名前</label>
-			<Input bind:value={renameValue} placeholder="名前を入力" required />
+			<Input id="renameValue" bind:value={renameValue} placeholder="名前を入力" required />
 		</div>
 		<div class="flex justify-content:flex-end gap:12">
 			<Button type="button" variant="secondary" onclick={() => (isRenameModalOpen = false)}>

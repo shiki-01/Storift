@@ -194,7 +194,7 @@
 </script>
 
 <div class="flex w:100% h:100% bg:theme-background fg:theme-text">
-	<div class="flex-grow:1 flex flex-direction:column">
+	<div class="flex-grow:1 flex flex-direction:column min-w:0 min-h:0">
 		<header class="bg:theme-background border-bottom:2|solid|theme-text">
 			<div
 				class="page-header max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 justify-content:space-between align-items:center"
@@ -217,11 +217,13 @@
 			<div
 				class="page-body max-w:1280 mx:auto w:100% px:24 py:24 flex flex-direction:column gap:24"
 			>
-				<div class="flex flex-wrap gap:16 justify-content:space-between align-items:center">
+				<div
+					class="filter-row flex flex-wrap gap:16 justify-content:space-between align-items:center"
+				>
 					<div class="flex:1 min-w:240">
 						<Input bind:value={searchQuery} placeholder="タイトル、内容、タグで検索..." />
 					</div>
-					<div class="flex gap:8 flex-wrap">
+					<div class="filter-chips flex gap:8 flex-wrap">
 						{#if getCategoryCounts()}
 							{@const counts = getCategoryCounts()}
 							{#each Object.entries({ all: 'すべて', ...categoryLabels }) as [key, label]}
@@ -540,6 +542,29 @@
 		overflow: hidden;
 	}
 
+	.filter-chips :global(button) {
+		white-space: nowrap;
+	}
+
+	@media (max-width: 768px) {
+		.filter-row > :global(*) {
+			min-width: 0 !important;
+			max-width: 100%;
+		}
+
+		.filter-row > :global(div:first-child) {
+			flex: 1 1 100% !important;
+		}
+
+		/* カテゴリは横に並べたまま、はみ出した分は横スクロールにする */
+		.filter-chips {
+			flex-wrap: nowrap;
+			overflow-x: auto;
+			padding-bottom: 4px;
+			scrollbar-width: none;
+		}
+	}
+
 	.page-header :global(button) {
 		white-space: nowrap;
 	}
@@ -556,6 +581,11 @@
 		.page-body {
 			padding: 12px 16px 24px;
 			min-width: 0;
+		}
+
+		.page-body > :global(*) {
+			min-width: 0;
+			max-width: 100%;
 		}
 
 		.page-header > :global(*) {

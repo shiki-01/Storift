@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
+	import { longpress } from '$lib/utils/longpress';
 	import title from '$lib/assets/title.svg';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -98,8 +99,22 @@
 		completed: 'bg:theme-surface fg:theme-success'
 	};
 
+	// 前回開いた作品(続きから書く)
+	let lastProject = $derived.by(() => {
+		let id: string | null = null;
+		try {
+			id = localStorage.getItem('storift:last-project');
+		} catch {
+			id = null;
+		}
+		return projectsStore.projects.find((p) => p.id === id) ?? null;
+	});
+
 	// コンテキストメニュー - プロジェクト
-	function handleProjectContextMenu(e: MouseEvent, project: Project) {
+	function handleProjectContextMenu(
+		e: Pick<MouseEvent, 'clientX' | 'clientY' | 'preventDefault' | 'stopPropagation'>,
+		project: Project
+	) {
 		e.preventDefault();
 		e.stopPropagation();
 
@@ -147,7 +162,13 @@
 
 	// 削除処理
 	async function handleDeleteProject(project: Project) {
-		if (!(await confirmDialog({ message: `プロジェクト「${project.title}」を削除しますか?\nこの操作は取り消せません。`, danger: true }))) return;
+		if (
+			!(await confirmDialog({
+				message: `プロジェクト「${project.title}」を削除しますか?\nこの操作は取り消せません。`,
+				danger: true
+			}))
+		)
+			return;
 
 		try {
 			// プロジェクト関連のすべてのデータを削除
@@ -253,7 +274,14 @@
 	}
 </script>
 
-<div class="px:60px py:24px">
+<div class="home-page">
+	{#if lastProject && !projectsStore.searchQuery}
+		<a class="continue" href="/project/{lastProject.id}/editor">
+			<span class="continue-label">続きから書く</span>
+			<span class="continue-title">{lastProject.title}</span>
+		</a>
+	{/if}
+
 	<div class="mb:24">
 		<Input
 			value={projectsStore.searchQuery}
@@ -276,41 +304,62 @@
 			{/if}
 		</div>
 	{:else}
-		<div class="display:flex flex-wrap:wrap gap:24">
+		<div class="project-grid">
 			{#each projectsStore.filteredProjects as project (project.id)}
-				<Card
-					hoverable
-					padding="none"
-					onclick={() => goto(`/project/${project.id}/editor`)}
-					oncontextmenu={(e) => handleProjectContextMenu(e, project)}
-					class="w:200px h:fit p:0 flex flex-direction:column gap:1rem bg:transparent b:none"
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class="project-item"
+					use:longpress={{ onLongPress: (e) => handleProjectContextMenu(e, project) }}
 				>
-					<DefoImg />
-					<div
-						class="w:200px grid grid-template-cols:140px|60px flex justify-content:space-between align-items:start"
+					<Card
+						hoverable
+						padding="none"
+						onclick={() => goto(`/project/${project.id}/editor`)}
+						oncontextmenu={(e) => handleProjectContextMenu(e, project)}
+						class="w:100% h:fit p:0 flex flex-direction:column gap:1rem bg:transparent b:none"
 					>
-						<div class="w:140px overflow:hidden position:relative">
-							<h3 class="font:20 font-weight:600 text-align:start white-space:nowrap">
-								{project.title}
-							</h3>
-							<div
-								class="position:absolute top:0 right:0 w:30px h:full bg:linear-gradient(to|right,transparent,var(--color-surface))"
-							></div>
+						<DefoImg />
+						<div class="w:100% flex justify-content:space-between align-items:start gap:8">
+							<div class="flex:1 min-w:0 overflow:hidden position:relative">
+								<h3
+									class="font:20 font-weight:600 text-align:start white-space:nowrap overflow:hidden text-overflow:ellipsis"
+								>
+									{project.title}
+								</h3>
+							</div>
+							<span class="py:6px r:4 font:12 {statusColors[project.status]}">
+								{statusLabels[project.status]}
+							</span>
 						</div>
-						<span class="py:6px r:4 font:12 {statusColors[project.status]}">
-							{statusLabels[project.status]}
-						</span>
-					</div>
-					{#if project.description}
-						<p class="text-align:start font:14 line-clamp:2">
-							{project.description}
-						</p>
-					{/if}
-					<div class="text-align:start font:12">
-						<p>作成: {formatRelativeTime(project.createdAt)}</p>
-						<p>更新: {formatRelativeTime(project.updatedAt)}</p>
-					</div>
-				</Card>
+						{#if project.description}
+							<p class="text-align:start font:14 line-clamp:2">
+								{project.description}
+							</p>
+						{/if}
+						<div class="text-align:start font:12">
+							<p>作成: {formatRelativeTime(project.createdAt)}</p>
+							<p>更新: {formatRelativeTime(project.updatedAt)}</p>
+						</div>
+					</Card>
+					<button
+						class="project-more"
+						aria-label="{project.title}のメニュー"
+						onclick={(e) => {
+							const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+							handleProjectContextMenu(
+								{
+									clientX: r.right - 160,
+									clientY: r.bottom,
+									preventDefault: () => {},
+									stopPropagation: () => {}
+								},
+								project
+							);
+						}}
+					>
+						⋯
+					</button>
+				</div>
 			{/each}
 		</div>
 	{/if}
@@ -378,3 +427,74 @@
 	items={contextMenu.items}
 	onClose={() => (contextMenu.visible = false)}
 />
+
+<style>
+	.home-page {
+		padding: 24px 60px;
+	}
+
+	.continue {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		margin-bottom: 20px;
+		padding: 14px 16px;
+		border: 1px solid var(--color-border);
+		border-radius: 12px;
+		background: color-mix(in srgb, var(--color-primary) 10%, var(--color-background));
+		color: var(--color-text);
+	}
+
+	.continue-label {
+		font-size: 12px;
+		color: var(--color-primary);
+	}
+
+	.continue-title {
+		font-size: 17px;
+		font-weight: 600;
+	}
+
+	.project-grid {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 24px;
+	}
+
+	.project-item {
+		position: relative;
+		width: 200px;
+		-webkit-touch-callout: none;
+	}
+
+	.project-more {
+		position: absolute;
+		top: 8px;
+		right: 8px;
+		width: 36px;
+		height: 36px;
+		border: 1px solid var(--color-border);
+		border-radius: 50%;
+		background: color-mix(in srgb, var(--color-background) 90%, transparent);
+		color: var(--color-text);
+		font-size: 18px;
+		line-height: 1;
+		cursor: pointer;
+	}
+
+	@media (max-width: 768px) {
+		.home-page {
+			padding: 16px;
+		}
+
+		.project-grid {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 16px;
+		}
+
+		.project-item {
+			width: auto;
+		}
+	}
+</style>

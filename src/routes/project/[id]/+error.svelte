@@ -14,7 +14,9 @@
 	};
 </script>
 
-<div class="min-h:screen flex align-items:center justify-content:center bg:theme-surface p:24">
+<div
+	class="h:100% overflow-y:auto flex align-items:center justify-content:center bg:theme-surface p:24"
+>
 	<div class="max-w:500 w:full bg:theme-background r:16 shadow:0|4|12|rgba(0,0,0,0.1) p:32">
 		<div class="text-align:center mb:24">
 			<div

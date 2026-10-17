@@ -40,15 +40,12 @@ function checkTypos(text: string): ProofreadingIssue[] {
 		message: string;
 		suggestion: string;
 	}> = [
-		{ pattern: /以外/g, message: '「意外」の誤字の可能性があります', suggestion: '意外' },
-		{ pattern: /意外と/g, message: '「案外」の方が自然かもしれません', suggestion: '案外' },
 		{
-			pattern: /雰囲気/g,
-			message: '「ふんいき」は「ふいんき」と誤読されやすいです',
-			suggestion: '雰囲気'
+			pattern: /永遠と(?=続|語|話|喋|歩|走)/g,
+			message: '「延々と」の誤用です',
+			suggestion: '延々と'
 		},
-		{ pattern: /延々と/g, message: '「永遠と」の誤用ではありませんか？', suggestion: '延々と' },
-		{ pattern: /永遠と/g, message: '「延々と」の誤用です', suggestion: '延々と' },
+		{ pattern: /ふいんき/g, message: '「ふんいき(雰囲気)」の誤りです', suggestion: 'ふんいき' },
 		{
 			pattern: /シュミレーション/g,
 			message: '「シミュレーション」の誤字です',
@@ -91,20 +88,9 @@ function checkRedundancy(text: string): ProofreadingIssue[] {
 		suggestion: string;
 	}> = [
 		{ pattern: /することができる/g, message: '冗長な表現です', suggestion: 'できる' },
-		{ pattern: /という(?:こと|もの)/g, message: '冗長な表現の可能性があります', suggestion: '' },
 		{
 			pattern: /(?:まさに|本当に|実に|非常に)(?:まさに|本当に|実に|非常に)/g,
 			message: '強調語が重複しています',
-			suggestion: ''
-		},
-		{
-			pattern: /だと思います(?:が|けど|けれど)/g,
-			message: '「思う」の後に逆接は不自然です',
-			suggestion: ''
-		},
-		{
-			pattern: /(?:私は|僕は|俺は).+(?:私は|僕は|俺は)/g,
-			message: '一人称が重複しています',
 			suggestion: ''
 		}
 	];
@@ -133,36 +119,45 @@ function checkRedundancy(text: string): ProofreadingIssue[] {
 function checkStyle(text: string): ProofreadingIssue[] {
 	const issues: ProofreadingIssue[] = [];
 
-	// 同じ語尾の連続
-	const sentences = text.split(/[。！？]/);
-	for (let i = 0; i < sentences.length - 2; i++) {
-		const endings = sentences.slice(i, i + 3).map((s) => {
-			const trimmed = s.trim();
-			return trimmed.slice(-2);
-		});
+	// 文を「。！？」区切りで取り出す(位置は元の文章の文字位置)
+	const sentences: Array<{ text: string; start: number; end: number }> = [];
+	const sentencePattern = /[^。！？\n]+[。！？]?/g;
+	let sm;
+	while ((sm = sentencePattern.exec(text)) !== null) {
+		const trimmed = sm[0].trim();
+		if (!trimmed) continue;
+		const start = sm.index + sm[0].indexOf(trimmed);
+		sentences.push({ text: trimmed, start, end: start + trimmed.length });
+	}
 
-		if (endings[0] === endings[1] && endings[1] === endings[2]) {
-			const position = sentences.slice(0, i + 2).join('。').length;
+	// 同じ語尾の連続(台詞の閉じ括弧は除いて比較する)
+	const tail = (t: string) => t.replace(/[。！？」』）)\s]+$/g, '').slice(-2);
+	for (let i = 0; i + 2 < sentences.length; i++) {
+		const e0 = tail(sentences[i].text);
+		if (
+			e0.length === 2 &&
+			e0 === tail(sentences[i + 1].text) &&
+			e0 === tail(sentences[i + 2].text)
+		) {
 			issues.push({
 				type: 'style',
 				severity: 'info',
-				message: '同じ語尾が3回連続しています',
-				position: { start: position, end: position + sentences[i + 2].length },
-				original: sentences[i + 2]
+				message: `同じ語尾「${e0}」が3文続いています`,
+				position: { start: sentences[i + 2].start, end: sentences[i + 2].end },
+				original: sentences[i + 2].text
 			});
 		}
 	}
 
 	// 長すぎる文
 	for (const sentence of sentences) {
-		if (sentence.length > 100) {
-			const position = text.indexOf(sentence);
+		if (sentence.text.length > 100) {
 			issues.push({
 				type: 'style',
 				severity: 'info',
 				message: '文が長すぎます。分割を検討してください',
-				position: { start: position, end: position + sentence.length },
-				original: sentence
+				position: { start: sentence.start, end: sentence.end },
+				original: sentence.text
 			});
 		}
 	}
@@ -176,6 +171,7 @@ function checkStyle(text: string): ProofreadingIssue[] {
 			severity: 'info',
 			message: 'ら抜き言葉の可能性があります',
 			position: { start: match.index, end: match.index + match[0].length },
+			suggestion: match[0].replace(/れる$/, 'られる'),
 			original: match[0]
 		});
 	}
@@ -190,7 +186,7 @@ function checkGrammar(text: string): ProofreadingIssue[] {
 	const issues: ProofreadingIssue[] = [];
 
 	// 助詞の重複
-	const particlePattern = /([をにがはへとより])\1+/g;
+	const particlePattern = /([をにへ])\1+/g;
 	let match;
 	while ((match = particlePattern.exec(text)) !== null) {
 		issues.push({
@@ -203,7 +199,8 @@ function checkGrammar(text: string): ProofreadingIssue[] {
 	}
 
 	// スペースの連続
-	const spacePattern = /\s{2,}/g;
+	// 改行や行頭の字下げ(全角スペース)は対象外。文中の連続した半角スペース/タブだけ
+	const spacePattern = /(?<=\S)[ \t]{2,}/g;
 	while ((match = spacePattern.exec(text)) !== null) {
 		issues.push({
 			type: 'grammar',
@@ -224,7 +221,9 @@ function checkGrammar(text: string): ProofreadingIssue[] {
 	];
 
 	for (const [short, long] of katakanaPairs) {
-		if (text.includes(short) && text.includes(long)) {
+		// 「サーバ」は「サーバー」の一部なので、長音が続かない場合だけを短い表記として数える
+		const shortPattern = new RegExp(`${short}(?!ー)`);
+		if (shortPattern.test(text) && text.includes(long)) {
 			const position = text.indexOf(long);
 			issues.push({
 				type: 'style',

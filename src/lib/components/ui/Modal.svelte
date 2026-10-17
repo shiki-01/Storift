@@ -33,6 +33,62 @@
 		large: 'max-w:800'
 	};
 
+	let dialogEl = $state<HTMLDivElement | null>(null);
+	let returnFocusTo: HTMLElement | null = null;
+
+	const FOCUSABLE =
+		'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+	// 開いたら入力欄(なければ最初の操作要素)へフォーカスし、閉じたら元の位置へ戻す
+	$effect(() => {
+		if (!isOpen) return;
+		returnFocusTo = document.activeElement as HTMLElement | null;
+		const frame = requestAnimationFrame(() => {
+			const body = dialogEl?.querySelector<HTMLElement>('.modal-body');
+			const target =
+				body?.querySelector<HTMLElement>('input:not([type="hidden"]), textarea, select') ??
+				dialogEl?.querySelector<HTMLElement>(FOCUSABLE);
+			target?.focus({ preventScroll: true });
+		});
+		return () => {
+			cancelAnimationFrame(frame);
+			if (returnFocusTo && !returnFocusTo.isContentEditable) {
+				returnFocusTo.focus?.({ preventScroll: true });
+			}
+		};
+	});
+
+	// Tab でダイアログの外へ出ないようにし、フォーカスがどこにあっても Esc で閉じる
+	$effect(() => {
+		if (!isOpen) return;
+		const onKeydown = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') {
+				// 前面にあるダイアログ(確認ダイアログなど)が先に処理する
+				if (document.querySelector('[role="alertdialog"]')) return;
+				e.preventDefault();
+				handleClose();
+				return;
+			}
+			if (e.key !== 'Tab' || !dialogEl) return;
+			const items = [...dialogEl.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+				(el) => el.offsetParent !== null
+			);
+			if (items.length === 0) return;
+			const first = items[0];
+			const last = items[items.length - 1];
+			const active = document.activeElement;
+			if (e.shiftKey && (active === first || !dialogEl.contains(active))) {
+				e.preventDefault();
+				last.focus();
+			} else if (!e.shiftKey && (active === last || !dialogEl.contains(active))) {
+				e.preventDefault();
+				first.focus();
+			}
+		};
+		window.addEventListener('keydown', onKeydown);
+		return () => window.removeEventListener('keydown', onKeydown);
+	});
+
 	const handleClose = () => {
 		isOpen = false;
 		onClose?.();
@@ -46,17 +102,18 @@
 </script>
 
 {#if isOpen}
+	<!-- キーボード操作(Esc)は window 側で処理している -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		class="position:fixed inset:0 bg:rgba(0,0,0,0.5) z:1000 flex align-items:center justify-content:center"
 		onclick={handleBackdropClick}
-		onkeydown={(e) => {
-			if (e.key === 'Escape') handleClose();
-		}}
 		role="dialog"
 		aria-modal="true"
+		aria-label={title}
 		tabindex="-1"
 	>
 		<div
+			bind:this={dialogEl}
 			class="modal-container bg:theme-background fg:theme-text r:12 {sizeClasses[
 				size
 			]} w:90% max-h:90dvh overflow:auto box-shadow:0|8|32|rgba(0,0,0,0.2)"

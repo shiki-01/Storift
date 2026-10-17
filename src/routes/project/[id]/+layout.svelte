@@ -11,6 +11,12 @@
 		const projectId = $page.params.id;
 		if (!projectId) return;
 
+		try {
+			localStorage.setItem('storift:last-project', projectId);
+		} catch {
+			// 保存できなくても動作には影響しない
+		}
+
 		currentProjectStore.isLoading = true;
 		try {
 			const project = await projectsDB.getById(projectId);

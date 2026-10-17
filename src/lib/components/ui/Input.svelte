@@ -6,6 +6,9 @@
 		disabled?: boolean;
 		required?: boolean;
 		label?: string;
+		/** label を使わない入力欄に、外側の <label for> を結び付けるための id */
+		id?: string;
+		ariaLabel?: string;
 		oninput?: (e: Event) => void;
 	}
 
@@ -16,6 +19,8 @@
 		disabled = false,
 		required = false,
 		label,
+		id,
+		ariaLabel,
 		oninput
 	}: InputProps = $props();
 </script>
@@ -37,6 +42,8 @@
 	</div>
 {:else}
 	<input
+		{id}
+		aria-label={ariaLabel}
 		class="w:full px:12 py:10 b:1|solid|theme-border bg:theme-background fg:theme-text r:8 font:16 outline:none focus:border-color:theme-primary transition:all|.2s disabled:bg:theme-surface"
 		{type}
 		{placeholder}

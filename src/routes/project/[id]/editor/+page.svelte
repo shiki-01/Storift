@@ -26,8 +26,15 @@
 	import AssistBar from '$lib/components/mobile/AssistBar.svelte';
 	import GoalRing from '$lib/components/mobile/GoalRing.svelte';
 	import ReferenceSheet from '$lib/components/mobile/ReferenceSheet.svelte';
+	import ProofreadSheet from '$lib/components/mobile/ProofreadSheet.svelte';
 	import { longpress } from '$lib/utils/longpress';
-	import { typewriterScroll, ensureCaretVisible, updateDimHighlight } from '$lib/utils/editorInput';
+	import { matchesShortcut, normalizeAutoSaveMs } from '$lib/utils/shortcuts';
+	import {
+		typewriterScroll,
+		ensureCaretVisible,
+		updateDimHighlight,
+		selectTextRange
+	} from '$lib/utils/editorInput';
 	import {
 		createEditorContextMenu,
 		createChapterContextMenu,
@@ -60,11 +67,35 @@
 	let showFormattingModal = $state(false);
 	let showExportModal = $state(false);
 	let showSearch = $state(false);
+	let showProofread = $state(false);
 	let isSidebarOpen = $state(false);
 
 	// プレビュー機能
 	let viewMode = $state<ViewMode>('editor');
-	let previewSettings = $state<PreviewSettingsType>({ ...defaultPreviewSettings });
+	// プレビュー設定は端末ごとに保存し、画面を移動しても初期値に戻らないようにする
+	const PREVIEW_SETTINGS_KEY = 'storift:preview-settings';
+
+	function loadPreviewSettings(): PreviewSettingsType {
+		try {
+			const raw = localStorage.getItem(PREVIEW_SETTINGS_KEY);
+			return raw
+				? { ...defaultPreviewSettings, ...JSON.parse(raw) }
+				: { ...defaultPreviewSettings };
+		} catch {
+			return { ...defaultPreviewSettings };
+		}
+	}
+
+	function updatePreviewSettings(next: PreviewSettingsType) {
+		previewSettings = next;
+		try {
+			localStorage.setItem(PREVIEW_SETTINGS_KEY, JSON.stringify(next));
+		} catch {
+			// 保存できなくても、そのセッション内では反映される
+		}
+	}
+
+	let previewSettings = $state<PreviewSettingsType>(loadPreviewSettings());
 
 	// 書式設定モーダルのタブ
 	let formattingTab = $state<'editor' | 'preview'>('editor');
@@ -132,18 +163,23 @@
 			}
 		})();
 
-		// キーボードショートカット: Ctrl+S で保存
+		// キーボードショートカット(設定画面で変更できる)
 		const handleKeyDown = (e: KeyboardEvent) => {
-			if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+			const shortcuts = settingsStore.settings.shortcuts;
+			if (matchesShortcut(e, shortcuts.find) || matchesShortcut(e, shortcuts.replace)) {
 				e.preventDefault();
 				void openSearch();
-				return;
-			}
-			if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+			} else if (matchesShortcut(e, shortcuts.save)) {
 				e.preventDefault();
-				if (editorStore.currentScene && editorStore.isDirty) {
-					handleSave();
-				}
+				if (editorStore.currentScene && editorStore.isDirty) void handleSave();
+			} else if (matchesShortcut(e, shortcuts.newChapter)) {
+				e.preventDefault();
+				isChapterModalOpen = true;
+			} else if (matchesShortcut(e, shortcuts.newScene)) {
+				e.preventDefault();
+				const chapterId =
+					editorStore.currentScene?.chapterId ?? currentProjectStore.chapters[0]?.id;
+				if (chapterId) openSceneModal(chapterId);
 			}
 		};
 		window.addEventListener('keydown', handleKeyDown);
@@ -154,7 +190,8 @@
 			onSave: async () => {
 				await handleSave();
 			},
-			isDirty: () => editorStore.isDirty && editorStore.currentScene !== null,
+			isDirty: () =>
+				editorStore.isDirty && editorStore.currentScene !== null && settingsStore.settings.autoSave,
 			onError: (error) => {
 				console.error('Auto-save error:', error);
 				saveFailed = true;
@@ -322,12 +359,18 @@
 		if (scene) await goToScene(scene);
 	}
 
+	// 校正の指摘箇所を選択し、見える位置までスクロールする
+	function jumpToText(start: number, end: number) {
+		if (!editorDiv) return;
+		editorDiv.focus({ preventScroll: true });
+		if (selectTextRange(editorDiv, start, end) && editorScrollContainer) {
+			typewriterScroll(editorScrollContainer, 0.35);
+		}
+	}
+
 	// 未保存の変更があれば保存してから次の操作へ進む
 	async function flushSave() {
-		if (saveTimer) {
-			clearTimeout(saveTimer);
-			saveTimer = null;
-		}
+		clearSaveTimers();
 		// 保存中なら完了を待つ
 		for (let i = 0; i < 50 && editorStore.isSaving; i++) {
 			await new Promise((r) => setTimeout(r, 40));
@@ -911,19 +954,35 @@
 			: (localFormatting.fontSize ?? 16)
 	);
 
-	// --- 自動保存(入力が止まって約2秒後) ---
+	// --- 自動保存(入力が止まって約2秒後。入力し続けても最大待ち時間ごとに保存) ---
+	let maxWaitTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function clearSaveTimers() {
+		if (saveTimer) clearTimeout(saveTimer);
+		if (maxWaitTimer) clearTimeout(maxWaitTimer);
+		saveTimer = null;
+		maxWaitTimer = null;
+	}
+
 	$effect(() => {
-		// 依存: 本文 / 未保存状態 / 保存中状態
+		// 依存: 本文 / 未保存状態 / 保存中状態 / 設定
 		void editorStore.content;
 		const dirty = editorStore.isDirty;
 		const saving = editorStore.isSaving;
-		if (!dirty || saving || !editorStore.currentScene) return;
-		if (!settingsStore.settings.autoSave) return;
+		const autoSave = settingsStore.settings.autoSave;
+		const maxWait = normalizeAutoSaveMs(settingsStore.settings.autoSaveInterval);
+		if (!dirty || saving || !editorStore.currentScene || !autoSave) return;
 		if (saveTimer) clearTimeout(saveTimer);
 		saveTimer = setTimeout(() => {
-			saveTimer = null;
+			clearSaveTimers();
 			void handleSave();
 		}, AUTOSAVE_DELAY);
+		if (!maxWaitTimer) {
+			maxWaitTimer = setTimeout(() => {
+				clearSaveTimers();
+				void handleSave();
+			}, maxWait);
+		}
 		return () => {
 			if (saveTimer) {
 				clearTimeout(saveTimer);
@@ -1449,6 +1508,14 @@
 							</button>
 							<button
 								class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
+								onclick={() => (showProofread = true)}
+								aria-label="校正"
+								title="校正"
+							>
+								<Icon name="abc" class="w:24px" />
+							</button>
+							<button
+								class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
 								onclick={openSearch}
 								aria-label="検索・置換 (Ctrl+Shift+F)"
 								title="検索・置換 (Ctrl+Shift+F)"
@@ -1689,6 +1756,14 @@
 	</div>
 </Sheet>
 
+<!-- 校正 -->
+<ProofreadSheet
+	bind:open={showProofread}
+	text={editorStore.content}
+	onChange={(next) => (editorStore.content = next)}
+	onJump={jumpToText}
+/>
+
 <!-- 検索・置換 -->
 {#if currentProjectStore.project}
 	<SearchReplace
@@ -1742,6 +1817,7 @@
 		<button onclick={() => runAction(() => void handleSave())} disabled={!editorStore.isDirty}>
 			今すぐ保存
 		</button>
+		<button onclick={() => runAction(() => (showProofread = true))}>校正</button>
 		<button onclick={() => runAction(() => void openSearch())}>検索・置換</button>
 		<button onclick={() => runAction(() => (editorStore.focusMode = true))}>集中モード</button>
 		<button onclick={() => runAction(() => (showWritingAssistant = true))}
@@ -1778,7 +1854,7 @@
 	>
 		<div class="mb:16">
 			<label class="display:block font-weight:500 m:0|0|8|0" for="chapterTitle">章のタイトル</label>
-			<Input bind:value={newChapterTitle} placeholder="第1章" required />
+			<Input id="chapterTitle" bind:value={newChapterTitle} placeholder="第1章" required />
 		</div>
 		<div class="flex justify-content:flex-end gap:12">
 			<Button type="button" variant="secondary" onclick={() => (isChapterModalOpen = false)}>
@@ -1801,7 +1877,7 @@
 			<label class="display:block font-weight:500 m:0|0|8|0" for="sceneTitle"
 				>シーンのタイトル</label
 			>
-			<Input bind:value={newSceneTitle} placeholder="オープニング" required />
+			<Input id="sceneTitle" bind:value={newSceneTitle} placeholder="オープニング" required />
 		</div>
 		<div class="flex justify-content:flex-end gap:12">
 			<Button type="button" variant="secondary" onclick={() => (isSceneModalOpen = false)}>
@@ -1988,10 +2064,7 @@
 			</div>
 		{:else}
 			<!-- プレビュー設定 -->
-			<PreviewSettings
-				settings={previewSettings}
-				onSettingsChange={(newSettings) => (previewSettings = newSettings)}
-			/>
+			<PreviewSettings settings={previewSettings} onSettingsChange={updatePreviewSettings} />
 		{/if}
 	</div>
 </Modal>
@@ -2006,7 +2079,7 @@
 	>
 		<div class="mb:16">
 			<label class="display:block font-weight:500 m:0|0|8|0" for="renameValue">新しい名前</label>
-			<Input bind:value={renameValue} placeholder="名前を入力" required />
+			<Input id="renameValue" bind:value={renameValue} placeholder="名前を入力" required />
 		</div>
 		<div class="flex justify-content:flex-end gap:12">
 			<Button type="button" variant="secondary" onclick={() => (isRenameModalOpen = false)}>

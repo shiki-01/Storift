@@ -231,7 +231,7 @@
 </script>
 
 <div class="flex w:100% h:100% bg:theme-background fg:theme-text">
-	<div class="flex-grow:1 flex flex-direction:column">
+	<div class="flex-grow:1 flex flex-direction:column min-w:0 min-h:0">
 		<header class="bg:theme-background border-bottom:2|solid|theme-text">
 			<div
 				class="page-header max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 justify-content:space-between align-items:center"
@@ -261,7 +261,7 @@
 						<p class="fg:theme-text-secondary font:14">読み込み中...</p>
 					</div>
 				{:else}
-					<div class="flex gap:16 flex-wrap:wrap justify-content:space-between">
+					<div class="stat-cards flex gap:16 flex-wrap:wrap justify-content:space-between">
 						<Card class="flex:1 min-w:200">
 							<div class="p:20 text-align:center flex flex-direction:column gap:8">
 								<p class="font:14 fg:theme-text-secondary">累計文字数</p>
@@ -503,6 +503,23 @@
 		aspect-ratio: 1 / 1;
 	}
 
+	@media (max-width: 768px) {
+		/* 統計カードは 2 列に並べて、縦に長くなりすぎないようにする */
+		.stat-cards {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 12px;
+		}
+
+		.stat-cards > :global(*) {
+			min-width: 0 !important;
+		}
+
+		.stat-cards :global(p:nth-child(2)) {
+			font-size: 24px;
+		}
+	}
+
 	.page-header :global(button) {
 		white-space: nowrap;
 	}
@@ -519,6 +536,11 @@
 		.page-body {
 			padding: 12px 16px 24px;
 			min-width: 0;
+		}
+
+		.page-body > :global(*) {
+			min-width: 0;
+			max-width: 100%;
 		}
 
 		.page-header > :global(*) {

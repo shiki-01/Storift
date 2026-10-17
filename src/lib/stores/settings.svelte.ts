@@ -1,4 +1,5 @@
 import type { AppSettings, EditorFont } from '$lib/types';
+import { DEFAULT_SHORTCUTS } from '$lib/utils/shortcuts';
 
 let settings = $state<AppSettings>({
 	id: 'app-settings',
@@ -11,15 +12,7 @@ let settings = $state<AppSettings>({
 		letterSpacing: 0,
 		paragraphSpacing: 16
 	},
-	shortcuts: {
-		save: 'Ctrl+S',
-		undo: 'Ctrl+Z',
-		redo: 'Ctrl+Y',
-		find: 'Ctrl+F',
-		replace: 'Ctrl+H',
-		newChapter: 'Ctrl+Shift+C',
-		newScene: 'Ctrl+Shift+S'
-	},
+	shortcuts: { ...DEFAULT_SHORTCUTS },
 	autoSave: true,
 	autoSaveInterval: 30000,
 	syncEnabled: true,

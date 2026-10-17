@@ -13,17 +13,31 @@
 		window.location.reload();
 	};
 
-	const reportError = () => {
-		console.error('Error reported:', {
-			status: errorStatus,
-			message: errorMessage,
-			url: $page.url.pathname
-		});
-		toast.error('エラーレポートを送信しました(開発中の機能です)');
+	// 外部への送信先はないため、不具合を報告するときに貼り付けられるよう詳細をコピーする
+	const copyErrorDetails = async () => {
+		const details = JSON.stringify(
+			{
+				status: errorStatus,
+				message: errorMessage,
+				url: $page.url.pathname,
+				userAgent: navigator.userAgent,
+				time: new Date().toISOString()
+			},
+			null,
+			2
+		);
+		try {
+			await navigator.clipboard.writeText(details);
+			toast.success('エラーの詳細をコピーしました');
+		} catch {
+			toast.error('コピーできませんでした');
+		}
 	};
 </script>
 
-<div class="min-h:screen flex align-items:center justify-content:center bg:theme-surface p:24">
+<div
+	class="h:100% overflow-y:auto flex align-items:center justify-content:center bg:theme-surface p:24"
+>
 	<div class="max-w:600 w:full bg:theme-background r:16 shadow:0|4|12|rgba(0,0,0,0.1) p:32">
 		<!-- エラーアイコン -->
 		<div class="text-align:center mb:24">
@@ -79,23 +93,21 @@
 
 			<button
 				onclick={reload}
-				class="w:full py:12 px:24 bg:theme-background fg:theme-primary font:16 font:semibold rounded:8 cursor:pointer border:1|solid|blue-600 transition:all|0.2s hover:bg:theme-surface"
+				class="w:full py:12 px:24 bg:theme-background fg:theme-primary font:16 font:semibold rounded:8 cursor:pointer border:1|solid|theme-primary transition:all|0.2s hover:bg:theme-surface"
 			>
 				ページを再読み込み
 			</button>
 
-			{#if import.meta.env.DEV}
-				<button
-					onclick={reportError}
-					class="w:full py:12 px:24 bg:theme-background fg:theme-text-secondary font:14 rounded:8 cursor:pointer border:1|solid|theme-border transition:all|0.2s hover:bg:theme-surface"
-				>
-					エラーを報告
-				</button>
-			{/if}
+			<button
+				onclick={copyErrorDetails}
+				class="w:full py:12 px:24 bg:theme-background fg:theme-text-secondary font:14 rounded:8 cursor:pointer border:1|solid|theme-border transition:all|0.2s hover:bg:theme-surface"
+			>
+				エラーの詳細をコピー
+			</button>
 		</div>
 
 		<!-- サポート情報 -->
-		<div class="mt:24 pt:24 border-top:1|solid|gray-200 text-align:center">
+		<div class="mt:24 pt:24 border-top:1|solid|theme-border text-align:center">
 			<p class="font:14 fg:theme-text-secondary">
 				問題が解決しない場合は、ブラウザのキャッシュをクリアしてみてください。
 			</p>

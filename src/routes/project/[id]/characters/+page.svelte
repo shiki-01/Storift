@@ -284,7 +284,7 @@
 </script>
 
 <div class="flex w:100% h:100% bg:theme-background fg:theme-text">
-	<div class="flex-grow:1 flex flex-direction:column">
+	<div class="flex-grow:1 flex flex-direction:column min-w:0 min-h:0">
 		<header class="bg:theme-background border-bottom:2|solid|theme-text">
 			<div
 				class="page-header max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 justify-content:space-between align-items:center"
@@ -777,6 +777,11 @@
 		.page-body {
 			padding: 12px 16px 24px;
 			min-width: 0;
+		}
+
+		.page-body > :global(*) {
+			min-width: 0;
+			max-width: 100%;
 		}
 
 		.page-header > :global(*) {

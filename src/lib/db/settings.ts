@@ -1,5 +1,6 @@
 import { db } from './schema';
 import type { AppSettings, FirebaseConfig } from '$lib/types';
+import { DEFAULT_SHORTCUTS, migrateShortcuts, normalizeAutoSaveMs } from '$lib/utils/shortcuts';
 
 const DEFAULT_SETTINGS: AppSettings = {
 	id: 'app-settings',
@@ -11,15 +12,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 		letterSpacing: 0,
 		paragraphSpacing: 16
 	},
-	shortcuts: {
-		save: 'Ctrl+S',
-		undo: 'Ctrl+Z',
-		redo: 'Ctrl+Y',
-		find: 'Ctrl+F',
-		replace: 'Ctrl+H',
-		newChapter: 'Ctrl+Shift+N',
-		newScene: 'Ctrl+Alt+N'
-	},
+	shortcuts: { ...DEFAULT_SHORTCUTS },
 	autoSave: true,
 	autoSaveInterval: 30000, // 30秒
 	syncEnabled: true,
@@ -31,7 +24,13 @@ const DEFAULT_SETTINGS: AppSettings = {
 export const settingsDB = {
 	async get(): Promise<AppSettings> {
 		const settings = await db.settings.get('app-settings');
-		return settings || DEFAULT_SETTINGS;
+		if (!settings) return { ...DEFAULT_SETTINGS, shortcuts: { ...DEFAULT_SHORTCUTS } };
+		// 旧バージョンの保存値を新しい仕様へそろえる(保存データ自体は書き換えない)
+		return {
+			...settings,
+			shortcuts: migrateShortcuts(settings.shortcuts),
+			autoSaveInterval: normalizeAutoSaveMs(settings.autoSaveInterval)
+		};
 	},
 
 	async update(changes: Partial<AppSettings>): Promise<void> {

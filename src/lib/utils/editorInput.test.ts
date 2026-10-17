@@ -31,3 +31,26 @@ describe('buildInsertion', () => {
 		expect(buildInsertion('indent').text).toBe('　');
 	});
 });
+
+import { selectTextRange } from './editorInput';
+
+describe('selectTextRange', () => {
+	it('改行(<br>)をまたいだ位置を選択範囲にできる', () => {
+		const root = document.createElement('div');
+		root.contentEditable = 'true';
+		root.innerHTML = 'あいう<br>えおか';
+		document.body.appendChild(root);
+		// 本文は「あいう\nえおか」。3文字目の改行の次から2文字 = 「えお」
+		expect(selectTextRange(root, 4, 6)).toBe(true);
+		expect(window.getSelection()?.toString()).toBe('えお');
+		root.remove();
+	});
+
+	it('範囲外の位置は false を返す', () => {
+		const root = document.createElement('div');
+		root.textContent = 'abc';
+		document.body.appendChild(root);
+		expect(selectTextRange(root, 10, 12)).toBe(false);
+		root.remove();
+	});
+});

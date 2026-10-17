@@ -1,7 +1,16 @@
 <script lang="ts">
 	import { toast } from '$lib/stores/toast.svelte';
 	import { onMount } from 'svelte';
-	import { db } from '$lib/db';
+	import { db, settingsDB } from '$lib/db';
+	import { settingsStore } from '$lib/stores/settings.svelte';
+	import {
+		DEFAULT_SHORTCUTS,
+		FIXED_SHORTCUTS,
+		SHORTCUT_LABELS,
+		eventToShortcut,
+		findConflicts,
+		type ShortcutAction
+	} from '$lib/utils/shortcuts';
 	import { themeStore, themes } from '$lib/stores/theme.svelte';
 	import { exportAllProjects, exportAsJson } from '$lib/services/export.service';
 	import { importFromJson } from '$lib/services/import.service';
@@ -20,7 +29,7 @@
 		theme: themeStore.theme.id as 'light' | 'dark' | 'auto',
 		autoTheme: themeStore.isAutoTheme,
 		autoSave: true,
-		autoSaveInterval: 30,
+		autoSaveInterval: 30000,
 		syncEnabled: true,
 		conflictResolution: 'manual',
 		editorFormatting: {
@@ -29,17 +38,14 @@
 			letterSpacing: 0,
 			paragraphSpacing: 16
 		},
-		shortcuts: {
-			save: 'Ctrl+S',
-			undo: 'Ctrl+Z',
-			redo: 'Ctrl+Y',
-			find: 'Ctrl+F',
-			replace: 'Ctrl+H',
-			newChapter: 'Ctrl+Shift+N',
-			newScene: 'Ctrl+Alt+N'
-		},
+		shortcuts: { ...DEFAULT_SHORTCUTS },
 		exportPatterns: []
 	});
+
+	// 自動保存の最大待ち時間は画面では秒で扱う
+	let autoSaveSeconds = $state(30);
+	let recordingAction = $state<ShortcutAction | null>(null);
+	let conflicts = $derived(findConflicts(settings.shortcuts));
 
 	let showImportModal = $state(false);
 	let showExportModal = $state(false);
@@ -144,36 +150,26 @@
 			// 既存の設定を取得してFirebase設定を保持
 			const existing = await db.settings.get('app-settings');
 
-			// プレーンなオブジェクトに変換（Svelteのリアクティブプロパティを除去）
+			// 既存の設定(エディタのフォントなど、この画面で扱わない項目)を保ったまま上書きする。
+			// Svelte のリアクティブなプロパティは、プレーンな値に変換してから保存する
 			const plainSettings = {
+				...existing,
 				id: 'app-settings' as const,
-				firebase: existing?.firebase,
 				theme: settings.theme,
 				autoTheme: settings.autoTheme,
 				autoSave: settings.autoSave,
 				autoSaveInterval: settings.autoSaveInterval,
 				syncEnabled: settings.syncEnabled,
 				conflictResolution: settings.conflictResolution,
-				editorFormatting: {
-					fontSize: settings.editorFormatting.fontSize,
-					lineHeight: settings.editorFormatting.lineHeight,
-					letterSpacing: settings.editorFormatting.letterSpacing,
-					paragraphSpacing: settings.editorFormatting.paragraphSpacing
-				},
-				shortcuts: {
-					save: settings.shortcuts.save,
-					undo: settings.shortcuts.undo,
-					redo: settings.shortcuts.redo,
-					find: settings.shortcuts.find,
-					replace: settings.shortcuts.replace,
-					newChapter: settings.shortcuts.newChapter,
-					newScene: settings.shortcuts.newScene
-				},
+				editorFormatting: { ...settings.editorFormatting },
+				shortcuts: { ...settings.shortcuts },
 				exportPatterns: existing?.exportPatterns || [],
 				updatedAt: Date.now()
-			};
+			} as AppSettings;
 
 			await db.settings.put(plainSettings);
+			// 他の画面(エディタなど)にもすぐ反映する
+			settingsStore.settings = { ...settingsStore.settings, ...plainSettings };
 		} catch (error) {
 			console.error('Failed to save settings:', error);
 		}
@@ -182,34 +178,67 @@
 	// 設定の読み込み
 	const loadSettings = async () => {
 		try {
-			const saved = await db.settings.get('app-settings');
-			if (saved) {
+			const raw = await db.settings.get('app-settings');
+			if (raw) {
+				// 旧バージョンの値は settingsDB.get() で新しい仕様にそろえる
+				const saved = await settingsDB.get();
 				settings.theme = saved.theme;
 				settings.autoTheme = saved.autoTheme;
 				settings.autoSave = saved.autoSave;
 				settings.autoSaveInterval = saved.autoSaveInterval;
+				autoSaveSeconds = Math.round(saved.autoSaveInterval / 1000);
 				settings.syncEnabled = saved.syncEnabled;
 				settings.conflictResolution = saved.conflictResolution || 'manual';
-				settings.editorFormatting = saved.editorFormatting || {
-					fontSize: 16,
-					lineHeight: 2,
-					letterSpacing: 0,
-					paragraphSpacing: 16
-				};
-				if (saved.shortcuts) {
-					settings.shortcuts.save = saved.shortcuts.save;
-					settings.shortcuts.undo = saved.shortcuts.undo;
-					settings.shortcuts.redo = saved.shortcuts.redo;
-					settings.shortcuts.find = saved.shortcuts.find;
-					settings.shortcuts.replace = saved.shortcuts.replace;
-					settings.shortcuts.newChapter = saved.shortcuts.newChapter;
-					settings.shortcuts.newScene = saved.shortcuts.newScene;
-				}
+				settings.editorFormatting = saved.editorFormatting || settings.editorFormatting;
+				settings.shortcuts = { ...saved.shortcuts };
 			}
 		} catch (error) {
 			console.error('Failed to load settings:', error);
 		}
 	};
+
+	// 自動保存
+	const handleAutoSaveToggle = async () => {
+		settings.autoSave = !settings.autoSave;
+		await saveSettings();
+	};
+
+	const handleAutoSaveSeconds = async () => {
+		const seconds = Math.min(Math.max(Math.round(Number(autoSaveSeconds)) || 30, 5), 300);
+		autoSaveSeconds = seconds;
+		settings.autoSaveInterval = seconds * 1000;
+		await saveSettings();
+	};
+
+	// ショートカットの割り当て: 「変更」を押したあとに押したキーを記録する
+	const startRecording = (action: ShortcutAction) => {
+		recordingAction = action;
+	};
+
+	const resetShortcut = async (action: ShortcutAction) => {
+		settings.shortcuts[action] = DEFAULT_SHORTCUTS[action];
+		await saveSettings();
+	};
+
+	$effect(() => {
+		if (!recordingAction) return;
+		const action = recordingAction;
+		const onKeydown = async (e: KeyboardEvent) => {
+			if (e.key === 'Escape') {
+				recordingAction = null;
+				return;
+			}
+			const shortcut = eventToShortcut(e);
+			if (!shortcut) return; // 修飾キーだけの間は待つ
+			e.preventDefault();
+			e.stopPropagation();
+			settings.shortcuts[action] = shortcut;
+			recordingAction = null;
+			await saveSettings();
+		};
+		window.addEventListener('keydown', onKeydown, true);
+		return () => window.removeEventListener('keydown', onKeydown, true);
+	});
 
 	// エクスポート
 	const handleExport = async () => {
@@ -300,7 +329,7 @@
 	<Card class="flex flex-direction:column gap:1rem b:2px|solid|var(--color-text)">
 		<h2 class="font:bold">テーマ</h2>
 
-		<div class="px:4rem">
+		<div>
 			<label class="flex align-items:center gap:.5rem cursor:pointer">
 				<input
 					type="checkbox"
@@ -312,18 +341,18 @@
 			</label>
 		</div>
 
-		<div class="flex flex-direction:column gap:.5rem px:4rem">
+		<div class="flex flex-direction:column gap:.5rem">
 			{#each Object.values(themes) as theme}
 				<button
 					onclick={() => handleThemeChange(theme.id)}
-					class="p:4 r:8px b:2px|solid|var(--color-text) cursor:pointer flex flex-direction:row ai:center jc:center gap:2rem rel {settings.autoTheme
+					class="p:4 r:8px b:2px|solid|var(--color-text) cursor:pointer flex flex-direction:row ai:center jc:space-between gap:2rem rel px:1rem py:.75rem {settings.autoTheme
 						? 'opacity:.5'
 						: ''}"
 					style="background-color: {theme.colors.background}; color: {theme.colors.text};"
 					disabled={settings.autoTheme}
 				>
 					{#if settings.theme === theme.id && !settings.autoTheme}
-						<div class="abs top:50% left:1rem transform:translateY(-50%)">
+						<div class="abs top:50% right:3.5rem transform:translateY(-50%)">
 							<span
 								class="w:8px h:2px flex transform:rotate(45deg)|translate(0,6px)"
 								style="background-color: {theme.colors.text};"
@@ -354,42 +383,8 @@
 		{#if currentProjectStore.project}
 			<NotificationSettings projectId={currentProjectStore.project.id} />
 		{:else}
-			<p class="text-gray-600">プロジェクトを開いて通知を設定してください</p>
+			<p class="fg:theme-text-secondary">プロジェクトを開いて通知を設定してください</p>
 		{/if}
-	</Card>
-
-	<!-- エディタ設定 -->
-	<Card class="b:2px|solid|var(--color-text) flex flex-direction:column gap:1rem">
-		<h2 class="font:bold">エディタ</h2>
-
-		<div class="flex flex-direction:column gap:1rem">
-			<div>
-				<label class="flex ai:center gap:.5rem cursor:pointer">
-					<input
-						type="checkbox"
-						bind:checked={settings.autoSave}
-						onchange={saveSettings}
-						class="w:1rem h:1rem"
-					/>
-					<span>自動保存を有効にする</span>
-				</label>
-			</div>
-
-			{#if settings.autoSave}
-				<div class="flex flex-direction:column gap:.5rem">
-					<label for="autoSaveInterval" class="block">自動保存間隔 (秒)</label>
-					<input
-						id="autoSaveInterval"
-						type="number"
-						bind:value={settings.autoSaveInterval}
-						onchange={saveSettings}
-						min="10"
-						max="300"
-						class="px:.5rem py:.1rem b:2px|solid|theme-text r:8px"
-					/>
-				</div>
-			{/if}
-		</div>
 	</Card>
 
 	<!-- 書式設定 -->
@@ -595,7 +590,7 @@
 							class="w:1rem h:1rem block r:full {syncStore.status === 'synced'
 								? 'bg:theme-success'
 								: syncStore.status === 'syncing'
-									? 'bg:theme-wraning'
+									? 'bg:theme-warning'
 									: syncStore.status === 'error'
 										? 'bg:theme-error'
 										: 'bg:theme-border'}"
@@ -632,20 +627,75 @@
 		</div>
 	</Card>
 
+	<!-- エディタ(自動保存) -->
+	<Card class="b:2px|solid|var(--color-text) flex flex-direction:column gap:1rem">
+		<h2 class="font:bold">エディタ</h2>
+
+		<label class="flex ai:center gap:.5rem cursor:pointer">
+			<input
+				type="checkbox"
+				checked={settings.autoSave}
+				onchange={handleAutoSaveToggle}
+				class="w:1rem h:1rem"
+			/>
+			<span>自動保存を有効にする</span>
+		</label>
+		<p class="fg:theme-text-secondary font:.875rem">
+			入力が止まって約2秒後に保存します。オフにすると、Ctrl+S や「今すぐ保存」で保存します。
+		</p>
+
+		{#if settings.autoSave}
+			<label class="flex flex-direction:column gap:.5rem">
+				<span>入力し続けているときの最大の待ち時間（秒）</span>
+				<input
+					type="number"
+					min="5"
+					max="300"
+					step="5"
+					bind:value={autoSaveSeconds}
+					onchange={handleAutoSaveSeconds}
+					class="w:8rem px:.75rem py:.5rem b:2px|solid|theme-text r:8px bg:theme-background fg:theme-text"
+				/>
+			</label>
+		{/if}
+	</Card>
+
 	<!-- ショートカットキー -->
 	<Card class="b:2px|solid|var(--color-text)  flex flex-direction:column gap:1rem">
 		<h2 class="font:bold">ショートカットキー</h2>
+		<p class="fg:theme-text-secondary font:.875rem">
+			「変更」を押してからキーを押すと割り当てられます（Ctrl または Alt
+			と組み合わせてください）。Mac では Cmd が Ctrl として扱われます。
+		</p>
 
 		<div class="flex flex-direction:column gap:.6rem">
-			{#each Object.entries(settings.shortcuts) as [action, key]}
-				<div class="flex flex-direction:row ai:center jc:space-between">
-					<span class="capitalize">{action.replace(/([A-Z])/g, ' $1')}</span>
-					<kbd class="px:.4rem py:.1rem bg:theme-border b:1px|solid|theme-text-secondary r:6px">
-						{key}
-					</kbd>
+			{#each Object.entries(settings.shortcuts) as [name, key] (name)}
+				{@const action = name as ShortcutAction}
+				{@const fixed = FIXED_SHORTCUTS.includes(action)}
+				<div class="flex flex-direction:row ai:center jc:space-between gap:.75rem">
+					<span>{SHORTCUT_LABELS[action]}</span>
+					<span class="flex ai:center gap:.5rem">
+						<kbd class="shortcut-key" class:recording={recordingAction === action}>
+							{recordingAction === action ? 'キーを押してください…' : key}
+						</kbd>
+						{#if fixed}
+							<span class="fg:theme-text-secondary font:.75rem">固定</span>
+						{:else}
+							<button class="link-btn" onclick={() => startRecording(action)}>変更</button>
+							{#if key !== DEFAULT_SHORTCUTS[action]}
+								<button class="link-btn" onclick={() => resetShortcut(action)}>初期値</button>
+							{/if}
+						{/if}
+					</span>
 				</div>
 			{/each}
 		</div>
+
+		{#each conflicts as group (group.join())}
+			<p class="fg:theme-warning font:.875rem" role="alert">
+				{group.map((a) => SHORTCUT_LABELS[a]).join('・')} に同じキーが割り当てられています。
+			</p>
+		{/each}
 	</Card>
 
 	<!-- データ管理 -->
@@ -776,6 +826,29 @@
 {/if}
 
 <style>
+	.shortcut-key {
+		padding: 2px 8px;
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		background: var(--color-surface);
+		font-family: inherit;
+		font-size: 13px;
+	}
+
+	.shortcut-key.recording {
+		border-color: var(--color-primary);
+		color: var(--color-primary);
+	}
+
+	.link-btn {
+		border: none;
+		background: transparent;
+		padding: 4px 6px;
+		font-size: 13px;
+		color: var(--color-primary);
+		cursor: pointer;
+	}
+
 	.settings-page {
 		padding: 2rem 4rem;
 	}

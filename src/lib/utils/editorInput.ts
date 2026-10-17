@@ -173,3 +173,44 @@ export function updateDimHighlight(root: HTMLElement | null, enabled: boolean): 
 	const ranges = rangesOutsideCurrentParagraph(root);
 	highlights.set(DIM_NAME, new Highlight(...ranges));
 }
+
+/**
+ * 本文(改行を含む文字列)上の位置 [start, end) を、contenteditable 内の選択範囲にする。
+ * <br> と 2 つ目以降の <div> は改行 1 文字として数える(innerText と同じ数え方)。
+ * 見つからなければ false。
+ */
+export function selectTextRange(root: HTMLElement, start: number, end: number): boolean {
+	let count = 0;
+	let startPos: { node: Node; offset: number } | null = null;
+	let endPos: { node: Node; offset: number } | null = null;
+
+	const visit = (node: Node, isFirstChild: boolean): void => {
+		if (endPos) return;
+		if (node.nodeType === Node.TEXT_NODE) {
+			const length = node.textContent?.length ?? 0;
+			if (!startPos && start <= count + length) startPos = { node, offset: start - count };
+			if (startPos && end <= count + length) endPos = { node, offset: end - count };
+			count += length;
+			return;
+		}
+		if (node.nodeName === 'BR') {
+			count += 1;
+			return;
+		}
+		if (node.nodeName === 'DIV' && !isFirstChild) count += 1;
+		node.childNodes.forEach((child, i) => visit(child, i === 0));
+	};
+	root.childNodes.forEach((child, i) => visit(child, i === 0));
+
+	if (!startPos || !endPos) return false;
+	const selection = window.getSelection();
+	if (!selection) return false;
+	const range = document.createRange();
+	const s = startPos as { node: Node; offset: number };
+	const e = endPos as { node: Node; offset: number };
+	range.setStart(s.node, s.offset);
+	range.setEnd(e.node, e.offset);
+	selection.removeAllRanges();
+	selection.addRange(range);
+	return true;
+}

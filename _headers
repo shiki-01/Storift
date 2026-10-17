@@ -1,0 +1,6 @@
+# Service Worker とマニフェストは常に最新を確認させる(更新の検知が遅れないように)
+/service-worker.js
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache
+  Content-Type: application/manifest+json

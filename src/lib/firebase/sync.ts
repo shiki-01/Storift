@@ -108,6 +108,11 @@ export async function syncAllFromFirestore(
 	const q = constraints.length > 0 ? query(collectionRef, ...constraints) : collectionRef;
 	const snapshot = await getDocs(q);
 
+	// キャッシュ由来の不完全な一覧は、リモート削除の判定を誤らせるため採用しない
+	if (snapshot.metadata.fromCache) {
+		throw new Error('Firestore から最新データを取得できませんでした(オフライン)');
+	}
+
 	console.log(
 		`📥 Fetched ${snapshot.docs.length} ${entityType} documents${projectId ? ` for project ${projectId}` : ''}${lastSyncTime ? ' (diff sync)' : ''}`
 	);
@@ -156,7 +161,8 @@ export function setupRealtimeSync(
 	entityType: EntityType,
 	onUpdate: (entities: SyncableEntity[]) => void,
 	onError?: (error: Error) => void,
-	projectId?: string
+	projectId?: string,
+	onRemoved?: (ids: string[]) => void
 ): Unsubscribe {
 	const db = getFirestoreInstance();
 	const collectionRef = collection(db, entityType);
@@ -185,6 +191,14 @@ export function setupRealtimeSync(
 			});
 			console.log(`📨 Realtime update: ${entities.length} ${entityType} received`);
 			onUpdate(entities);
+
+			if (onRemoved) {
+				const removed = snapshot
+					.docChanges()
+					.filter((change) => change.type === 'removed')
+					.map((change) => change.doc.id);
+				if (removed.length > 0) onRemoved(removed);
+			}
 		},
 		(error) => {
 			console.error(`Realtime sync error for ${entityType}:`, error);

@@ -1,5 +1,13 @@
 import type { Table } from 'dexie';
-import { db, projectsDB, chaptersDB, scenesDB, charactersDB, plotsDB, worldbuildingDB } from '$lib/db';
+import {
+	db,
+	projectsDB,
+	chaptersDB,
+	scenesDB,
+	charactersDB,
+	plotsDB,
+	worldbuildingDB
+} from '$lib/db';
 import {
 	syncToFirestore,
 	syncFromFirestore,
@@ -516,10 +524,7 @@ async function processChange(
 /**
  * リアルタイム同期で受信したデータを反映する
  */
-async function applyRealtimeEntities(
-	type: EntityType,
-	entities: SyncableEntity[]
-): Promise<void> {
+async function applyRealtimeEntities(type: EntityType, entities: SyncableEntity[]): Promise<void> {
 	const policy = await getPolicy();
 	let changed = false;
 	for (const remote of entities) {

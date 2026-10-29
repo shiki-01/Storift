@@ -52,12 +52,8 @@ export const editorStore = {
 	},
 	set currentScene(value: Scene | null) {
 		currentScene = value;
-		if (value) {
-			content = value.content;
-			isDirty = false;
-		} else {
-			content = '';
-		}
+		content = value?.content ?? '';
+		isDirty = false;
 	},
 	/** 本文・未保存状態に触れずにシーンのメタ情報(文字数・更新日時など)だけ差し替える */
 	updateSceneMeta(value: Scene) {

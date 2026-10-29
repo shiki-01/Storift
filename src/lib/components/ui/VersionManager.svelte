@@ -10,9 +10,11 @@
 		entityType: 'scene' | 'chapter' | 'character' | 'plot' | 'worldbuilding';
 		entityId: string;
 		projectId: string;
+		/** 復元した後に呼ばれる(開いている画面の内容を読み直すため) */
+		onRestore?: () => void | Promise<void>;
 	}
 
-	let { entityType, entityId, projectId }: Props = $props();
+	let { entityType, entityId, projectId, onRestore }: Props = $props();
 
 	let history = $state<History[]>([]);
 	let restorePoints = $state<RestorePoint[]>([]);
@@ -79,6 +81,7 @@
 			const success = await versionService.restoreFromPoint(restorePointId);
 			if (success) {
 				toast.success('復元しました');
+				await onRestore?.();
 				await loadHistory();
 			} else {
 				toast.error('復元に失敗しました');

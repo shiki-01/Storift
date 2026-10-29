@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
@@ -233,6 +233,9 @@
 		// クリーンアップ関数を同期的に返す
 		return () => {
 			if (autoSave) autoSave.stop();
+			// 他の画面へ移動するときは、待機中の自動保存を待たずに保存する
+			clearSaveTimers();
+			if (editorStore.isDirty) void handleSave();
 			removeWarning();
 			removeVisibilitySave();
 			window.removeEventListener('keydown', handleKeyDown);
@@ -273,6 +276,8 @@
 
 	const handleCreateScene = async () => {
 		if (!newSceneTitle.trim() || !selectedChapterId || !currentProjectStore.project) return;
+		// 作成したシーンへ切り替える前に、今のシーンの未保存分を保存する
+		if (!(await flushSave())) return;
 
 		try {
 			const scene = await scenesDB.create({
@@ -386,18 +391,45 @@
 		}
 	}
 
-	// 未保存の変更があれば保存してから次の操作へ進む
-	async function flushSave() {
+	/**
+	 * 未保存の変更があれば保存してから次の操作へ進む。
+	 * 保存しきれなかった(失敗した)ときは false を返すので、本文を差し替える操作は中止すること
+	 */
+	async function flushSave(): Promise<boolean> {
 		clearSaveTimers();
-		// 保存中なら完了を待つ
-		for (let i = 0; i < 50 && editorStore.isSaving; i++) {
-			await new Promise((r) => setTimeout(r, 40));
+		// 保存中なら完了を待つ。保存中に入力が続いた分も拾えるよう、もう一度だけ保存する
+		for (let attempt = 0; attempt < 2 && editorStore.isDirty; attempt++) {
+			for (let i = 0; i < 50 && editorStore.isSaving; i++) {
+				await new Promise((r) => setTimeout(r, 40));
+			}
+			await handleSave();
+			if (saveFailed) break;
 		}
-		await handleSave();
+		if (editorStore.isDirty && editorStore.currentScene) {
+			toast.error('本文を保存できなかったため、操作を中止しました');
+			return false;
+		}
+		return true;
+	}
+
+	// 履歴は保存済みの内容から作られるので、開く前に保存する
+	async function openVersionManager() {
+		if (await flushSave()) showVersionManager = true;
+	}
+
+	// 復元などで DB 側の本文が変わったときに、開いているシーンを読み直す
+	async function reloadCurrentScene() {
+		const id = editorStore.currentScene?.id;
+		if (!id) return;
+		const fresh = await scenesDB.getById(id);
+		if (!fresh) return;
+		const index = currentProjectStore.scenes.findIndex((s) => s.id === id);
+		if (index !== -1) currentProjectStore.scenes[index] = fresh;
+		editorStore.currentScene = fresh;
 	}
 
 	async function handleSceneSelect(scene: (typeof currentProjectStore.scenes)[0]) {
-		if (scene.id !== editorStore.currentScene?.id) await flushSave();
+		if (scene.id !== editorStore.currentScene?.id && !(await flushSave())) return;
 		editorStore.currentScene = scene;
 		rememberLastScene(scene.id);
 		if (window.matchMedia('(max-width: 1024px)').matches) {
@@ -518,8 +550,9 @@
 					if (index !== -1) {
 						currentProjectStore.scenes[index] = updatedScene;
 					}
+					// 本文と未保存状態は残したまま、タイトルなどだけ反映する
 					if (editorStore.currentScene?.id === contextMenu.targetId) {
-						editorStore.currentScene = updatedScene;
+						editorStore.updateSceneMeta(updatedScene);
 					}
 				}
 				await queueChange('scenes', contextMenu.targetId, 'update');
@@ -627,13 +660,16 @@
 
 	async function handleDuplicateScene(scene: Scene) {
 		if (!currentProjectStore.project) return;
+		// 開いているシーンなら、未保存の入力も含めて複製する
+		const content =
+			scene.id === editorStore.currentScene?.id ? editorStore.content : scene.content;
 
 		try {
 			const newScene = await scenesDB.create({
 				chapterId: scene.chapterId,
 				projectId: currentProjectStore.project.id,
 				title: `${scene.title} (コピー)`,
-				content: scene.content
+				content
 			});
 
 			currentProjectStore.scenes = [...currentProjectStore.scenes, newScene];
@@ -686,12 +722,11 @@
 			await queueChange('scenes', chapterScenes[i].id, 'update');
 		}
 
-		// ストアを更新
-		const allScenes = currentProjectStore.scenes.map((s) => {
-			const updated = chapterScenes.find((cs) => cs.id === s.id);
-			return updated || s;
-		});
-		currentProjectStore.scenes = allScenes;
+		// ストアを更新(一覧は order で並ぶので、order も新しい値にする)
+		const newOrder = new Map(chapterScenes.map((s, i) => [s.id, i]));
+		currentProjectStore.scenes = currentProjectStore.scenes.map((s) =>
+			newOrder.has(s.id) ? { ...s, order: newOrder.get(s.id)! } : s
+		);
 	}
 
 	// フォント変更処理
@@ -836,7 +871,7 @@
 			onDuplicate: () => handleDuplicateScene(editorStore.currentScene!),
 			onExport: () => (showPrintPreview = true),
 			onPrint: () => (showPrintPreview = true),
-			onVersionHistory: () => (showVersionManager = true)
+			onVersionHistory: () => void openVersionManager()
 		});
 
 		contextMenu = {
@@ -1039,6 +1074,8 @@
 		const current = editorStore.currentScene;
 		// 別プロジェクトのシーンが残っていたら破棄する
 		if (current && current.projectId !== project.id) {
+			// 未保存分は保存してから破棄する(handleSave は呼んだ時点の本文を保存する)
+			if (editorStore.isDirty) untrack(() => void handleSave());
 			editorStore.currentScene = null;
 			return;
 		}
@@ -1526,7 +1563,7 @@
 							</button>
 							<button
 								class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
-								onclick={() => (showVersionManager = true)}
+								onclick={() => void openVersionManager()}
 								aria-label="バージョン履歴"
 								title="バージョン履歴"
 							>
@@ -1851,7 +1888,7 @@
 		>
 		<button onclick={() => runAction(() => (showExportModal = true))}>エクスポート</button>
 		<button onclick={() => runAction(() => (showPrintPreview = true))}>印刷プレビュー</button>
-		<button onclick={() => runAction(() => (showVersionManager = true))}>バージョン履歴</button>
+		<button onclick={() => runAction(() => void openVersionManager())}>バージョン履歴</button>
 		{#if editorStore.currentScene}
 			<div class="actions-sep"></div>
 			<button onclick={() => runAction(() => handleRenameScene(editorStore.currentScene!))}
@@ -1935,7 +1972,9 @@
 				.filter((scene) => scene.chapterId === chapter.id)
 				.map((scene) => ({
 					title: scene.title,
-					content: scene.content
+					// 開いているシーンは未保存の入力も含める
+					content:
+						scene.id === editorStore.currentScene?.id ? editorStore.content : scene.content
 				}))
 		}))}
 		isOpen={showPrintPreview}
@@ -1955,6 +1994,7 @@
 			entityType="scene"
 			entityId={editorStore.currentScene.id}
 			projectId={currentProjectStore.project.id}
+			onRestore={reloadCurrentScene}
 		/>
 	</Modal>
 {/if}

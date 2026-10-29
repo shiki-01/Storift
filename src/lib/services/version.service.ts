@@ -5,6 +5,7 @@
 
 import { db } from '$lib/db';
 import type { History } from '$lib/types';
+import type { Table } from 'dexie';
 
 export interface TextDiff {
 	type: 'add' | 'remove' | 'unchanged';
@@ -235,44 +236,37 @@ class VersionService {
 		// エンティティタイプに応じて復元
 		const { entityType, entityId, snapshot } = historyEntry;
 
+		const tables = {
+			scene: db.scenes,
+			chapter: db.chapters,
+			character: db.characters,
+			plot: db.plots,
+			worldbuilding: db.worldbuilding
+		} as const;
+		const syncTypes = {
+			scene: 'scenes',
+			chapter: 'chapters',
+			character: 'characters',
+			plot: 'plots',
+			worldbuilding: 'worldbuilding'
+		} as const;
+
 		try {
-			switch (entityType) {
-				case 'scene': {
-					const scene = await db.scenes.get(entityId);
-					if (scene) {
-						await db.scenes.update(entityId, snapshot);
-					}
-					break;
-				}
-				case 'chapter': {
-					const chapter = await db.chapters.get(entityId);
-					if (chapter) {
-						await db.chapters.update(entityId, snapshot);
-					}
-					break;
-				}
-				case 'character': {
-					const character = await db.characters.get(entityId);
-					if (character) {
-						await db.characters.update(entityId, snapshot);
-					}
-					break;
-				}
-				case 'plot': {
-					const plot = await db.plots.get(entityId);
-					if (plot) {
-						await db.plots.update(entityId, snapshot);
-					}
-					break;
-				}
-				case 'worldbuilding': {
-					const worldbuilding = await db.worldbuilding.get(entityId);
-					if (worldbuilding) {
-						await db.worldbuilding.update(entityId, snapshot);
-					}
-					break;
-				}
-			}
+			const table = tables[entityType] as unknown as Table<
+				{ id: string; updatedAt: number; _version?: number },
+				string
+			>;
+			const current = await table.get(entityId);
+			if (!current) return false;
+			// 古い updatedAt のまま書き戻すと同期で巻き戻されるため、新しい編集として保存して他端末へ送る
+			await table.put({
+				...snapshot,
+				id: entityId,
+				updatedAt: Date.now(),
+				_version: Math.max(current._version ?? 0, snapshot?._version ?? 0) + 1
+			});
+			const { queueChange } = await import('./sync.service');
+			await queueChange(syncTypes[entityType], entityId, 'update');
 
 			// 復元履歴を記録
 			await db.history.add({

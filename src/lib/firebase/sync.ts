@@ -191,6 +191,14 @@ export function setupRealtimeSync(
 			});
 			console.log(`📨 Realtime update: ${entities.length} ${entityType} received`);
 			onUpdate(entities);
+
+			if (onRemoved) {
+				const removed = snapshot
+					.docChanges()
+					.filter((change) => change.type === 'removed')
+					.map((change) => change.doc.id);
+				if (removed.length > 0) onRemoved(removed);
+			}
 		},
 		(error) => {
 			console.error(`Realtime sync error for ${entityType}:`, error);

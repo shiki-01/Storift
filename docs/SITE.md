@@ -2,10 +2,10 @@
 
 ## 構成
 
-| 役割               | URL                      | ソース         | Cloudflare Pages プロジェクト |
-| ------------------ | ------------------------ | -------------- | ----------------------------- |
-| サイト（紹介）     | `storift.<ドメイン>`     | `site/`        | `storift-site`                |
-| エディタ（アプリ） | `app.storift.<ドメイン>` | リポジトリ直下 | `storift`（既存）             |
+| 役割               | URL                        | ソース         | Cloudflare Pages プロジェクト |
+| ------------------ | -------------------------- | -------------- | ----------------------------- |
+| サイト（紹介）     | `storift.shiki-01.com`     | `site/`        | `storift-site`                |
+| エディタ（アプリ） | `app.storift.shiki-01.com` | リポジトリ直下 | `storift`（既存）             |
 
 - サイトは SvelteKit + `adapter-static` の静的サイト。ページは `/`、`/features`、`/guide`、`/faq`。
 - アプリのコード・ビルドは変更しない。サイトは `site/` に独立した `package.json` を持つ。
@@ -20,7 +20,7 @@
 | `PUBLIC_SITE_URL` | canonical・OGP・sitemap・robots | `https://storift.example`     |
 | `PUBLIC_APP_URL`  | 「エディタを開く」などの遷移先  | `https://app.storift.example` |
 
-未設定の間は Cloudflare Pages の既定ドメイン（`storift-site.pages.dev` / `storift.pages.dev`）を使う。
+未設定の場合は、上表の例の URL（`storift.shiki-01.com` / `app.storift.shiki-01.com`）が使われるため、通常は設定不要。別のドメインに変えるときだけ環境変数で上書きする。
 
 ## Cloudflare Pages の設定
 
@@ -31,24 +31,28 @@
 - ビルドコマンド: `bun run build`
 - ビルド出力ディレクトリ: `build`
 - 環境変数: `PUBLIC_SITE_URL`、`PUBLIC_APP_URL`（上表）
-- カスタムドメイン: `storift.<ドメイン>`
+- カスタムドメイン: `storift.shiki-01.com`
 
 ### アプリ（既存プロジェクト `storift`）
 
-- カスタムドメインに `app.storift.<ドメイン>` を追加
+- カスタムドメインに `app.storift.shiki-01.com` を追加
 - 「ビルドウォッチパス」の除外に `site/*` を追加（サイトだけの変更でアプリを再ビルドしない）
 
 ## DNS
 
 Cloudflare でドメインを管理している場合、Pages のカスタムドメイン追加で CNAME が自動作成される。手動で設定する場合:
 
-| 種別  | 名前            | 値                       |
-| ----- | --------------- | ------------------------ |
-| CNAME | `@` / `storift` | `storift-site.pages.dev` |
-| CNAME | `app`           | `storift.pages.dev`      |
+| 種別  | 名前      | 値                       |
+| ----- | --------- | ------------------------ |
+| CNAME | `storift` | `storift-site.pages.dev` |
+| CNAME | `app`     | `storift.pages.dev`      |
 
 ## アプリを別オリジンへ移すときの注意
 
 - 端末内のデータ（IndexedDB）はオリジンごとに分かれる。旧 URL（`storift.pages.dev` など）で作った作品は、`app.` 側からは見えない。移行前に設定画面のエクスポートで書き出すか、同期（Firebase）で取り込む。
-- Firebase Console → Authentication → 設定 → 承認済みドメイン に、`app.storift.<ドメイン>` を追加する（匿名認証を使っているため必須）。
+- Firebase Console → Authentication → 設定 → 承認済みドメイン に、`app.storift.shiki-01.com` を追加する（匿名認証を使っているため必須）。
 - インストール済みの PWA は旧オリジンのまま残る。新しい URL から入れ直す。
+
+## 証明書
+
+`app.storift.shiki-01.com` は 2 階層のサブドメインになる。Cloudflare Pages のカスタムドメインとして追加すれば証明書は個別に発行されるが、発行されない場合は、Cloudflare の SSL/TLS 設定でこのホスト名が対象になっているか確認する。

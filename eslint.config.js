@@ -12,6 +12,8 @@ const gitignorePath = fileURLToPath(new URL('./.gitignore', import.meta.url));
 
 export default defineConfig(
 	includeIgnoreFile(gitignorePath),
+	// サイトは別プロジェクト(site/)として管理する
+	{ ignores: ['site/**'] },
 	js.configs.recommended,
 	...ts.configs.recommended,
 	...svelte.configs.recommended,

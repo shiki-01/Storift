@@ -10,3 +10,6 @@ bun.lockb
 
 # サイトは別プロジェクト(site/)として管理する
 /site/
+
+# Tauri
+/src-tauri/

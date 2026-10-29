@@ -175,11 +175,11 @@ export function updateDimHighlight(root: HTMLElement | null, enabled: boolean): 
 }
 
 /**
- * 本文(改行を含む文字列)上の位置 [start, end) を、contenteditable 内の選択範囲にする。
+ * 本文(改行を含む文字列)上の位置 [start, end) を、contenteditable 内の Range にする。
  * <br> と 2 つ目以降の <div> は改行 1 文字として数える(innerText と同じ数え方)。
- * 見つからなければ false。
+ * 見つからなければ null。
  */
-export function selectTextRange(root: HTMLElement, start: number, end: number): boolean {
+export function textRange(root: HTMLElement, start: number, end: number): Range | null {
 	let count = 0;
 	let startPos: { node: Node; offset: number } | null = null;
 	let endPos: { node: Node; offset: number } | null = null;
@@ -202,15 +202,48 @@ export function selectTextRange(root: HTMLElement, start: number, end: number): 
 	};
 	root.childNodes.forEach((child, i) => visit(child, i === 0));
 
-	if (!startPos || !endPos) return false;
-	const selection = window.getSelection();
-	if (!selection) return false;
+	if (!startPos || !endPos) return null;
 	const range = document.createRange();
 	const s = startPos as { node: Node; offset: number };
 	const e = endPos as { node: Node; offset: number };
 	range.setStart(s.node, s.offset);
 	range.setEnd(e.node, e.offset);
+	return range;
+}
+
+/**
+ * 本文上の位置 [start, end) を、contenteditable 内の選択範囲にする。見つからなければ false。
+ */
+export function selectTextRange(root: HTMLElement, start: number, end: number): boolean {
+	const range = textRange(root, start, end);
+	const selection = window.getSelection();
+	if (!range || !selection) return false;
 	selection.removeAllRanges();
 	selection.addRange(range);
 	return true;
+}
+
+/** スクロールできる一番近い祖先(なければ null) */
+export function scrollParent(el: HTMLElement | null): HTMLElement | null {
+	for (let node = el?.parentElement; node; node = node.parentElement) {
+		const { overflowY, overflowX } = getComputedStyle(node);
+		if (/(auto|scroll)/.test(overflowY + overflowX)) return node;
+	}
+	return null;
+}
+
+/**
+ * 本文の範囲がスクロール領域の中央に来るようにスクロールする。
+ * 本文は 1 つの大きな要素なので scrollIntoView ではなく、範囲の位置から移動量を求める。
+ */
+export function scrollRangeIntoView(root: HTMLElement, range: Range): void {
+	const container = scrollParent(root);
+	if (!container) return;
+	const rect = range.getBoundingClientRect();
+	const box = container.getBoundingClientRect();
+	container.scrollBy({
+		top: rect.top + rect.height / 2 - (box.top + box.height / 2),
+		left: rect.left + rect.width / 2 - (box.left + box.width / 2),
+		behavior: 'smooth'
+	});
 }

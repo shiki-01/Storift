@@ -91,6 +91,8 @@
 			registerServiceWorker().catch((error) => {
 				console.error('Service Worker operation failed:', error);
 			});
+			// 端末内のデータ(原稿・設定)を、容量不足時にブラウザが自動で消さないよう保護を求める
+			navigator.storage?.persist?.().catch(() => {});
 		}
 
 		// Firebaseと同期システムを初期化(非同期で実行)

@@ -71,9 +71,27 @@
 	let isSidebarOpen = $state(false);
 
 	// プレビュー機能
-	let viewMode = $state<ViewMode>('editor');
-	// プレビュー設定は端末ごとに保存し、画面を移動しても初期値に戻らないようにする
+	// 表示モード(本文/2画面/プレビュー)とプレビュー設定は端末ごとに保存し、開き直しても初期値に戻らないようにする
+	const VIEW_MODE_KEY = 'storift:view-mode';
 	const PREVIEW_SETTINGS_KEY = 'storift:preview-settings';
+
+	function loadViewMode(): ViewMode {
+		try {
+			const raw = localStorage.getItem(VIEW_MODE_KEY);
+			return raw === 'split' || raw === 'preview' ? raw : 'editor';
+		} catch {
+			return 'editor';
+		}
+	}
+
+	let viewMode = $state<ViewMode>(loadViewMode());
+	$effect(() => {
+		try {
+			localStorage.setItem(VIEW_MODE_KEY, viewMode);
+		} catch {
+			// 保存できなくても、そのセッション内では反映される
+		}
+	});
 
 	function loadPreviewSettings(): PreviewSettingsType {
 		try {
@@ -686,26 +704,27 @@
 		}
 	}
 
-	async function updateFormatting() {
+	/** 書式を保存する。成功したら true */
+	async function saveFormatting(): Promise<boolean> {
+		const next = {
+			fontSize: localFormatting.fontSize,
+			lineHeight: localFormatting.lineHeight,
+			letterSpacing: localFormatting.letterSpacing,
+			paragraphSpacing: settingsStore.editorFormatting?.paragraphSpacing ?? 16
+		};
 		try {
-			await settingsDB.update({
-				editorFormatting: {
-					fontSize: localFormatting.fontSize,
-					lineHeight: localFormatting.lineHeight,
-					letterSpacing: localFormatting.letterSpacing,
-					paragraphSpacing: settingsStore.editorFormatting?.paragraphSpacing ?? 16
-				}
-			});
-			settingsStore.editorFormatting = {
-				fontSize: localFormatting.fontSize,
-				lineHeight: localFormatting.lineHeight,
-				letterSpacing: localFormatting.letterSpacing,
-				paragraphSpacing: settingsStore.editorFormatting?.paragraphSpacing ?? 16
-			};
-			showFormattingModal = false;
+			await settingsDB.update({ editorFormatting: next });
+			settingsStore.editorFormatting = next;
+			return true;
 		} catch (error) {
 			console.error('Failed to save formatting:', error);
+			toast.error('書式を保存できませんでした');
+			return false;
 		}
+	}
+
+	async function updateFormatting() {
+		if (await saveFormatting()) showFormattingModal = false;
 	}
 
 	function openFormattingModal() {
@@ -1133,10 +1152,10 @@
 		editorScrollContainer?.scrollTo({ top: 0 });
 	}
 
-	// --- 表示シート(書式はプレビューしながら調整し、閉じるだけなら元に戻す) ---
+	// --- 表示シート(書式はプレビューしながら調整し、閉じたときに保存する) ---
+	// スワイプや背景のタップで閉じても変更が失われないよう、「完了」と同じく保存する
 	let displaySnapshot: { fontSize: number; lineHeight: number; letterSpacing: number } | null =
 		null;
-	let displayCommitted = false;
 
 	function openDisplaySheet() {
 		if (settingsStore.editorFormatting) {
@@ -1145,19 +1164,26 @@
 			localFormatting.letterSpacing = settingsStore.editorFormatting.letterSpacing ?? 0;
 		}
 		displaySnapshot = { ...localFormatting };
-		displayCommitted = false;
 		showDisplaySheet = true;
 	}
 
+	// Sheet の onClose はスワイプ等で閉じたときだけ呼ばれるので、こちらから閉じるときも同じ処理を通す
 	function onDisplayClosed() {
-		if (!displayCommitted && displaySnapshot) Object.assign(localFormatting, displaySnapshot);
+		const before = displaySnapshot;
 		displaySnapshot = null;
+		if (
+			before &&
+			(before.fontSize !== localFormatting.fontSize ||
+				before.lineHeight !== localFormatting.lineHeight ||
+				before.letterSpacing !== localFormatting.letterSpacing)
+		) {
+			void saveFormatting();
+		}
 	}
 
-	async function commitDisplay() {
-		await updateFormatting();
-		displayCommitted = true;
+	function commitDisplay() {
 		showDisplaySheet = false;
+		onDisplayClosed();
 	}
 
 	// 書式設定モーダルのキャンセル/閉じるでスライダーの変更を元に戻す
@@ -1740,14 +1766,14 @@
 			<button
 				class="ghost"
 				onclick={() => {
-					showDisplaySheet = false;
+					commitDisplay();
 					editorStore.focusMode = true;
 				}}>集中モード</button
 			>
 			<button
 				class="ghost"
 				onclick={() => {
-					showDisplaySheet = false;
+					commitDisplay();
 					formattingTab = 'preview';
 					showFormattingModal = true;
 				}}>プレビュー設定</button

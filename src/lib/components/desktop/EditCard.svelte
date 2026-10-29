@@ -21,7 +21,10 @@
 	let expanded = $derived(
 		userToggled ?? (!editState || editState.status === 'pending' || editState.status === 'failed')
 	);
-	let fileName = $derived(edit.file.split('/').slice(-1)[0]?.replace(/\.md$/, '') ?? edit.file);
+	// ファイル名「01_シーン名.md」からシーン名を出す
+	let fileName = $derived(
+		edit.file.split('/').slice(-1)[0]?.replace(/\.md$/, '').replace(/^\d+_/, '') ?? edit.file
+	);
 
 	const STATUS_LABELS: Record<EditState['status'], string> = {
 		pending: '未反映',
@@ -85,6 +88,9 @@
 				<button disabled={busy} onclick={() => claudeStore.rejectEdit(editState)}>却下</button>
 			{/if}
 			{#if editState.status === 'applied'}
+				{#if !editState.reviewed}
+					<button class="primary" onclick={() => claudeStore.keepEdit(editState)}>保持</button>
+				{/if}
 				<button disabled={busy} onclick={() => run(() => claudeStore.revertEdit(editState))}
 					>元に戻す</button
 				>

@@ -766,7 +766,7 @@
 	}
 
 	.changes-label {
-		flex: 1;
+		flex: 1 1 100%;
 		font-size: 12px;
 		color: var(--color-text-secondary);
 	}

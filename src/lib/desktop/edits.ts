@@ -178,3 +178,68 @@ export const EDIT_INSTRUCTIONS = `ユーザーは本文の編集を許可して�
 - 直す箇所が複数あるときはブロックを分ける。1 ブロックはなるべく短く。
 - 編集案の前後に、何をなぜ直したかを簡潔に書く。
 - ユーザーが直しを求めていないときは、編集案を書かない。`;
+
+/** エディタ上に出す、1 件の編集の色付け */
+export interface Decoration {
+	/** applied: 反映済み(追加した文字を緑に) / pending: 未反映の提案(消す文字を赤に) */
+	kind: 'applied' | 'pending';
+	/** 本文上で色を付ける範囲 */
+	marks: { start: number; end: number; kind: 'add' | 'del' }[];
+	/** 本文に無い文字(反映で消えた文字・提案で入る文字)を示す位置 */
+	ghosts: { at: number; kind: 'add' | 'del'; text: string }[];
+	/** 変更の範囲(移動・ホバーの判定に使う) */
+	start: number;
+	end: number;
+}
+
+function uniqueIndex(content: string, needle: string): number {
+	if (!needle) return -1;
+	const i = content.indexOf(needle);
+	return i !== -1 && content.indexOf(needle, i + 1) === -1 ? i : -1;
+}
+
+/**
+ * 反映済みの編集を、今の本文のどこに色を付けるか求める。
+ * 反映した位置に置き換え後の文が残っていればそこ、なければ本文中で一意に見つかる場所。
+ */
+export function appliedDecoration(
+	content: string,
+	edit: { old: string; new: string; appliedAt?: number }
+): Decoration | null {
+	const base =
+		edit.appliedAt != null && content.startsWith(edit.new, edit.appliedAt)
+			? edit.appliedAt
+			: uniqueIndex(content, edit.new);
+	if (base < 0) return null;
+	const deco: Decoration = { kind: 'applied', marks: [], ghosts: [], start: base, end: base };
+	let pos = base;
+	for (const op of diffChars(edit.old, edit.new)) {
+		if (op.kind === 'same') pos += op.text.length;
+		else if (op.kind === 'add') {
+			deco.marks.push({ start: pos, end: pos + op.text.length, kind: 'add' });
+			pos += op.text.length;
+		} else deco.ghosts.push({ at: pos, kind: 'del', text: op.text });
+	}
+	deco.end = pos;
+	return deco;
+}
+
+/** 未反映の編集案を、今の本文のどこに色を付けるか求める(元の文が一意に見つかるときだけ) */
+export function pendingDecoration(
+	content: string,
+	edit: { old: string; new: string }
+): Decoration | null {
+	const base = uniqueIndex(content, edit.old);
+	if (base < 0) return null;
+	const deco: Decoration = { kind: 'pending', marks: [], ghosts: [], start: base, end: base };
+	let pos = base;
+	for (const op of diffChars(edit.old, edit.new)) {
+		if (op.kind === 'same') pos += op.text.length;
+		else if (op.kind === 'del') {
+			deco.marks.push({ start: pos, end: pos + op.text.length, kind: 'del' });
+			pos += op.text.length;
+		} else deco.ghosts.push({ at: pos, kind: 'add', text: op.text });
+	}
+	deco.end = pos;
+	return deco;
+}

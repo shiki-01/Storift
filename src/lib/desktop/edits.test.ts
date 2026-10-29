@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { diffChars, parseEdits, replaceOnce, revertAt, splitEdits } from './edits';
+import {
+	appliedDecoration,
+	diffChars,
+	parseEdits,
+	pendingDecoration,
+	replaceOnce,
+	revertAt,
+	splitEdits
+} from './edits';
 
 const block = (file: string, from: string, to: string) =>
 	`<storift-edit file="${file}">\n<old>${from}</old>\n<new>${to}</new>\n</storift-edit>`;
@@ -83,5 +91,41 @@ describe('revertAt', () => {
 
 	it('削除で前後が変わっていたら戻さない', () => {
 		expect(revertAt('別の文章', 2, '彼は', '', 'とても').ok).toBe(false);
+	});
+});
+
+describe('エディタ上の色付け', () => {
+	it('反映済み: 追加した文字に色を付け、消えた文字の位置を示す', () => {
+		const content = '前置き。彼は静かに扉を開けた。';
+		const deco = appliedDecoration(content, {
+			old: '彼わ静かに戸を開けた。',
+			new: '彼は静かに扉を開けた。',
+			appliedAt: 4
+		});
+		expect(deco?.marks).toEqual([
+			{ start: 5, end: 6, kind: 'add' },
+			{ start: 9, end: 10, kind: 'add' }
+		]);
+		expect(deco?.ghosts).toEqual([
+			{ at: 5, kind: 'del', text: 'わ' },
+			{ at: 9, kind: 'del', text: '戸' }
+		]);
+		expect(deco).toMatchObject({ start: 4, end: content.length });
+	});
+
+	it('反映した位置がずれていたら、置き換え後の文を探す', () => {
+		const deco = appliedDecoration('追記。彼は。', { old: '彼わ。', new: '彼は。', appliedAt: 0 });
+		expect(deco?.start).toBe(3);
+	});
+
+	it('未反映: 消す文字に色を付け、入る文字の位置を示す', () => {
+		const deco = pendingDecoration('彼わ静かに', { old: '彼わ', new: '彼は' });
+		expect(deco?.marks).toEqual([{ start: 1, end: 2, kind: 'del' }]);
+		expect(deco?.ghosts).toEqual([{ at: 2, kind: 'add', text: 'は' }]);
+	});
+
+	it('見つからない・一意でないときは null', () => {
+		expect(pendingDecoration('ああ', { old: 'あ', new: 'い' })).toBeNull();
+		expect(appliedDecoration('なし', { old: 'a', new: 'b' })).toBeNull();
 	});
 });

@@ -26,6 +26,7 @@
 	import { claudeStore } from '$lib/stores/claude.svelte';
 	import ClaudePanel from '$lib/components/desktop/ClaudePanel.svelte';
 	import SelectionAsk from '$lib/components/desktop/SelectionAsk.svelte';
+	import EditorDiff from '$lib/components/desktop/EditorDiff.svelte';
 
 	let { children } = $props();
 
@@ -277,6 +278,7 @@
 
 {#if desktop && !viewport.isMobile}
 	<SelectionAsk />
+	<EditorDiff />
 {/if}
 
 <ToastHost />

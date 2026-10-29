@@ -27,7 +27,7 @@ import {
 	revertAt,
 	type ReplaceResult
 } from '$lib/desktop/edits';
-import { selectTextRange } from '$lib/utils/editorInput';
+import { scrollRangeIntoView, selectTextRange, textRange } from '$lib/utils/editorInput';
 
 /** suggest: 提案のみ / confirm: 差分を見て反映 / auto: 自動で反映し、後から確認・元に戻す */
 export type EditMode = 'suggest' | 'confirm' | 'auto';
@@ -43,6 +43,14 @@ export interface EditState {
 	/** 反映した位置と、その直前の文(元に戻すときに同じ場所か確かめる) */
 	appliedAt?: number;
 	contextBefore?: string;
+	/** 反映済みの変更を確認し終えた(エディタ上の色付けを消す)。Copilot の「保持」に当たる */
+	reviewed?: boolean;
+}
+
+/** エディタ上に色付けして見せる編集 */
+export interface EditorEdit {
+	edit: EditState;
+	message: ChatMessage;
 }
 
 export interface ChatMessage {
@@ -168,6 +176,8 @@ const conversations = $state<Record<string, Conversation>>(load(CHAT_KEY, {}));
 let runningId = $state<string | null>(null);
 let status = $state<ClaudeStatus | null>(null);
 let quote = $state<Quote | null>(null);
+/** シーン ID → ワークスペースのファイル(未反映の編集案がどのシーン向けかの判定に使う) */
+let sceneFiles = $state<Record<string, string>>({});
 /** 入力欄へフォーカスしてほしいときに増やす */
 let focusRequest = $state(0);
 
@@ -405,6 +415,7 @@ export const claudeStore = {
 			const overrides =
 				scene && isEditorOpenOn(scene.id) ? { [scene.id]: editorStore.content } : {};
 			const exported = await syncWorkspace(overrides);
+			sceneFiles = exported.sceneFiles;
 
 			const exit = await sendToClaude(
 				{
@@ -495,6 +506,45 @@ export const claudeStore = {
 		persistChats();
 	},
 
+	/** 確認し終えた(エディタの色付けを消す) */
+	keepEdit(edit: EditState) {
+		edit.reviewed = true;
+		persistChats();
+	},
+
+	/** 今エディタで開いているシーンに対する、色付けして見せる編集(反映済みで未確認のもの・未反映の提案) */
+	get editorEdits(): EditorEdit[] {
+		const scene = editorStore.currentScene;
+		if (!scene || !isEditorOpenOn(scene.id)) return [];
+		const file = sceneFiles[scene.id];
+		const out: EditorEdit[] = [];
+		for (const message of conversations[currentKey()]?.messages ?? []) {
+			for (const edit of message.edits ?? []) {
+				const applied = edit.status === 'applied' && !edit.reviewed && edit.sceneId === scene.id;
+				const pending = edit.status === 'pending' && !!file && edit.file === file;
+				if (applied || pending) out.push({ edit, message });
+			}
+		}
+		return out;
+	},
+
+	/** シーンとファイルの対応を作り直す(履歴から開いたときなど、まだ送信していない場合に使う) */
+	async refreshSceneFiles() {
+		sceneFiles = buildWorkspace(await loadWorkspaceData()).sceneFiles;
+	},
+
+	/** エディタ上の変更をまとめて操作する */
+	async forEditorEdits(action: 'keep' | 'revert' | 'apply' | 'reject') {
+		// 後ろの変更から処理し、前の変更の位置がずれないようにする
+		for (const { edit } of [...this.editorEdits].reverse()) {
+			if (action === 'keep' && edit.status === 'applied') edit.reviewed = true;
+			else if (action === 'revert' && edit.status === 'applied') await revertEdit(edit);
+			else if (action === 'apply' && edit.status === 'pending') await applyEdit(edit);
+			else if (action === 'reject' && edit.status === 'pending') edit.status = 'rejected';
+		}
+		persistChats();
+	},
+
 	/** その編集のシーンをエディタで開いているか(「本文で表示」を出すか) */
 	canReveal(edit: EditState): boolean {
 		return !!edit.sceneId && isEditorOpenOn(edit.sceneId);
@@ -512,12 +562,12 @@ export const claudeStore = {
 		if (at < 0) return false;
 		// 削除だけの編集は長さ 0 なので、前後 1 文字を含めて位置を示す
 		const end = Math.min(content.length, at + Math.max(edit.new.length, 1));
-		const ok = selectTextRange(root, Math.max(0, at - (edit.new ? 0 : 1)), end);
-		if (ok) {
+		const start = Math.max(0, at - (edit.new ? 0 : 1));
+		const range = textRange(root, start, end);
+		const ok = !!range && selectTextRange(root, start, end);
+		if (range && ok) {
 			root.focus();
-			window.getSelection()?.getRangeAt(0).startContainer.parentElement?.scrollIntoView({
-				block: 'center'
-			});
+			scrollRangeIntoView(root, range);
 		}
 		return ok;
 	}

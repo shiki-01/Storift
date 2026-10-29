@@ -2,6 +2,8 @@ import { db } from './schema';
 import type { History } from '$lib/types';
 import { v4 as uuidv4 } from 'uuid';
 
+const BACKUP_CHANGE_TYPES: History['changeType'][] = ['conflict', 'remote-delete'];
+
 export const historyDB = {
 	async create(
 		entityType: History['entityType'],
@@ -73,8 +75,34 @@ export const historyDB = {
 		return history.snapshot;
 	},
 
-	async deleteOldHistory(daysToKeep = 30): Promise<void> {
-		const cutoffTime = Date.now() - daysToKeep * 24 * 60 * 60 * 1000;
-		await db.history.where('createdAt').below(cutoffTime).delete();
+	/**
+	 * 同期の競合・他端末の削除で上書きされた版(復元用バックアップ)の一覧
+	 */
+	async getBackups(): Promise<History[]> {
+		return await db.history
+			.orderBy('createdAt')
+			.reverse()
+			.filter((h) => BACKUP_CHANGE_TYPES.includes(h.changeType))
+			.toArray();
+	},
+
+	async get(historyId: string): Promise<History | undefined> {
+		return await db.history.get(historyId);
+	},
+
+	/**
+	 * 通常の履歴は daysToKeep 日、競合・削除のバックアップは backupDaysToKeep 日保持する
+	 */
+	async deleteOldHistory(daysToKeep = 30, backupDaysToKeep = 90): Promise<void> {
+		const day = 24 * 60 * 60 * 1000;
+		const now = Date.now();
+		await db.history
+			.where('createdAt')
+			.below(now - Math.min(daysToKeep, backupDaysToKeep) * day)
+			.filter((h) => {
+				const isBackup = BACKUP_CHANGE_TYPES.includes(h.changeType);
+				return h.createdAt < now - (isBackup ? backupDaysToKeep : daysToKeep) * day;
+			})
+			.delete();
 	}
 };

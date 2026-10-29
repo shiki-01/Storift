@@ -1,6 +1,7 @@
 import type { Table } from 'dexie';
 import {
 	db,
+	historyDB,
 	projectsDB,
 	chaptersDB,
 	scenesDB,
@@ -32,7 +33,7 @@ import { syncStore } from '$lib/stores/sync.svelte';
 import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 import { startNetworkMonitoring, onNetworkStatusChange } from '$lib/utils/offline';
 import { debounceAsync } from '$lib/utils/debounce';
-import type { ConflictResolutionPolicy } from '$lib/types';
+import type { ConflictResolutionPolicy, History } from '$lib/types';
 import type { Unsubscribe } from 'firebase/firestore';
 
 interface PendingConflict {
@@ -58,6 +59,21 @@ const PROJECT_SCOPED_TYPES: EntityType[] = [
 	'plots',
 	'worldbuilding'
 ];
+
+const HISTORY_ENTITY_TYPE: Partial<Record<EntityType, History['entityType']>> = {
+	chapters: 'chapter',
+	scenes: 'scene',
+	characters: 'character',
+	plots: 'plot',
+	worldbuilding: 'worldbuilding'
+};
+const ENTITY_TYPE_OF_HISTORY: Record<History['entityType'], EntityType> = {
+	chapter: 'chapters',
+	scene: 'scenes',
+	character: 'characters',
+	plot: 'plots',
+	worldbuilding: 'worldbuilding'
+};
 
 // 他端末の変更を取り込む最短間隔
 const REMOTE_REFRESH_INTERVAL = 60 * 1000;
@@ -116,6 +132,36 @@ function enqueueAndSchedule(change: PendingChange): void {
 	if (navigator.onLine) {
 		void debouncedProcessPendingChanges();
 	}
+}
+
+/**
+ * 上書き・削除される版を復元用に保存する(失敗しても同期は止めない)
+ */
+async function backupEntity(
+	type: EntityType,
+	entity: SyncableEntity,
+	changeType: 'conflict' | 'remote-delete'
+): Promise<void> {
+	const entityType = HISTORY_ENTITY_TYPE[type];
+	if (!entityType) return;
+	try {
+		const projectId = 'projectId' in entity ? entity.projectId : '';
+		await historyDB.create(entityType, entity.id, projectId, entity, changeType);
+	} catch (error) {
+		console.error(`Failed to back up ${type}/${entity.id}:`, error);
+	}
+}
+
+const META_KEYS = new Set(['updatedAt', '_version', 'syncedAt']);
+
+function contentDiffers(a: SyncableEntity, b: SyncableEntity): boolean {
+	const strip = (e: SyncableEntity) =>
+		JSON.stringify(
+			Object.entries(e)
+				.filter(([key]) => !META_KEYS.has(key))
+				.sort(([x], [y]) => x.localeCompare(y))
+		);
+	return strip(a) !== strip(b);
 }
 
 /**
@@ -187,6 +233,13 @@ export async function resolveManualConflict(
 	pendingConflicts.splice(index, 1);
 	syncStore.conflictCount = pendingConflicts.length;
 
+	// 採用しない側の版を、解決前にバックアップする
+	await backupEntity(
+		conflict.type,
+		resolution === 'remote' ? conflict.local : conflict.remote,
+		'conflict'
+	);
+
 	if (resolution === 'remote') {
 		await tableOf(conflict.type).put(conflict.remote);
 		setBase(conflict.type, conflict.id, conflict.remote.updatedAt);
@@ -222,13 +275,18 @@ async function reconcileRemote(
 		return true;
 	}
 
-	let action = reconcile(local, remote, getBase(type, remote.id));
+	const base = getBase(type, remote.id);
+	let action = reconcile(local, remote, base);
 	if (action === 'conflict') {
 		action = await handleConflict(type, local, remote, policy);
 	}
 
 	switch (action) {
 		case 'apply-remote':
+			// 未同期のローカル編集を上書きする場合は、先にバックアップする
+			if ((base === undefined || local.updatedAt > base) && contentDiffers(local, remote)) {
+				await backupEntity(type, local, 'conflict');
+			}
 			// updatedAt / _version を書き換えないよう DB の update ではなく put で保存する
 			await tableOf(type).put(remote);
 			setBase(type, remote.id, remote.updatedAt);
@@ -264,12 +322,46 @@ async function applyRemoteDeletion(type: EntityType, id: string): Promise<boolea
 	}
 
 	if (type === 'projects') {
+		// プロジェクトの子要素は削除前にバックアップする
+		for (const childType of PROJECT_SCOPED_TYPES) {
+			const children = await tableOf(childType).where('projectId').equals(id).toArray();
+			for (const child of children) await backupEntity(childType, child, 'remote-delete');
+		}
 		await projectsDB.delete(id);
 	} else {
+		await backupEntity(type, local, 'remote-delete');
 		await tableOf(type).delete(id);
 	}
 	removeBase(type, id);
 	return true;
+}
+
+/**
+ * バックアップ(競合・他端末の削除で失われた版)を復元する。
+ * 復元した版は新しい編集として扱い、他端末にも反映される。
+ */
+export async function restoreBackup(historyId: string): Promise<void> {
+	const history = await historyDB.get(historyId);
+	if (!history) throw new Error('バックアップが見つかりません');
+
+	const type = ENTITY_TYPE_OF_HISTORY[history.entityType];
+	const snapshot = history.snapshot as SyncableEntity;
+
+	if (!(await projectsDB.getById(history.projectId))) {
+		throw new Error('所属するプロジェクトが存在しないため復元できません');
+	}
+
+	const existing = await tableOf(type).get(history.entityId);
+	// 現在の版は、復元で上書きする前に退避する
+	if (existing) await backupEntity(type, existing, 'conflict');
+
+	await tableOf(type).put({
+		...snapshot,
+		updatedAt: Date.now(),
+		_version: Math.max(existing?._version ?? 0, snapshot._version ?? 0) + 1
+	});
+	await refreshStores(new Set([type]));
+	await queueChange(type, history.entityId, existing ? 'update' : 'create');
 }
 
 /**
@@ -323,6 +415,8 @@ export async function initializeSync(): Promise<void> {
 	}
 
 	console.log('🚀 Initializing sync system...');
+
+	historyDB.deleteOldHistory().catch((err) => console.warn('Failed to prune history:', err));
 
 	// オンライン状態の監視
 	monitorOnlineStatus();
@@ -504,6 +598,7 @@ async function processChange(
 		}
 
 		if (result === 'apply-remote') {
+			if (contentDiffers(local, remote)) await backupEntity(type, local, 'conflict');
 			await tableOf(type).put(remote);
 			setBase(type, id, remote.updatedAt);
 			await refreshStores(new Set([type]));

@@ -47,6 +47,8 @@
 
 	const changeTypeLabels = {
 		create: '作成',
+		'remote-delete': '他端末で削除',
+		conflict: '競合で上書き',
 		update: '更新',
 		delete: '削除'
 	};

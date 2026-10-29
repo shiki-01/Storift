@@ -180,7 +180,8 @@ export async function restoreFromBackup(data: BackupData): Promise<void> {
 					await db.plots.where('projectId').equals(id).delete();
 					await db.worldbuilding.where('projectId').equals(id).delete();
 					await db.progressLogs.where('projectId').equals(id).delete();
-					if (projectData.relationMaps) await db.relationMaps.where('projectId').equals(id).delete();
+					if (projectData.relationMaps)
+						await db.relationMaps.where('projectId').equals(id).delete();
 				}
 				await db.projects.put(projectData.project);
 				await db.chapters.bulkPut((projectData.chapters ?? []) as Chapter[]);

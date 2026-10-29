@@ -661,8 +661,7 @@
 	async function handleDuplicateScene(scene: Scene) {
 		if (!currentProjectStore.project) return;
 		// 開いているシーンなら、未保存の入力も含めて複製する
-		const content =
-			scene.id === editorStore.currentScene?.id ? editorStore.content : scene.content;
+		const content = scene.id === editorStore.currentScene?.id ? editorStore.content : scene.content;
 
 		try {
 			const newScene = await scenesDB.create({
@@ -1973,8 +1972,7 @@
 				.map((scene) => ({
 					title: scene.title,
 					// 開いているシーンは未保存の入力も含める
-					content:
-						scene.id === editorStore.currentScene?.id ? editorStore.content : scene.content
+					content: scene.id === editorStore.currentScene?.id ? editorStore.content : scene.content
 				}))
 		}))}
 		isOpen={showPrintPreview}

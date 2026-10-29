@@ -46,7 +46,6 @@
 
 	const loadProgressLogs = async () => {
 		if (!currentProjectStore.project) return;
-		isLoading = true;
 		try {
 			progressLogs = await progressLogsDB.getByProjectId(currentProjectStore.project.id);
 		} finally {

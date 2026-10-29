@@ -87,7 +87,6 @@
 
 	const loadCharacters = async () => {
 		if (!currentProjectStore.project) return;
-		isLoading = true;
 		try {
 			characters = await charactersDB.getByProjectId(currentProjectStore.project.id);
 		} finally {
@@ -179,6 +178,14 @@
 		await charactersDB.delete(id);
 		// 同期キューに追加
 		await queueChange('characters', id, 'delete');
+		// 他のキャラクターに残った、削除したキャラクターへの関係も取り除く
+		for (const other of characters) {
+			if (other.id === id || !other.relationships?.some((r) => r.characterId === id)) continue;
+			await charactersDB.update(other.id, {
+				relationships: $state.snapshot(other.relationships).filter((r) => r.characterId !== id)
+			});
+			await queueChange('characters', other.id, 'update');
+		}
 		await loadCharacters();
 	}
 

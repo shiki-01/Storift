@@ -73,7 +73,6 @@
 
 	const loadWorldbuildings = async () => {
 		if (!currentProjectStore.project) return;
-		isLoading = true;
 		try {
 			worldbuildings = await worldbuildingDB.getByProjectId(currentProjectStore.project.id);
 		} finally {

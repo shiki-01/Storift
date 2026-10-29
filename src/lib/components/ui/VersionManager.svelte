@@ -262,7 +262,12 @@
 
 <!-- 復元ポイント作成モーダル -->
 {#if showCreateRestorePoint}
-	<Modal isOpen title="復元ポイントを作成" onClose={() => (showCreateRestorePoint = false)} size="medium">
+	<Modal
+		isOpen
+		title="復元ポイントを作成"
+		onClose={() => (showCreateRestorePoint = false)}
+		size="medium"
+	>
 		<div class="space-y:16">
 			<div>
 				<label for="restorePointName" class="font:14 fg:theme-text-secondary mb:6 block">

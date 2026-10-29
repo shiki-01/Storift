@@ -87,7 +87,6 @@
 
 	const loadPlots = async () => {
 		if (!currentProjectStore.project) return;
-		isLoading = true;
 		try {
 			plots = await plotsDB.getByProjectId(currentProjectStore.project.id);
 		} finally {

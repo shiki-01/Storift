@@ -2,6 +2,7 @@ import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 import { db } from '$lib/db';
 import type { Project, Chapter, Scene, Character, Plot, Worldbuilding } from '$lib/types';
 import type { ProgressLog } from '$lib/types/progress';
+import type { RelationMap } from '$lib/types/relationMap';
 
 interface ProjectBackup {
 	project: Project;
@@ -11,6 +12,8 @@ interface ProjectBackup {
 	plots: unknown[];
 	worldbuilding: unknown[];
 	progressLogs: unknown[];
+	/** 相関図(古いバックアップには無い) */
+	relationMaps?: unknown[];
 }
 
 export interface BackupData {
@@ -41,6 +44,7 @@ export async function createFullBackup(): Promise<BackupData> {
 		const plots = await db.plots.where('projectId').equals(project.id).toArray();
 		const worldbuilding = await db.worldbuilding.where('projectId').equals(project.id).toArray();
 		const progressLogs = await db.progressLogs.where('projectId').equals(project.id).toArray();
+		const relationMaps = await db.relationMaps.where('projectId').equals(project.id).toArray();
 
 		backup.projects.push({
 			project,
@@ -49,7 +53,8 @@ export async function createFullBackup(): Promise<BackupData> {
 			characters,
 			plots,
 			worldbuilding,
-			progressLogs
+			progressLogs,
+			relationMaps
 		});
 	}
 
@@ -71,6 +76,7 @@ export async function createProjectBackup(projectId: string): Promise<ProjectBac
 	const plots = await db.plots.where('projectId').equals(projectId).toArray();
 	const worldbuilding = await db.worldbuilding.where('projectId').equals(projectId).toArray();
 	const progressLogs = await db.progressLogs.where('projectId').equals(projectId).toArray();
+	const relationMaps = await db.relationMaps.where('projectId').equals(projectId).toArray();
 
 	return {
 		project,
@@ -79,7 +85,8 @@ export async function createProjectBackup(projectId: string): Promise<ProjectBac
 		characters,
 		plots,
 		worldbuilding,
-		progressLogs
+		progressLogs,
+		relationMaps
 	};
 }
 
@@ -149,24 +156,44 @@ export async function restoreFromBackup(data: BackupData): Promise<void> {
 			if (!overwrite) {
 				continue;
 			}
-
-			// 既存データを削除
-			await db.chapters.where('projectId').equals(projectData.project.id).delete();
-			await db.scenes.where('projectId').equals(projectData.project.id).delete();
-			await db.characters.where('projectId').equals(projectData.project.id).delete();
-			await db.plots.where('projectId').equals(projectData.project.id).delete();
-			await db.worldbuilding.where('projectId').equals(projectData.project.id).delete();
-			await db.progressLogs.where('projectId').equals(projectData.project.id).delete();
 		}
 
-		// データを復元
-		await db.projects.put(projectData.project);
-		await db.chapters.bulkPut(projectData.chapters as Chapter[]);
-		await db.scenes.bulkPut(projectData.scenes as Scene[]);
-		await db.characters.bulkPut(projectData.characters as Character[]);
-		await db.plots.bulkPut(projectData.plots as Plot[]);
-		await db.worldbuilding.bulkPut(projectData.worldbuilding as Worldbuilding[]);
-		await db.progressLogs.bulkPut(projectData.progressLogs as ProgressLog[]);
+		// 削除と書き込みを 1 つのトランザクションで行い、途中で失敗しても既存データが消えないようにする
+		const id = projectData.project.id;
+		await db.transaction(
+			'rw',
+			[
+				db.projects,
+				db.chapters,
+				db.scenes,
+				db.characters,
+				db.plots,
+				db.worldbuilding,
+				db.progressLogs,
+				db.relationMaps
+			],
+			async () => {
+				if (existing) {
+					await db.chapters.where('projectId').equals(id).delete();
+					await db.scenes.where('projectId').equals(id).delete();
+					await db.characters.where('projectId').equals(id).delete();
+					await db.plots.where('projectId').equals(id).delete();
+					await db.worldbuilding.where('projectId').equals(id).delete();
+					await db.progressLogs.where('projectId').equals(id).delete();
+					if (projectData.relationMaps) await db.relationMaps.where('projectId').equals(id).delete();
+				}
+				await db.projects.put(projectData.project);
+				await db.chapters.bulkPut((projectData.chapters ?? []) as Chapter[]);
+				await db.scenes.bulkPut((projectData.scenes ?? []) as Scene[]);
+				await db.characters.bulkPut((projectData.characters ?? []) as Character[]);
+				await db.plots.bulkPut((projectData.plots ?? []) as Plot[]);
+				await db.worldbuilding.bulkPut((projectData.worldbuilding ?? []) as Worldbuilding[]);
+				await db.progressLogs.bulkPut((projectData.progressLogs ?? []) as ProgressLog[]);
+				if (projectData.relationMaps) {
+					await db.relationMaps.bulkPut(projectData.relationMaps as RelationMap[]);
+				}
+			}
+		);
 	}
 
 	toast.success('バックアップの復元が完了しました');

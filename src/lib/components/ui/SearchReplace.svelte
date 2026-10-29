@@ -80,10 +80,17 @@
 
 	async function handleReplace() {
 		if (!searchQuery) return;
-		const total = searchResults.reduce((n, r) => n + r.matches, 0);
+		// 置換の対象はシーンの本文のみ
+		const total = searchResults
+			.filter((r) => r.type === 'scene')
+			.reduce((n, r) => n + r.matches, 0);
+		if (total === 0) {
+			toast.info('置換できる本文の一致はありません(置換の対象はシーンの本文のみです)');
+			return;
+		}
 		const ok = await confirmDialog({
 			title: '一括置換',
-			message: `「${searchQuery}」を「${replaceWith}」に置換します(${total}か所)。この操作は元に戻せません。`,
+			message: `シーンの本文の「${searchQuery}」を「${replaceWith}」に置換します(${total}か所)。この操作は元に戻せません。`,
 			confirmText: '置換する',
 			danger: true
 		});

@@ -1,4 +1,5 @@
-import { db } from '$lib/db';
+import { db, scenesDB } from '$lib/db';
+import { queueChange } from './sync.service';
 import type { Scene } from '$lib/types/scene';
 import type { Chapter } from '$lib/types/chapter';
 import type { Character } from '$lib/types/character';
@@ -161,25 +162,16 @@ export async function replaceInProject(
 	const scenes = await db.scenes.where('projectId').equals(projectId).toArray();
 
 	for (const scene of scenes) {
-		const newContent = options.replaceAll
-			? scene.content.replace(pattern, options.replaceWith)
-			: scene.content.replace(pattern, options.replaceWith);
+		const matches = scene.content.match(pattern);
+		if (!matches) continue;
+		const newContent = scene.content.replace(pattern, options.replaceWith);
+		if (newContent === scene.content) continue;
 
-		if (newContent !== scene.content) {
-			// マッチ数をカウント
-			const matches = scene.content.match(new RegExp(pattern, 'g'));
-			replaced += matches ? matches.length : 0;
-
-			// 更新
-			await db.scenes.update(scene.id, {
-				content: newContent,
-				characterCount: newContent.length,
-				updatedAt: Date.now(),
-				_version: scene._version + 1
-			});
-
-			sceneIds.push(scene.id);
-		}
+		replaced += matches.length;
+		// 通常の保存と同じく、履歴・作品の更新日時・同期の対象にする
+		await scenesDB.update(scene.id, { content: newContent });
+		await queueChange('scenes', scene.id, 'update');
+		sceneIds.push(scene.id);
 	}
 
 	return { replaced, sceneIds };
@@ -222,6 +214,11 @@ function findMatches(
 	}
 
 	while ((match = pattern.exec(text)) !== null) {
+		// 空文字に一致するパターン(a* など)で同じ位置に留まり続けないよう進める
+		if (match[0] === '') {
+			pattern.lastIndex++;
+			continue;
+		}
 		const start = match.index;
 		const end = start + match[0].length;
 

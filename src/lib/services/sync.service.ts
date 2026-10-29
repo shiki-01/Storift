@@ -246,7 +246,16 @@ export async function resolveManualConflict(
 		await refreshStores(new Set([conflict.type]));
 		console.log(`✅ Conflict resolved: ${conflict.type}/${conflictId} (adopted remote)`);
 	} else {
-		// リモートの版を確認済みとして扱い、ローカルを次回アップロードで反映する
+		// リモートの版を確認済みとして扱い、ローカルを次回アップロードで反映する。
+		// ローカルの方が古い時刻だと、次の判定で「新しい方=リモート」が採用されてしまうので、新しい編集として時刻を進める
+		const local = await tableOf(conflict.type).get(conflict.id);
+		if (local) {
+			await tableOf(conflict.type).put({
+				...local,
+				updatedAt: Math.max(Date.now(), conflict.remote.updatedAt + 1),
+				_version: Math.max(local._version ?? 0, conflict.remote._version ?? 0) + 1
+			});
+		}
 		setBase(conflict.type, conflict.id, conflict.remote.updatedAt);
 		enqueueAndSchedule({ type: conflict.type, id: conflict.id, action: 'update' });
 		console.log(`✅ Conflict resolved: ${conflict.type}/${conflictId} (kept local)`);

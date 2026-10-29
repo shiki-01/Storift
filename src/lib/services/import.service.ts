@@ -111,11 +111,14 @@ async function importSingleProject(data: ImportedProjectData): Promise<string | 
 	}
 
 	// シーンのインポート
+	const sceneIdMap = new Map<string, string>();
 	if (data.scenes) {
 		for (const scene of data.scenes) {
+			const newSceneId = uuidv4();
+			sceneIdMap.set(scene.id as string, newSceneId);
 			await db.scenes.add({
 				...scene,
-				id: uuidv4(),
+				id: newSceneId,
 				projectId: newProjectId,
 				chapterId: chapterIdMap.get(scene.chapterId as string) || scene.chapterId,
 				createdAt: now,
@@ -173,7 +176,7 @@ async function importSingleProject(data: ImportedProjectData): Promise<string | 
 				...plot,
 				id: uuidv4(),
 				projectId: newProjectId,
-				linkedSceneId: linkedSceneId ? chapterIdMap.get(linkedSceneId) || linkedSceneId : undefined,
+				linkedSceneId: linkedSceneId ? sceneIdMap.get(linkedSceneId) || linkedSceneId : undefined,
 				linkedChapterId: linkedChapterId
 					? chapterIdMap.get(linkedChapterId) || linkedChapterId
 					: undefined,
@@ -246,7 +249,9 @@ export async function importFromText(
 	});
 
 	// 章の検出パターン(デフォルト)
-	const chapterPattern = options.chapterPattern || /^(?:第[0-9]+章|Chapter [0-9]+|#+ )(.+)$/gm;
+	const sourcePattern = options.chapterPattern || /^(?:第[0-9]+章|Chapter [0-9]+|#+ )(.+)$/;
+	// 1 行ずつ判定するので g は外す(g 付きの match はキャプチャを返さず、見出し記号ごとタイトルになる)
+	const chapterPattern = new RegExp(sourcePattern.source, sourcePattern.flags.replace('g', ''));
 
 	// 章ごとに分割
 	const chapters: Array<{ title: string; content: string }> = [];
@@ -260,7 +265,7 @@ export async function importFromText(
 				chapters.push(currentChapter);
 			}
 			currentChapter = {
-				title: match[1] || match[0],
+				title: (match[1] || match[0]).trim(),
 				content: ''
 			};
 		} else if (currentChapter) {

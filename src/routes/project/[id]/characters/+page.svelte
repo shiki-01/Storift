@@ -29,7 +29,9 @@
 	let showEditModal = $state(false);
 	let showRelationModal = $state(false);
 	let editingCharacter = $state<Character | null>(null);
-	let selectedCharacter = $state<Character | null>(null);
+	let selectedCharacterId = $state<string | null>(null);
+	// 関係編集モーダルの対象。characters の再読込後も最新のオブジェクトを参照するため id から導出する
+	const selectedCharacter = $derived(characters.find((c) => c.id === selectedCharacterId) ?? null);
 	type ViewMode = 'grid' | 'list' | 'graph';
 	let viewMode = $state<ViewMode>('grid');
 
@@ -121,7 +123,7 @@
 	}
 
 	function openRelationModal(character: Character) {
-		selectedCharacter = character;
+		selectedCharacterId = character.id;
 		showRelationModal = true;
 	}
 

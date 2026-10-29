@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import Icon from './Icon.svelte';
 
 	interface MenuItem {
@@ -54,28 +53,17 @@
 		}
 	}
 
-	function handleClickOutside(event: MouseEvent) {
-		if (menuElement && !menuElement.contains(event.target as Node)) {
-			onClose?.();
-		}
-	}
-
 	function handleEscape(event: KeyboardEvent) {
 		if (event.key === 'Escape') {
 			onClose?.();
 		}
 	}
 
-	onMount(() => {
-		if (visible) {
-			document.addEventListener('click', handleClickOutside);
-			document.addEventListener('keydown', handleEscape);
-
-			return () => {
-				document.removeEventListener('click', handleClickOutside);
-				document.removeEventListener('keydown', handleEscape);
-			};
-		}
+	// 外側のクリックは背面の要素で受ける。Esc は表示中だけ受け付ける
+	$effect(() => {
+		if (!visible) return;
+		document.addEventListener('keydown', handleEscape);
+		return () => document.removeEventListener('keydown', handleEscape);
 	});
 </script>
 
@@ -112,7 +100,7 @@
 	</div>
 	<button
 		aria-label="close"
-		onclick={() => (visible = false)}
+		onclick={() => onClose?.()}
 		class="w:100dvw h:100dvh fixed top:0 left:0 z:9998"
 	></button>
 {/if}

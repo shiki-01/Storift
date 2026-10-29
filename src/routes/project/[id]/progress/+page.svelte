@@ -179,16 +179,20 @@
 		const dateStr = format(selectedDate, 'yyyy-MM-dd');
 		const existingLog = await progressLogsDB.getByDate(currentProjectStore.project.id, dateStr);
 
+		// 入力欄を空にすると undefined/null になりうるため、保存前に数値へ正規化する
+		const charactersWritten = Math.max(0, Number(logForm.charactersWritten) || 0);
+		const timeSpent = Math.max(0, Number(logForm.timeSpent) || 0);
+
 		if (existingLog) {
 			await progressLogsDB.update(existingLog.id, {
-				charactersWritten: logForm.charactersWritten,
-				timeSpent: logForm.timeSpent
+				charactersWritten,
+				timeSpent
 			});
 		} else {
 			const newLog = await progressLogsDB.create(currentProjectStore.project.id, dateStr);
 			await progressLogsDB.update(newLog.id, {
-				charactersWritten: logForm.charactersWritten,
-				timeSpent: logForm.timeSpent
+				charactersWritten,
+				timeSpent
 			});
 		}
 

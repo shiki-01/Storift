@@ -63,6 +63,8 @@
 		if (!isOpen) return;
 		const onKeydown = (e: KeyboardEvent) => {
 			if (e.key === 'Escape') {
+				// IME変換中のEscape(変換キャンセル)では閉じない
+				if (e.isComposing || e.keyCode === 229) return;
 				// 前面にあるダイアログ(確認ダイアログなど)が先に処理する
 				if (document.querySelector('[role="alertdialog"]')) return;
 				e.preventDefault();

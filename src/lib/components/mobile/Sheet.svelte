@@ -52,6 +52,8 @@
 	$effect(() => {
 		if (!open) return;
 		const onKeydown = (e: KeyboardEvent) => {
+			// IME変換中のEscape(変換キャンセル)では閉じない
+			if (e.isComposing || e.keyCode === 229) return;
 			if (e.key === 'Escape') close();
 		};
 		window.addEventListener('keydown', onKeydown);

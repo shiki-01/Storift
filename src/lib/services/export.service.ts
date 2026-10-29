@@ -317,6 +317,18 @@ async function exportAsDocx(
 /**
  * EPUBファイルとしてエクスポート
  */
+/**
+ * XML/XHTMLに埋め込む文字列をエスケープする
+ */
+function escapeXml(text: string): string {
+	return text
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&apos;');
+}
+
 async function exportAsEpub(project: Project, chapters: Chapter[], scenes: Scene[]): Promise<void> {
 	const { saveAs } = await import('file-saver');
 	const { default: JSZip } = await import('jszip');
@@ -348,7 +360,7 @@ async function exportAsEpub(project: Project, chapters: Chapter[], scenes: Scene
 		manifestItems += `<item id="chapter${idx + 1}" href="${filename}" media-type="application/xhtml+xml"/>\n`;
 		spineItems += `<itemref idref="chapter${idx + 1}"/>\n`;
 		tocItems += `<navPoint id="navPoint-${idx + 1}" playOrder="${idx + 1}">
-      <navLabel><text>${chapter.title}</text></navLabel>
+      <navLabel><text>${escapeXml(chapter.title)}</text></navLabel>
       <content src="${filename}"/>
     </navPoint>\n`;
 	});
@@ -358,7 +370,7 @@ async function exportAsEpub(project: Project, chapters: Chapter[], scenes: Scene
 		`<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="BookId">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-    <dc:title>${project.title}</dc:title>
+    <dc:title>${escapeXml(project.title)}</dc:title>
     <dc:language>ja</dc:language>
     <dc:identifier id="BookId">urn:uuid:${project.id}</dc:identifier>
     <meta property="dcterms:modified">${new Date().toISOString().split('.')[0]}Z</meta>
@@ -382,7 +394,7 @@ async function exportAsEpub(project: Project, chapters: Chapter[], scenes: Scene
     <meta name="dtb:uid" content="urn:uuid:${project.id}"/>
     <meta name="dtb:depth" content="1"/>
   </head>
-  <docTitle><text>${project.title}</text></docTitle>
+  <docTitle><text>${escapeXml(project.title)}</text></docTitle>
   <navMap>
     ${tocItems}
   </navMap>
@@ -398,7 +410,7 @@ async function exportAsEpub(project: Project, chapters: Chapter[], scenes: Scene
 
 		let chapterContent = '';
 		for (const scene of chapterScenes) {
-			chapterContent += `<p>${scene.content.replace(/\n/g, '</p><p>')}</p>\n`;
+			chapterContent += `<p>${escapeXml(scene.content).replace(/\n/g, '</p><p>')}</p>\n`;
 		}
 
 		oebps?.file(
@@ -407,10 +419,10 @@ async function exportAsEpub(project: Project, chapters: Chapter[], scenes: Scene
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" lang="ja">
 <head>
-  <title>${chapter.title}</title>
+  <title>${escapeXml(chapter.title)}</title>
 </head>
 <body>
-  <h1>${chapter.title}</h1>
+  <h1>${escapeXml(chapter.title)}</h1>
   ${chapterContent}
 </body>
 </html>`

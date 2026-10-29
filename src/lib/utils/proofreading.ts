@@ -200,14 +200,16 @@ function checkGrammar(text: string): ProofreadingIssue[] {
 
 	// スペースの連続
 	// 改行や行頭の字下げ(全角スペース)は対象外。文中の連続した半角スペース/タブだけ
-	const spacePattern = /(?<=\S)[ \t]{2,}/g;
+	// Safari 16.4 未満で構文エラーにならないよう lookbehind は使わず、先頭の非空白文字を1文字含めて捕捉する
+	const spacePattern = /(\S)[ \t]{2,}/g;
 	while ((match = spacePattern.exec(text)) !== null) {
+		const spaceStart = match.index + 1;
 		issues.push({
 			type: 'grammar',
 			severity: 'warning',
 			message: '不要なスペースが連続しています',
-			position: { start: match.index, end: match.index + match[0].length },
-			original: match[0],
+			position: { start: spaceStart, end: match.index + match[0].length },
+			original: match[0].slice(1),
 			suggestion: ' '
 		});
 	}

@@ -18,9 +18,10 @@
 		onClose
 	}: ConflictResolverProps<any> = $props();
 
+	// 開閉は親(ConflictHost)が管理する。次の競合があれば続けて表示し、無くなれば親が閉じる。
+	// ここで isOpen だけを false にすると、親の状態が開いたまま残り、二度と開けなくなる
 	function handleResolve(resolution: 'local' | 'remote') {
 		onResolve?.(resolution);
-		isOpen = false;
 	}
 </script>
 

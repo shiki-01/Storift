@@ -1,11 +1,11 @@
 import { env } from '$env/dynamic/public';
 
 /** サイトとエディタの URL。未設定のときは Cloudflare Pages の既定ドメインを使う */
-export const SITE_URL = (env.PUBLIC_SITE_URL || 'https://storift.shiki-01.com').replace(
+export const SITE_URL = (env.PUBLIC_SITE_URL || 'https://storift.shiki-01.com').replace(/\/$/, '');
+export const APP_URL = (env.PUBLIC_APP_URL || 'https://app.storift.shiki-01.com').replace(
 	/\/$/,
 	''
 );
-export const APP_URL = (env.PUBLIC_APP_URL || 'https://app.storift.shiki-01.com').replace(/\/$/, '');
 
 export const SITE_NAME = 'Storift';
 export const SITE_TAGLINE = '小説を書くための、ひとつの場所。';

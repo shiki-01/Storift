@@ -15,10 +15,10 @@
 
 サイトの URL とエディタの URL は、環境変数で 1 か所から設定する（`site/src/lib/config.ts`）。
 
-| 変数              | 用途                            | 例                            |
-| ----------------- | ------------------------------- | ----------------------------- |
-| `PUBLIC_SITE_URL` | canonical・OGP・sitemap・robots | `https://storift.example`     |
-| `PUBLIC_APP_URL`  | 「エディタを開く」などの遷移先  | `https://app.storift.example` |
+| 変数              | 用途                            | 例                                 |
+| ----------------- | ------------------------------- | ---------------------------------- |
+| `PUBLIC_SITE_URL` | canonical・OGP・sitemap・robots | `https://storift.shiki-01.com`     |
+| `PUBLIC_APP_URL`  | 「エディタを開く」などの遷移先  | `https://app.storift.shiki-01.com` |
 
 未設定の場合は、上表の例の URL（`storift.shiki-01.com` / `app.storift.shiki-01.com`）が使われるため、通常は設定不要。別のドメインに変えるときだけ環境変数で上書きする。
 
@@ -49,7 +49,7 @@ Cloudflare でドメインを管理している場合、Pages のカスタムド
 
 ## アプリを別オリジンへ移すときの注意
 
-- 端末内のデータ（IndexedDB）はオリジンごとに分かれる。旧 URL（`storift.pages.dev` など）で作った作品は、`app.` 側からは見えない。移行前に設定画面のエクスポートで書き出すか、同期（Firebase）で取り込む。
+- 端末内のデータ（IndexedDB）はオリジンごとに分かれる。旧 URL（`storift.pages.dev` など、現在の配信元）で作った作品は、`app.` 側からは見えない。移行前に設定画面のエクスポートで書き出すか、同期（Firebase）で取り込む。
 - Firebase Console → Authentication → 設定 → 承認済みドメイン に、`app.storift.shiki-01.com` を追加する（匿名認証を使っているため必須）。
 - インストール済みの PWA は旧オリジンのまま残る。新しい URL から入れ直す。
 

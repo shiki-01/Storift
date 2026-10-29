@@ -59,7 +59,10 @@ function countOccurrences(haystack: string, needle: string): number {
 	return count;
 }
 
-export type ReplaceResult = { ok: true; content: string } | { ok: false; reason: string };
+/** index: 置き換え後の文が始まる位置 */
+export type ReplaceResult =
+	| { ok: true; content: string; index: number }
+	| { ok: false; reason: string };
 
 /** 本文中にちょうど 1 回現れる from を to に置き換える */
 export function replaceOnce(content: string, from: string, to: string): ReplaceResult {
@@ -69,7 +72,34 @@ export function replaceOnce(content: string, from: string, to: string): ReplaceR
 		return { ok: false, reason: '該当箇所が見つかりません(本文が変わった可能性があります)' };
 	if (count > 1) return { ok: false, reason: `該当箇所が ${count} か所あり、特定できません` };
 	const i = content.indexOf(from);
-	return { ok: true, content: content.slice(0, i) + to + content.slice(i + from.length) };
+	return { ok: true, content: content.slice(0, i) + to + content.slice(i + from.length), index: i };
+}
+
+/**
+ * 反映した編集を元に戻す。反映した位置(at)に置き換え後の文がまだあり、直前の文も変わっていなければ
+ * その場所を戻す(削除だけの編集もこれで戻せる)。位置がずれていれば、置き換え後の文を探して戻す。
+ */
+export function revertAt(
+	content: string,
+	at: number | undefined,
+	before: string | undefined,
+	applied: string,
+	original: string
+): ReplaceResult {
+	if (
+		at != null &&
+		at <= content.length &&
+		content.startsWith(applied, at) &&
+		content.slice(Math.max(0, at - (before?.length ?? 0)), at) === (before ?? '')
+	) {
+		return {
+			ok: true,
+			content: content.slice(0, at) + original + content.slice(at + applied.length),
+			index: at
+		};
+	}
+	if (!applied) return { ok: false, reason: '削除した位置の前後が変わったため特定できません' };
+	return replaceOnce(content, applied, original);
 }
 
 export type DiffOp = { kind: 'same' | 'del' | 'add'; text: string };

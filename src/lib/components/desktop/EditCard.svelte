@@ -13,6 +13,14 @@
 	let busy = $state(false);
 
 	let ops = $derived(diffChars(edit.old, edit.new));
+	let added = $derived(ops.reduce((n, op) => n + (op.kind === 'add' ? op.text.length : 0), 0));
+	let removed = $derived(ops.reduce((n, op) => n + (op.kind === 'del' ? op.text.length : 0), 0));
+
+	// 判断が要るもの(未反映・反映できない)は開き、済んだものは 1 行に畳む。見出しを押すと開閉
+	let userToggled = $state<boolean | null>(null);
+	let expanded = $derived(
+		userToggled ?? (!editState || editState.status === 'pending' || editState.status === 'failed')
+	);
 	let fileName = $derived(edit.file.split('/').slice(-1)[0]?.replace(/\.md$/, '') ?? edit.file);
 
 	const STATUS_LABELS: Record<EditState['status'], string> = {
@@ -38,17 +46,28 @@
 	class:applied={editState?.status === 'applied'}
 	class:failed={editState?.status === 'failed'}
 >
-	<div class="edit-header">
+	<button
+		class="edit-header"
+		aria-expanded={expanded}
+		onclick={() => (userToggled = !expanded)}
+		title={expanded ? '差分を畳む' : '差分を表示'}
+	>
+		<span class="chevron" class:open={expanded}>▸</span>
 		<span class="file" title={edit.file}>{editState?.sceneTitle ?? fileName}</span>
+		<span class="count"
+			><span class="plus">+{added}</span> <span class="minus">−{removed}</span></span
+		>
 		{#if editState}
 			<span class="badge {editState.status}">{STATUS_LABELS[editState.status]}</span>
 		{:else}
 			<span class="badge">作成中</span>
 		{/if}
-	</div>
-	<div class="diff">
-		{#each ops as op, i (i)}<span class={op.kind}>{op.text}</span>{/each}
-	</div>
+	</button>
+	{#if expanded}
+		<div class="diff">
+			{#each ops as op, i (i)}<span class={op.kind}>{op.text}</span>{/each}
+		</div>
+	{/if}
 	{#if editState?.error}
 		<div class="error">{editState.error}</div>
 	{/if}
@@ -69,6 +88,9 @@
 				<button disabled={busy} onclick={() => run(() => claudeStore.revertEdit(editState))}
 					>元に戻す</button
 				>
+				{#if claudeStore.canReveal(editState)}
+					<button onclick={() => claudeStore.revealEdit(editState)}>本文で表示</button>
+				{/if}
 			{/if}
 		</div>
 	{/if}
@@ -95,10 +117,41 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
+		width: 100%;
 		padding: 6px 10px;
+		border: none;
+		border-radius: 0;
+		background: none;
 		font-size: 12px;
-		border-bottom: 1px solid var(--color-border);
+		text-align: left;
 		color: var(--color-text-secondary);
+		cursor: pointer;
+	}
+
+	.edit-header[aria-expanded='true'] {
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.chevron {
+		display: inline-block;
+		transition: transform 0.15s;
+	}
+
+	.chevron.open {
+		transform: rotate(90deg);
+	}
+
+	.count {
+		flex: none;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.plus {
+		color: var(--color-success);
+	}
+
+	.minus {
+		color: var(--color-error);
 	}
 
 	.file {
@@ -156,7 +209,7 @@
 		padding: 0 10px 10px;
 	}
 
-	button {
+	.buttons button {
 		padding: 4px 12px;
 		border: 1px solid var(--color-border);
 		border-radius: 6px;
@@ -166,13 +219,13 @@
 		background: var(--color-surface);
 	}
 
-	button.primary {
+	.buttons button.primary {
 		border-color: var(--color-primary);
 		background: var(--color-primary);
 		color: #fff;
 	}
 
-	button:disabled {
+	.buttons button:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}

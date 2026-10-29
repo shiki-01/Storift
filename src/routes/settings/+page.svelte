@@ -17,6 +17,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
+	import ConflictBackups from '$lib/components/ui/ConflictBackups.svelte';
 	import NotificationSettings from '$lib/components/ui/NotificationSettings.svelte';
 	import type { AppSettings } from '$lib/types/settings';
 	import { isFirebaseInitialized } from '$lib/firebase/config';
@@ -26,6 +27,8 @@
 	import { notificationService } from '$lib/services/notification.service';
 	import { version as buildVersion } from '$app/environment';
 	import { getServiceWorkerVersion, checkForUpdate } from '$lib/utils/sw-register';
+
+	let backupsOpen = $state(false);
 
 	let settings = $state<Omit<AppSettings, 'id' | 'updatedAt'>>({
 		theme: themeStore.theme.id as 'light' | 'dark' | 'auto',
@@ -598,6 +601,19 @@
 					{/if}
 				</div>
 			</div>
+
+			<div class="flex flex-direction:column gap:.5rem">
+				<span class="font:bold">同期バックアップ</span>
+				<p class="fg:theme-text-secondary font:.875rem">
+					競合や他端末の削除で上書きされた版は90日間保存され、ここから復元できます。
+				</p>
+				<div>
+					<Button variant="secondary" onclick={() => (backupsOpen = true)}
+						>バックアップを表示</Button
+					>
+				</div>
+			</div>
+			<ConflictBackups bind:isOpen={backupsOpen} />
 
 			{#if isFirebaseInitialized()}
 				<div class="flex">

@@ -4,6 +4,6 @@ export interface History {
 	entityId: string;
 	projectId: string;
 	snapshot: any;
-	changeType: 'create' | 'update' | 'delete';
+	changeType: 'create' | 'update' | 'delete' | 'conflict' | 'remote-delete';
 	createdAt: number;
 }

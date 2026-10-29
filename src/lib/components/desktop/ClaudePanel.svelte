@@ -3,13 +3,19 @@
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
 	import { openUrl } from '@tauri-apps/plugin-opener';
-	import { claudeStore, QUICK_ACTIONS, type QuickAction } from '$lib/stores/claude.svelte';
-	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
+	import {
+		claudeStore,
+		EDIT_MODE_LABELS,
+		QUICK_ACTIONS,
+		type ChatMessage,
+		type EditMode,
+		type QuickAction
+	} from '$lib/stores/claude.svelte';
 	import { getWorkspacePath, openWorkspace } from '$lib/desktop/claude';
+	import { splitEdits, type EditProposal } from '$lib/desktop/edits';
+	import EditCard from './EditCard.svelte';
 
 	let input = $state('');
-	let attachScene = $state(true);
-	let attachSelection = $state(true);
 	let showSettings = $state(false);
 	let workspacePath = $state('');
 	let listEl = $state<HTMLDivElement>();
@@ -22,7 +28,6 @@
 		{ value: 'haiku', label: 'Haiku' }
 	];
 
-	let hasSelection = $derived(claudeStore.selection.trim().length > 0);
 	let notFound = $derived(claudeStore.status !== null && !claudeStore.status.found);
 
 	function renderMarkdown(text: string): string {
@@ -41,30 +46,57 @@
 		if (stickToBottom) void tick().then(() => listEl?.scrollTo({ top: listEl.scrollHeight }));
 	});
 
-	async function send(text = input, options = { attachScene, attachSelection }) {
+	type Item =
+		| { kind: 'markdown'; text: string }
+		| { kind: 'tool'; name: string; summary: string }
+		| { kind: 'edit'; edit: EditProposal; index: number }
+		| { kind: 'pending-edit' };
+
+	/** 回答を表示用に分ける。編集を許可した回答では、編集案をカードとして出す */
+	function renderItems(message: ChatMessage): Item[] {
+		const items: Item[] = [];
+		const withEdits = !!message.editMode && message.editMode !== 'suggest';
+		let index = 0;
+		for (const part of message.parts ?? []) {
+			if (part.kind === 'tool') {
+				items.push(part);
+				continue;
+			}
+			if (!withEdits) {
+				items.push({ kind: 'markdown', text: part.text });
+				continue;
+			}
+			const { segments, pending } = splitEdits(part.text);
+			for (const seg of segments) {
+				if (seg.kind === 'markdown') items.push(seg);
+				else items.push({ kind: 'edit', edit: seg.edit, index: index++ });
+			}
+			if (pending && message.running) items.push({ kind: 'pending-edit' });
+		}
+		return items;
+	}
+
+	// エディタで「AI に聞く」を押したら入力欄へ
+	$effect(() => {
+		if (claudeStore.focusRequest) void tick().then(() => inputEl?.focus());
+	});
+
+	async function send(text = input) {
 		if (!text.trim() || claudeStore.isRunning) return;
 		if (text === input) input = '';
 		stickToBottom = true;
-		await claudeStore.send(text, {
-			attachScene: options.attachScene && claudeStore.hasScene,
-			attachSelection: options.attachSelection && hasSelection
-		});
+		await claudeStore.send(text);
 		inputEl?.focus();
 	}
 
 	function runAction(action: QuickAction) {
-		// 選択範囲があればそれを、なければシーン全体を対象にする
-		const useSelection = action.needs === 'scene' && hasSelection;
-		void send(action.prompt, {
-			attachSelection: useSelection,
-			attachScene: action.needs === 'scene' && !useSelection
-		});
+		void send(claudeStore.actionPrompt(action));
 	}
 
 	function actionDisabled(action: QuickAction): boolean {
 		if (claudeStore.isRunning || notFound) return true;
-		if (action.needs === 'scene') return !claudeStore.hasScene && !hasSelection;
-		if (action.needs === 'project') return !currentProjectStore.project;
+		if (action.needs === 'target') return !claudeStore.hasScene && !claudeStore.quote;
+		if (action.needs === 'project') return !claudeStore.hasProject;
 		return false;
 	}
 
@@ -133,6 +165,7 @@
 			title={claudeStore.status?.version ?? claudeStore.status?.error ?? '確認中'}
 		></span>
 		<span class="title">Claude Code</span>
+		<span class="scope" title="会話は作品ごとに分かれます">{claudeStore.scopeLabel}</span>
 		<span class="spacer"></span>
 		<button
 			class="icon"
@@ -183,6 +216,23 @@
 					onchange={(e) => claudeStore.updateSettings({ claudePath: e.currentTarget.value.trim() })}
 				/>
 			</label>
+			<label class="field">
+				<span>本文の編集</span>
+				<select
+					value={claudeStore.settings.editMode}
+					onchange={(e) =>
+						claudeStore.updateSettings({ editMode: e.currentTarget.value as EditMode })}
+				>
+					{#each Object.entries(EDIT_MODE_LABELS) as [value, label] (value)}
+						<option {value}>{label}</option>
+					{/each}
+				</select>
+			</label>
+			<p class="hint">
+				提案のみ: 修正案を文章で示すだけ。差分を確認して反映:
+				編集案を差分で表示し、「反映」で本文を書き換える。確認せずに反映:
+				回答が終わると自動で書き換える(各編集は「元に戻す」で戻せます)。
+			</p>
 			<label class="check">
 				<input
 					type="checkbox"
@@ -205,8 +255,8 @@
 				<button class="small" onclick={() => openWorkspace()}>ワークスペースを開く</button>
 			</div>
 			<p class="hint">
-				原稿は送信のたびに <code>{workspacePath || 'workspace'}</code> へ Markdown で書き出され、Claude
-				Code はそこを読み取り専用で参照します。ファイルを書き換えてもアプリには反映されません。
+				原稿は送信のたびに <code>{workspacePath || 'workspace'}</code> へ Markdown で書き出され(未保存の本文も含む)、Claude
+				Code はそこを読み取り専用で参照します。本文の書き換えは上の「本文の編集」の設定に従い、アプリが行います。
 			</p>
 		</section>
 	{/if}
@@ -228,17 +278,15 @@
 	<div class="messages" bind:this={listEl} onscroll={onScroll} onclick={onClickContent}>
 		{#if claudeStore.messages.length === 0}
 			<div class="empty">
-				<p>開いているシーンや選択した文章について相談できます。</p>
+				<p>開いているシーンについて相談できます。エディタで文章を選ぶと「AI に聞く」が出ます。</p>
 				<p>全作品を横断した質問(設定の使い回し、表記の統一など)もできます。</p>
 			</div>
 		{/if}
 		{#each claudeStore.messages as message (message.id)}
 			{#if message.role === 'user'}
 				<div class="msg user">
-					{#if message.attachments?.length}
-						<div class="attachments">
-							{#each message.attachments as a (a)}<span class="chip static">{a}</span>{/each}
-						</div>
+					{#if message.quote}
+						<blockquote class="quote">{message.quote}</blockquote>
 					{/if}
 					<div class="text">{message.text}</div>
 				</div>
@@ -246,15 +294,23 @@
 				<div class="msg error">{message.text}</div>
 			{:else}
 				<div class="msg assistant">
-					{#each message.parts ?? [] as part, i (i)}
-						{#if part.kind === 'text'}
+					{#each renderItems(message) as item, i (i)}
+						{#if item.kind === 'markdown'}
 							<!-- eslint-disable-next-line svelte/no-at-html-tags -- DOMPurify で無害化済み -->
-							<div class="markdown">{@html renderMarkdown(part.text)}</div>
-						{:else}
+							<div class="markdown">{@html renderMarkdown(item.text)}</div>
+						{:else if item.kind === 'tool'}
 							<div class="tool">
-								<span class="tool-name">{part.name}</span>
-								<span class="tool-summary">{part.summary}</span>
+								<span class="tool-name">{item.name}</span>
+								<span class="tool-summary">{item.summary}</span>
 							</div>
+						{:else if item.kind === 'edit'}
+							<EditCard
+								edit={item.edit}
+								editState={message.edits?.[item.index]}
+								mode={message.editMode ?? 'suggest'}
+							/>
+						{:else}
+							<div class="tool">編集案を作成中…</div>
 						{/if}
 					{/each}
 					{#if message.running}
@@ -275,15 +331,19 @@
 				</button>
 			{/each}
 		</div>
-		<div class="attach">
-			<label class="check" class:muted={!claudeStore.hasScene}>
-				<input type="checkbox" bind:checked={attachScene} disabled={!claudeStore.hasScene} />
-				シーン本文を添付
-			</label>
-			<label class="check" class:muted={!hasSelection}>
-				<input type="checkbox" bind:checked={attachSelection} disabled={!hasSelection} />
-				選択範囲{hasSelection ? `(${claudeStore.selection.length}字)` : ''}
-			</label>
+		{#if claudeStore.quote}
+			<div class="quote-card">
+				<div class="quote-meta">
+					<span>引用: {claudeStore.quote.sceneTitle}({claudeStore.quote.text.length}字)</span>
+					<button class="icon" onclick={() => claudeStore.setQuote(null)} aria-label="引用を外す"
+						>×</button
+					>
+				</div>
+				<blockquote class="quote">{claudeStore.quote.text}</blockquote>
+			</div>
+		{/if}
+		<div class="mode-line">
+			本文の編集: {EDIT_MODE_LABELS[claudeStore.settings.editMode]}
 		</div>
 		<div class="input-row">
 			<textarea
@@ -291,7 +351,9 @@
 				bind:value={input}
 				onkeydown={onKeydown}
 				rows="3"
-				placeholder="Claude に相談(Enter で送信、Shift+Enter で改行)"
+				placeholder={claudeStore.quote
+					? '引用した部分について質問(Enter で送信)'
+					: 'Claude に相談(Enter で送信、Shift+Enter で改行)'}
 				disabled={notFound}
 			></textarea>
 			{#if claudeStore.isRunning}
@@ -432,10 +494,6 @@
 		font-size: 13px;
 	}
 
-	.muted {
-		color: var(--color-text-secondary);
-	}
-
 	.row {
 		display: flex;
 		gap: 8px;
@@ -512,13 +570,6 @@
 		background: color-mix(in srgb, var(--color-error) 10%, transparent);
 		white-space: pre-wrap;
 		font-size: 13px;
-	}
-
-	.attachments {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px;
-		margin-bottom: 4px;
 	}
 
 	.tool {
@@ -678,14 +729,50 @@
 		color: var(--color-primary);
 	}
 
-	.chip.static {
-		font-size: 11px;
+	.scope {
+		max-width: 140px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 		padding: 1px 8px;
+		border-radius: 999px;
+		font-size: 11px;
+		color: var(--color-text-secondary);
+		background: color-mix(in srgb, var(--color-text) 8%, transparent);
 	}
 
-	.attach {
+	.quote {
+		margin: 0 0 4px;
+		padding-left: 8px;
+		border-left: 3px solid var(--color-primary);
+		color: var(--color-text-secondary);
+		font-size: 12px;
+		white-space: pre-wrap;
+		display: -webkit-box;
+		-webkit-line-clamp: 4;
+		line-clamp: 4;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	.quote-card {
+		padding: 6px 8px;
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		background: var(--color-background);
+	}
+
+	.quote-meta {
 		display: flex;
-		gap: 14px;
+		align-items: center;
+		justify-content: space-between;
+		font-size: 12px;
+		color: var(--color-text-secondary);
+	}
+
+	.mode-line {
+		font-size: 11px;
+		color: var(--color-text-secondary);
 	}
 
 	.input-row {

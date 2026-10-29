@@ -90,3 +90,20 @@ describe('buildWorkspace', () => {
 		expect(result.projectDirs.bbbbbb2).toBe('projects/同名-bbbbbb');
 	});
 });
+
+describe('buildWorkspace の未保存の本文', () => {
+	it('overrides の本文で書き出す', () => {
+		const result = buildWorkspace(
+			{
+				...empty,
+				projects: [project('p1', '作品')],
+				chapters: [chapter('c1', 'p1', '章', 0)],
+				scenes: [scene('s1', 'c1', 'p1', '場面', 0, '保存済み')]
+			},
+			{ s1: '未保存' }
+		);
+		expect(result.files.find((f) => f.path === result.sceneFiles.s1)?.content).toBe(
+			'# 場面\n\n未保存\n'
+		);
+	});
+});

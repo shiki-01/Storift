@@ -74,9 +74,11 @@ export function openWorkspace(): Promise<void> {
 	return invoke('workspace_open');
 }
 
-/** 全プロジェクトを書き出し、ワークスペースを最新にする */
-export async function syncWorkspace(): Promise<WorkspaceExport> {
-	const exported = buildWorkspace(await loadWorkspaceData());
+/** 全プロジェクトを書き出し、ワークスペースを最新にする(overrides: シーン ID → 未保存の本文) */
+export async function syncWorkspace(
+	overrides: Record<string, string> = {}
+): Promise<WorkspaceExport> {
+	const exported = buildWorkspace(await loadWorkspaceData(), overrides);
 	await invoke('workspace_sync', { files: exported.files });
 	return exported;
 }

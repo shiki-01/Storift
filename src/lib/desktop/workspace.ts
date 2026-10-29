@@ -142,8 +142,15 @@ function plotMarkdown(project: Project, plots: Plot[]): string {
 	return lines.join('\n');
 }
 
-/** IndexedDB の内容から、ワークスペースに置くファイル一式を作る */
-export function buildWorkspace(data: WorkspaceData): WorkspaceExport {
+/**
+ * IndexedDB の内容から、ワークスペースに置くファイル一式を作る。
+ * overrides はシーン ID → 本文で、エディタの未保存の本文を反映するのに使う
+ * (本文を毎回プロンプトに添付せず、Claude が必要なときにファイルを読めば済むようにするため)。
+ */
+export function buildWorkspace(
+	data: WorkspaceData,
+	overrides: Record<string, string> = {}
+): WorkspaceExport {
 	const files: WorkspaceFile[] = [];
 	const projectDirs: Record<string, string> = {};
 	const sceneFiles: Record<string, string> = {};
@@ -183,10 +190,11 @@ export function buildWorkspace(data: WorkspaceData): WorkspaceExport {
 			scenes.forEach((scene, si) => {
 				const path = `${chapterDir}/${pad(si)}_${safeName(scene.title)}.md`;
 				sceneFiles[scene.id] = path;
-				const chars = scene.content.length;
+				const content = overrides[scene.id] ?? scene.content;
+				const chars = content.length;
 				totalChars += chars;
 				toc.push(`  - ${scene.title}(${chars}字): \`${path.slice(dir.length + 1)}\``);
-				files.push({ path, content: `# ${scene.title}\n\n${scene.content}\n` });
+				files.push({ path, content: `# ${scene.title}\n\n${content}\n` });
 			});
 		});
 
@@ -240,7 +248,9 @@ function claudeMd(index: string[]): string {
 - ここのファイルはアプリから自動で書き出した読み取り専用の写しです。編集してもアプリには反映されません。
   修正を提案するときは、ファイルを書き換えずに「元の文 → 修正案」の形で回答に書いてください。
 - ユーザーのメッセージ冒頭の <storift_context> は、アプリで今開いている作品・シーンの情報です。
-  <attached_text> はユーザーが添付した文章(未保存の最新の本文を含むことがあります)で、ファイルより優先します。
+  開いているシーンのファイルには、エディタの未保存の本文も反映済みです。「このシーン」と言われたらそのファイルを読んでください。
+- <quote> はユーザーがエディタで選択して引用した部分です。質問はその部分についてのものとして答えてください。
+  前後の文脈が必要なら、属性 file のファイルを読んでください。
 - 回答は日本語で、簡潔に。指摘には該当箇所(ファイルと引用)を添えてください。
 - 作品をまたいだ質問(設定の使い回し、表記の統一など)には、必要な作品のファイルを Grep / Read して答えてください。
 

@@ -1,0 +1,4 @@
+# Cloudflare Pages(サイト用プロジェクト)
+name = "storift-site"
+compatibility_date = "2025-11-08"
+pages_build_output_dir = "build"

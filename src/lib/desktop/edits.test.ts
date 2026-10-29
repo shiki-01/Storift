@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { diffChars, parseEdits, replaceOnce, splitEdits } from './edits';
+import { diffChars, parseEdits, replaceOnce, revertAt, splitEdits } from './edits';
 
 const block = (file: string, from: string, to: string) =>
 	`<storift-edit file="${file}">\n<old>${from}</old>\n<new>${to}</new>\n</storift-edit>`;
@@ -28,7 +28,11 @@ describe('splitEdits', () => {
 
 describe('replaceOnce', () => {
 	it('1 か所だけなら置き換える', () => {
-		expect(replaceOnce('あいうえお', 'いう', 'イウ')).toEqual({ ok: true, content: 'あイウえお' });
+		expect(replaceOnce('あいうえお', 'いう', 'イウ')).toEqual({
+			ok: true,
+			content: 'あイウえお',
+			index: 1
+		});
 	});
 
 	it('見つからない・複数あるときは失敗', () => {
@@ -59,5 +63,25 @@ describe('diffChars', () => {
 				.join('');
 		expect(rebuild('add')).toBe(a);
 		expect(rebuild('del')).toBe(b);
+	});
+});
+
+describe('revertAt', () => {
+	it('反映した位置で戻す(削除だけの編集も戻せる)', () => {
+		// 「とても」を削除した後
+		expect(revertAt('彼はうれしかった', 2, '彼は', '', 'とても')).toEqual({
+			ok: true,
+			content: '彼はとてもうれしかった',
+			index: 2
+		});
+	});
+
+	it('位置がずれていたら置き換え後の文を探して戻す', () => {
+		const r = revertAt('前置き。彼は静かに', 0, '', '静かに', 'そっと');
+		expect(r).toMatchObject({ ok: true, content: '前置き。彼はそっと' });
+	});
+
+	it('削除で前後が変わっていたら戻さない', () => {
+		expect(revertAt('別の文章', 2, '彼は', '', 'とても').ok).toBe(false);
 	});
 });

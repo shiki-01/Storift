@@ -229,9 +229,10 @@
 				</select>
 			</label>
 			<p class="hint">
-				提案のみ: 修正案を文章で示すだけ。差分を確認して反映:
-				編集案を差分で表示し、「反映」で本文を書き換える。確認せずに反映:
-				回答が終わると自動で書き換える(各編集は「元に戻す」で戻せます)。
+				提案のみ: 修正案を文章で示すだけ。差分を確認して反映: 編集案を差分で見て、1
+				件ずつ(または「すべて反映」で)反映する。自動で反映:
+				回答が終わると書き換え、変更は畳んだ一覧から差分を開いて確認し、1
+				件ずつ・まとめて元に戻せる。
 			</p>
 			<label class="check">
 				<input
@@ -313,6 +314,30 @@
 							<div class="tool">編集案を作成中…</div>
 						{/if}
 					{/each}
+					{#if message.edits?.length && !message.running}
+						{@const pending = message.edits.filter((e) => e.status === 'pending').length}
+						{@const applied = message.edits.filter((e) => e.status === 'applied').length}
+						<div class="changes">
+							<span class="changes-label"
+								>変更 {message.edits.length} 件(反映済み {applied}{pending
+									? `・未反映 ${pending}`
+									: ''})</span
+							>
+							{#if pending}
+								<button class="small" onclick={() => claudeStore.applyAll(message)}
+									>すべて反映</button
+								>
+								<button class="small" onclick={() => claudeStore.rejectAll(message)}
+									>すべて却下</button
+								>
+							{/if}
+							{#if applied}
+								<button class="small" onclick={() => claudeStore.revertAll(message)}
+									>すべて元に戻す</button
+								>
+							{/if}
+						</div>
+					{/if}
 					{#if message.running}
 						<div class="typing" aria-label="回答中"><span></span><span></span><span></span></div>
 					{:else if message.costUsd != null}
@@ -727,6 +752,23 @@
 	.chip:hover:not(:disabled):not(.static) {
 		border-color: var(--color-primary);
 		color: var(--color-primary);
+	}
+
+	.changes {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px;
+		margin-top: 4px;
+		padding: 6px 8px;
+		border-radius: 8px;
+		background: color-mix(in srgb, var(--color-text) 5%, transparent);
+	}
+
+	.changes-label {
+		flex: 1;
+		font-size: 12px;
+		color: var(--color-text-secondary);
 	}
 
 	.scope {

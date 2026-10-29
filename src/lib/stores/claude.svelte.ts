@@ -20,9 +20,16 @@ import {
 } from '$lib/desktop/claude';
 import { applyStreamLine, createTurnState, turnParts, type TurnPart } from '$lib/desktop/stream';
 import { buildWorkspace, loadWorkspaceData } from '$lib/desktop/workspace';
-import { EDIT_INSTRUCTIONS, parseEdits, replaceOnce, type ReplaceResult } from '$lib/desktop/edits';
+import {
+	EDIT_INSTRUCTIONS,
+	parseEdits,
+	replaceOnce,
+	revertAt,
+	type ReplaceResult
+} from '$lib/desktop/edits';
+import { selectTextRange } from '$lib/utils/editorInput';
 
-/** suggest: 提案のみ / confirm: 差分を見て反映 / auto: 確認せずに反映 */
+/** suggest: 提案のみ / confirm: 差分を見て反映 / auto: 自動で反映し、後から確認・元に戻す */
 export type EditMode = 'suggest' | 'confirm' | 'auto';
 
 export interface EditState {
@@ -31,7 +38,11 @@ export interface EditState {
 	new: string;
 	status: 'pending' | 'applied' | 'rejected' | 'failed' | 'reverted';
 	error?: string;
+	sceneId?: string;
 	sceneTitle?: string;
+	/** 反映した位置と、その直前の文(元に戻すときに同じ場所か確かめる) */
+	appliedAt?: number;
+	contextBefore?: string;
 }
 
 export interface ChatMessage {
@@ -115,7 +126,7 @@ export const QUICK_ACTIONS: QuickAction[] = [
 export const EDIT_MODE_LABELS: Record<EditMode, string> = {
 	suggest: '提案のみ',
 	confirm: '差分を確認して反映',
-	auto: '確認せずに反映'
+	auto: '自動で反映(後から確認)'
 };
 
 const SETTINGS_KEY = 'storift:claude-settings';
@@ -189,12 +200,15 @@ function isEditorOpenOn(sceneId: string): boolean {
 	return editorStore.currentScene?.id === sceneId && !!page.url?.pathname.endsWith('/editor');
 }
 
-/** シーンの本文の from を to に置き換える。開いているシーンはエディタ経由(自動保存される) */
-async function replaceInScene(sceneId: string, from: string, to: string): Promise<ReplaceResult> {
+/** シーンの本文を書き換える。開いているシーンはエディタ経由(自動保存される) */
+async function updateScene(
+	sceneId: string,
+	change: (content: string) => ReplaceResult
+): Promise<ReplaceResult> {
 	const inEditor = isEditorOpenOn(sceneId);
 	const content = inEditor ? editorStore.content : (await scenesDB.getById(sceneId))?.content;
 	if (content == null) return { ok: false, reason: 'シーンが見つかりません' };
-	const result = replaceOnce(content, from, to);
+	const result = change(content);
 	if (!result.ok) return result;
 
 	if (inEditor) {
@@ -225,11 +239,14 @@ async function applyEdit(edit: EditState) {
 		edit.error = '本文のシーンファイルではないため反映できません';
 		return;
 	}
+	edit.sceneId = scene.id;
 	edit.sceneTitle = scene.title;
-	const result = await replaceInScene(scene.id, edit.old, edit.new);
+	const result = await updateScene(scene.id, (content) => replaceOnce(content, edit.old, edit.new));
 	if (result.ok) {
 		edit.status = 'applied';
 		edit.error = undefined;
+		edit.appliedAt = result.index;
+		edit.contextBefore = result.content.slice(Math.max(0, result.index - 20), result.index);
 	} else {
 		edit.status = 'failed';
 		edit.error = result.reason;
@@ -450,16 +467,74 @@ export const claudeStore = {
 
 	/** 反映した編集を元に戻す */
 	async revertEdit(edit: EditState) {
-		const scene = await findScene(edit.file);
-		const result: ReplaceResult = scene
-			? await replaceInScene(scene.id, edit.new, edit.old)
-			: { ok: false, reason: 'シーンが見つかりません' };
-		if (result.ok) {
-			edit.status = 'reverted';
-			edit.error = undefined;
-		} else {
-			edit.error = `元に戻せません: ${result.reason}`;
+		await revertEdit(edit);
+		persistChats();
+	},
+
+	/** 回答に含まれる未反映の編集案をすべて反映する */
+	async applyAll(message: ChatMessage) {
+		for (const edit of message.edits ?? []) {
+			if (edit.status === 'pending') await applyEdit(edit);
 		}
 		persistChats();
+	},
+
+	/** 回答で反映した編集をすべて元に戻す(後から反映したものから順に) */
+	async revertAll(message: ChatMessage) {
+		for (const edit of [...(message.edits ?? [])].reverse()) {
+			if (edit.status === 'applied') await revertEdit(edit);
+		}
+		persistChats();
+	},
+
+	/** 未反映の編集案をすべて却下する */
+	rejectAll(message: ChatMessage) {
+		for (const edit of message.edits ?? []) {
+			if (edit.status === 'pending') edit.status = 'rejected';
+		}
+		persistChats();
+	},
+
+	/** その編集のシーンをエディタで開いているか(「本文で表示」を出すか) */
+	canReveal(edit: EditState): boolean {
+		return !!edit.sceneId && isEditorOpenOn(edit.sceneId);
+	},
+
+	/** エディタで、反映した部分を選択して見せる */
+	revealEdit(edit: EditState): boolean {
+		const root = document.querySelector<HTMLElement>('.app-main [contenteditable="true"]');
+		if (!root || !edit.sceneId || !isEditorOpenOn(edit.sceneId)) return false;
+		const content = editorStore.content;
+		const at =
+			edit.appliedAt != null && content.startsWith(edit.new, edit.appliedAt)
+				? edit.appliedAt
+				: content.indexOf(edit.new);
+		if (at < 0) return false;
+		// 削除だけの編集は長さ 0 なので、前後 1 文字を含めて位置を示す
+		const end = Math.min(content.length, at + Math.max(edit.new.length, 1));
+		const ok = selectTextRange(root, Math.max(0, at - (edit.new ? 0 : 1)), end);
+		if (ok) {
+			root.focus();
+			window.getSelection()?.getRangeAt(0).startContainer.parentElement?.scrollIntoView({
+				block: 'center'
+			});
+		}
+		return ok;
 	}
 };
+
+async function revertEdit(edit: EditState) {
+	const sceneId = edit.sceneId ?? (await findScene(edit.file))?.id;
+	const result: ReplaceResult = sceneId
+		? await updateScene(sceneId, (content) =>
+				revertAt(content, edit.appliedAt, edit.contextBefore, edit.new, edit.old)
+			)
+		: { ok: false, reason: 'シーンが見つかりません' };
+	if (result.ok) {
+		edit.status = 'reverted';
+		edit.error = undefined;
+		edit.appliedAt = undefined;
+	} else {
+		edit.error = `元に戻せません: ${result.reason}`;
+	}
+}

@@ -15,7 +15,7 @@
 		// Firebase設定があれば初期化
 		if (settings.firebase) {
 			try {
-				initializeFirebase(settings.firebase);
+				await initializeFirebase(settings.firebase);
 				const user = await signInAnonymousUser();
 				authStore.user = user;
 				authStore.isInitialized = true;

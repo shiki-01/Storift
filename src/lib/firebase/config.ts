@@ -1,4 +1,4 @@
-import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
+import { initializeApp, getApps, deleteApp, type FirebaseApp } from 'firebase/app';
 import {
 	initializeFirestore,
 	type Firestore,
@@ -12,12 +12,25 @@ let app: FirebaseApp | null = null;
 let firestore: Firestore | null = null;
 let auth: Auth | null = null;
 
-export function initializeFirebase(config: FirebaseConfig): void {
+function sameConfig(a: Partial<FirebaseConfig>, b: FirebaseConfig): boolean {
+	return (Object.keys(b) as (keyof FirebaseConfig)[]).every((key) => a[key] === b[key]);
+}
+
+/**
+ * Firebase を初期化する。同じ設定で初期化済みなら何もしない。
+ * 別の設定で初期化済みのとき(セットアップ画面で入力を直して再テストした場合など)は作り直す
+ */
+export async function initializeFirebase(config: FirebaseConfig): Promise<void> {
 	try {
-		// 既に初期化されている場合はスキップ
-		if (getApps().length > 0) {
-			console.log('⚠️ Firebase already initialized');
-			return;
+		const existing = getApps()[0];
+		if (existing) {
+			if (sameConfig(existing.options as Partial<FirebaseConfig>, config) && firestore && auth) {
+				return;
+			}
+			await deleteApp(existing);
+			app = null;
+			firestore = null;
+			auth = null;
 		}
 
 		app = initializeApp(config);

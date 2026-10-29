@@ -111,7 +111,7 @@
 
 				if (config) {
 					// Firebaseを初期化
-					initializeFirebase(config);
+					await initializeFirebase(config);
 
 					// 匿名ログイン
 					const user = await signInAnonymousUser();

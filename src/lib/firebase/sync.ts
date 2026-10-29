@@ -248,7 +248,7 @@ export async function batchSyncToFirestore(
 /**
  * オンライン状態の監視
  */
-export function monitorOnlineStatus(): void {
+export function monitorOnlineStatus(): () => void {
 	const updateStatus = () => {
 		if (navigator.onLine) {
 			if (syncStore.status === 'offline') {
@@ -262,4 +262,8 @@ export function monitorOnlineStatus(): void {
 	window.addEventListener('online', updateStatus);
 	window.addEventListener('offline', updateStatus);
 	updateStatus();
+	return () => {
+		window.removeEventListener('online', updateStatus);
+		window.removeEventListener('offline', updateStatus);
+	};
 }

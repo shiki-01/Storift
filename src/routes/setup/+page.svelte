@@ -82,7 +82,7 @@
 				throw new Error('すべての項目を入力してください');
 			}
 
-			initializeFirebase(config);
+			await initializeFirebase(config);
 			await signInAnonymousUser();
 			testResult = '✓ 接続成功!';
 		} catch (e: any) {
@@ -111,7 +111,7 @@
 			}
 
 			// 保存前にもう一度接続テスト
-			initializeFirebase(config);
+			await initializeFirebase(config);
 			const user = await signInAnonymousUser();
 			authStore.user = user;
 			authStore.isInitialized = true;

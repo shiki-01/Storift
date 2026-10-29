@@ -31,7 +31,11 @@ import {
 } from '$lib/firebase/syncMeta';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { currentProjectStore } from '$lib/stores/currentProject.svelte';
-import { startNetworkMonitoring, onNetworkStatusChange } from '$lib/utils/offline';
+import {
+	startNetworkMonitoring,
+	stopNetworkMonitoring,
+	onNetworkStatusChange
+} from '$lib/utils/offline';
 import { debounceAsync } from '$lib/utils/debounce';
 import type { ConflictResolutionPolicy, History } from '$lib/types';
 import type { Unsubscribe } from 'firebase/firestore';
@@ -86,6 +90,10 @@ const pendingConflicts: PendingConflict[] = [];
 let syncInterval: number | null = null;
 let visibilityHandler: (() => void) | null = null;
 let isInitialized = false;
+// 初期化の途中で再度呼ばれたときに、二重に監視・タイマーを登録しないよう共有する
+let initializing: Promise<void> | null = null;
+// stopSync で解除するもの
+let stopMonitors: (() => void)[] = [];
 let currentProjectUnsubscribers: Unsubscribe[] = [];
 let downloadPromise: Promise<void> | null = null;
 let lastDownloadAt = 0;
@@ -408,18 +416,23 @@ function refreshFromRemoteIfNeeded(): void {
  * 同期システムの初期化
  */
 export async function initializeSync(): Promise<void> {
-	// 既に初期化済みの場合はスキップ
+	// 既に初期化済み・初期化中の場合はスキップ
 	if (isInitialized) {
 		console.log('⏭️ Sync already initialized, skipping...');
 		return;
 	}
+	if (initializing) return initializing;
+	initializing = doInitializeSync().finally(() => (initializing = null));
+	return initializing;
+}
 
+async function doInitializeSync(): Promise<void> {
 	const { isFirebaseInitialized } = await import('$lib/firebase');
 
 	if (!isFirebaseInitialized()) {
+		// 後から Firebase を設定したときに初期化できるよう、初期化済みにはしない
 		console.log('ℹ️ Firebase not configured, sync system will not be initialized');
 		syncStore.status = 'offline';
-		isInitialized = true; // 初期化済みフラグを立てて再実行を防ぐ
 		return;
 	}
 
@@ -428,16 +441,25 @@ export async function initializeSync(): Promise<void> {
 	historyDB.deleteOldHistory().catch((err) => console.warn('Failed to prune history:', err));
 
 	// オンライン状態の監視
-	monitorOnlineStatus();
+	stopMonitors.push(monitorOnlineStatus());
 	startNetworkMonitoring();
+	stopMonitors.push(stopNetworkMonitoring);
 
 	// オンライン復帰時: 溜まった変更を送り、他端末の変更を取り込む
-	onNetworkStatusChange((status) => {
-		if (status === 'online') {
-			if (pendingChanges.length > 0) void processPendingChanges();
-			refreshFromRemoteIfNeeded();
-		}
-	});
+	// (登録直後に現在の状態で呼ばれるので、初回は下の初期化処理に任せる)
+	let first = true;
+	stopMonitors.push(
+		onNetworkStatusChange((status) => {
+			if (first) {
+				first = false;
+				return;
+			}
+			if (status === 'online') {
+				if (pendingChanges.length > 0) void processPendingChanges();
+				refreshFromRemoteIfNeeded();
+			}
+		})
+	);
 
 	// アプリに戻ってきたとき、他端末の変更を取り込む
 	visibilityHandler = () => {
@@ -493,6 +515,8 @@ export function stopSync(): void {
 		document.removeEventListener('visibilitychange', visibilityHandler);
 		visibilityHandler = null;
 	}
+	for (const stop of stopMonitors) stop();
+	stopMonitors = [];
 	isInitialized = false;
 	console.log('🛑 Sync system stopped');
 }

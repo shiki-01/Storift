@@ -7,3 +7,6 @@ bun.lockb
 
 # Miscellaneous
 /static/
+
+# サイトは別プロジェクト(site/)として管理する
+/site/

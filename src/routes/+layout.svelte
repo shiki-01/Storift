@@ -22,8 +22,27 @@
 	import ToastHost from '$lib/components/ui/ToastHost.svelte';
 	import ConflictHost from '$lib/components/ui/ConflictHost.svelte';
 	import { themes, themeStore } from '$lib/stores/theme.svelte';
+	import { isDesktop } from '$lib/desktop/platform';
+	import { claudeStore } from '$lib/stores/claude.svelte';
+	import ClaudePanel from '$lib/components/desktop/ClaudePanel.svelte';
+	import SelectionAsk from '$lib/components/desktop/SelectionAsk.svelte';
+	import EditorDiff from '$lib/components/desktop/EditorDiff.svelte';
 
 	let { children } = $props();
+
+	// デスクトップ版(Tauri)だけ、Claude Code のサイドパネルを使える
+	const desktop = isDesktop();
+	let showClaudePanel = $derived(
+		desktop && claudeStore.open && !viewport.isMobile && !editorStore.focusMode
+	);
+
+	function onGlobalKeydown(e: KeyboardEvent) {
+		// Ctrl(Cmd)+Shift+L でパネルの開閉
+		if (desktop && (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'l') {
+			e.preventDefault();
+			claudeStore.toggle();
+		}
+	}
 
 	// 配信元に新しいバージョンが出たことを検知したら、すぐ Service Worker の更新を確認する
 	$effect(() => {
@@ -87,7 +106,8 @@
 		initializeErrorHandler();
 
 		// Service Workerを登録（開発環境では既存のSWを削除）
-		if (typeof window !== 'undefined') {
+		// デスクトップ版はファイルをアプリに同梱しているので使わない
+		if (typeof window !== 'undefined' && !desktop) {
 			registerServiceWorker().catch((error) => {
 				console.error('Service Worker operation failed:', error);
 			});
@@ -154,6 +174,8 @@
 	});
 </script>
 
+<svelte:window onkeydown={onGlobalKeydown} />
+
 <svelte:head>
 	<title>{pageTitle}</title>
 	<meta name="description" content="個人向け小説執筆アプリ" />
@@ -213,6 +235,14 @@
 						<span class="flex:1"></span>
 					{/if}
 					<SyncStatus />
+					{#if desktop}
+						<button
+							type="button"
+							class="nav-link cursor:pointer {claudeStore.open ? 'is-active' : ''}"
+							onclick={() => claudeStore.toggle()}
+							title="Claude Code パネル (Ctrl+Shift+L)">Claude</button
+						>
+					{/if}
 					<a
 						href="/settings"
 						class="nav-link {$page.url.pathname === '/settings' ? 'is-active' : ''}">設定</a
@@ -222,9 +252,14 @@
 		</header>
 	{/if}
 
-	<main class="app-main rel">
-		{@render children()}
-	</main>
+	<div class="app-body">
+		<main class="app-main rel">
+			{@render children()}
+		</main>
+		{#if showClaudePanel}
+			<ClaudePanel />
+		{/if}
+	</div>
 
 	{#if showBottomNav}
 		<nav class="bottom-nav bt:1px|solid|theme-border" aria-label="プロジェクト">
@@ -240,6 +275,11 @@
 		</nav>
 	{/if}
 </div>
+
+{#if desktop && !viewport.isMobile}
+	<SelectionAsk />
+	<EditorDiff />
+{/if}
 
 <ToastHost />
 <ConflictHost />
@@ -266,9 +306,15 @@
 		min-height: var(--bar-height);
 	}
 
-	.app-main {
+	.app-body {
 		flex: 1;
 		min-height: 0;
+		display: flex;
+	}
+
+	.app-main {
+		flex: 1;
+		min-width: 0;
 		overflow: hidden;
 	}
 

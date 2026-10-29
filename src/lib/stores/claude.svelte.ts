@@ -1,9 +1,16 @@
 /**
  * デスクトップ版の Claude Code サイドパネルの状態。
- * 会話は Claude Code のセッション(--resume)で続け、表示用の履歴は端末の localStorage に残す。
+ *
+ * - 会話は作品ごと(作品を開いていないときは「全体」)に分け、Claude Code のセッション(--resume)で続ける。
+ *   作品をまたいで履歴が混ざらないので、1 回あたりに読み直す会話が短く済む。
+ * - 本文はプロンプトに毎回添付せず、ワークスペースのファイル(未保存の本文も反映)を Claude が必要なときに読む。
+ * - 本文の編集は設定(editMode)に応じて、提案のみ / 差分を確認して反映 / 自動で反映 を切り替える。
  */
+import { page } from '$app/state';
 import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 import { editorStore } from '$lib/stores/editor.svelte';
+import { scenesDB } from '$lib/db';
+import { queueChange } from '$lib/services/sync.service';
 import {
 	cancelClaude,
 	getClaudeStatus,
@@ -12,18 +19,47 @@ import {
 	type ClaudeStatus
 } from '$lib/desktop/claude';
 import { applyStreamLine, createTurnState, turnParts, type TurnPart } from '$lib/desktop/stream';
+import { buildWorkspace, loadWorkspaceData } from '$lib/desktop/workspace';
+import { EDIT_INSTRUCTIONS, parseEdits, replaceOnce, type ReplaceResult } from '$lib/desktop/edits';
+
+/** suggest: 提案のみ / confirm: 差分を見て反映 / auto: 確認せずに反映 */
+export type EditMode = 'suggest' | 'confirm' | 'auto';
+
+export interface EditState {
+	file: string;
+	old: string;
+	new: string;
+	status: 'pending' | 'applied' | 'rejected' | 'failed' | 'reverted';
+	error?: string;
+	sceneTitle?: string;
+}
 
 export interface ChatMessage {
 	id: string;
 	role: 'user' | 'assistant' | 'error';
 	/** user / error の本文 */
 	text?: string;
-	/** user: 添付したものの表示名 */
-	attachments?: string[];
+	/** user: 引用した文章 */
+	quote?: string;
 	/** assistant: 本文とツール呼び出し */
 	parts?: TurnPart[];
+	/** assistant: 回答中の編集案(出てきた順)。回答が終わってから入る */
+	edits?: EditState[];
+	/** assistant: この回答のときの編集モード */
+	editMode?: EditMode;
 	running?: boolean;
 	costUsd?: number;
+}
+
+interface Conversation {
+	sessionId?: string;
+	messages: ChatMessage[];
+}
+
+export interface Quote {
+	text: string;
+	sceneId: string;
+	sceneTitle: string;
 }
 
 export interface ClaudeSettings {
@@ -33,38 +69,34 @@ export interface ClaudeSettings {
 	claudePath: string;
 	/** WebSearch / WebFetch を許可する */
 	allowWeb: boolean;
-}
-
-export interface SendOptions {
-	attachSelection: boolean;
-	attachScene: boolean;
+	editMode: EditMode;
 }
 
 export interface QuickAction {
 	label: string;
+	/** {target} は「引用した部分」か「開いているシーン」に置き換わる */
 	prompt: string;
-	/** 既定で添付するもの */
-	needs: 'scene' | 'project' | 'none';
+	needs: 'target' | 'project' | 'none';
 }
 
 export const QUICK_ACTIONS: QuickAction[] = [
 	{
 		label: '校正',
-		needs: 'scene',
+		needs: 'target',
 		prompt:
-			'添付した文章を校正してください。誤字脱字、文法の誤り、表記ゆれ、読みにくい箇所を指摘し、「元の文 → 修正案」の形で理由とともに示してください。'
+			'{target}を校正してください。誤字脱字、文法の誤り、表記ゆれ、読みにくい箇所を指摘し、修正案を理由とともに示してください。'
 	},
 	{
 		label: '矛盾チェック',
-		needs: 'scene',
+		needs: 'target',
 		prompt:
-			'添付した文章に、この作品のキャラクター設定・設定資料・プロット・これまでの本文と矛盾する点がないか調べてください。根拠にしたファイルと該当箇所も示してください。'
+			'{target}に、この作品のキャラクター設定・設定資料・プロット・これまでの本文と矛盾する点がないか調べてください。根拠にしたファイルと該当箇所も示してください。'
 	},
 	{
-		label: '推敲の提案',
-		needs: 'scene',
+		label: '推敲',
+		needs: 'target',
 		prompt:
-			'添付した文章を推敲するとしたら、どこをどう直すと良くなるか提案してください。描写・テンポ・台詞回しの観点で、優先度の高いものから挙げてください。'
+			'{target}を推敲してください。描写・テンポ・台詞回しの観点で、優先度の高いものから直し方を示してください。'
 	},
 	{
 		label: '作品の要約',
@@ -80,13 +112,24 @@ export const QUICK_ACTIONS: QuickAction[] = [
 	}
 ];
 
+export const EDIT_MODE_LABELS: Record<EditMode, string> = {
+	suggest: '提案のみ',
+	confirm: '差分を確認して反映',
+	auto: '確認せずに反映'
+};
+
 const SETTINGS_KEY = 'storift:claude-settings';
 const PANEL_KEY = 'storift:claude-panel';
-const CHAT_KEY = 'storift:claude-chat';
+const CHAT_KEY = 'storift:claude-chats';
+const GLOBAL_KEY = '__global__';
 const MAX_SAVED_MESSAGES = 100;
-const MAX_SELECTION = 20000;
 
-const DEFAULT_SETTINGS: ClaudeSettings = { model: '', claudePath: '', allowWeb: false };
+const DEFAULT_SETTINGS: ClaudeSettings = {
+	model: '',
+	claudePath: '',
+	allowWeb: false,
+	editMode: 'suggest'
+};
 
 function load<T>(key: string, fallback: T): T {
 	try {
@@ -106,82 +149,121 @@ function save(key: string, value: unknown) {
 }
 
 const panel = load(PANEL_KEY, { open: false, width: 420 });
-const chat = load<{ sessionId?: string; messages: ChatMessage[] }>(CHAT_KEY, { messages: [] });
 
 let open = $state(panel.open);
 let width = $state(panel.width);
 let settings = $state<ClaudeSettings>(load(SETTINGS_KEY, DEFAULT_SETTINGS));
-let messages = $state<ChatMessage[]>(chat.messages.map((m) => ({ ...m, running: false })));
-let sessionId = $state<string | undefined>(chat.sessionId);
+const conversations = $state<Record<string, Conversation>>(load(CHAT_KEY, {}));
 let runningId = $state<string | null>(null);
 let status = $state<ClaudeStatus | null>(null);
-let selection = $state('');
+let quote = $state<Quote | null>(null);
+/** 入力欄へフォーカスしてほしいときに増やす */
+let focusRequest = $state(0);
 
-function persistChat() {
-	save(CHAT_KEY, {
-		sessionId,
-		messages: messages.slice(-MAX_SAVED_MESSAGES).map((m) => ({ ...m, running: false }))
-	});
+/** 今の会話のキー(開いている作品、なければ全体) */
+function currentKey(): string {
+	return page.params?.id ?? GLOBAL_KEY;
+}
+
+function conversation(key = currentKey()): Conversation {
+	return (conversations[key] ??= { messages: [] });
+}
+
+function persistChats() {
+	const out: Record<string, Conversation> = {};
+	for (const [key, conv] of Object.entries(conversations)) {
+		if (!conv.messages.length && !conv.sessionId) continue;
+		out[key] = {
+			sessionId: conv.sessionId,
+			messages: conv.messages.slice(-MAX_SAVED_MESSAGES).map((m) => ({ ...m, running: false }))
+		};
+	}
+	save(CHAT_KEY, out);
 }
 
 function newId(): string {
 	return crypto.randomUUID();
 }
 
-/** パネルの外で選択された文章を覚えておく(パネルをクリックすると選択が外れるため) */
-function onSelectionChange() {
-	const sel = window.getSelection();
-	const anchor = sel?.anchorNode;
-	const el = anchor instanceof Element ? anchor : anchor?.parentElement;
-	if (el?.closest('[data-claude-panel]')) return;
-	selection = (sel?.toString() ?? '').slice(0, MAX_SELECTION);
+function isEditorOpenOn(sceneId: string): boolean {
+	return editorStore.currentScene?.id === sceneId && !!page.url?.pathname.endsWith('/editor');
 }
 
-function chapterTitle(chapterId: string): string | undefined {
-	return currentProjectStore.chapters.find((c) => c.id === chapterId)?.title;
+/** シーンの本文の from を to に置き換える。開いているシーンはエディタ経由(自動保存される) */
+async function replaceInScene(sceneId: string, from: string, to: string): Promise<ReplaceResult> {
+	const inEditor = isEditorOpenOn(sceneId);
+	const content = inEditor ? editorStore.content : (await scenesDB.getById(sceneId))?.content;
+	if (content == null) return { ok: false, reason: 'シーンが見つかりません' };
+	const result = replaceOnce(content, from, to);
+	if (!result.ok) return result;
+
+	if (inEditor) {
+		editorStore.content = result.content;
+	} else {
+		await scenesDB.update(sceneId, { content: result.content });
+		await queueChange('scenes', sceneId, 'update');
+		const fresh = await scenesDB.getById(sceneId);
+		const index = currentProjectStore.scenes.findIndex((s) => s.id === sceneId);
+		if (fresh && index !== -1) currentProjectStore.scenes[index] = fresh;
+	}
+	return result;
 }
 
-/** プロンプトの前に付ける、今アプリで開いているものの情報と添付 */
+/** ワークスペースのファイル → シーン(反映のたびに最新の対応を作る) */
+async function findScene(file: string): Promise<{ id: string; title: string } | null> {
+	const data = await loadWorkspaceData();
+	const exported = buildWorkspace(data);
+	const id = Object.entries(exported.sceneFiles).find(([, path]) => path === file)?.[0];
+	const scene = id ? data.scenes.find((s) => s.id === id) : undefined;
+	return scene ? { id: scene.id, title: scene.title } : null;
+}
+
+async function applyEdit(edit: EditState) {
+	const scene = await findScene(edit.file);
+	if (!scene) {
+		edit.status = 'failed';
+		edit.error = '本文のシーンファイルではないため反映できません';
+		return;
+	}
+	edit.sceneTitle = scene.title;
+	const result = await replaceInScene(scene.id, edit.old, edit.new);
+	if (result.ok) {
+		edit.status = 'applied';
+		edit.error = undefined;
+	} else {
+		edit.status = 'failed';
+		edit.error = result.reason;
+	}
+}
+
+function targetLabel(): string {
+	return quote ? '引用した部分' : '開いているシーン';
+}
+
+/** プロンプトの前に付ける、今アプリで開いているものの情報と引用 */
 function buildPrompt(
 	text: string,
-	options: SendOptions,
-	exported: Awaited<ReturnType<typeof syncWorkspace>>
-): { prompt: string; attachments: string[] } {
+	exported: Awaited<ReturnType<typeof syncWorkspace>>,
+	attached: Quote | null
+): string {
 	const project = currentProjectStore.project;
 	const scene = editorStore.currentScene;
 	const context: string[] = [];
-	const attachments: string[] = [];
-	const blocks: string[] = [];
 
-	if (project) {
-		context.push(
-			`開いている作品: ${project.title}(${exported.projectDirs[project.id] ?? '未書き出し'}/)`
-		);
-	}
-	if (scene && project && scene.projectId === project.id) {
-		const chapter = chapterTitle(scene.chapterId);
-		context.push(
-			`開いているシーン: ${chapter ? `${chapter} / ` : ''}${scene.title}(${exported.sceneFiles[scene.id] ?? '未書き出し'})`
-		);
-		if (options.attachScene) {
-			attachments.push(`シーン「${scene.title}」`);
-			blocks.push(
-				`<attached_text kind="scene" title="${scene.title.replace(/"/g, "'")}">\n${editorStore.content}\n</attached_text>`
-			);
+	if (project && page.params?.id === project.id) {
+		context.push(`開いている作品: ${project.title}(${exported.projectDirs[project.id]}/)`);
+		if (scene && isEditorOpenOn(scene.id)) {
+			context.push(`開いているシーン: ${scene.title}(${exported.sceneFiles[scene.id]})`);
 		}
 	}
-	if (options.attachSelection && selection.trim()) {
-		attachments.push(`選択範囲(${selection.length}字)`);
-		blocks.push(`<attached_text kind="selection">\n${selection}\n</attached_text>`);
-	}
+	context.push(`本文の編集: ${EDIT_MODE_LABELS[settings.editMode]}`);
 
-	const header = context.length
-		? `<storift_context>\n${context.join('\n')}\n</storift_context>\n\n`
-		: '';
-	return {
-		prompt: `${header}${blocks.join('\n\n')}${blocks.length ? '\n\n' : ''}${text}`,
-		attachments
-	};
+	let body = `<storift_context>\n${context.join('\n')}\n</storift_context>\n\n`;
+	if (attached) {
+		const file = exported.sceneFiles[attached.sceneId] ?? '';
+		body += `<quote file="${file}">\n${attached.text}\n</quote>\n\n`;
+	}
+	return body + text;
 }
 
 export const claudeStore = {
@@ -213,11 +295,13 @@ export const claudeStore = {
 		save(SETTINGS_KEY, settings);
 		if (pathChanged) void this.checkStatus();
 	},
-	get messages() {
-		return messages;
+	get messages(): ChatMessage[] {
+		return conversations[currentKey()]?.messages ?? [];
 	},
-	get sessionId() {
-		return sessionId;
+	/** 会話の範囲の表示名 */
+	get scopeLabel() {
+		const project = currentProjectStore.project;
+		return page.params?.id && project?.id === page.params.id ? project.title : '全体';
 	},
 	get isRunning() {
 		return runningId !== null;
@@ -225,18 +309,31 @@ export const claudeStore = {
 	get status() {
 		return status;
 	},
-	get selection() {
-		return selection;
+	get quote() {
+		return quote;
+	},
+	get focusRequest() {
+		return focusRequest;
 	},
 	get hasScene() {
 		const scene = editorStore.currentScene;
-		return !!scene && scene.projectId === currentProjectStore.project?.id;
+		return !!scene && isEditorOpenOn(scene.id);
+	},
+	get hasProject() {
+		return !!page.params?.id;
 	},
 
-	/** 選択範囲の監視を始める。戻り値で止める */
-	watchSelection(): () => void {
-		document.addEventListener('selectionchange', onSelectionChange);
-		return () => document.removeEventListener('selectionchange', onSelectionChange);
+	/** エディタで選んだ文章を引用して、パネルの入力欄へ */
+	setQuote(value: Quote | null) {
+		quote = value;
+		if (value) {
+			this.open = true;
+			focusRequest++;
+		}
+	},
+
+	actionPrompt(action: QuickAction): string {
+		return action.prompt.replace('{target}', targetLabel());
 	},
 
 	async checkStatus() {
@@ -249,45 +346,58 @@ export const claudeStore = {
 
 	newChat() {
 		if (runningId) return;
-		messages = [];
-		sessionId = undefined;
-		persistChat();
+		conversations[currentKey()] = { messages: [] };
+		persistChats();
 	},
 
 	async cancel() {
 		if (runningId) await cancelClaude(runningId);
 	},
 
-	async send(text: string, options: SendOptions) {
+	async send(text: string) {
 		const body = text.trim();
 		if (!body || runningId) return;
 		const requestId = newId();
 		runningId = requestId;
 
-		const userIndex = messages.push({ id: newId(), role: 'user', text: body }) - 1;
-		const assistantIndex =
-			messages.push({ id: requestId, role: 'assistant', parts: [], running: true }) - 1;
+		// 実行中に作品を移っても、送った会話に書き込む
+		const conv = conversation();
+		const attached = quote;
+		quote = null;
+		const mode = settings.editMode;
+
+		conv.messages.push({ id: newId(), role: 'user', text: body, quote: attached?.text });
+		conv.messages.push({
+			id: requestId,
+			role: 'assistant',
+			parts: [],
+			running: true,
+			editMode: mode
+		});
+		const assistant = conv.messages[conv.messages.length - 1];
 		const turn = createTurnState();
 		let frame = 0;
 		const render = () => {
 			frame = 0;
-			messages[assistantIndex].parts = turnParts(turn);
+			assistant.parts = turnParts(turn);
 		};
 
 		try {
-			// 送るたびに書き出し直し、Claude が最新の原稿を読めるようにする
-			const exported = await syncWorkspace();
-			const { prompt, attachments } = buildPrompt(body, options, exported);
-			messages[userIndex].attachments = attachments;
+			// エディタの未保存の本文もファイルに反映してから送る
+			const scene = editorStore.currentScene;
+			const overrides =
+				scene && isEditorOpenOn(scene.id) ? { [scene.id]: editorStore.content } : {};
+			const exported = await syncWorkspace(overrides);
 
 			const exit = await sendToClaude(
 				{
 					requestId,
-					prompt,
-					sessionId,
+					prompt: buildPrompt(body, exported, attached),
+					sessionId: conv.sessionId,
 					model: settings.model || undefined,
 					allowWeb: settings.allowWeb,
-					claudePath: settings.claudePath || undefined
+					claudePath: settings.claudePath || undefined,
+					appendSystemPrompt: mode === 'suggest' ? undefined : EDIT_INSTRUCTIONS
 				},
 				(line) => {
 					applyStreamLine(turn, line);
@@ -297,23 +407,59 @@ export const claudeStore = {
 			if (frame) cancelAnimationFrame(frame);
 			render();
 
-			if (turn.sessionId) sessionId = turn.sessionId;
-			messages[assistantIndex].costUsd = turn.costUsd;
+			if (turn.sessionId) conv.sessionId = turn.sessionId;
+			assistant.costUsd = turn.costUsd;
 			if (exit.cancelled) {
-				messages.push({ id: newId(), role: 'error', text: '中断しました。' });
+				conv.messages.push({ id: newId(), role: 'error', text: '中断しました。' });
 			} else if (!turn.done || turn.isError || (exit.code !== 0 && exit.code !== null)) {
 				const detail = exit.stderr.trim() || turn.resultText || `終了コード ${exit.code}`;
 				// 古いセッションが見つからないときは、次から新しい会話で始める
-				if (/No conversation found/i.test(detail)) sessionId = undefined;
-				messages.push({ id: newId(), role: 'error', text: detail });
+				if (/No conversation found/i.test(detail)) conv.sessionId = undefined;
+				conv.messages.push({ id: newId(), role: 'error', text: detail });
+			}
+
+			if (mode !== 'suggest' && !exit.cancelled) {
+				const text = (assistant.parts ?? [])
+					.map((p) => (p.kind === 'text' ? p.text : ''))
+					.join('\n');
+				assistant.edits = parseEdits(text).map((e) => ({ ...e, status: 'pending' }));
+				if (mode === 'auto') {
+					for (const edit of assistant.edits) await applyEdit(edit);
+				}
 			}
 		} catch (error) {
-			messages.push({ id: newId(), role: 'error', text: String(error) });
+			conv.messages.push({ id: newId(), role: 'error', text: String(error) });
 		} finally {
-			messages[assistantIndex].running = false;
-			if (!messages[assistantIndex].parts?.length) messages.splice(assistantIndex, 1);
+			assistant.running = false;
+			if (!assistant.parts?.length) conv.messages.splice(conv.messages.indexOf(assistant), 1);
 			runningId = null;
-			persistChat();
+			persistChats();
 		}
+	},
+
+	/** 編集案を反映する(確認モードの「反映」) */
+	async applyEdit(edit: EditState) {
+		await applyEdit(edit);
+		persistChats();
+	},
+
+	rejectEdit(edit: EditState) {
+		edit.status = 'rejected';
+		persistChats();
+	},
+
+	/** 反映した編集を元に戻す */
+	async revertEdit(edit: EditState) {
+		const scene = await findScene(edit.file);
+		const result: ReplaceResult = scene
+			? await replaceInScene(scene.id, edit.new, edit.old)
+			: { ok: false, reason: 'シーンが見つかりません' };
+		if (result.ok) {
+			edit.status = 'reverted';
+			edit.error = undefined;
+		} else {
+			edit.error = `元に戻せません: ${result.reason}`;
+		}
+		persistChats();
 	}
 };

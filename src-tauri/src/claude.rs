@@ -16,7 +16,7 @@ use tokio::process::Command;
 use tokio::sync::oneshot;
 
 /// 読み取り専用のツール。原稿の書き換えはアプリ側で人が行う
-const READ_TOOLS: &[&str] = &["Read", "Glob", "Grep", "LS"];
+const READ_TOOLS: &[&str] = &["Read", "Glob", "Grep"];
 const WEB_TOOLS: &[&str] = &["WebSearch", "WebFetch"];
 const DENIED_TOOLS: &[&str] = &["Bash", "Edit", "MultiEdit", "Write", "NotebookEdit"];
 
@@ -181,6 +181,12 @@ fn build_args(req: &SendRequest) -> Vec<String> {
     .iter()
     .map(|s| s.to_string())
     .collect();
+    // 使えるツールそのものを絞る。ツール定義・MCP・スキルの説明は毎回のプロンプトに載るので、
+    // 執筆の相談に要らないものを外すと 1 回あたりのトークンが大きく減る
+    args.push("--tools".into());
+    args.push(allowed.join(","));
+    args.push("--strict-mcp-config".into());
+    args.push("--disable-slash-commands".into());
     args.push("--allowedTools".into());
     args.push(allowed.join(","));
     args.push("--disallowedTools".into());
@@ -334,6 +340,9 @@ mod tests {
     fn args_limit_tools_and_resume() {
         let args = build_args(&request(Some("abc"), false));
         let allowed = &args[args.iter().position(|a| a == "--allowedTools").unwrap() + 1];
+        let tools = &args[args.iter().position(|a| a == "--tools").unwrap() + 1];
+        assert_eq!(allowed, tools);
+        assert!(args.iter().any(|a| a == "--strict-mcp-config"));
         assert!(!allowed.contains("WebSearch"));
         assert!(!allowed.contains("Edit"));
         let resume = args.iter().position(|a| a == "--resume").unwrap();

@@ -25,6 +25,7 @@
 	import { isDesktop } from '$lib/desktop/platform';
 	import { claudeStore } from '$lib/stores/claude.svelte';
 	import ClaudePanel from '$lib/components/desktop/ClaudePanel.svelte';
+	import SelectionAsk from '$lib/components/desktop/SelectionAsk.svelte';
 
 	let { children } = $props();
 
@@ -149,9 +150,6 @@
 			}
 		})();
 
-		// パネルを開く前に選んだ文章も添付できるよう、選択範囲は常に追っておく
-		const stopSelection = desktop ? claudeStore.watchSelection() : () => {};
-
 		// ネットワーク監視を開始
 		startNetworkMonitoring();
 
@@ -168,7 +166,6 @@
 		// クリーンアップ
 		return () => {
 			stopViewport();
-			stopSelection();
 			unsubscribe();
 			stopNetworkMonitoring();
 			stopSync();
@@ -277,6 +274,10 @@
 		</nav>
 	{/if}
 </div>
+
+{#if desktop && !viewport.isMobile}
+	<SelectionAsk />
+{/if}
 
 <ToastHost />
 <ConflictHost />

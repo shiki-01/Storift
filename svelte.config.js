@@ -20,6 +20,9 @@ const config = {
 		}),
 		// Service Worker の登録は src/lib/utils/sw-register.ts で行う(更新の適用を制御するため)
 		serviceWorker: { register: false },
+		// Service Worker は '/' で取得した殻の HTML をどの URL にも返す。相対パス(./_app/...)だと
+		// /project/[id]/... で開いたときに /project/[id]/_app/... を読みに行って真っ白になるため、絶対パスにする
+		paths: { relative: false },
 		version: {
 			// 配信元が更新されたかの判定に使う。Cloudflare Pages ではコミットの SHA、なければ時刻
 			name: buildId,

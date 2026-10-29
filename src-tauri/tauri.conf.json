@@ -1,0 +1,41 @@
+{
+	"$schema": "https://schema.tauri.app/config/2",
+	"productName": "Storift",
+	"version": "../package.json",
+	"identifier": "app.storift.desktop",
+	"build": {
+		"beforeDevCommand": "bun run dev --port 5173 --strictPort",
+		"devUrl": "http://localhost:5173",
+		"beforeBuildCommand": "bun run build",
+		"frontendDist": "../build"
+	},
+	"app": {
+		"windows": [
+			{
+				"title": "Storift",
+				"width": 1400,
+				"height": 900,
+				"minWidth": 800,
+				"minHeight": 560,
+				"dragDropEnabled": false
+			}
+		],
+		"security": {
+			"csp": null
+		}
+	},
+	"bundle": {
+		"active": true,
+		"targets": "all",
+		"category": "Productivity",
+		"shortDescription": "小説執筆アプリ",
+		"longDescription": "Storift のデスクトップ版。Claude Code をサイドパネルで使い、文章チェックやプロジェクト横断の相談ができます。",
+		"icon": [
+			"icons/32x32.png",
+			"icons/128x128.png",
+			"icons/128x128@2x.png",
+			"icons/icon.icns",
+			"icons/icon.ico"
+		]
+	}
+}

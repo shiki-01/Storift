@@ -1,4 +1,5 @@
-import { projectsDB, chaptersDB, scenesDB, charactersDB, plotsDB, worldbuildingDB } from '$lib/db';
+import type { Table } from 'dexie';
+import { db, projectsDB, chaptersDB, scenesDB, charactersDB, plotsDB, worldbuildingDB } from '$lib/db';
 import {
 	syncToFirestore,
 	syncFromFirestore,
@@ -9,95 +10,147 @@ import {
 	type EntityType,
 	type SyncableEntity
 } from '$lib/firebase/sync';
+import { prepareConflictData, type ConflictData } from '$lib/firebase/conflict';
+import { reconcile, type ReconcileAction } from '$lib/firebase/reconcile';
 import {
-	autoResolveConflict,
-	detectConflict,
-	prepareConflictData,
-	type ConflictData
-} from '$lib/firebase/conflict';
+	getBase,
+	setBase,
+	removeBase,
+	loadPendingChanges,
+	savePendingChanges,
+	type PendingChange
+} from '$lib/firebase/syncMeta';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 import { startNetworkMonitoring, onNetworkStatusChange } from '$lib/utils/offline';
 import { debounceAsync } from '$lib/utils/debounce';
-import type {
-	Project,
-	Chapter,
-	Scene,
-	Character,
-	Plot,
-	Worldbuilding,
-	ConflictResolutionPolicy
-} from '$lib/types';
+import type { ConflictResolutionPolicy } from '$lib/types';
 import type { Unsubscribe } from 'firebase/firestore';
 
-interface PendingChange {
+interface PendingConflict {
 	type: EntityType;
 	id: string;
-	action: 'create' | 'update' | 'delete';
+	local: SyncableEntity;
+	remote: SyncableEntity;
+	conflictData: ConflictData<SyncableEntity>;
 }
 
-interface PendingConflict<T = Project | Chapter | Scene | Character | Plot | Worldbuilding> {
-	type: EntityType;
-	id: string;
-	local: T;
-	remote: T;
-	conflictData: ConflictData<T>;
-}
+const ENTITY_TYPES: EntityType[] = [
+	'projects',
+	'chapters',
+	'scenes',
+	'characters',
+	'plots',
+	'worldbuilding'
+];
+const PROJECT_SCOPED_TYPES: EntityType[] = [
+	'chapters',
+	'scenes',
+	'characters',
+	'plots',
+	'worldbuilding'
+];
 
-let pendingChanges: PendingChange[] = [];
+// 他端末の変更を取り込む最短間隔
+const REMOTE_REFRESH_INTERVAL = 60 * 1000;
+
+// 未アップロードの変更(再読み込みで失われないよう localStorage にも保存する)
+let pendingChanges: PendingChange[] = loadPendingChanges();
+// アップロード処理中の変更(リアルタイム同期で巻き戻されないよう保護する)
+let inFlight: PendingChange[] = [];
 const pendingConflicts: PendingConflict[] = [];
 let syncInterval: number | null = null;
+let visibilityHandler: (() => void) | null = null;
 let isInitialized = false;
 let currentProjectUnsubscribers: Unsubscribe[] = [];
+let downloadPromise: Promise<void> | null = null;
+let lastDownloadAt = 0;
 
 // デバウンスされた同期処理（3秒）
 const debouncedProcessPendingChanges = debounceAsync(processPendingChanges, 3000);
 
+function tableOf(type: EntityType): Table<SyncableEntity, string> {
+	return db[type] as unknown as Table<SyncableEntity, string>;
+}
+
+async function getPolicy(): Promise<ConflictResolutionPolicy> {
+	const { settingsDB } = await import('$lib/db');
+	const settings = await settingsDB.get();
+	return settings.conflictResolution || 'manual';
+}
+
+function settledStatus(): 'synced' | 'conflict' {
+	return pendingConflicts.length > 0 ? 'conflict' : 'synced';
+}
+
+function findPending(type: EntityType, id: string): PendingChange | undefined {
+	return (
+		pendingChanges.find((c) => c.type === type && c.id === id) ??
+		inFlight.find((c) => c.type === type && c.id === id)
+	);
+}
+
+function enqueue(change: PendingChange): void {
+	const existing = pendingChanges.find((c) => c.type === change.type && c.id === change.id);
+	if (existing) {
+		existing.action = change.action;
+	} else {
+		pendingChanges.push(change);
+	}
+	savePendingChanges(pendingChanges);
+}
+
 /**
- * 競合解決処理（設定に応じて処理を分岐）
- * @returns true = リモートを採用して更新, false = ローカルを保持
+ * 保存済みの変更をキューに載せて、同期を予約する(同期完了は待たない)
  */
-async function resolveConflict(
+function enqueueAndSchedule(change: PendingChange): void {
+	enqueue(change);
+	if (navigator.onLine) {
+		void debouncedProcessPendingChanges();
+	}
+}
+
+/**
+ * 競合を処理する。
+ * プロジェクトは更新日時が頻繁に変わるメタ情報なので常に新しい方を採用する。
+ */
+async function handleConflict(
 	type: EntityType,
-	existing: Project | Chapter | Scene | Character | Plot | Worldbuilding,
-	remote: Project | Chapter | Scene | Character | Plot | Worldbuilding,
+	local: SyncableEntity,
+	remote: SyncableEntity,
 	policy: ConflictResolutionPolicy
-): Promise<boolean> {
-	console.log(`⚠️ Conflict detected for ${type}: ${existing.id} (policy: ${policy})`);
+): Promise<Exclude<ReconcileAction, 'skip'>> {
+	console.log(`⚠️ Conflict detected for ${type}: ${local.id} (policy: ${policy})`);
+
+	if (type === 'projects') {
+		return remote.updatedAt > local.updatedAt ? 'apply-remote' : 'push-local';
+	}
 
 	switch (policy) {
-		case 'local': {
-			console.log(`📍 Keeping local version (${type}/${existing.id})`);
-			return false; // ローカルを保持（更新しない）
-		}
-
-		case 'remote': {
-			console.log(`☁️ Adopting remote version (${type}/${existing.id})`);
-			return true; // リモートを採用（更新する）
-		}
-
-		case 'manual': {
-			console.log(`👤 Manual resolution required for ${type}/${existing.id}`);
-			// 競合データを保存して後で解決
-			const conflictData = prepareConflictData(
-				existing as unknown as Record<string, unknown>,
-				remote as unknown as Record<string, unknown>
-			);
-			pendingConflicts.push({
+		case 'local':
+			return 'push-local';
+		case 'remote':
+			return 'apply-remote';
+		default: {
+			const conflict: PendingConflict = {
 				type,
-				id: existing.id,
-				local: existing,
-				remote: remote,
-				conflictData: conflictData as unknown as ConflictData<typeof existing>
-			});
+				id: local.id,
+				local,
+				remote,
+				conflictData: prepareConflictData(
+					local as unknown as Record<string, unknown>,
+					remote as unknown as Record<string, unknown>
+				) as unknown as ConflictData<SyncableEntity>
+			};
+			const index = pendingConflicts.findIndex((c) => c.id === local.id);
+			if (index >= 0) {
+				pendingConflicts[index] = conflict;
+			} else {
+				pendingConflicts.push(conflict);
+			}
 			syncStore.status = 'conflict';
 			syncStore.conflictCount = pendingConflicts.length;
-			return false; // 一旦ローカルを保持
-		}
-
-		default: {
-			console.warn(`Unknown policy: ${policy}, defaulting to manual`);
-			return false;
+			return 'conflict';
 		}
 	}
 }
@@ -127,22 +180,120 @@ export async function resolveManualConflict(
 	syncStore.conflictCount = pendingConflicts.length;
 
 	if (resolution === 'remote') {
-		// リモートを採用してローカルを更新
-		await updateLocalData(conflict.type, conflict.remote);
+		await tableOf(conflict.type).put(conflict.remote);
+		setBase(conflict.type, conflict.id, conflict.remote.updatedAt);
+		await refreshStores(new Set([conflict.type]));
 		console.log(`✅ Conflict resolved: ${conflict.type}/${conflictId} (adopted remote)`);
 	} else {
+		// リモートの版を確認済みとして扱い、ローカルを次回アップロードで反映する
+		setBase(conflict.type, conflict.id, conflict.remote.updatedAt);
+		enqueueAndSchedule({ type: conflict.type, id: conflict.id, action: 'update' });
 		console.log(`✅ Conflict resolved: ${conflict.type}/${conflictId} (kept local)`);
 	}
 
-	// すべての競合が解決されたら状態を更新
-	if (pendingConflicts.length === 0) {
+	if (pendingConflicts.length === 0 && syncStore.status === 'conflict') {
 		syncStore.status = 'synced';
 	}
 }
 
 /**
- * データに変更があるかチェック
+ * リモートの1件をローカルに反映する。ローカルが書き換わった場合 true。
  */
+async function reconcileRemote(
+	type: EntityType,
+	remote: SyncableEntity,
+	policy: ConflictResolutionPolicy
+): Promise<boolean> {
+	const local = await tableOf(type).get(remote.id);
+
+	if (!local) {
+		// この端末で削除済みでアップロード待ちのものは復活させない
+		if (findPending(type, remote.id)?.action === 'delete') return false;
+		await tableOf(type).put(remote);
+		setBase(type, remote.id, remote.updatedAt);
+		return true;
+	}
+
+	let action = reconcile(local, remote, getBase(type, remote.id));
+	if (action === 'conflict') {
+		action = await handleConflict(type, local, remote, policy);
+	}
+
+	switch (action) {
+		case 'apply-remote':
+			// updatedAt / _version を書き換えないよう DB の update ではなく put で保存する
+			await tableOf(type).put(remote);
+			setBase(type, remote.id, remote.updatedAt);
+			return true;
+		case 'push-local':
+			enqueueAndSchedule({ type, id: remote.id, action: 'update' });
+			return false;
+		case 'skip':
+			setBase(type, remote.id, remote.updatedAt);
+			return false;
+		default:
+			return false;
+	}
+}
+
+/**
+ * 他端末で削除されたものをローカルから取り除く。
+ * 削除後にこの端末で編集されていた場合は、削除せず再アップロードする。
+ */
+async function applyRemoteDeletion(type: EntityType, id: string): Promise<boolean> {
+	if (findPending(type, id)) return false;
+
+	const local = await tableOf(type).get(id);
+	if (!local) {
+		removeBase(type, id);
+		return false;
+	}
+
+	const base = getBase(type, id);
+	if (base !== undefined && local.updatedAt > base) {
+		enqueueAndSchedule({ type, id, action: 'update' });
+		return false;
+	}
+
+	if (type === 'projects') {
+		await projectsDB.delete(id);
+	} else {
+		await tableOf(type).delete(id);
+	}
+	removeBase(type, id);
+	return true;
+}
+
+/**
+ * ストアを最新のローカルDBの内容に更新する
+ */
+async function refreshStores(types: Set<EntityType>): Promise<void> {
+	try {
+		if (types.has('projects')) {
+			const { projectsStore } = await import('$lib/stores/projects.svelte');
+			projectsStore.projects = await projectsDB.getAll();
+		}
+		const projectId = currentProjectStore.project?.id;
+		if (!projectId) return;
+		if (types.has('chapters')) {
+			currentProjectStore.chapters = await chaptersDB.getByProjectId(projectId);
+		}
+		if (types.has('scenes')) {
+			currentProjectStore.scenes = await scenesDB.getByProjectId(projectId);
+		}
+	} catch (err) {
+		console.debug('Stores not updated:', err);
+	}
+}
+
+/**
+ * 他端末の変更をまとめて取り込む(最小間隔つき)
+ */
+function refreshFromRemoteIfNeeded(): void {
+	if (!navigator.onLine) return;
+	if (Date.now() - lastDownloadAt < REMOTE_REFRESH_INTERVAL) return;
+	downloadAllFromFirestore().catch((err) => console.warn('Remote refresh failed:', err));
+}
 
 /**
  * 同期システムの初期化
@@ -169,47 +320,51 @@ export async function initializeSync(): Promise<void> {
 	monitorOnlineStatus();
 	startNetworkMonitoring();
 
-	// ネットワーク状態の変更を監視
+	// オンライン復帰時: 溜まった変更を送り、他端末の変更を取り込む
 	onNetworkStatusChange((status) => {
-		if (status === 'online' && pendingChanges.length > 0) {
-			processPendingChanges();
+		if (status === 'online') {
+			if (pendingChanges.length > 0) void processPendingChanges();
+			refreshFromRemoteIfNeeded();
 		}
 	});
+
+	// アプリに戻ってきたとき、他端末の変更を取り込む
+	visibilityHandler = () => {
+		if (document.visibilityState === 'visible') refreshFromRemoteIfNeeded();
+	};
+	document.addEventListener('visibilitychange', visibilityHandler);
 
 	// 定期同期（5分ごと）
 	syncInterval = window.setInterval(
 		() => {
-			if (navigator.onLine && pendingChanges.length > 0) {
-				processPendingChanges();
-			}
+			if (!navigator.onLine) return;
+			if (pendingChanges.length > 0) void processPendingChanges();
+			refreshFromRemoteIfNeeded();
 		},
 		5 * 60 * 1000
 	);
 
-	// プロジェクト一覧のリアルタイム同期のみを設定
-	// 他のエンティティはプロジェクトを開いた時に設定する
-	try {
-		// Firestore にあるデータをローカルに取り込む（別端末で作成されたものを反映する）
-		if (navigator.onLine) {
-			try {
-				console.log('📥 Checking Firestore for remote data to download...');
-				await downloadAllFromFirestore();
-			} catch (err) {
-				console.warn('Failed to download initial data from Firestore:', err);
-			}
+	// Firestore にあるデータをローカルに取り込む（別端末で作成・更新されたものを反映する）
+	if (navigator.onLine) {
+		try {
+			console.log('📥 Checking Firestore for remote data to download...');
+			await downloadAllFromFirestore();
+		} catch (err) {
+			console.warn('Failed to download initial data from Firestore:', err);
 		}
+	}
 
-		// プロジェクトのリアルタイム同期を設定
-	} catch (error) {
-		console.error('Failed to setup realtime sync:', error);
+	// 前回の起動で送れなかった変更を送る
+	if (navigator.onLine && pendingChanges.length > 0) {
+		void processPendingChanges();
 	}
 
 	// 初期化完了フラグを設定
 	isInitialized = true;
 
 	// 初期化成功 - オンライン状態に設定
-	if (navigator.onLine) {
-		syncStore.status = 'synced';
+	if (navigator.onLine && syncStore.status !== 'error') {
+		syncStore.status = settledStatus();
 	}
 
 	console.log('✅ Sync system initialized');
@@ -222,6 +377,10 @@ export function stopSync(): void {
 	if (syncInterval) {
 		clearInterval(syncInterval);
 		syncInterval = null;
+	}
+	if (visibilityHandler) {
+		document.removeEventListener('visibilitychange', visibilityHandler);
+		visibilityHandler = null;
 	}
 	isInitialized = false;
 	console.log('🛑 Sync system stopped');
@@ -237,23 +396,14 @@ export async function queueChange(
 ): Promise<void> {
 	console.log(`📝 Queueing change: ${type}/${id} (${action})`);
 
-	// 既存の変更があれば更新
-	const existingIndex = pendingChanges.findIndex((c) => c.type === type && c.id === id);
-	if (existingIndex >= 0) {
-		pendingChanges[existingIndex].action = action;
-	} else {
-		pendingChanges.push({ type, id, action });
-	}
+	enqueue({ type, id, action });
 
 	// Firebaseが初期化されていて、かつオンラインなら即座に同期
 	const { isFirebaseInitialized } = await import('$lib/firebase');
 	const firebaseReady = isFirebaseInitialized();
 	const online = navigator.onLine;
 
-	console.log(`🔍 Firebase ready: ${firebaseReady}, Online: ${online}`);
-
 	if (online && firebaseReady) {
-		console.log(`🚀 Syncing with debounce (3s)...`);
 		// デバウンス処理で同期（連続した変更をまとめる）
 		await debouncedProcessPendingChanges();
 	} else {
@@ -265,10 +415,7 @@ export async function queueChange(
  * ペンディング中の変更を処理
  */
 async function processPendingChanges(): Promise<void> {
-	if (pendingChanges.length === 0) {
-		console.log('📭 No pending changes to sync');
-		return;
-	}
+	if (pendingChanges.length === 0 || inFlight.length > 0) return;
 
 	// Firebaseが初期化されていない場合はスキップ
 	const { isFirebaseInitialized } = await import('$lib/firebase');
@@ -284,167 +431,117 @@ async function processPendingChanges(): Promise<void> {
 
 	const changes = [...pendingChanges];
 	pendingChanges = [];
+	inFlight = changes;
+	savePendingChanges(pendingChanges);
 
+	// 失敗した変更以降は、処理中に積まれた新しい変更を優先しつつキューに戻す
+	let processed = 0;
 	try {
-		for (const change of changes) {
-			await processChange(change);
+		const policy = await getPolicy();
+		for (; processed < changes.length; processed++) {
+			await processChange(changes[processed], policy);
 		}
 		console.log('✅ All changes synced successfully');
 		syncStore.lastSyncTime = Date.now();
-		syncStore.status = 'synced';
+		syncStore.status = settledStatus();
 		syncStore.error = null;
 	} catch (error) {
 		console.error('❌ Sync error:', error);
-		// 失敗した変更を再度キューに追加
-		pendingChanges.push(...changes);
+		for (const change of changes.slice(processed)) {
+			if (!pendingChanges.some((c) => c.type === change.type && c.id === change.id)) {
+				pendingChanges.push(change);
+			}
+		}
+		savePendingChanges(pendingChanges);
 		syncStore.error = error instanceof Error ? error.message : 'Unknown error';
 		syncStore.status = 'error';
 	} finally {
+		inFlight = [];
 		syncStore.isSyncing = false;
+	}
+
+	// 処理中に追加された変更があれば続けて処理する
+	if (pendingChanges.length > 0 && syncStore.status !== 'error') {
+		void debouncedProcessPendingChanges();
 	}
 }
 
 /**
  * 個別の変更を処理
  */
-async function processChange(change: PendingChange): Promise<void> {
+async function processChange(
+	change: PendingChange,
+	policy: ConflictResolutionPolicy
+): Promise<void> {
 	const { type, id, action } = change;
 
 	if (action === 'delete') {
 		await deleteFromFirestore(type, id);
+		removeBase(type, id);
 		return;
 	}
 
-	// ローカルからデータを取得
-	let localData: Project | Chapter | Scene | Character | Plot | Worldbuilding | undefined;
-	switch (type) {
-		case 'projects':
-			localData = await projectsDB.getById(id);
-			break;
-		case 'chapters':
-			localData = await chaptersDB.getById(id);
-			break;
-		case 'scenes':
-			localData = await scenesDB.getById(id);
-			break;
-		case 'characters':
-			localData = await charactersDB.getById(id);
-			break;
-		case 'plots':
-			localData = await plotsDB.getById(id);
-			break;
-		case 'worldbuilding':
-			localData = await worldbuildingDB.getById(id);
-			break;
-		default:
-			throw new Error(`Unknown entity type: ${type}`);
-	}
-
-	if (!localData) {
+	const local = await tableOf(type).get(id);
+	if (!local) {
 		console.warn(`Local data not found for ${type}/${id}`);
 		return;
 	}
 
 	// リモートデータを取得して競合チェック
-	try {
-		const remoteData = await syncFromFirestore(type, id);
-
-		if (remoteData && detectConflict(localData, remoteData)) {
-			// 競合検出 - 自動解決
-			const resolution = autoResolveConflict(localData, remoteData);
-
-			if (resolution.resolution === 'remote' && resolution.resolvedData) {
-				// リモートを採用 - ローカルを更新
-				await updateLocalData(type, resolution.resolvedData);
-			}
-			// 'local'の場合は何もせず、ローカルをアップロード
+	const remote = await syncFromFirestore(type, id);
+	if (remote) {
+		let result = reconcile(local, remote, getBase(type, id));
+		if (result === 'conflict') {
+			result = await handleConflict(type, local, remote, policy);
 		}
-	} catch {
-		// リモートにデータがない場合は新規作成として扱う
-		console.log(`Creating new ${type} in Firestore:`, id);
+
+		if (result === 'apply-remote') {
+			await tableOf(type).put(remote);
+			setBase(type, id, remote.updatedAt);
+			await refreshStores(new Set([type]));
+			return;
+		}
+		if (result === 'conflict') return; // 手動解決待ち(アップロードしない)
+		if (result === 'skip') {
+			setBase(type, id, local.updatedAt);
+			return;
+		}
 	}
 
-	// Firestoreにアップロード
 	console.log(`📤 Uploading ${type}/${id} to Firestore...`);
-	await syncToFirestore(type, localData);
-	console.log(`✅ Successfully uploaded ${type}/${id}`);
+	await syncToFirestore(type, local);
+	setBase(type, id, local.updatedAt);
 }
 
 /**
- * ローカルデータを更新
+ * リアルタイム同期で受信したデータを反映する
  */
-async function updateLocalData(
+async function applyRealtimeEntities(
 	type: EntityType,
-	data: Project | Chapter | Scene | Character | Plot | Worldbuilding
+	entities: SyncableEntity[]
 ): Promise<void> {
-	switch (type) {
-		case 'projects':
-			await projectsDB.update(data.id, data as Project);
-			break;
-		case 'chapters':
-			await chaptersDB.update(data.id, data as Chapter);
-			break;
-		case 'scenes':
-			await scenesDB.update(data.id, data as Scene);
-			break;
-		case 'characters':
-			await charactersDB.update(data.id, data as Character);
-			break;
-		case 'plots':
-			await plotsDB.update(data.id, data as Plot);
-			break;
-		case 'worldbuilding':
-			await worldbuildingDB.update(data.id, data as Worldbuilding);
-			break;
-	}
-}
-
-/**
- * 現在のプロジェクトのリアルタイム同期
- */
-function setupCurrentProjectRealtimeSync(): void {
-	if (!currentProjectStore.project?.id) return;
-
-	const projectId = currentProjectStore.project.id;
-
-	// 各エンティティのリアルタイム同期を設定
-	const entityTypes: EntityType[] = ['chapters', 'scenes', 'characters', 'plots', 'worldbuilding'];
-
-	for (const type of entityTypes) {
-		setupRealtimeSync(
-			type,
-			async (entities: SyncableEntity[]) => {
-				await handleRealtimeData(type, entities);
-			},
-			(error: Error) => {
-				console.error(`Realtime sync error for ${type}:`, error);
-			},
-			projectId
-		);
-	}
-
-	console.log('✅ Realtime sync processing completed');
-}
-
-/**
- * リアルタイム同期のハンドラ
- */
-async function handleRealtimeData(type: EntityType, entities: SyncableEntity[]): Promise<void> {
-	for (const entity of entities) {
+	const policy = await getPolicy();
+	let changed = false;
+	for (const remote of entities) {
 		try {
-			await updateLocalData(type, entity);
-		} catch {
-			// エラーを記録するが、他のエンティティの処理は継続
+			if (await reconcileRemote(type, remote, policy)) changed = true;
+		} catch (error) {
+			console.error(`Failed to apply ${type}/${remote.id}:`, error);
 		}
 	}
+	if (changed) await refreshStores(new Set([type]));
 }
 
-/**
- * プロジェクトスイッチ時にリアルタイム同期を再設定
- */
-export function resetCurrentProjectRealtimeSync(): void {
-	// 既存のリアルタイム同期を停止してから再設定
-	setupCurrentProjectRealtimeSync();
+async function applyRealtimeRemovals(type: EntityType, ids: string[]): Promise<void> {
+	let changed = false;
+	for (const id of ids) {
+		try {
+			if (await applyRemoteDeletion(type, id)) changed = true;
+		} catch (error) {
+			console.error(`Failed to remove ${type}/${id}:`, error);
+		}
+	}
+	if (changed) await refreshStores(new Set([type]));
 }
 
 /**
@@ -473,213 +570,22 @@ export async function startCurrentProjectSync(projectId: string): Promise<void> 
 	// 既存の監視を停止
 	stopCurrentProjectSync();
 
-	// 章のリアルタイム同期
-	const chaptersUnsub = setupRealtimeSync(
-		'chapters',
-		async (chapters) => {
-			console.log(`🔄 Realtime sync: Received ${chapters.length} chapter(s) from Firestore`);
-
-			const localChapters = await chaptersDB.getByProjectId(projectId);
-			const localChapterMap = new Map(localChapters.map((c) => [c.id, c]));
-
-			for (const remoteChapter of chapters as Chapter[]) {
-				const localChapter = localChapterMap.get(remoteChapter.id);
-
-				if (!localChapter) {
-					console.log(`➕ Adding new chapter from remote: ${remoteChapter.id}`);
-					try {
-						await chaptersDB.addFromRemote(remoteChapter);
-					} catch (error) {
-						console.error(`Failed to add chapter ${remoteChapter.id}:`, error);
-					}
-				} else if (detectConflict(localChapter, remoteChapter)) {
-					console.log(`⚠️ Conflict detected for chapter: ${remoteChapter.id}`);
-					const resolution = autoResolveConflict(localChapter, remoteChapter);
-					if (resolution.resolution === 'remote' && resolution.resolvedData) {
-						await chaptersDB.update(remoteChapter.id, resolution.resolvedData);
-					}
-				} else if (remoteChapter.updatedAt > localChapter.updatedAt) {
-					console.log(`🔄 Updating chapter from remote: ${remoteChapter.id}`);
-					await chaptersDB.update(remoteChapter.id, remoteChapter);
-				}
+	currentProjectUnsubscribers = PROJECT_SCOPED_TYPES.map((type) =>
+		setupRealtimeSync(
+			type,
+			(entities) => {
+				void applyRealtimeEntities(type, entities);
+			},
+			(error) => {
+				console.error(`${type} realtime sync error:`, error);
+				syncStore.error = error.message;
+			},
+			projectId,
+			(ids) => {
+				void applyRealtimeRemovals(type, ids);
 			}
-
-			if (currentProjectStore.project?.id === projectId) {
-				currentProjectStore.chapters = await chaptersDB.getByProjectId(projectId);
-			}
-		},
-		(error) => {
-			console.error('Chapter realtime sync error:', error);
-			syncStore.error = error.message;
-		},
-		projectId
+		)
 	);
-
-	// シーンのリアルタイム同期
-	const scenesUnsub = setupRealtimeSync(
-		'scenes',
-		async (scenes) => {
-			console.log(`🔄 Realtime sync: Received ${scenes.length} scene(s) from Firestore`);
-
-			const localScenes = await scenesDB.getByProjectId(projectId);
-			const localSceneMap = new Map(localScenes.map((s) => [s.id, s]));
-
-			for (const remoteScene of scenes as Scene[]) {
-				const localScene = localSceneMap.get(remoteScene.id);
-
-				if (!localScene) {
-					console.log(`➕ Adding new scene from remote: ${remoteScene.id}`);
-					try {
-						await scenesDB.addFromRemote(remoteScene);
-					} catch (error) {
-						console.error(`Failed to add scene ${remoteScene.id}:`, error);
-					}
-				} else if (detectConflict(localScene, remoteScene)) {
-					console.log(`⚠️ Conflict detected for scene: ${remoteScene.id}`);
-					const resolution = autoResolveConflict(localScene, remoteScene);
-					if (resolution.resolution === 'remote' && resolution.resolvedData) {
-						await scenesDB.update(remoteScene.id, resolution.resolvedData);
-					}
-				} else if (remoteScene.updatedAt > localScene.updatedAt) {
-					console.log(`🔄 Updating scene from remote: ${remoteScene.id}`);
-					await scenesDB.update(remoteScene.id, remoteScene);
-				}
-			}
-
-			if (currentProjectStore.project?.id === projectId) {
-				currentProjectStore.scenes = await scenesDB.getByProjectId(projectId);
-			}
-		},
-		(error) => {
-			console.error('Scene realtime sync error:', error);
-			syncStore.error = error.message;
-		},
-		projectId
-	);
-
-	// キャラクターのリアルタイム同期
-	const charactersUnsub = setupRealtimeSync(
-		'characters',
-		async (characters) => {
-			console.log(`🔄 Realtime sync: Received ${characters.length} character(s) from Firestore`);
-
-			const localCharacters = await charactersDB.getByProjectId(projectId);
-			const localCharacterMap = new Map(localCharacters.map((c) => [c.id, c]));
-
-			for (const remoteCharacter of characters as Character[]) {
-				const localCharacter = localCharacterMap.get(remoteCharacter.id);
-
-				if (!localCharacter) {
-					console.log(`➕ Adding new character from remote: ${remoteCharacter.id}`);
-					try {
-						await charactersDB.addFromRemote(remoteCharacter);
-					} catch (error) {
-						console.error(`Failed to add character ${remoteCharacter.id}:`, error);
-					}
-				} else if (detectConflict(localCharacter, remoteCharacter)) {
-					console.log(`⚠️ Conflict detected for character: ${remoteCharacter.id}`);
-					const resolution = autoResolveConflict(localCharacter, remoteCharacter);
-					if (resolution.resolution === 'remote' && resolution.resolvedData) {
-						await charactersDB.update(remoteCharacter.id, resolution.resolvedData);
-					}
-				} else if (remoteCharacter.updatedAt > localCharacter.updatedAt) {
-					console.log(`🔄 Updating character from remote: ${remoteCharacter.id}`);
-					await charactersDB.update(remoteCharacter.id, remoteCharacter);
-				}
-			}
-		},
-		(error) => {
-			console.error('Character realtime sync error:', error);
-			syncStore.error = error.message;
-		},
-		projectId
-	);
-
-	// プロットのリアルタイム同期
-	const plotsUnsub = setupRealtimeSync(
-		'plots',
-		async (plots) => {
-			console.log(`🔄 Realtime sync: Received ${plots.length} plot(s) from Firestore`);
-
-			const localPlots = await plotsDB.getByProjectId(projectId);
-			const localPlotMap = new Map(localPlots.map((p) => [p.id, p]));
-
-			for (const remotePlot of plots as Plot[]) {
-				const localPlot = localPlotMap.get(remotePlot.id);
-
-				if (!localPlot) {
-					console.log(`➕ Adding new plot from remote: ${remotePlot.id}`);
-					try {
-						await plotsDB.addFromRemote(remotePlot);
-					} catch (error) {
-						console.error(`Failed to add plot ${remotePlot.id}:`, error);
-					}
-				} else if (detectConflict(localPlot, remotePlot)) {
-					console.log(`⚠️ Conflict detected for plot: ${remotePlot.id}`);
-					const resolution = autoResolveConflict(localPlot, remotePlot);
-					if (resolution.resolution === 'remote' && resolution.resolvedData) {
-						await plotsDB.update(remotePlot.id, resolution.resolvedData);
-					}
-				} else if (remotePlot.updatedAt > localPlot.updatedAt) {
-					console.log(`🔄 Updating plot from remote: ${remotePlot.id}`);
-					await plotsDB.update(remotePlot.id, remotePlot);
-				}
-			}
-		},
-		(error) => {
-			console.error('Plot realtime sync error:', error);
-			syncStore.error = error.message;
-		},
-		projectId
-	);
-
-	// 世界設定のリアルタイム同期
-	const worldbuildingUnsub = setupRealtimeSync(
-		'worldbuilding',
-		async (worldbuildings) => {
-			console.log(
-				`🔄 Realtime sync: Received ${worldbuildings.length} worldbuilding(s) from Firestore`
-			);
-
-			const localWorldbuildings = await worldbuildingDB.getByProjectId(projectId);
-			const localWorldbuildingMap = new Map(localWorldbuildings.map((w) => [w.id, w]));
-
-			for (const remoteWorldbuilding of worldbuildings as Worldbuilding[]) {
-				const localWorldbuilding = localWorldbuildingMap.get(remoteWorldbuilding.id);
-
-				if (!localWorldbuilding) {
-					console.log(`➕ Adding new worldbuilding from remote: ${remoteWorldbuilding.id}`);
-					try {
-						await worldbuildingDB.addFromRemote(remoteWorldbuilding);
-					} catch (error) {
-						console.error(`Failed to add worldbuilding ${remoteWorldbuilding.id}:`, error);
-					}
-				} else if (detectConflict(localWorldbuilding, remoteWorldbuilding)) {
-					console.log(`⚠️ Conflict detected for worldbuilding: ${remoteWorldbuilding.id}`);
-					const resolution = autoResolveConflict(localWorldbuilding, remoteWorldbuilding);
-					if (resolution.resolution === 'remote' && resolution.resolvedData) {
-						await worldbuildingDB.update(remoteWorldbuilding.id, resolution.resolvedData);
-					}
-				} else if (remoteWorldbuilding.updatedAt > localWorldbuilding.updatedAt) {
-					console.log(`🔄 Updating worldbuilding from remote: ${remoteWorldbuilding.id}`);
-					await worldbuildingDB.update(remoteWorldbuilding.id, remoteWorldbuilding);
-				}
-			}
-		},
-		(error) => {
-			console.error('Worldbuilding realtime sync error:', error);
-			syncStore.error = error.message;
-		},
-		projectId
-	);
-
-	currentProjectUnsubscribers = [
-		chaptersUnsub,
-		scenesUnsub,
-		charactersUnsub,
-		plotsUnsub,
-		worldbuildingUnsub
-	];
 	console.log(`✅ Realtime sync started for project: ${projectId}`);
 }
 
@@ -695,51 +601,39 @@ export function stopCurrentProjectSync(): void {
 }
 
 /**
- * 現在のプロジェクトの全データを同期
+ * 現在のプロジェクトの全データを同期(ローカルの内容をそのままアップロード)
  */
 export async function syncCurrentProject(projectId: string): Promise<void> {
 	syncStore.isSyncing = true;
 	syncStore.status = 'syncing';
 
 	try {
-		// プロジェクトを同期
+		const upload = async (type: EntityType, entity: SyncableEntity) => {
+			await syncToFirestore(type, entity);
+			setBase(type, entity.id, entity.updatedAt);
+		};
+
 		const project = await projectsDB.getById(projectId);
-		if (project) {
-			await syncToFirestore('projects', project);
-		}
+		if (project) await upload('projects', project);
 
-		// 章を同期
-		const chapters = await chaptersDB.getByProjectId(projectId);
-		for (const chapter of chapters) {
-			await syncToFirestore('chapters', chapter);
+		for (const chapter of await chaptersDB.getByProjectId(projectId)) {
+			await upload('chapters', chapter);
 		}
-
-		// シーンを同期
-		const scenes = await scenesDB.getByProjectId(projectId);
-		for (const scene of scenes) {
-			await syncToFirestore('scenes', scene);
+		for (const scene of await scenesDB.getByProjectId(projectId)) {
+			await upload('scenes', scene);
 		}
-
-		// キャラクターを同期
-		const characters = await charactersDB.getByProjectId(projectId);
-		for (const character of characters) {
-			await syncToFirestore('characters', character);
+		for (const character of await charactersDB.getByProjectId(projectId)) {
+			await upload('characters', character);
 		}
-
-		// プロットを同期
-		const plots = await plotsDB.getByProjectId(projectId);
-		for (const plot of plots) {
-			await syncToFirestore('plots', plot);
+		for (const plot of await plotsDB.getByProjectId(projectId)) {
+			await upload('plots', plot);
 		}
-
-		// 世界設定を同期
-		const worldbuildings = await worldbuildingDB.getByProjectId(projectId);
-		for (const worldbuilding of worldbuildings) {
-			await syncToFirestore('worldbuilding', worldbuilding);
+		for (const worldbuilding of await worldbuildingDB.getByProjectId(projectId)) {
+			await upload('worldbuilding', worldbuilding);
 		}
 
 		syncStore.lastSyncTime = Date.now();
-		syncStore.status = 'synced';
+		syncStore.status = settledStatus();
 		syncStore.error = null;
 	} catch (error) {
 		console.error('Project sync error:', error);
@@ -752,169 +646,67 @@ export async function syncCurrentProject(projectId: string): Promise<void> {
 }
 
 /**
+ * 1種類のエンティティについて、Firestore との差分をローカルに反映する
+ */
+async function downloadType(type: EntityType, policy: ConflictResolutionPolicy): Promise<boolean> {
+	const remotes = await syncAllFromFirestore(type);
+	console.log(`📦 Found ${remotes.length} ${type} in Firestore`);
+	const remoteIds = new Set(remotes.map((r) => r.id));
+	let changed = false;
+
+	for (const remote of remotes) {
+		if (await reconcileRemote(type, remote, policy)) changed = true;
+	}
+
+	// Firestore に無いローカルデータ:
+	//  同期済みだったもの → 他端末で削除された。未同期のもの → 未アップロードなので送る
+	for (const local of await tableOf(type).toArray()) {
+		if (remoteIds.has(local.id) || findPending(type, local.id)) continue;
+
+		if (getBase(type, local.id) !== undefined) {
+			if (await applyRemoteDeletion(type, local.id)) changed = true;
+		} else {
+			enqueueAndSchedule({ type, id: local.id, action: 'create' });
+		}
+	}
+
+	return changed;
+}
+
+/**
  * 全データをFirestoreからダウンロード
  */
-export async function downloadAllFromFirestore(): Promise<void> {
+export function downloadAllFromFirestore(): Promise<void> {
+	// 同時実行は1つにまとめる
+	if (!downloadPromise) {
+		downloadPromise = runDownload().finally(() => {
+			downloadPromise = null;
+		});
+	}
+	return downloadPromise;
+}
+
+async function runDownload(): Promise<void> {
 	console.log('📥 Downloading all data from Firestore...');
 	syncStore.isSyncing = true;
 	syncStore.status = 'syncing';
 
-	// 設定から競合解決ポリシーを取得
-	const { settingsDB } = await import('$lib/db');
-	const settings = await settingsDB.get();
-	const policy = settings.conflictResolution || 'manual';
-	console.log(`🔧 Conflict resolution policy: ${policy}`);
-
 	try {
-		// プロジェクト
-		const projects = (await syncAllFromFirestore('projects')) as Project[];
-		console.log(`📦 Found ${projects.length} project(s) in Firestore`);
-		for (const project of projects) {
-			const existing = await projectsDB.getById(project.id);
-			if (!existing) {
-				console.log(`➕ Adding project: ${project.id}`);
-				await projectsDB.addFromRemote(project);
-			} else if (detectConflict(existing, project)) {
-				const shouldUpdate = await resolveConflict('projects', existing, project, policy);
-				if (shouldUpdate) {
-					console.log(`🔄 Updating project from remote: ${project.id}`);
-					await projectsDB.update(project.id, project);
-				}
-			} else if (project.updatedAt > existing.updatedAt) {
-				console.log(`🔄 Updating project from remote: ${project.id}`);
-				await projectsDB.update(project.id, project);
-			} else {
-				console.log(`⏭️ Project up-to-date locally: ${project.id}`);
-			}
-		}
+		const policy = await getPolicy();
+		console.log(`🔧 Conflict resolution policy: ${policy}`);
 
-		// 章
-		const chapters = (await syncAllFromFirestore('chapters')) as Chapter[];
-		console.log(`📦 Found ${chapters.length} chapter(s) in Firestore`);
-		for (const chapter of chapters) {
-			const existing = await chaptersDB.getById(chapter.id);
-			if (!existing) {
-				console.log(`➕ Adding chapter: ${chapter.id}`);
-				await chaptersDB.addFromRemote(chapter);
-			} else if (detectConflict(existing, chapter)) {
-				const shouldUpdate = await resolveConflict('chapters', existing, chapter, policy);
-				if (shouldUpdate) {
-					console.log(`🔄 Updating chapter from remote: ${chapter.id}`);
-					await chaptersDB.update(chapter.id, chapter);
-				}
-			} else if (chapter.updatedAt > existing.updatedAt) {
-				console.log(`🔄 Updating chapter from remote: ${chapter.id}`);
-				await chaptersDB.update(chapter.id, chapter);
-			} else {
-				console.log(`⏭️ Chapter up-to-date locally: ${chapter.id}`);
-			}
-		}
-
-		// シーン
-		const scenes = (await syncAllFromFirestore('scenes')) as Scene[];
-		console.log(`📦 Found ${scenes.length} scene(s) in Firestore`);
-		for (const scene of scenes) {
-			const existing = await scenesDB.getById(scene.id);
-			if (!existing) {
-				console.log(`➕ Adding scene: ${scene.id}`);
-				await scenesDB.addFromRemote(scene);
-			} else if (detectConflict(existing, scene)) {
-				const shouldUpdate = await resolveConflict('scenes', existing, scene, policy);
-				if (shouldUpdate) {
-					console.log(`🔄 Updating scene from remote: ${scene.id}`);
-					await scenesDB.update(scene.id, scene);
-				}
-			} else if (scene.updatedAt > existing.updatedAt) {
-				console.log(`🔄 Updating scene from remote: ${scene.id}`);
-				await scenesDB.update(scene.id, scene);
-			} else {
-				console.log(`⏭️ Scene up-to-date locally: ${scene.id}`);
-			}
-		}
-
-		// キャラクター
-		const characters = (await syncAllFromFirestore('characters')) as Character[];
-		console.log(`📦 Found ${characters.length} character(s) in Firestore`);
-		for (const character of characters) {
-			const existing = await charactersDB.getById(character.id);
-			if (!existing) {
-				console.log(`➕ Adding character: ${character.id}`);
-				await charactersDB.addFromRemote(character);
-			} else if (detectConflict(existing, character)) {
-				const shouldUpdate = await resolveConflict('characters', existing, character, policy);
-				if (shouldUpdate) {
-					console.log(`🔄 Updating character from remote: ${character.id}`);
-					await charactersDB.update(character.id, character);
-				}
-			} else if (character.updatedAt > existing.updatedAt) {
-				console.log(`🔄 Updating character from remote: ${character.id}`);
-				await charactersDB.update(character.id, character);
-			} else {
-				console.log(`⏭️ Character up-to-date locally: ${character.id}`);
-			}
-		}
-
-		// プロット
-		const plots = (await syncAllFromFirestore('plots')) as Plot[];
-		console.log(`📦 Found ${plots.length} plot(s) in Firestore`);
-		for (const plot of plots) {
-			const existing = await plotsDB.getById(plot.id);
-			if (!existing) {
-				console.log(`➕ Adding plot: ${plot.id}`);
-				await plotsDB.addFromRemote(plot);
-			} else if (detectConflict(existing, plot)) {
-				const shouldUpdate = await resolveConflict('plots', existing, plot, policy);
-				if (shouldUpdate) {
-					console.log(`🔄 Updating plot from remote: ${plot.id}`);
-					await plotsDB.update(plot.id, plot);
-				}
-			} else if (plot.updatedAt > existing.updatedAt) {
-				console.log(`🔄 Updating plot from remote: ${plot.id}`);
-				await plotsDB.update(plot.id, plot);
-			} else {
-				console.log(`⏭️ Plot up-to-date locally: ${plot.id}`);
-			}
-		}
-
-		// 世界設定
-		const worldbuildings = (await syncAllFromFirestore('worldbuilding')) as Worldbuilding[];
-		console.log(`📦 Found ${worldbuildings.length} worldbuilding(s) in Firestore`);
-		for (const worldbuilding of worldbuildings) {
-			const existing = await worldbuildingDB.getById(worldbuilding.id);
-			if (!existing) {
-				console.log(`➕ Adding worldbuilding: ${worldbuilding.id}`);
-				await worldbuildingDB.addFromRemote(worldbuilding);
-			} else if (detectConflict(existing, worldbuilding)) {
-				const shouldUpdate = await resolveConflict(
-					'worldbuilding',
-					existing,
-					worldbuilding,
-					policy
-				);
-				if (shouldUpdate) {
-					console.log(`🔄 Updating worldbuilding from remote: ${worldbuilding.id}`);
-					await worldbuildingDB.update(worldbuilding.id, worldbuilding);
-				}
-			} else if (worldbuilding.updatedAt > existing.updatedAt) {
-				console.log(`🔄 Updating worldbuilding from remote: ${worldbuilding.id}`);
-				await worldbuildingDB.update(worldbuilding.id, worldbuilding);
-			} else {
-				console.log(`⏭️ Worldbuilding up-to-date locally: ${worldbuilding.id}`);
-			}
+		const changedTypes = new Set<EntityType>();
+		// プロジェクト → 子要素の順に処理する
+		for (const type of ENTITY_TYPES) {
+			if (await downloadType(type, policy)) changedTypes.add(type);
 		}
 
 		console.log('✅ Download completed successfully');
+		await refreshStores(changedTypes.add('projects'));
 
-		// projectsStore が存在すれば最新のローカル一覧で更新する（UI の反映）
-		try {
-			const { projectsStore } = await import('$lib/stores/projects.svelte');
-			projectsStore.projects = await projectsDB.getAll();
-		} catch (err) {
-			// 無理に依存を作らない。失敗しても処理を続行
-			console.debug('projectsStore not updated:', err);
-		}
+		lastDownloadAt = Date.now();
 		syncStore.lastSyncTime = Date.now();
-		syncStore.status = 'synced';
+		syncStore.status = settledStatus();
 		syncStore.error = null;
 	} catch (error) {
 		console.error('❌ Download error:', error);

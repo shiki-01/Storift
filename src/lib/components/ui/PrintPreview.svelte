@@ -32,13 +32,12 @@
 		}
 
 		const content = formatForPrint(chapters, options);
-		console.log('フォーマット済みコンテンツ:', content);
 		openPrintPreview(content, options);
 	};
 </script>
 
 {#if isOpen}
-	<Modal title="印刷プレビュー設定" {onClose} size="medium">
+	<Modal isOpen title="印刷プレビュー設定" {onClose} size="medium">
 		<div class="print-settings p:24 space-y:20">
 			<!-- 書式設定 -->
 			<div>

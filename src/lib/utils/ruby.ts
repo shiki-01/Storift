@@ -82,21 +82,32 @@ export function parseRuby(text: string): RubySegment[] {
 	return segments;
 }
 
+/** 本文を HTML に埋め込むためのエスケープ */
+export function escapeHtml(text: string): string {
+	return text
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;');
+}
+
 /**
- * ルビ・傍点をHTMLに変換
+ * ルビ・傍点をHTMLに変換(本文中の記号はエスケープする)
  */
 export function rubyToHtml(text: string): string {
 	const segments = parseRuby(text);
 	return segments
 		.map((segment) => {
+			const body = escapeHtml(segment.text);
 			if (segment.bouten) {
 				// 傍点: 各文字にドットを付ける
-				return `<span class="bouten">${segment.text}</span>`;
+				return `<span class="bouten">${body}</span>`;
 			}
 			if (segment.ruby) {
-				return `<ruby>${segment.text}<rt>${segment.ruby}</rt></ruby>`;
+				return `<ruby>${body}<rt>${escapeHtml(segment.ruby)}</rt></ruby>`;
 			}
-			return segment.text;
+			return body;
 		})
 		.join('');
 }

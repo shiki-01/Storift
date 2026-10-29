@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { rubyToHtml } from '$lib/utils/ruby';
+	import { rubyToHtml, escapeHtml } from '$lib/utils/ruby';
 	import type { PreviewSettings } from '$lib/types';
 	import ManuscriptGrid from './ManuscriptGrid.svelte';
 
@@ -41,11 +41,8 @@
 
 		// 傍点処理を先に行う（ルビ処理より前に）
 		if (showBouten) {
-			// 傍点記法 《《テキスト》》 を一時的にプレースホルダーに変換
-			processed = processed.replace(
-				/《《([^》]+)》》/g,
-				'%%%BOUTEN_START%%%$1%%%BOUTEN_END%%%'
-			);
+			// 傍点記法 《《テキスト》》 を一時的にプレースホルダー(本文に現れない制御文字)に変換
+			processed = processed.replace(/《《([^》]+)》》/g, '\u0001$1\u0002');
 		} else {
 			// 傍点記法を削除
 			processed = processed.replace(/《《([^》]+)》》/g, '$1');
@@ -56,17 +53,16 @@
 			processed = rubyToHtml(processed);
 		} else {
 			// ルビ記法を削除（｜付きと漢字のみ両方対応）
-			processed = processed
-				.replace(/[｜|]([^《》\n]+)《[^》]+》/g, '$1')
-				.replace(/([一-龯々]+)《[^》]+》/g, '$1');
+			processed = escapeHtml(
+				processed
+					.replace(/[｜|]([^《》\n]+)《[^》]+》/g, '$1')
+					.replace(/([一-龯々]+)《[^》]+》/g, '$1')
+			);
 		}
 
 		// 傍点のプレースホルダーを実際のHTMLに変換
 		if (showBouten) {
-			processed = processed.replace(
-				/%%%BOUTEN_START%%%([^%]+)%%%BOUTEN_END%%%/g,
-				'<span class="bouten">$1</span>'
-			);
+			processed = processed.replace(/\u0001([^\u0002]*)\u0002/g, '<span class="bouten">$1</span>');
 		}
 
 		// 改行を<br>に変換（段落として扱う）

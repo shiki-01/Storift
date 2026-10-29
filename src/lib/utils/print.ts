@@ -1,4 +1,5 @@
 import { toast } from '$lib/stores/toast.svelte';
+import { escapeHtml } from './ruby';
 /**
  * 印刷プレビュー用のユーティリティ
  */
@@ -254,7 +255,6 @@ export function formatForPrint(
 	}>,
 	options: PrintOptions
 ): string {
-	console.log('formatForPrint called with', { chaptersCount: chapters.length, options });
 	let html = '';
 
 	for (let i = 0; i < chapters.length; i++) {
@@ -262,9 +262,9 @@ export function formatForPrint(
 
 		// 章タイトル
 		if (options.showChapterNumber) {
-			html += `<h2 class="chapter-title">第${i + 1}章 ${chapter.title}</h2>`;
+			html += `<h2 class="chapter-title">第${i + 1}章 ${escapeHtml(chapter.title)}</h2>`;
 		} else {
-			html += `<h2 class="chapter-title">${chapter.title}</h2>`;
+			html += `<h2 class="chapter-title">${escapeHtml(chapter.title)}</h2>`;
 		}
 
 		// シーン
@@ -272,7 +272,7 @@ export function formatForPrint(
 			const scene = chapter.scenes[j];
 
 			// シーン内容
-			html += `<div class="scene-content">${scene.content.replace(/\n/g, '<br>')}</div>`;
+			html += `<div class="scene-content">${escapeHtml(scene.content).replace(/\n/g, '<br>')}</div>`;
 
 			// シーン区切り（最後のシーン以外）
 			if (j < chapter.scenes.length - 1) {

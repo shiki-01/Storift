@@ -791,6 +791,7 @@
 <!-- エクスポートモーダル -->
 {#if showExportModal}
 	<Modal
+		isOpen
 		title="データをエクスポート"
 		onClose={() => (showExportModal = false)}
 		onConfirm={handleExport}
@@ -811,6 +812,7 @@
 <!-- インポートモーダル -->
 {#if showImportModal}
 	<Modal
+		isOpen
 		title="データをインポート"
 		onClose={() => {
 			showImportModal = false;
@@ -850,6 +852,7 @@
 <!-- データ削除確認モーダル -->
 {#if showClearDataModal}
 	<Modal
+		isOpen
 		title="全データを削除"
 		onClose={() => (showClearDataModal = false)}
 		onConfirm={handleClearAllData}

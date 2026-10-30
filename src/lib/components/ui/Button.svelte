@@ -46,7 +46,12 @@
 		transition:
 			background-color 0.15s,
 			border-color 0.15s,
-			color 0.15s;
+			color 0.15s,
+			transform 0.1s;
+	}
+
+	:where(.btn:active:not(:disabled)) {
+		transform: scale(0.97);
 	}
 
 	:where(.btn--sm) {

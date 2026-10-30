@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { fade, scale } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
 	interface ModalProps {
 		isOpen?: boolean;
 		title?: string;
@@ -111,17 +113,20 @@
 		aria-modal="true"
 		aria-label={title}
 		tabindex="-1"
+		transition:fade={{ duration: 160 }}
 	>
 		<div
+			in:scale={{ start: 0.97, duration: 200, easing: cubicOut }}
+			out:scale={{ start: 0.98, duration: 120 }}
 			bind:this={dialogEl}
 			class="modal-container bg:theme-background fg:theme-text r:12 b:1px|solid|theme-border {sizeClasses[
 				size
 			]} w:90% max-h:90dvh overflow:auto box-shadow:var(--shadow-float)"
 		>
 			<div
-				class="modal-header flex justify-content:space-between align-items:center p:24 border-bottom:1|solid|theme-border"
+				class="modal-header flex justify-content:space-between align-items:center px:24 py:16 border-bottom:1|solid|theme-border"
 			>
-				<h2 class="font:20 font-weight:600 m:0">{title}</h2>
+				<h2 class="font:17 font-weight:600 m:0">{title}</h2>
 				<button
 					class="bg:transparent border:none font:24 cursor:pointer p:8 fg:theme-text-secondary hover:fg:theme-text"
 					onclick={handleClose}

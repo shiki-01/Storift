@@ -161,6 +161,16 @@ export function turnParts(state: TurnState): TurnPart[] {
 		}
 	}
 	const hasText = parts.some((p) => p.kind === 'text' && p.text.trim());
-	if (!hasText && state.resultText?.trim()) parts.push({ kind: 'text', text: state.resultText });
+	// エラーのときの result はエラー文なので、本文としては出さない(エラー表示に回す)
+	if (!hasText && !state.isError && state.resultText?.trim()) {
+		parts.push({ kind: 'text', text: state.resultText });
+	}
 	return parts;
+}
+
+/** Claude Code の認証(ログイン)のエラーか */
+export function isAuthError(text: string): boolean {
+	return /authenticat|oauth|not logged in|\/login|auth login|invalid api key|unauthorized|credential/i.test(
+		text
+	);
 }

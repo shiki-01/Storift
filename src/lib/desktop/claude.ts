@@ -11,6 +11,8 @@ export interface ClaudeStatus {
 	path?: string;
 	version?: string;
 	error?: string;
+	/** `claude auth status` の結果(確かめられなければ undefined) */
+	loggedIn?: boolean;
 }
 
 export interface SendRequest {
@@ -32,6 +34,11 @@ export interface ExitEvent {
 
 export function getClaudeStatus(claudePath?: string): Promise<ClaudeStatus> {
 	return invoke('claude_status', { claudePath: claudePath || null });
+}
+
+/** ターミナルを開いて `claude auth login` を実行する */
+export function openClaudeLogin(claudePath?: string): Promise<void> {
+	return invoke('claude_open_login', { claudePath: claudePath || null });
 }
 
 export function cancelClaude(requestId: string): Promise<void> {

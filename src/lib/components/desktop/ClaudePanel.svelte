@@ -138,8 +138,18 @@
 		}
 	}
 
+	let loginError = $state('');
+	async function openLogin() {
+		loginError = '';
+		try {
+			await claudeStore.openLogin();
+		} catch (error) {
+			loginError = String(error);
+		}
+	}
+
 	function formatCost(usd?: number): string {
-		return usd == null ? '' : `$${usd.toFixed(usd < 0.01 ? 4 : 2)}`;
+		return usd ? `$${usd.toFixed(usd < 0.01 ? 4 : 2)}` : '';
 	}
 
 	onMount(() => {
@@ -244,7 +254,12 @@
 			</label>
 			<div class="status-line">
 				{#if claudeStore.status?.found}
-					{claudeStore.status.version}<br /><code>{claudeStore.status.path}</code>
+					{claudeStore.status.version}<br /><code>{claudeStore.status.path}</code><br />
+					ログイン: {claudeStore.status.loggedIn === true
+						? '済み'
+						: claudeStore.status.loggedIn === false
+							? 'していません'
+							: '不明'}
 				{:else if claudeStore.status}
 					{claudeStore.status.error}
 				{:else}
@@ -253,12 +268,28 @@
 			</div>
 			<div class="row">
 				<button class="small" onclick={() => claudeStore.checkStatus()}>再確認</button>
+				<button class="small" onclick={openLogin}>ログイン</button>
 				<button class="small" onclick={() => openWorkspace()}>ワークスペースを開く</button>
 			</div>
 			<p class="hint">
 				原稿は送信のたびに <code>{workspacePath || 'workspace'}</code> へ Markdown で書き出され(未保存の本文も含む)、Claude
 				Code はそこを読み取り専用で参照します。本文の書き換えは上の「本文の編集」の設定に従い、アプリが行います。
 			</p>
+		</section>
+	{/if}
+
+	{#if claudeStore.status?.found && claudeStore.status.loggedIn === false}
+		<section class="setup">
+			<p><strong>Claude Code にログインしていません。</strong></p>
+			<p>
+				ターミナルで <code>claude auth login</code> を実行してログインしてください。ログインはユーザー単位で、どのフォルダで行っても
+				Storift から使えます。
+			</p>
+			<div class="row">
+				<button class="small" onclick={openLogin}>ログインする(ターミナルを開く)</button>
+				<button class="small" onclick={() => claudeStore.checkStatus()}>ログインした</button>
+			</div>
+			{#if loginError}<p class="hint">{loginError}</p>{/if}
 		</section>
 	{/if}
 
@@ -292,7 +323,18 @@
 					<div class="text">{message.text}</div>
 				</div>
 			{:else if message.role === 'error'}
-				<div class="msg error">{message.text}</div>
+				<div class="msg error" class:auth={message.auth}>
+					{#if message.auth}
+						<strong>Claude Code のログインが切れています。</strong>
+						<span class="error-detail">{message.text}</span>
+						<div class="row">
+							<button class="small" onclick={openLogin}>ログインする(ターミナルを開く)</button>
+						</div>
+						<span class="hint">ターミナルでログインが終わったら、もう一度送信してください。</span>
+					{:else}
+						{message.text}
+					{/if}
+				</div>
 			{:else}
 				<div class="msg assistant">
 					{#each renderItems(message) as item, i (i)}
@@ -586,6 +628,17 @@
 
 	.msg.user .text {
 		white-space: pre-wrap;
+	}
+
+	.msg.error.auth {
+		white-space: normal;
+	}
+
+	.error-detail {
+		display: block;
+		margin: 4px 0 8px;
+		font-size: 12px;
+		opacity: 0.8;
 	}
 
 	.msg.error {

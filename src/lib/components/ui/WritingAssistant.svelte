@@ -91,22 +91,22 @@
 
 <div class="flex flex-direction:column gap:24">
 	<!-- タブ -->
-	<div class="flex gap:4 bg:theme-surface r:8 p:4">
+	<div class="flex gap:4 bg:theme-surface r:10 p:4" role="tablist">
 		<button
-			class="flex:1 flex align-items:center justify-content:center gap:8 p:12 r:6 font:14 font-weight:500 cursor:pointer transition:all|0.2s border:none {activeTab ===
+			class="flex:1 flex align-items:center justify-content:center gap:8 p:10 r:7 font:14 cursor:pointer transition:all|0.15s {activeTab ===
 			'formatting'
-				? 'bg:$(theme.primary) fg:theme-background'
-				: 'bg:transparent fg:theme-text hover:bg:theme-background'}"
+				? 'bg:theme-background fg:theme-text font-weight:600 b:1px|solid|theme-border'
+				: 'bg:transparent fg:theme-text b:1px|solid|transparent hover:bg:theme-background'}"
 			onclick={() => (activeTab = 'formatting')}
 		>
 			<Icon name="text-increase" class="w:18px" />
 			テキスト整形
 		</button>
 		<button
-			class="flex:1 flex align-items:center justify-content:center gap:8 p:12 r:6 font:14 font-weight:500 cursor:pointer transition:all|0.2s border:none {activeTab ===
+			class="flex:1 flex align-items:center justify-content:center gap:8 p:10 r:7 font:14 cursor:pointer transition:all|0.15s {activeTab ===
 			'ruby'
-				? 'bg:$(theme.primary) fg:theme-background'
-				: 'bg:transparent fg:theme-text hover:bg:theme-background'}"
+				? 'bg:theme-background fg:theme-text font-weight:600 b:1px|solid|theme-border'
+				: 'bg:transparent fg:theme-text b:1px|solid|transparent hover:bg:theme-background'}"
 			onclick={() => (activeTab = 'ruby')}
 		>
 			<Icon name="abc" class="w:18px" />

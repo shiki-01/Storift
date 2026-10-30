@@ -37,7 +37,7 @@
 		return [
 			'px:16 py:8 r:8 font:13 transition:all|.2s|ease b:1px|solid|theme-border',
 			viewMode === mode
-				? 'bg:$(theme.primary) fg:$(theme.primary)'
+				? 'bg:theme-primary fg:theme-primary'
 				: 'bg:theme-background fg:theme-text-secondary hover:bg:theme-surface'
 		].join(' ');
 	}
@@ -367,9 +367,7 @@
 										<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">関係</p>
 										<div class="flex flex-wrap gap:6">
 											{#each character.relationships.slice(0, 3) as rel}
-												<span
-													class="px:10 py:4 r:full bg:$(theme.primary)/.12 fg:$(theme.primary) font:12"
-												>
+												<span class="px:10 py:4 r:full bg:theme-surface fg:theme-primary font:12">
 													{getCharacterName(rel.characterId)}
 												</span>
 											{/each}

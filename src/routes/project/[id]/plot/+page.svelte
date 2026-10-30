@@ -42,7 +42,7 @@
 		return [
 			'px:16 py:8 r:8 font:13 transition:all|.2s|ease b:1px|solid|theme-border',
 			viewMode === mode
-				? 'bg:$(theme.primary)/.15 fg:$(theme.primary)'
+				? 'bg:theme-surface fg:theme-primary'
 				: 'bg:theme-background fg:theme-text-secondary hover:bg:theme-surface'
 		].join(' ');
 	}
@@ -53,9 +53,9 @@
 		const base =
 			'px:12 py:8 r:6 b:1px|solid|theme-border bg:theme-background transition:all|.2s|ease';
 		const variants = {
-			default: 'fg:theme-text hover:bg:$(theme.primary)/.12 hover:fg:$(theme.primary)',
+			default: 'fg:theme-text hover:bg:theme-surface hover:fg:theme-primary',
 			secondary: 'fg:theme-text-secondary hover:bg:theme-surface',
-			success: 'fg:theme-success hover:bg:$(theme.success)/.12',
+			success: 'fg:theme-success hover:bg:theme-surface',
 			danger: 'fg:theme-error hover:bg:theme-error hover:fg:theme-background'
 		} as const;
 		return `${base} ${variants[variant]}`;
@@ -69,10 +69,10 @@
 
 	// ステータスグループ
 	const statusGroups: Record<Plot['status'], { label: string; badgeClass: string }> = {
-		idea: { label: 'アイデア', badgeClass: 'bg:$(theme.info)/.15 fg:$(theme.info)' },
-		planned: { label: '計画中', badgeClass: 'bg:$(theme.secondary)/.15 fg:$(theme.secondary)' },
-		written: { label: '執筆済み', badgeClass: 'bg:$(theme.success)/.15 fg:$(theme.success)' },
-		revised: { label: '推敲済み', badgeClass: 'bg:$(theme.primary)/.18 fg:$(theme.primary)' }
+		idea: { label: 'アイデア', badgeClass: 'bg:theme-surface fg:theme-info' },
+		planned: { label: '計画中', badgeClass: 'bg:theme-surface fg:theme-secondary' },
+		written: { label: '執筆済み', badgeClass: 'bg:theme-surface fg:theme-success' },
+		revised: { label: '推敲済み', badgeClass: 'bg:theme-surface fg:theme-primary' }
 	};
 
 	const typeLabels = {
@@ -328,7 +328,7 @@
 												</div>
 											</div>
 											<button
-												class="font:16 font-weight:600 text-align:left bg:transparent b:none fg:theme-text hover:fg:$(theme.primary)"
+												class="font:16 font-weight:600 text-align:left bg:transparent b:none fg:theme-text hover:fg:theme-primary"
 												onclick={() => openEditModal(plot)}
 											>
 												{plot.title}

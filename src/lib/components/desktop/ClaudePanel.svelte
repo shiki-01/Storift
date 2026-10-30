@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
+	import { fade, fly, slide } from 'svelte/transition';
+	import { goto } from '$app/navigation';
+	import { formatRelativeTime } from '$lib/utils/dateUtils';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
 	import { openUrl } from '@tauri-apps/plugin-opener';
@@ -11,22 +14,50 @@
 		type EditMode,
 		type QuickAction
 	} from '$lib/stores/claude.svelte';
-	import { getWorkspacePath, openWorkspace } from '$lib/desktop/claude';
 	import { splitEdits, type EditProposal } from '$lib/desktop/edits';
 	import EditCard from './EditCard.svelte';
 
 	let input = $state('');
-	let showSettings = $state(false);
-	let workspacePath = $state('');
+	let showHistory = $state(false);
 	let listEl = $state<HTMLDivElement>();
 	let inputEl = $state<HTMLTextAreaElement>();
 
-	const MODELS = [
-		{ value: '', label: '既定' },
-		{ value: 'sonnet', label: 'Sonnet' },
-		{ value: 'opus', label: 'Opus' },
-		{ value: 'haiku', label: 'Haiku' }
-	];
+	/** 24x24 の線画アイコン(svg の中身) */
+	const ICONS = {
+		history: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>',
+		compose: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+		settings:
+			'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+		close: '<path d="M6 6l12 12M18 6L6 18"/>',
+		trash:
+			'<path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/>',
+		sparkles:
+			'<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
+		pen: '<path d="M4 20h4L18.5 9.5a2.8 2.8 0 0 0-4-4L4 16v4"/>',
+		// 紙飛行機
+		send: '<path d="M21 3L10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>'
+	};
+
+	let sessionTitle = $derived(
+		claudeStore.sessions.find((s) => s.id === claudeStore.currentSessionId)?.title ?? '新しい会話'
+	);
+
+	function startNewChat() {
+		claudeStore.newChat();
+		showHistory = false;
+		void tick().then(() => inputEl?.focus());
+	}
+
+	function openSettings() {
+		void goto('/settings#claude');
+	}
+
+	// 入力に合わせて入力欄を伸ばす(最大 8 行ほど)
+	function autoGrow() {
+		if (!inputEl) return;
+		inputEl.style.height = 'auto';
+		inputEl.style.height = `${Math.min(inputEl.scrollHeight, 200)}px`;
+	}
 
 	let notFound = $derived(claudeStore.status !== null && !claudeStore.status.found);
 
@@ -83,7 +114,11 @@
 
 	async function send(text = input) {
 		if (!text.trim() || claudeStore.isRunning) return;
-		if (text === input) input = '';
+		if (text === input) {
+			input = '';
+			void tick().then(autoGrow);
+		}
+		showHistory = false;
 		stickToBottom = true;
 		await claudeStore.send(text);
 		inputEl?.focus();
@@ -131,13 +166,6 @@
 		target.addEventListener('pointerup', up);
 	}
 
-	async function toggleSettings() {
-		showSettings = !showSettings;
-		if (showSettings && !workspacePath) {
-			workspacePath = (await getWorkspacePath()).path;
-		}
-	}
-
 	let loginError = $state('');
 	async function openLogin() {
 		loginError = '';
@@ -158,6 +186,20 @@
 	});
 </script>
 
+{#snippet icon(path: string, size = 18)}
+	<svg
+		viewBox="0 0 24 24"
+		width={size}
+		height={size}
+		fill="none"
+		stroke="currentColor"
+		stroke-width="1.7"
+		stroke-linecap="round"
+		stroke-linejoin="round"
+		aria-hidden="true">{@html path}</svg
+	>
+{/snippet}
+
 <aside class="panel" data-claude-panel style="width:{claudeStore.width}px" aria-label="Claude Code">
 	<div
 		class="resize"
@@ -174,109 +216,35 @@
 			class:ng={notFound}
 			title={claudeStore.status?.version ?? claudeStore.status?.error ?? '確認中'}
 		></span>
-		<span class="title">Claude Code</span>
-		<span class="scope" title="会話は作品ごとに分かれます">{claudeStore.scopeLabel}</span>
-		<span class="spacer"></span>
+		<div class="heading">
+			<span class="title">{showHistory ? '会話の履歴' : sessionTitle}</span>
+			<span class="scope" title="会話は作品ごとに分かれます">{claudeStore.scopeLabel}</span>
+		</div>
 		<button
 			class="icon"
-			onclick={() => claudeStore.newChat()}
+			class:active={showHistory}
+			onclick={() => (showHistory = !showHistory)}
+			title="会話の履歴"
+			aria-label="会話の履歴"
+			aria-pressed={showHistory}>{@render icon(ICONS.history)}</button
+		>
+		<button
+			class="icon"
+			onclick={startNewChat}
 			disabled={claudeStore.isRunning}
-			title="新しい会話">新規</button
+			title="新しい会話"
+			aria-label="新しい会話">{@render icon(ICONS.compose)}</button
 		>
-		<button class="icon" class:active={showSettings} onclick={toggleSettings} title="設定"
-			>設定</button
+		<button class="icon" onclick={openSettings} title="Claude の設定" aria-label="Claude の設定"
+			>{@render icon(ICONS.settings)}</button
 		>
-		<button class="icon" onclick={() => (claudeStore.open = false)} aria-label="閉じる">×</button>
+		<button
+			class="icon"
+			onclick={() => (claudeStore.open = false)}
+			title="閉じる"
+			aria-label="閉じる">{@render icon(ICONS.close)}</button
+		>
 	</header>
-
-	{#if showSettings}
-		<section class="settings">
-			<label class="field">
-				<span>モデル</span>
-				<select
-					value={MODELS.some((m) => m.value === claudeStore.settings.model)
-						? claudeStore.settings.model
-						: '__custom'}
-					onchange={(e) => {
-						const v = e.currentTarget.value;
-						if (v !== '__custom') claudeStore.updateSettings({ model: v });
-					}}
-				>
-					{#each MODELS as m (m.value)}
-						<option value={m.value}>{m.label}</option>
-					{/each}
-					<option value="__custom">その他(下に入力)</option>
-				</select>
-			</label>
-			<label class="field">
-				<span>モデル名</span>
-				<input
-					type="text"
-					placeholder="例: claude-sonnet-5-5(空なら既定)"
-					value={claudeStore.settings.model}
-					onchange={(e) => claudeStore.updateSettings({ model: e.currentTarget.value.trim() })}
-				/>
-			</label>
-			<label class="field">
-				<span>claude の場所</span>
-				<input
-					type="text"
-					placeholder="空なら自動で探します"
-					value={claudeStore.settings.claudePath}
-					onchange={(e) => claudeStore.updateSettings({ claudePath: e.currentTarget.value.trim() })}
-				/>
-			</label>
-			<label class="field">
-				<span>本文の編集</span>
-				<select
-					value={claudeStore.settings.editMode}
-					onchange={(e) =>
-						claudeStore.updateSettings({ editMode: e.currentTarget.value as EditMode })}
-				>
-					{#each Object.entries(EDIT_MODE_LABELS) as [value, label] (value)}
-						<option {value}>{label}</option>
-					{/each}
-				</select>
-			</label>
-			<p class="hint">
-				提案のみ: 修正案を文章で示すだけ。差分を確認して反映: 編集案を差分で見て、1
-				件ずつ(または「すべて反映」で)反映する。自動で反映:
-				回答が終わると書き換え、変更は畳んだ一覧から差分を開いて確認し、1
-				件ずつ・まとめて元に戻せる。
-			</p>
-			<label class="check">
-				<input
-					type="checkbox"
-					checked={claudeStore.settings.allowWeb}
-					onchange={(e) => claudeStore.updateSettings({ allowWeb: e.currentTarget.checked })}
-				/>
-				Web 検索を許可する
-			</label>
-			<div class="status-line">
-				{#if claudeStore.status?.found}
-					{claudeStore.status.version}<br /><code>{claudeStore.status.path}</code><br />
-					ログイン: {claudeStore.status.loggedIn === true
-						? '済み'
-						: claudeStore.status.loggedIn === false
-							? 'していません'
-							: '不明'}
-				{:else if claudeStore.status}
-					{claudeStore.status.error}
-				{:else}
-					確認中…
-				{/if}
-			</div>
-			<div class="row">
-				<button class="small" onclick={() => claudeStore.checkStatus()}>再確認</button>
-				<button class="small" onclick={openLogin}>ログイン</button>
-				<button class="small" onclick={() => openWorkspace()}>ワークスペースを開く</button>
-			</div>
-			<p class="hint">
-				原稿は送信のたびに <code>{workspacePath || 'workspace'}</code> へ Markdown で書き出され(未保存の本文も含む)、Claude
-				Code はそこを読み取り専用で参照します。本文の書き換えは上の「本文の編集」の設定に従い、アプリが行います。
-			</p>
-		</section>
-	{/if}
 
 	{#if claudeStore.status?.found && claudeStore.status.loggedIn === false}
 		<section class="setup">
@@ -301,94 +269,131 @@
 			<p class="hint">
 				Windows は PowerShell で <code>irm https://claude.ai/install.ps1 | iex</code>。npm の場合は
 				<code>npm install -g @anthropic-ai/claude-code</code
-				>。インストール先が特殊な場合は設定で場所を指定できます。
+				>。インストール先が特殊な場合は設定画面で場所を指定できます。
 			</p>
 		</section>
 	{/if}
 
-	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-	<div class="messages" bind:this={listEl} onscroll={onScroll} onclick={onClickContent}>
-		{#if claudeStore.messages.length === 0}
-			<div class="empty">
-				<p>開いているシーンについて相談できます。エディタで文章を選ぶと「AI に聞く」が出ます。</p>
-				<p>全作品を横断した質問(設定の使い回し、表記の統一など)もできます。</p>
-			</div>
-		{/if}
-		{#each claudeStore.messages as message (message.id)}
-			{#if message.role === 'user'}
-				<div class="msg user">
-					{#if message.quote}
-						<blockquote class="quote">{message.quote}</blockquote>
-					{/if}
-					<div class="text">{message.text}</div>
+	{#if showHistory}
+		<div class="history" transition:fade={{ duration: 120 }}>
+			{#if claudeStore.sessions.length === 0}
+				<p class="history-empty">まだ会話がありません</p>
+			{/if}
+			{#each claudeStore.sessions as session (session.id)}
+				<div class="history-item" class:current={session.id === claudeStore.currentSessionId}>
+					<button
+						class="history-open"
+						disabled={claudeStore.isRunning}
+						onclick={() => {
+							claudeStore.openSession(session.id);
+							showHistory = false;
+						}}
+					>
+						<span class="history-title">{session.title}</span>
+						<span class="history-meta"
+							>{formatRelativeTime(session.updatedAt)} ・ {session.messages.filter(
+								(m) => m.role === 'user'
+							).length}件の質問</span
+						>
+					</button>
+					<button
+						class="icon history-delete"
+						onclick={() => claudeStore.deleteSession(session.id)}
+						title="この会話を削除"
+						aria-label="この会話を削除">{@render icon(ICONS.trash, 16)}</button
+					>
 				</div>
-			{:else if message.role === 'error'}
-				<div class="msg error" class:auth={message.auth}>
-					{#if message.auth}
-						<strong>Claude Code のログインが切れています。</strong>
-						<span class="error-detail">{message.text}</span>
-						<div class="row">
-							<button class="small" onclick={openLogin}>ログインする(ターミナルを開く)</button>
-						</div>
-						<span class="hint">ターミナルでログインが終わったら、もう一度送信してください。</span>
-					{:else}
-						{message.text}
-					{/if}
-				</div>
-			{:else}
-				<div class="msg assistant">
-					{#each renderItems(message) as item, i (i)}
-						{#if item.kind === 'markdown'}
-							<!-- eslint-disable-next-line svelte/no-at-html-tags -- DOMPurify で無害化済み -->
-							<div class="markdown">{@html renderMarkdown(item.text)}</div>
-						{:else if item.kind === 'tool'}
-							<div class="tool">
-								<span class="tool-name">{item.name}</span>
-								<span class="tool-summary">{item.summary}</span>
-							</div>
-						{:else if item.kind === 'edit'}
-							<EditCard
-								edit={item.edit}
-								editState={message.edits?.[item.index]}
-								mode={message.editMode ?? 'suggest'}
-							/>
-						{:else}
-							<div class="tool">編集案を作成中…</div>
-						{/if}
-					{/each}
-					{#if message.edits?.length && !message.running}
-						{@const pending = message.edits.filter((e) => e.status === 'pending').length}
-						{@const applied = message.edits.filter((e) => e.status === 'applied').length}
-						<div class="changes">
-							<span class="changes-label"
-								>変更 {message.edits.length} 件(反映済み {applied}{pending
-									? `・未反映 ${pending}`
-									: ''})</span
-							>
-							{#if pending}
-								<button class="small" onclick={() => claudeStore.applyAll(message)}
-									>すべて反映</button
-								>
-								<button class="small" onclick={() => claudeStore.rejectAll(message)}
-									>すべて却下</button
-								>
-							{/if}
-							{#if applied}
-								<button class="small" onclick={() => claudeStore.revertAll(message)}
-									>すべて元に戻す</button
-								>
-							{/if}
-						</div>
-					{/if}
-					{#if message.running}
-						<div class="typing" aria-label="回答中"><span></span><span></span><span></span></div>
-					{:else if message.costUsd != null}
-						<div class="meta">{formatCost(message.costUsd)}</div>
-					{/if}
+			{/each}
+		</div>
+	{:else}
+		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+		<div class="messages" bind:this={listEl} onscroll={onScroll} onclick={onClickContent}>
+			{#if claudeStore.messages.length === 0}
+				<div class="empty">
+					<div class="empty-mark">{@render icon(ICONS.sparkles, 22)}</div>
+					<p>
+						開いているシーンについて相談できます。<br />エディタで文章を選ぶと「AI
+						に聞く」が出ます。
+					</p>
+					<p>全作品を横断した質問(設定の使い回し、表記の統一など)もできます。</p>
 				</div>
 			{/if}
-		{/each}
-	</div>
+			{#each claudeStore.messages as message (message.id)}
+				{#if message.role === 'user'}
+					<div class="msg user" in:fly={{ y: 6, duration: 180 }}>
+						{#if message.quote}
+							<blockquote class="quote">{message.quote}</blockquote>
+						{/if}
+						<div class="text">{message.text}</div>
+					</div>
+				{:else if message.role === 'error'}
+					<div class="msg error" class:auth={message.auth}>
+						{#if message.auth}
+							<strong>Claude Code のログインが切れています。</strong>
+							<span class="error-detail">{message.text}</span>
+							<div class="row">
+								<button class="small" onclick={openLogin}>ログインする(ターミナルを開く)</button>
+							</div>
+							<span class="hint">ターミナルでログインが終わったら、もう一度送信してください。</span>
+						{:else}
+							{message.text}
+						{/if}
+					</div>
+				{:else}
+					<div class="msg assistant" in:fade={{ duration: 180 }}>
+						{#each renderItems(message) as item, i (i)}
+							{#if item.kind === 'markdown'}
+								<!-- eslint-disable-next-line svelte/no-at-html-tags -- DOMPurify で無害化済み -->
+								<div class="markdown">{@html renderMarkdown(item.text)}</div>
+							{:else if item.kind === 'tool'}
+								<div class="tool">
+									<span class="tool-name">{item.name}</span>
+									<span class="tool-summary">{item.summary}</span>
+								</div>
+							{:else if item.kind === 'edit'}
+								<EditCard
+									edit={item.edit}
+									editState={message.edits?.[item.index]}
+									mode={message.editMode ?? 'suggest'}
+								/>
+							{:else}
+								<div class="tool">編集案を作成中…</div>
+							{/if}
+						{/each}
+						{#if message.edits?.length && !message.running}
+							{@const pending = message.edits.filter((e) => e.status === 'pending').length}
+							{@const applied = message.edits.filter((e) => e.status === 'applied').length}
+							<div class="changes">
+								<span class="changes-label"
+									>変更 {message.edits.length} 件(反映済み {applied}{pending
+										? `・未反映 ${pending}`
+										: ''})</span
+								>
+								{#if pending}
+									<button class="small primary" onclick={() => claudeStore.applyAll(message)}
+										>すべて反映</button
+									>
+									<button class="small" onclick={() => claudeStore.rejectAll(message)}
+										>すべて却下</button
+									>
+								{/if}
+								{#if applied}
+									<button class="small" onclick={() => claudeStore.revertAll(message)}
+										>すべて元に戻す</button
+									>
+								{/if}
+							</div>
+						{/if}
+						{#if message.running}
+							<div class="typing" aria-label="回答中"><span></span><span></span><span></span></div>
+						{:else if message.costUsd != null}
+							<div class="meta">{formatCost(message.costUsd)}</div>
+						{/if}
+					</div>
+				{/if}
+			{/each}
+		</div>
+	{/if}
 
 	<footer class="composer">
 		<div class="actions">
@@ -399,37 +404,64 @@
 			{/each}
 		</div>
 		{#if claudeStore.quote}
-			<div class="quote-card">
+			<div class="quote-card" transition:slide={{ duration: 160 }}>
 				<div class="quote-meta">
 					<span>引用: {claudeStore.quote.sceneTitle}({claudeStore.quote.text.length}字)</span>
 					<button class="icon" onclick={() => claudeStore.setQuote(null)} aria-label="引用を外す"
-						>×</button
+						>{@render icon(ICONS.close, 14)}</button
 					>
 				</div>
 				<blockquote class="quote">{claudeStore.quote.text}</blockquote>
 			</div>
 		{/if}
-		<div class="mode-line">
-			本文の編集: {EDIT_MODE_LABELS[claudeStore.settings.editMode]}
-		</div>
-		<div class="input-row">
+		<div class="input-box" class:disabled={notFound}>
 			<textarea
 				bind:this={inputEl}
 				bind:value={input}
 				onkeydown={onKeydown}
-				rows="3"
+				oninput={autoGrow}
+				rows="1"
 				placeholder={claudeStore.quote
-					? '引用した部分について質問(Enter で送信)'
-					: 'Claude に相談(Enter で送信、Shift+Enter で改行)'}
+					? '引用した部分について質問'
+					: 'Claude に相談(Shift+Enter で改行)'}
 				disabled={notFound}
 			></textarea>
-			{#if claudeStore.isRunning}
-				<button class="send stop" onclick={() => claudeStore.cancel()}>停止</button>
-			{:else}
-				<button class="send" onclick={() => send()} disabled={!input.trim() || notFound}
-					>送信</button
-				>
-			{/if}
+			<div class="input-foot">
+				<label class="mode-select" title="本文の編集">
+					{@render icon(ICONS.pen, 14)}
+					<select
+						value={claudeStore.settings.editMode}
+						onchange={(e) =>
+							claudeStore.updateSettings({ editMode: e.currentTarget.value as EditMode })}
+						aria-label="本文の編集"
+					>
+						{#each Object.entries(EDIT_MODE_LABELS) as [value, label] (value)}
+							<option {value}>{label}</option>
+						{/each}
+					</select>
+				</label>
+				<span class="spacer"></span>
+				{#if claudeStore.isRunning}
+					<button
+						class="send stop"
+						onclick={() => claudeStore.cancel()}
+						title="停止"
+						aria-label="停止"
+					>
+						<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"
+							><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" /></svg
+						>
+					</button>
+				{:else}
+					<button
+						class="send"
+						onclick={() => send()}
+						disabled={!input.trim() || notFound}
+						title="送信 (Enter)"
+						aria-label="送信">{@render icon(ICONS.send, 17)}</button
+					>
+				{/if}
+			</div>
 		</div>
 	</footer>
 </aside>
@@ -466,15 +498,29 @@
 	.panel-header {
 		display: flex;
 		align-items: center;
-		gap: 6px;
-		height: 44px;
-		padding: 0 10px 0 14px;
+		gap: 2px;
+		height: 48px;
+		padding: 0 8px 0 14px;
 		border-bottom: 1px solid var(--color-border);
 		flex: none;
 	}
 
+	.heading {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin: 0 6px 0 8px;
+	}
+
 	.title {
+		min-width: 0;
+		font-size: 13.5px;
 		font-weight: 600;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.spacer {
@@ -482,8 +528,9 @@
 	}
 
 	.dot {
-		width: 8px;
-		height: 8px;
+		flex: none;
+		width: 7px;
+		height: 7px;
 		border-radius: 50%;
 		background: var(--color-text-secondary);
 	}
@@ -500,6 +547,8 @@
 		cursor: pointer;
 		color: inherit;
 		font: inherit;
+		border: none;
+		background: none;
 	}
 
 	button:disabled {
@@ -508,19 +557,30 @@
 	}
 
 	.icon {
-		padding: 4px 8px;
-		border-radius: 6px;
-		font-size: 13px;
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 30px;
+		height: 30px;
+		padding: 0;
+		border-radius: 7px;
 		color: var(--color-text-secondary);
+		transition:
+			background-color 0.15s,
+			color 0.15s;
 	}
 
 	.icon:hover:not(:disabled),
 	.icon.active {
 		color: var(--color-text);
-		background: color-mix(in srgb, var(--color-text) 8%, transparent);
+		background: var(--hover);
 	}
 
-	.settings,
+	.icon.active {
+		color: var(--color-primary);
+	}
+
 	.setup {
 		flex: none;
 		display: flex;
@@ -528,36 +588,6 @@
 		gap: 8px;
 		padding: 12px 14px;
 		border-bottom: 1px solid var(--color-border);
-		font-size: 13px;
-	}
-
-	.field {
-		display: grid;
-		grid-template-columns: 92px 1fr;
-		align-items: center;
-		gap: 8px;
-	}
-
-	.field span {
-		color: var(--color-text-secondary);
-	}
-
-	input[type='text'],
-	select,
-	textarea {
-		width: 100%;
-		padding: 6px 8px;
-		border: 1px solid var(--color-border);
-		border-radius: 6px;
-		background: var(--color-background);
-		color: var(--color-text);
-		font: inherit;
-	}
-
-	.check {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
 		font-size: 13px;
 	}
 
@@ -574,7 +604,12 @@
 		background: var(--color-background);
 	}
 
-	.status-line,
+	.small.primary {
+		border-color: var(--color-primary);
+		background: var(--color-primary);
+		color: var(--color-background);
+	}
+
 	.hint {
 		color: var(--color-text-secondary);
 		font-size: 12px;
@@ -607,10 +642,102 @@
 
 	.empty {
 		margin: auto 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 4px;
+		padding: 0 12px;
 		color: var(--color-text-secondary);
-		font-size: 13px;
+		font-size: 12.5px;
 		line-height: 1.8;
 		text-align: center;
+	}
+
+	.empty p {
+		margin: 0;
+	}
+
+	.empty-mark {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 44px;
+		height: 44px;
+		margin-bottom: 8px;
+		border-radius: 50%;
+		background: var(--selected);
+		color: var(--color-primary);
+	}
+
+	.history {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		padding: 8px;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.history-empty {
+		margin: auto;
+		color: var(--color-text-secondary);
+		font-size: 13px;
+	}
+
+	.history-item {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		padding-right: 6px;
+		border-radius: 8px;
+		transition: background-color 0.12s;
+	}
+
+	.history-item:hover {
+		background: var(--hover);
+	}
+
+	.history-item.current {
+		background: var(--selected);
+	}
+
+	.history-open {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 3px;
+		padding: 10px 6px 10px 12px;
+		text-align: left;
+	}
+
+	.history-title {
+		max-width: 100%;
+		font-size: 13.5px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.history-item.current .history-title {
+		color: var(--color-primary);
+		font-weight: 600;
+	}
+
+	.history-meta {
+		font-size: 11.5px;
+		color: var(--color-text-secondary);
+	}
+
+	.history-delete {
+		opacity: 0;
+	}
+
+	.history-item:hover .history-delete,
+	.history-delete:focus-visible {
+		opacity: 1;
 	}
 
 	.msg {
@@ -622,8 +749,9 @@
 		align-self: flex-end;
 		max-width: 90%;
 		padding: 8px 12px;
-		border-radius: 12px 12px 2px 12px;
-		background: color-mix(in srgb, var(--color-primary) 14%, var(--color-background));
+		border-radius: 14px 14px 4px 14px;
+		background: var(--color-background);
+		border: 1px solid var(--color-border);
 	}
 
 	.msg.user .text {
@@ -784,26 +912,39 @@
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
-		padding: 10px 14px 14px;
+		padding: 10px 12px 12px;
 		border-top: 1px solid var(--color-border);
 	}
 
+	/* よく使う操作は横にスクロールする 1 行に収める */
 	.actions {
 		display: flex;
-		flex-wrap: wrap;
 		gap: 6px;
+		overflow-x: auto;
+		scrollbar-width: none;
+		mask-image: linear-gradient(to right, #000 85%, transparent);
+	}
+
+	.actions::-webkit-scrollbar {
+		display: none;
 	}
 
 	.chip {
-		padding: 3px 10px;
+		flex: none;
+		height: 26px;
+		padding: 0 10px;
 		border: 1px solid var(--color-border);
 		border-radius: 999px;
 		font-size: 12px;
 		background: var(--color-background);
+		color: var(--color-text);
+		transition:
+			border-color 0.15s,
+			color 0.15s;
 	}
 
-	.chip:hover:not(:disabled):not(.static) {
-		border-color: var(--color-primary);
+	.chip:hover:not(:disabled) {
+		border-color: color-mix(in srgb, var(--color-primary) 60%, var(--color-border));
 		color: var(--color-primary);
 	}
 
@@ -865,32 +1006,116 @@
 		color: var(--color-text-secondary);
 	}
 
-	.mode-line {
-		font-size: 11px;
-		color: var(--color-text-secondary);
+	.input-box {
+		display: flex;
+		flex-direction: column;
+		border: 1px solid var(--color-border);
+		border-radius: 12px;
+		background: var(--color-background);
+		transition:
+			border-color 0.15s,
+			box-shadow 0.15s;
 	}
 
-	.input-row {
-		display: flex;
-		gap: 8px;
-		align-items: flex-end;
+	.input-box:focus-within {
+		border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-border));
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 12%, transparent);
+	}
+
+	.input-box.disabled {
+		opacity: 0.6;
 	}
 
 	textarea {
-		resize: none;
+		display: block;
+		width: 100%;
+		min-height: 44px;
+		max-height: 200px;
+		padding: 11px 14px 4px;
+		border: none;
+		background: transparent;
+		color: var(--color-text);
+		font: inherit;
+		font-size: 13.5px;
 		line-height: 1.6;
+		resize: none;
+		outline: none;
+	}
+
+	textarea::placeholder {
+		color: var(--color-text-secondary);
+	}
+
+	.input-foot {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 4px 6px 6px 10px;
+	}
+
+	.mode-select {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		min-width: 0;
+		height: 26px;
+		padding: 0 4px 0 8px;
+		border-radius: 7px;
+		color: var(--color-text-secondary);
+		transition: background-color 0.15s;
+	}
+
+	.mode-select:hover {
+		background: var(--hover);
+		color: var(--color-text);
+	}
+
+	.mode-select select {
+		min-width: 0;
+		padding: 0 2px;
+		border: none;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		font-size: 11.5px;
+		cursor: pointer;
+		outline: none;
 	}
 
 	.send {
 		flex: none;
-		padding: 8px 14px;
-		border-radius: 8px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		padding: 0;
+		border-radius: 50%;
 		background: var(--color-primary);
 		color: var(--color-background);
-		font-size: 13px;
+		transition:
+			transform 0.12s,
+			background-color 0.15s,
+			opacity 0.15s;
+	}
+
+	.send svg {
+		margin: 1px 1px 0 0;
+	}
+
+	.send:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--color-primary) 85%, var(--color-text));
+	}
+
+	.send:active:not(:disabled) {
+		transform: scale(0.92);
+	}
+
+	.send:disabled {
+		opacity: 0.35;
 	}
 
 	.send.stop {
-		background: var(--color-error);
+		background: var(--color-text);
 	}
 </style>

@@ -663,7 +663,7 @@
 		border: none;
 		border-radius: 8px;
 		background: transparent;
-		color: var(--color-text-secondary);
+		color: var(--color-text);
 		font-size: 13px;
 		cursor: pointer;
 	}

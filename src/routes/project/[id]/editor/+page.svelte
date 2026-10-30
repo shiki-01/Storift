@@ -1604,7 +1604,6 @@
 									title="Claude Code パネル (Ctrl+Shift+L)"
 								>
 									<Icon name="sparkles" class="w:20px" />
-									<span>Claude</span>
 								</button>
 							{/if}
 							<div class="tool-sep"></div>
@@ -1645,7 +1644,7 @@
 									oninput={handleEditorInput}
 									oncontextmenu={handleContextMenu}
 									onpaste={handlePaste}
-									class="editor-text w:full min-h:600 border:none outline:none bg:editor-background fg:$(editor.text) white-space:pre-wrap"
+									class="editor-text w:full min-h:600 border:none outline:none bg:editor-background fg:editor-text white-space:pre-wrap"
 									style="
 									font-family: {getFontFamily(settingsStore.editorFont)};
 									font-size: {effectiveFontSize}px;
@@ -2032,19 +2031,19 @@
 		<!-- タブ -->
 		<div class="flex gap:4 bg:theme-surface r:8 p:4">
 			<button
-				class="flex:1 p:12 r:6 font:14 font-weight:500 cursor:pointer transition:all|0.2s border:none {formattingTab ===
+				class="flex:1 p:10 r:7 font:14 cursor:pointer transition:all|0.15s {formattingTab ===
 				'editor'
-					? 'bg:theme-surface fg:theme-primary'
-					: 'bg:transparent fg:theme-text hover:bg:theme-background'}"
+					? 'bg:theme-background fg:theme-text font-weight:600 b:1px|solid|theme-border'
+					: 'bg:transparent fg:theme-text b:1px|solid|transparent hover:bg:theme-background'}"
 				onclick={() => (formattingTab = 'editor')}
 			>
 				エディター設定
 			</button>
 			<button
-				class="flex:1 p:12 r:6 font:14 font-weight:500 cursor:pointer transition:all|0.2s border:none {formattingTab ===
+				class="flex:1 p:10 r:7 font:14 cursor:pointer transition:all|0.15s {formattingTab ===
 				'preview'
-					? 'bg:theme-surface fg:theme-primary'
-					: 'bg:transparent fg:theme-text hover:bg:theme-background'}"
+					? 'bg:theme-background fg:theme-text font-weight:600 b:1px|solid|theme-border'
+					: 'bg:transparent fg:theme-text b:1px|solid|transparent hover:bg:theme-background'}"
 				onclick={() => (formattingTab = 'preview')}
 			>
 				プレビュー設定
@@ -2126,7 +2125,7 @@
 						line-height: {localFormatting.lineHeight ?? 2};
 						letter-spacing: {localFormatting.letterSpacing ?? 0}em;
 					"
-					class="fg:$(editor.text)"
+					class="fg:editor-text"
 				>
 					吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。
 				</div>
@@ -2255,12 +2254,9 @@
 		min-height: 0;
 	}
 
-	.tool--claude {
-		width: auto;
-		gap: 6px;
-		padding: 0 10px 0 8px;
-		font: inherit;
-		font-size: 12.5px;
+	/* 開いている間は藍の地で、押した状態だと分かるようにする */
+	.tool--claude.on {
+		background: var(--selected);
 	}
 
 	.sidebar-overlay {
@@ -2933,7 +2929,7 @@
 		border: none;
 		border-radius: 8px;
 		background: transparent;
-		color: var(--color-text-secondary);
+		color: var(--color-text);
 		font-size: 13px;
 		cursor: pointer;
 	}
@@ -2942,7 +2938,7 @@
 		background: var(--color-background);
 		color: var(--color-text);
 		font-weight: 600;
-		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+		box-shadow: 0 0 0 1px var(--color-border);
 	}
 
 	.field {

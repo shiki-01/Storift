@@ -105,7 +105,7 @@
 	<!-- キーボード操作(Esc)は window 側で処理している -->
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
-		class="position:fixed inset:0 bg:rgba(0,0,0,0.5) z:1000 flex align-items:center justify-content:center"
+		class="position:fixed inset:0 bg:rgba(0,0,0,0.28) z:1000 flex align-items:center justify-content:center"
 		onclick={handleBackdropClick}
 		role="dialog"
 		aria-modal="true"
@@ -114,9 +114,9 @@
 	>
 		<div
 			bind:this={dialogEl}
-			class="modal-container bg:theme-background fg:theme-text r:12 {sizeClasses[
+			class="modal-container bg:theme-background fg:theme-text r:12 b:1px|solid|theme-border {sizeClasses[
 				size
-			]} w:90% max-h:90dvh overflow:auto box-shadow:0|8|32|rgba(0,0,0,0.2)"
+			]} w:90% max-h:90dvh overflow:auto box-shadow:var(--shadow-float)"
 		>
 			<div
 				class="modal-header flex justify-content:space-between align-items:center p:24 border-bottom:1|solid|theme-border"
@@ -148,11 +148,11 @@
 						{cancelText}
 					</button>
 					<button
-						class="px:16 py:8 border:none r:6 fg:white cursor:pointer"
+						class="px:16 py:8 border:none r:6 fg:theme-background cursor:pointer"
 						class:bg:theme-primary={confirmVariant === 'primary'}
 						class:hover:bg:theme-primary={confirmVariant === 'primary'}
-						class:bg:gray-600={confirmVariant === 'secondary'}
-						class:hover:bg:gray-700={confirmVariant === 'secondary'}
+						class:bg:theme-text-secondary={confirmVariant === 'secondary'}
+						class:hover:bg:theme-text={confirmVariant === 'secondary'}
 						class:bg:theme-error={confirmVariant === 'danger'}
 						class:hover:bg:theme-error={confirmVariant === 'danger'}
 						class:opacity:0.5={confirmDisabled}

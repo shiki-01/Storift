@@ -79,8 +79,8 @@
 				</div>
 			</div>
 
-			<div class="mt:16 p:12 bg:yellow-50 border:1|solid|yellow-300 r:6">
-				<p class="font:12 fg:yellow-900">
+			<div class="mt:16 p:12 bg:theme-surface border:1|solid|theme-warning r:6">
+				<p class="font:12 fg:theme-warning">
 					⚠️
 					採用しなかった変更は失われます。重要な内容がある場合は、事前にコピーしておいてください。
 				</p>

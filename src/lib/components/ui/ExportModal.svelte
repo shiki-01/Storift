@@ -77,7 +77,9 @@
 						<input type="checkbox" bind:checked={includeMetadata} class="w-4 h-4" />
 						<span>メタデータを含める</span>
 					</label>
-					<p class="text-sm text-gray-600 ml-6">タイトル、説明、作成日などの情報を含めます</p>
+					<p class="text-sm fg:theme-text-secondary ml-6">
+						タイトル、説明、作成日などの情報を含めます
+					</p>
 				</div>
 
 				<!-- 章番号 -->
@@ -86,7 +88,7 @@
 						<input type="checkbox" bind:checked={chapterNumbers} class="w-4 h-4" />
 						<span>章番号を含める</span>
 					</label>
-					<p class="text-sm text-gray-600 ml-6">「第1章」のように章番号を付けます</p>
+					<p class="text-sm fg:theme-text-secondary ml-6">「第1章」のように章番号を付けます</p>
 				</div>
 
 				<!-- シーン区切り -->
@@ -99,7 +101,7 @@
 						placeholder="***"
 						class="w-full px-3 py-2 border rounded"
 					/>
-					<p class="text-sm text-gray-600 mt-1">シーン間に挿入される記号</p>
+					<p class="text-sm fg:theme-text-secondary mt-1">シーン間に挿入される記号</p>
 				</div>
 
 				{#if format === 'pdf'}
@@ -127,15 +129,15 @@
 			{/if}
 
 			<!-- プレビュー情報 -->
-			<div class="p-3 bg-gray-50 rounded">
+			<div class="p-3 bg:theme-surface rounded">
 				<p class="text-sm font-semibold mb-1">エクスポート内容</p>
-				<p class="text-sm text-gray-700">プロジェクト: {projectTitle}</p>
+				<p class="text-sm fg:theme-text-secondary">プロジェクト: {projectTitle}</p>
 				{#if format === 'json'}
-					<p class="text-sm text-gray-700">
+					<p class="text-sm fg:theme-text-secondary">
 						章、シーン、キャラクター、プロット、設定資料をすべて含む完全バックアップ
 					</p>
 				{:else}
-					<p class="text-sm text-gray-700">すべての章とシーンの本文を含む</p>
+					<p class="text-sm fg:theme-text-secondary">すべての章とシーンの本文を含む</p>
 				{/if}
 			</div>
 		</div>

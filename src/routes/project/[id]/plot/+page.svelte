@@ -35,12 +35,12 @@
 		type: 'scene' as Plot['type'],
 		status: 'idea' as Plot['status'],
 		content: '',
-		color: '#3b82f6'
+		color: '#33507a'
 	});
 
 	function viewToggleClass(mode: ViewMode): string {
 		return [
-			'px:16 py:8 r:8 font:13 transition:all|.2s|ease b:2px|solid|theme-border',
+			'px:16 py:8 r:8 font:13 transition:all|.2s|ease b:1px|solid|theme-border',
 			viewMode === mode
 				? 'bg:$(theme.primary)/.15 fg:$(theme.primary)'
 				: 'bg:theme-background fg:theme-text-secondary hover:bg:theme-surface'
@@ -51,7 +51,7 @@
 		variant: 'default' | 'secondary' | 'success' | 'danger' = 'default'
 	): string {
 		const base =
-			'px:12 py:8 r:6 b:2px|solid|theme-border bg:theme-background transition:all|.2s|ease';
+			'px:12 py:8 r:6 b:1px|solid|theme-border bg:theme-background transition:all|.2s|ease';
 		const variants = {
 			default: 'fg:theme-text hover:bg:$(theme.primary)/.12 hover:fg:$(theme.primary)',
 			secondary: 'fg:theme-text-secondary hover:bg:theme-surface',
@@ -101,7 +101,7 @@
 			type: 'scene',
 			status: 'idea',
 			content: '',
-			color: '#3b82f6'
+			color: '#33507a'
 		};
 		showCreateModal = true;
 	};
@@ -246,7 +246,7 @@
 
 <div class="flex w:100% h:100% bg:theme-background fg:theme-text">
 	<div class="flex-grow:1 flex flex-direction:column min-w:0 min-h:0">
-		<header class="bg:theme-background border-bottom:2|solid|theme-text">
+		<header class="bg:theme-background border-bottom:1|solid|theme-border">
 			<div
 				class="page-header max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 justify-content:space-between align-items:center"
 			>
@@ -255,7 +255,7 @@
 					<p class="font:14 fg:theme-text-secondary mt:8">作品の構成を計画・管理します</p>
 				</div>
 				<div class="flex flex-wrap:wrap align-items:center gap:12 max-w:100%">
-					<div class="flex bg:theme-surface b:2px|solid|theme-border r:10 p:6 gap:8">
+					<div class="flex bg:theme-surface b:1px|solid|theme-border r:10 p:6 gap:8">
 						<button class={viewToggleClass('board')} onclick={() => (viewMode = 'board')}>
 							ボード
 						</button>
@@ -264,7 +264,7 @@
 						</button>
 					</div>
 					<Button
-						class="px:16 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8 font:14"
+						class="px:16 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
 						onclick={openCreateModal}
 					>
 						+ 新規プロット
@@ -436,7 +436,7 @@
 					>
 						<p class="fg:theme-text-secondary font:18">プロットがまだありません</p>
 						<Button
-							class="px:20 py:12 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:10 font:14"
+							class="px:20 py:12 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:10 font:14"
 							onclick={openCreateModal}
 						>
 							最初のプロットを作成
@@ -483,7 +483,7 @@
 				onclick={() => (showCreateModal = false)}>キャンセル</Button
 			>
 			<Button
-				class="px:20 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8 font:14"
+				class="px:20 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
 				onclick={handleCreate}
 				disabled={!formData.title.trim()}
 			>
@@ -552,7 +552,7 @@
 				onclick={() => (showEditModal = false)}>キャンセル</Button
 			>
 			<Button
-				class="px:20 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8 font:14"
+				class="px:20 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
 				onclick={handleUpdate}
 				disabled={!formData.title.trim()}
 			>

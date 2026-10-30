@@ -38,25 +38,25 @@
 
 :root {
 	/* デフォルトテーマカラー（ライト） */
-	--color-primary: #3b82f6;
-	--color-secondary: #8b5cf6;
-	--color-background: #ffffff;
-	--color-surface: #f9fafb;
-	--color-text: #1f2937;
-	--color-text-secondary: #6b7280;
-	--color-border: #e5e7eb;
-	--color-accent: #f59e0b;
-	--color-success: #10b981;
-	--color-warning: #f59e0b;
-	--color-error: #ef4444;
-	--color-info: #3b82f6;
+	--color-primary: #33507a;
+	--color-secondary: #6b5b7b;
+	--color-background: #f6f4ef;
+	--color-surface: #ece8df;
+	--color-text: #2a2925;
+	--color-text-secondary: #78736a;
+	--color-border: #dfdad0;
+	--color-accent: #b4543a;
+	--color-success: #557a4c;
+	--color-warning: #b0812c;
+	--color-error: #a83c3c;
+	--color-info: #33507a;
 
 	/* エディタカラー */
-	--editor-background: #ffffff;
-	--editor-text: #1f2937;
-	--editor-selection: #bfdbfe;
-	--editor-line-highlight: #f3f4f6;
-	--editor-cursor: #3b82f6;
+	--editor-background: #fbfaf6;
+	--editor-text: #2a2925;
+	--editor-selection: #d6dfeb;
+	--editor-line-highlight: #f1eee6;
+	--editor-cursor: #33507a;
 
 	/* フォント */
 	--font-body: 'Noto Sans JP', sans-serif;
@@ -96,4 +96,28 @@ body {
 button {
 	-webkit-tap-highlight-color: transparent;
 	touch-action: manipulation;
+}
+
+/* ===== 共通の質感 ===== */
+:root {
+	--rail-width: 68px;
+	/* 面の区切りは影ではなく細い線で見せる。影は浮いている要素(メニュー・モーダル)だけに使う */
+	--shadow-float: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px rgb(0 0 0 / 0.08);
+	--hover: color-mix(in srgb, var(--color-text) 6%, transparent);
+	--selected: color-mix(in srgb, var(--color-primary) 13%, transparent);
+}
+
+body {
+	-webkit-font-smoothing: antialiased;
+	font-feature-settings: 'palt' 1;
+}
+
+:focus-visible {
+	outline: 2px solid color-mix(in srgb, var(--color-primary) 55%, transparent);
+	outline-offset: 2px;
+}
+
+* {
+	scrollbar-width: thin;
+	scrollbar-color: color-mix(in srgb, var(--color-text) 18%, transparent) transparent;
 }

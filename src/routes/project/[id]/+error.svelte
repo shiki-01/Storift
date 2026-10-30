@@ -17,12 +17,12 @@
 <div
 	class="h:100% overflow-y:auto flex align-items:center justify-content:center bg:theme-surface p:24"
 >
-	<div class="max-w:500 w:full bg:theme-background r:16 shadow:0|4|12|rgba(0,0,0,0.1) p:32">
+	<div class="max-w:500 w:full bg:theme-background r:16 p:32">
 		<div class="text-align:center mb:24">
 			<div
-				class="inline-flex align-items:center justify-content:center w:64 h:64 r:full bg:orange-100 mb:12"
+				class="inline-flex align-items:center justify-content:center w:64 h:64 r:full bg:theme-surface b:1px|solid|theme-warning mb:12"
 			>
-				<svg class="w:32 h:32 fill:orange-600" viewBox="0 0 24 24">
+				<svg class="w:32 h:32 fill:theme-warning" viewBox="0 0 24 24">
 					<path
 						d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"
 					/>
@@ -43,14 +43,14 @@
 		<div class="flex gap:12 flex-direction:column">
 			<button
 				onclick={goToProjects}
-				class="w:full py:12 px:24 bg:theme-primary fg:white font:16 font:semibold rounded:8 cursor:pointer border:none transition:all|0.2s hover:bg:theme-primary"
+				class="w:full py:12 px:24 bg:theme-primary fg:theme-background font:16 font:semibold rounded:8 cursor:pointer border:none transition:all|0.2s hover:bg:theme-primary"
 			>
 				プロジェクト一覧に戻る
 			</button>
 
 			<button
 				onclick={reload}
-				class="w:full py:12 px:24 bg:theme-background fg:theme-primary font:16 font:semibold rounded:8 cursor:pointer border:1|solid|blue-600 transition:all|0.2s hover:bg:theme-surface"
+				class="w:full py:12 px:24 bg:theme-background fg:theme-primary font:16 font:semibold rounded:8 cursor:pointer border:1|solid|theme-primary transition:all|0.2s hover:bg:theme-surface"
 			>
 				再読み込み
 			</button>

@@ -114,7 +114,7 @@
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
 		background: var(--color-background);
-		box-shadow: 0 4px 16px rgb(0 0 0 / 0.15);
+		box-shadow: var(--shadow-float);
 		font-size: 13px;
 	}
 

@@ -385,7 +385,7 @@
 		border: 1px solid var(--color-border);
 		border-radius: 999px;
 		background: var(--color-background);
-		box-shadow: 0 4px 16px rgb(0 0 0 / 0.15);
+		box-shadow: var(--shadow-float);
 		font-size: 12px;
 		white-space: nowrap;
 	}
@@ -405,7 +405,7 @@
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
 		background: var(--color-background);
-		box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+		box-shadow: var(--shadow-float);
 		font-size: 13px;
 		color: var(--color-text);
 	}
@@ -459,6 +459,6 @@
 	button.primary {
 		border-color: var(--color-primary);
 		background: var(--color-primary);
-		color: #fff;
+		color: var(--color-background);
 	}
 </style>

@@ -119,14 +119,16 @@
 		<div class="space-y:12">
 			{#if permission === 'granted'}
 				<div
-					class="flex align-items:center gap:8 p:12 border:2px|solid|theme-success r:8 fg:theme-success"
+					class="flex align-items:center gap:8 p:12 border:1px|solid|theme-success r:8 fg:theme-success"
 					style="background-color: color-mix(in srgb, var(--color-success) 10%, transparent);"
 				>
 					<span class="font:20">✓</span>
 					<span class="font:14">通知が有効です</span>
 				</div>
 			{:else if permission === 'denied'}
-				<div class="flex align-items:center gap:8 p:12 bg:red-50 border:1|solid|red-200 r:8">
+				<div
+					class="flex align-items:center gap:8 p:12 bg:theme-surface border:1|solid|theme-error r:8"
+				>
 					<span class="font:20">✗</span>
 					<div class="flex-grow">
 						<p class="font:14 fg:theme-error">通知が無効です</p>
@@ -264,7 +266,7 @@
 		appearance: none;
 		height: 6px;
 		border-radius: 3px;
-		background: #e5e7eb;
+		background: var(--color-border);
 		outline: none;
 	}
 
@@ -274,7 +276,7 @@
 		width: 18px;
 		height: 18px;
 		border-radius: 50%;
-		background: #3b82f6;
+		background: var(--color-primary);
 		cursor: pointer;
 	}
 
@@ -282,14 +284,14 @@
 		width: 18px;
 		height: 18px;
 		border-radius: 50%;
-		background: #3b82f6;
+		background: var(--color-primary);
 		cursor: pointer;
 		border: none;
 	}
 
 	input[type='checkbox'] {
 		cursor: pointer;
-		accent-color: #3b82f6;
+		accent-color: var(--color-primary);
 	}
 
 	input[type='time'] {

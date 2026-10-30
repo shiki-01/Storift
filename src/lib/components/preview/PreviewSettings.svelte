@@ -37,7 +37,7 @@
 			showRuby: true,
 			showBouten: true,
 			showLineNumbers: false,
-			showPageNumbers: true,
+			showPageNumbers: true
 		};
 		updateSettings();
 	}
@@ -45,14 +45,14 @@
 	// 書字方向の選択肢
 	const writingModes: { value: WritingMode; label: string }[] = [
 		{ value: 'vertical', label: '縦書き' },
-		{ value: 'horizontal', label: '横書き' },
+		{ value: 'horizontal', label: '横書き' }
 	];
 
 	// 文字の向きの選択肢
 	const textOrientations: { value: TextOrientation; label: string }[] = [
 		{ value: 'mixed', label: '混合' },
 		{ value: 'upright', label: '正立' },
-		{ value: 'sideways', label: '横倒し' },
+		{ value: 'sideways', label: '横倒し' }
 	];
 
 	// フォントの選択肢
@@ -62,7 +62,7 @@
 		{ value: 'yu-gothic', label: '游ゴシック' },
 		{ value: 'hiragino-mincho', label: 'ヒラギノ明朝' },
 		{ value: 'sawarabi-mincho', label: 'さわらび明朝' },
-		{ value: 'sawarabi-gothic', label: 'さわらびゴシック' },
+		{ value: 'sawarabi-gothic', label: 'さわらびゴシック' }
 	];
 
 	// 原稿用紙の列数選択肢
@@ -86,7 +86,7 @@
 		<!-- 表示モード -->
 		<section class="settings-section">
 			<h4 class="section-title">表示モード</h4>
-			
+
 			<div class="setting-group">
 				<span class="setting-label">書字方向</span>
 				<div class="toggle-group" role="radiogroup" aria-label="書字方向">
@@ -129,7 +129,7 @@
 		<!-- フォント設定 -->
 		<section class="settings-section">
 			<h4 class="section-title">フォント設定</h4>
-			
+
 			<div class="setting-group">
 				<label class="setting-label" for="font-select">フォント</label>
 				<select
@@ -196,7 +196,7 @@
 		<!-- レイアウト -->
 		<section class="settings-section">
 			<h4 class="section-title">レイアウト</h4>
-			
+
 			<div class="setting-group">
 				<label class="setting-label" for="line-length-range">
 					1行の文字数: {localSettings.lineLength}文字
@@ -233,7 +233,7 @@
 		<!-- 原稿用紙モード -->
 		<section class="settings-section">
 			<h4 class="section-title">原稿用紙モード</h4>
-			
+
 			<div class="setting-group">
 				<label class="setting-checkbox">
 					<input
@@ -287,14 +287,10 @@
 		<!-- 表示オプション -->
 		<section class="settings-section">
 			<h4 class="section-title">表示オプション</h4>
-			
+
 			<div class="setting-group">
 				<label class="setting-checkbox">
-					<input
-						type="checkbox"
-						bind:checked={localSettings.showRuby}
-						onchange={updateSettings}
-					/>
+					<input type="checkbox" bind:checked={localSettings.showRuby} onchange={updateSettings} />
 					<span>ルビを表示</span>
 				</label>
 			</div>
@@ -335,9 +331,7 @@
 	</div>
 
 	<div class="settings-footer">
-		<Button variant="secondary" onclick={resetSettings}>
-			初期設定に戻す
-		</Button>
+		<Button variant="secondary" onclick={resetSettings}>初期設定に戻す</Button>
 	</div>
 </div>
 
@@ -432,8 +426,8 @@
 	}
 
 	.toggle-button.active {
-		background: var(--color-primary, #4a90d9);
-		color: white;
+		background: var(--color-primary);
+		color: var(--color-background);
 	}
 
 	.setting-select {
@@ -448,7 +442,7 @@
 
 	.setting-range {
 		width: 100%;
-		accent-color: var(--color-primary, #4a90d9);
+		accent-color: var(--color-primary);
 	}
 
 	.setting-checkbox {
@@ -463,7 +457,7 @@
 	.setting-checkbox input {
 		width: 1rem;
 		height: 1rem;
-		accent-color: var(--color-primary, #4a90d9);
+		accent-color: var(--color-primary);
 	}
 
 	.settings-footer {

@@ -886,7 +886,7 @@
 		padding: 8px 14px;
 		border-radius: 8px;
 		background: var(--color-primary);
-		color: #fff;
+		color: var(--color-background);
 		font-size: 13px;
 	}
 

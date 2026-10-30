@@ -290,7 +290,7 @@
 	.actions .primary {
 		border: none;
 		background: var(--color-primary);
-		color: #fff;
+		color: var(--color-background);
 		font-weight: 600;
 	}
 

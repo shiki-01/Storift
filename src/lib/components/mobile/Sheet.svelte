@@ -164,7 +164,7 @@
 		color: var(--color-text);
 		border-radius: 16px 16px 0 0;
 		border-top: 1px solid var(--color-border);
-		box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.18);
+		box-shadow: var(--shadow-float);
 		padding-bottom: var(--safe-bottom);
 		animation: sheet-up 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
 		transition:

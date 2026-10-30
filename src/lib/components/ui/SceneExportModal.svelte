@@ -158,8 +158,8 @@
 			<button
 				class="flex:1 flex align-items:center justify-content:center gap:8 p:12 r:8 cursor:pointer transition:all|0.2s border:1|solid|theme-border {exportMode ===
 				'download'
-					? 'bg:$(theme.primary) fg:white border-color:theme-primary'
-					: 'bg:theme-background fg:theme-text hover:bg:theme-background-secondary'}"
+					? 'bg:$(theme.primary) fg:theme-background border-color:theme-primary'
+					: 'bg:theme-background fg:theme-text hover:bg:theme-surface'}"
 				onclick={() => (exportMode = 'download')}
 			>
 				<Icon name="download" class="w:20px" />
@@ -168,8 +168,8 @@
 			<button
 				class="flex:1 flex align-items:center justify-content:center gap:8 p:12 r:8 cursor:pointer transition:all|0.2s border:1|solid|theme-border {exportMode ===
 				'clipboard'
-					? 'bg:$(theme.primary) fg:white border-color:theme-primary'
-					: 'bg:theme-background fg:theme-text hover:bg:theme-background-secondary'}"
+					? 'bg:$(theme.primary) fg:theme-background border-color:theme-primary'
+					: 'bg:theme-background fg:theme-text hover:bg:theme-surface'}"
 				onclick={() => (exportMode = 'clipboard')}
 			>
 				<Icon name="copy" class="w:20px" />
@@ -187,12 +187,12 @@
 					class="flex align-items:center gap:12 p:12 r:8 cursor:pointer transition:all|0.2s border:1|solid|theme-border text-align:left {selectedPatternId ===
 					pattern.id
 						? 'bg:$(theme.primary)/.1 border-color:theme-primary'
-						: 'bg:theme-background hover:bg:theme-background-secondary'}"
+						: 'bg:theme-background hover:bg:theme-surface'}"
 					onclick={() => (selectedPatternId = pattern.id)}
 				>
 					<div
-						class="w:20 h:20 r:full border:2|solid|{selectedPatternId === pattern.id
-							? '$(theme.primary)'
+						class="w:20 h:20 r:full border:1|solid|{selectedPatternId === pattern.id
+							? 'theme-primary'
 							: 'theme-border'} flex align-items:center justify-content:center"
 					>
 						{#if selectedPatternId === pattern.id}
@@ -214,7 +214,7 @@
 	<div>
 		<span class="display:block font-weight:500 m:0|0|12|0 fg:theme-text">変換プレビュー</span>
 		<div
-			class="b:1|solid|theme-border r:8 p:16 bg:theme-background-secondary max-h:200 overflow-y:auto"
+			class="b:1|solid|theme-border r:8 p:16 bg:theme-surface max-h:200 overflow-y:auto"
 		>
 			<pre
 				class="font:13 fg:theme-text m:0 white-space:pre-wrap word-break:break-all">{convertedContent.slice(

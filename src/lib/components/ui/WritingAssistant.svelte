@@ -91,11 +91,11 @@
 
 <div class="flex flex-direction:column gap:24">
 	<!-- タブ -->
-	<div class="flex gap:4 bg:theme-background-secondary r:8 p:4">
+	<div class="flex gap:4 bg:theme-surface r:8 p:4">
 		<button
 			class="flex:1 flex align-items:center justify-content:center gap:8 p:12 r:6 font:14 font-weight:500 cursor:pointer transition:all|0.2s border:none {activeTab ===
 			'formatting'
-				? 'bg:$(theme.primary) fg:white'
+				? 'bg:$(theme.primary) fg:theme-background'
 				: 'bg:transparent fg:theme-text hover:bg:theme-background'}"
 			onclick={() => (activeTab = 'formatting')}
 		>
@@ -105,7 +105,7 @@
 		<button
 			class="flex:1 flex align-items:center justify-content:center gap:8 p:12 r:6 font:14 font-weight:500 cursor:pointer transition:all|0.2s border:none {activeTab ===
 			'ruby'
-				? 'bg:$(theme.primary) fg:white'
+				? 'bg:$(theme.primary) fg:theme-background'
 				: 'bg:transparent fg:theme-text hover:bg:theme-background'}"
 			onclick={() => (activeTab = 'ruby')}
 		>
@@ -140,7 +140,7 @@
 			</div>
 
 			<!-- 統計情報 -->
-			<div class="b:1|solid|theme-border r:8 p:16 bg:theme-background-secondary">
+			<div class="b:1|solid|theme-border r:8 p:16 bg:theme-surface">
 				<div class="font:12 font-weight:500 mb:12 fg:theme-text-secondary">現在の状態</div>
 				<div class="flex gap:24">
 					<div>
@@ -161,7 +161,7 @@
 			<div>
 				<span class="display:block font-weight:500 m:0|0|12|0 fg:theme-text">対応記法</span>
 				<div
-					class="b:1|solid|theme-border r:8 p:16 bg:theme-background-secondary font:13 fg:theme-text-secondary"
+					class="b:1|solid|theme-border r:8 p:16 bg:theme-surface font:13 fg:theme-text-secondary"
 				>
 					<p class="m:0|0|8|0">
 						<code class="bg:theme-background px:6 py:2 r:4">｜親文字《ルビ》</code> — 任意の文字列にルビ
@@ -227,7 +227,7 @@
 			</div>
 
 			<!-- 使い方のヒント -->
-			<div class="b:1|solid|theme-border r:8 p:16 bg:theme-background-secondary">
+			<div class="b:1|solid|theme-border r:8 p:16 bg:theme-surface">
 				<div class="font:12 font-weight:500 mb:8 fg:theme-text-secondary">使い方のヒント</div>
 				<p class="font:13 fg:theme-text-secondary m:0">
 					例：<code class="bg:theme-background px:6 py:2 r:4">｜紅蓮の炎《ヘルフレイム》</code
@@ -254,7 +254,7 @@
 	.ruby-preview {
 		min-height: 300px;
 		font-size: 18px;
-		background: var(--color-background-secondary, #f9fafb);
+		background: var(--color-surface);
 		border-radius: 8px;
 	}
 

@@ -19,6 +19,12 @@
 
 	let input = $state('');
 	let showHistory = $state(false);
+	/** 書き換え中の質問の ID と文面 */
+	let editingId = $state<string | null>(null);
+	let editingText = $state('');
+	/** 「コピーしました」を一瞬出すメッセージの ID */
+	let copiedId = $state<string | null>(null);
+	let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 	let listEl = $state<HTMLDivElement>();
 	let inputEl = $state<HTMLTextAreaElement>();
 
@@ -34,6 +40,10 @@
 		sparkles:
 			'<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
 		pen: '<path d="M4 20h4L18.5 9.5a2.8 2.8 0 0 0-4-4L4 16v4"/>',
+		copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>',
+		check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+		edit: '<path d="M4 20h4L18.5 9.5a2.8 2.8 0 0 0-4-4L4 16v4"/><path d="M13.5 6.5l4 4"/>',
+		retry: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
 		// 紙飛行機
 		send: '<path d="M21 3L10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>'
 	};
@@ -41,6 +51,48 @@
 	let sessionTitle = $derived(
 		claudeStore.sessions.find((s) => s.id === claudeStore.currentSessionId)?.title ?? '新しい会話'
 	);
+
+	async function copyText(id: string, text: string) {
+		try {
+			await navigator.clipboard.writeText(text);
+		} catch {
+			return;
+		}
+		copiedId = id;
+		clearTimeout(copiedTimer);
+		copiedTimer = setTimeout(() => (copiedId = null), 1400);
+	}
+
+	/** 回答の本文(ツールの呼び出しは除く) */
+	function answerText(message: ChatMessage): string {
+		return (message.parts ?? [])
+			.map((p) => (p.kind === 'text' ? p.text : ''))
+			.filter(Boolean)
+			.join('\n\n')
+			.trim();
+	}
+
+	function startEdit(message: ChatMessage) {
+		editingId = message.id;
+		editingText = message.text ?? '';
+	}
+
+	function submitEdit(message: ChatMessage) {
+		const text = editingText;
+		editingId = null;
+		stickToBottom = true;
+		void claudeStore.retry(message, text);
+	}
+
+	function onEditKeydown(e: KeyboardEvent, message: ChatMessage) {
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			editingId = null;
+		} else if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
+			e.preventDefault();
+			submitEdit(message);
+		}
+	}
 
 	function startNewChat() {
 		claudeStore.newChat();
@@ -320,11 +372,63 @@
 			{/if}
 			{#each claudeStore.messages as message (message.id)}
 				{#if message.role === 'user'}
-					<div class="msg user" in:fly={{ y: 6, duration: 180 }}>
-						{#if message.quote}
-							<blockquote class="quote">{message.quote}</blockquote>
+					{@const last = claudeStore.isLastQuestion(message)}
+					<div class="user-turn" in:fly={{ y: 6, duration: 180 }}>
+						{#if editingId === message.id}
+							<div class="msg user editing">
+								<!-- svelte-ignore a11y_autofocus -->
+								<textarea
+									class="edit-input"
+									bind:value={editingText}
+									onkeydown={(e) => onEditKeydown(e, message)}
+									rows="3"
+									autofocus
+								></textarea>
+								<div class="edit-actions">
+									<button class="small" onclick={() => (editingId = null)}>キャンセル</button>
+									<button
+										class="small primary"
+										onclick={() => submitEdit(message)}
+										disabled={!editingText.trim() || claudeStore.isRunning}>送信</button
+									>
+								</div>
+							</div>
+						{:else}
+							<div class="msg user">
+								{#if message.quote}
+									<blockquote class="quote">{message.quote}</blockquote>
+								{/if}
+								<div class="text">{message.text}</div>
+							</div>
+							<div class="msg-actions" class:pinned={last}>
+								<button
+									class="icon"
+									onclick={() => copyText(message.id, message.text ?? '')}
+									title="質問をコピー"
+									aria-label="質問をコピー"
+									>{@render icon(copiedId === message.id ? ICONS.check : ICONS.copy, 15)}</button
+								>
+								{#if last}
+									<button
+										class="icon"
+										onclick={() => startEdit(message)}
+										disabled={claudeStore.isRunning}
+										title="質問を編集して送り直す"
+										aria-label="質問を編集して送り直す">{@render icon(ICONS.edit, 15)}</button
+									>
+									<button
+										class="icon"
+										onclick={() => {
+											stickToBottom = true;
+											void claudeStore.retry(message);
+										}}
+										disabled={claudeStore.isRunning}
+										title="回答を作り直す"
+										aria-label="回答を作り直す">{@render icon(ICONS.retry, 15)}</button
+									>
+								{/if}
+							</div>
 						{/if}
-						<div class="text">{message.text}</div>
 					</div>
 				{:else if message.role === 'error'}
 					<div class="msg error" class:auth={message.auth}>
@@ -386,8 +490,24 @@
 						{/if}
 						{#if message.running}
 							<div class="typing" aria-label="回答中"><span></span><span></span><span></span></div>
-						{:else if message.costUsd != null}
-							<div class="meta">{formatCost(message.costUsd)}</div>
+						{:else}
+							<div class="answer-foot">
+								<button
+									class="icon"
+									onclick={() => copyText(message.id, answerText(message))}
+									title="回答をコピー"
+									aria-label="回答をコピー"
+									>{@render icon(copiedId === message.id ? ICONS.check : ICONS.copy, 15)}</button
+								>
+								{#if copiedId === message.id}<span
+										class="copied"
+										transition:fade={{ duration: 120 }}>コピーしました</span
+									>{/if}
+								<span class="spacer"></span>
+								{#if message.costUsd != null}
+									<span class="meta">{formatCost(message.costUsd)}</span>
+								{/if}
+							</div>
 						{/if}
 					</div>
 				{/if}
@@ -871,7 +991,78 @@
 	.meta {
 		font-size: 11px;
 		color: var(--color-text-secondary);
-		text-align: right;
+	}
+
+	/* 自分の質問と、その下の操作 */
+	.user-turn {
+		align-self: flex-end;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 2px;
+		max-width: 90%;
+	}
+
+	.user-turn .msg.user {
+		max-width: 100%;
+	}
+
+	.msg-actions {
+		display: flex;
+		gap: 2px;
+		opacity: 0;
+		transition: opacity 0.15s;
+	}
+
+	.msg-actions .icon,
+	.answer-foot .icon {
+		width: 26px;
+		height: 26px;
+	}
+
+	.user-turn:hover .msg-actions,
+	.msg-actions.pinned,
+	.msg-actions:focus-within {
+		opacity: 1;
+	}
+
+	.msg.user.editing {
+		width: 100%;
+		min-width: 260px;
+		padding: 8px;
+	}
+
+	.edit-input {
+		width: 100%;
+		padding: 6px 8px;
+		border: none;
+		background: transparent;
+		color: var(--color-text);
+		font: inherit;
+		line-height: 1.6;
+		resize: vertical;
+		outline: none;
+		box-shadow: none;
+	}
+
+	.edit-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 6px;
+		padding-top: 4px;
+	}
+
+	/* 回答の最後の行: コピーと費用 */
+	.answer-foot {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		margin-top: 2px;
+	}
+
+	.copied {
+		font-size: 11px;
+		color: var(--color-text-secondary);
 	}
 
 	.typing {

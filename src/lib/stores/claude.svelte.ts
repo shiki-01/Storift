@@ -4,6 +4,8 @@
  * - 会話は作品ごと(作品を開いていないときは「全体」)に分け、Claude Code のセッション(--resume)で続ける。
  *   作品をまたいで履歴が混ざらないので、1 回あたりに読み直す会話が短く済む。
  * - 作品ごとに複数の会話(セッション)を履歴として残し、パネルを開くと前回の会話を開く。
+ * - 質問は送った時点で保存する。回答中に画面を再読み込みしても Claude Code は止まらず、
+ *   戻ってきたらネイティブ側に溜まった出力を受け取り直して続きを表示する。
  * - 本文はプロンプトに毎回添付せず、ワークスペースのファイル(未保存の本文も反映)を Claude が必要なときに読む。
  * - 本文の編集は設定(editMode)に応じて、提案のみ / 差分を確認して反映 / 自動で反映 を切り替える。
  */
@@ -13,13 +15,17 @@ import { editorStore } from '$lib/stores/editor.svelte';
 import { scenesDB } from '$lib/db';
 import { queueChange } from '$lib/services/sync.service';
 import {
+	attachClaude,
 	cancelClaude,
 	getClaudeStatus,
 	openClaudeLogin,
+	releaseClaude,
 	sendToClaude,
 	syncWorkspace,
-	type ClaudeStatus
+	type ClaudeStatus,
+	type ExitEvent
 } from '$lib/desktop/claude';
+import { isDesktop } from '$lib/desktop/platform';
 import {
 	applyStreamLine,
 	createTurnState,
@@ -68,6 +74,8 @@ export interface ChatMessage {
 	text?: string;
 	/** user: 引用した文章 */
 	quote?: string;
+	/** user: 引用の元(送り直すときに同じ引用を付ける) */
+	quoteRef?: Quote;
 	/** assistant: 本文とツール呼び出し */
 	parts?: TurnPart[];
 	/** assistant: 回答中の編集案(出てきた順)。回答が終わってから入る */
@@ -292,7 +300,7 @@ function persistChats() {
 			.slice(0, MAX_SAVED_SESSIONS)
 			.map((s) => ({
 				...s,
-				messages: s.messages.slice(-MAX_SAVED_MESSAGES).map((m) => ({ ...m, running: false }))
+				messages: s.messages.slice(-MAX_SAVED_MESSAGES).map((m) => ({ ...m }))
 			}));
 		if (!sessions.length) continue;
 		out[key] = { currentId: scope.currentId, sessions };
@@ -515,7 +523,8 @@ export const claudeStore = {
 		if (runningId) await cancelClaude(runningId);
 	},
 
-	async send(text: string) {
+	/** 質問を送る。options.quote を渡すとその引用を付ける(省略時は今の引用) */
+	async send(text: string, options: { quote?: Quote | null } = {}) {
 		const body = text.trim();
 		if (!body || runningId) return;
 		const requestId = newId();
@@ -523,11 +532,17 @@ export const claudeStore = {
 
 		// 実行中に作品を移っても、送った会話に書き込む
 		const conv = conversation();
-		const attached = quote;
-		quote = null;
+		const attached = options.quote !== undefined ? options.quote : quote;
+		if (options.quote === undefined) quote = null;
 		const mode = settings.editMode;
 
-		conv.messages.push({ id: newId(), role: 'user', text: body, quote: attached?.text });
+		conv.messages.push({
+			id: newId(),
+			role: 'user',
+			text: body,
+			quote: attached?.text,
+			quoteRef: attached ?? undefined
+		});
 		conv.updatedAt = Date.now();
 		if (conv.title === '新しい会話') conv.title = titleOf(conv.messages);
 		conv.messages.push({
@@ -538,22 +553,17 @@ export const claudeStore = {
 			editMode: mode
 		});
 		const assistant = conv.messages[conv.messages.length - 1];
-		const turn = createTurnState();
-		let frame = 0;
-		const render = () => {
-			frame = 0;
-			assistant.parts = turnParts(turn);
-		};
+		// 送った時点で保存し、再読み込みしても質問と回答中の状態が残るようにする
+		persistChats();
 
-		try {
+		await follow(conv, assistant, async (onLine) => {
 			// エディタの未保存の本文もファイルに反映してから送る
 			const scene = editorStore.currentScene;
 			const overrides =
 				scene && isEditorOpenOn(scene.id) ? { [scene.id]: editorStore.content } : {};
 			const exported = await syncWorkspace(overrides);
 			sceneFiles = exported.sceneFiles;
-
-			const exit = await sendToClaude(
+			return sendToClaude(
 				{
 					requestId,
 					prompt: buildPrompt(body, exported, attached),
@@ -563,44 +573,27 @@ export const claudeStore = {
 					claudePath: settings.claudePath || undefined,
 					appendSystemPrompt: mode === 'suggest' ? undefined : EDIT_INSTRUCTIONS
 				},
-				(line) => {
-					applyStreamLine(turn, line);
-					if (!frame) frame = requestAnimationFrame(render);
-				}
+				onLine
 			);
-			if (frame) cancelAnimationFrame(frame);
-			render();
+		});
+	},
 
-			if (turn.sessionId) conv.sessionId = turn.sessionId;
-			assistant.costUsd = turn.costUsd;
-			if (exit.cancelled) {
-				conv.messages.push({ id: newId(), role: 'error', text: '中断しました。' });
-			} else if (!turn.done || turn.isError || (exit.code !== 0 && exit.code !== null)) {
-				const detail = exit.stderr.trim() || turn.resultText || `終了コード ${exit.code}`;
-				// 古いセッションが見つからないときは、次から新しい会話で始める
-				if (/No conversation found/i.test(detail)) conv.sessionId = undefined;
-				const auth = isAuthError(detail);
-				if (auth && status) status = { ...status, loggedIn: false };
-				conv.messages.push({ id: newId(), role: 'error', text: detail, auth });
-			}
+	/** 最後の質問か(再生成・編集で送り直せるのは最後の質問だけ) */
+	isLastQuestion(message: ChatMessage): boolean {
+		const messages = currentSession()?.messages ?? [];
+		return [...messages].reverse().find((m) => m.role === 'user')?.id === message.id;
+	},
 
-			if (mode !== 'suggest' && !exit.cancelled) {
-				const text = (assistant.parts ?? [])
-					.map((p) => (p.kind === 'text' ? p.text : ''))
-					.join('\n');
-				assistant.edits = parseEdits(text).map((e) => ({ ...e, status: 'pending' }));
-				if (mode === 'auto') {
-					for (const edit of assistant.edits) await applyEdit(edit);
-				}
-			}
-		} catch (error) {
-			conv.messages.push({ id: newId(), role: 'error', text: String(error) });
-		} finally {
-			assistant.running = false;
-			if (!assistant.parts?.length) conv.messages.splice(conv.messages.indexOf(assistant), 1);
-			runningId = null;
-			persistChats();
-		}
+	/**
+	 * 最後の質問を送り直す(text を渡すと書き換えて送る)。それ以降の回答は一覧から消える。
+	 * Claude Code のセッションには前の回答も残るので、会話の流れとしては「もう一度聞いた」形になる
+	 */
+	async retry(message: ChatMessage, text = message.text ?? '') {
+		const conv = currentSession();
+		if (!conv || runningId || !this.isLastQuestion(message) || !text.trim()) return;
+		conv.messages.splice(conv.messages.findIndex((m) => m.id === message.id));
+		if (!conv.messages.some((m) => m.role === 'user')) conv.title = '新しい会話';
+		await this.send(text, { quote: message.quoteRef ?? null });
 	},
 
 	/** 編集案を反映する(確認モードの「反映」) */
@@ -710,6 +703,94 @@ export const claudeStore = {
 		return ok;
 	}
 };
+
+/**
+ * 実行の出力を受け取って回答に反映し、終わったら後始末する(送信と、再読み込み後の再開で共通)。
+ * run が null を返したら、ネイティブ側に記録が無い(アプリを終了した等)ので途中で止まった扱いにする
+ */
+async function follow(
+	conv: ChatSession,
+	assistant: ChatMessage,
+	run: (onLine: (line: string) => void) => Promise<ExitEvent | null>
+) {
+	const requestId = assistant.id;
+	const mode = assistant.editMode ?? 'suggest';
+	const turn = createTurnState();
+	let frame = 0;
+	const render = () => {
+		frame = 0;
+		assistant.parts = turnParts(turn);
+	};
+	let exit: ExitEvent | null = null;
+
+	try {
+		exit = await run((line) => {
+			applyStreamLine(turn, line);
+			if (!frame) frame = requestAnimationFrame(render);
+		});
+		if (frame) cancelAnimationFrame(frame);
+		render();
+
+		if (!exit) {
+			conv.messages.push({
+				id: newId(),
+				role: 'error',
+				text: 'アプリを終了したため、この回答は途中で止まりました。もう一度送ってください。'
+			});
+			return;
+		}
+
+		if (turn.sessionId) conv.sessionId = turn.sessionId;
+		assistant.costUsd = turn.costUsd;
+		if (exit.cancelled) {
+			conv.messages.push({ id: newId(), role: 'error', text: '中断しました。' });
+		} else if (!turn.done || turn.isError || (exit.code !== 0 && exit.code !== null)) {
+			const detail = exit.stderr.trim() || turn.resultText || `終了コード ${exit.code}`;
+			// 古いセッションが見つからないときは、次から新しい会話で始める
+			if (/No conversation found/i.test(detail)) conv.sessionId = undefined;
+			const auth = isAuthError(detail);
+			if (auth && status) status = { ...status, loggedIn: false };
+			conv.messages.push({ id: newId(), role: 'error', text: detail, auth });
+		}
+
+		if (mode !== 'suggest' && !exit.cancelled) {
+			const text = (assistant.parts ?? []).map((p) => (p.kind === 'text' ? p.text : '')).join('\n');
+			assistant.edits = parseEdits(text).map((e) => ({ ...e, status: 'pending' }));
+			if (mode === 'auto') {
+				for (const edit of assistant.edits) await applyEdit(edit);
+			}
+		}
+	} catch (error) {
+		conv.messages.push({ id: newId(), role: 'error', text: String(error) });
+	} finally {
+		assistant.running = false;
+		if (!assistant.parts?.length) conv.messages.splice(conv.messages.indexOf(assistant), 1);
+		conv.updatedAt = Date.now();
+		if (runningId === requestId) runningId = null;
+		persistChats();
+		if (exit) void releaseClaude(requestId).catch(() => {});
+	}
+}
+
+/** 再読み込みの前に回答中だったものを、ネイティブ側に溜まった出力から受け取り直して続ける */
+function resumeRuns() {
+	for (const scope of Object.values(scopes)) {
+		for (const session of scope.sessions) {
+			for (const message of session.messages) {
+				if (message.role !== 'assistant' || !message.running) continue;
+				// 同時に走るのは 1 つだけのはずなので、2 つ目以降は止まった扱いにする
+				if (runningId) {
+					message.running = false;
+					continue;
+				}
+				runningId = message.id;
+				void follow(session, message, (onLine) => attachClaude(message.id, onLine));
+			}
+		}
+	}
+}
+
+if (typeof window !== 'undefined' && isDesktop()) queueMicrotask(resumeRuns);
 
 async function revertEdit(edit: EditState) {
 	const sceneId = edit.sceneId ?? (await findScene(edit.file))?.id;

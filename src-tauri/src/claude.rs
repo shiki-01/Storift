@@ -4,12 +4,16 @@
 //! 1 行ずつフロントエンドへイベントで流す。会話の継続は Claude Code の
 //! セッション ID(`--resume`)で行う。作業ディレクトリは原稿を書き出した
 //! ワークスペースで、使えるツールは読み取り系に限る(原稿の正本はアプリ側)。
+//!
+//! 出力は実行ごとにネイティブ側でも溜めておく。画面を再読み込みしてもプロセスは止めず、
+//! 戻ってきたフロントエンドが `claude_attach` でそこまでの出力を受け取り、続きを購読できる。
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
@@ -23,9 +27,34 @@ const DENIED_TOOLS: &[&str] = &["Bash", "Edit", "MultiEdit", "Write", "NotebookE
 /// エラー表示用に残す標準エラー出力の上限
 const STDERR_LIMIT: usize = 16 * 1024;
 
+/// 終わった実行の出力を残しておく時間(この間に再読み込みから戻れば結果を受け取れる)
+const FINISHED_RETENTION: Duration = Duration::from_secs(30 * 60);
+
 #[derive(Default)]
 pub struct ClaudeState {
     running: Mutex<HashMap<String, oneshot::Sender<()>>>,
+    /// 実行ごとの出力(再読み込み後に受け取り直すため)
+    runs: Mutex<HashMap<String, Arc<Mutex<RunLog>>>>,
+}
+
+#[derive(Default)]
+struct RunLog {
+    lines: Vec<String>,
+    exit: Option<ExitEvent>,
+    finished_at: Option<Instant>,
+}
+
+impl ClaudeState {
+    /// 終わってから時間が経った実行の記録を捨てる
+    fn prune(&self) {
+        if let Ok(mut runs) = self.runs.lock() {
+            runs.retain(|_, log| {
+                log.lock()
+                    .map(|l| l.finished_at.is_none_or(|t| t.elapsed() < FINISHED_RETENTION))
+                    .unwrap_or(false)
+            });
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -46,7 +75,17 @@ pub struct SendRequest {
 #[serde(rename_all = "camelCase")]
 struct LineEvent<'a> {
     request_id: &'a str,
+    /// その実行の何行目か(0 から)。受け取り直した分と重ならないようにする
+    index: usize,
     line: &'a str,
+}
+
+/// `claude_attach` の結果: それまでの出力と、終わっていれば終了の情報
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachResult {
+    lines: Vec<String>,
+    exit: Option<ExitEvent>,
 }
 
 #[derive(Serialize, Clone)]
@@ -345,6 +384,13 @@ pub async fn claude_send(
         .lock()
         .map_err(|e| e.to_string())?
         .insert(request_id.clone(), cancel_tx);
+    state.prune();
+    let log = Arc::new(Mutex::new(RunLog::default()));
+    state
+        .runs
+        .lock()
+        .map_err(|e| e.to_string())?
+        .insert(request_id.clone(), log.clone());
 
     let stderr_task = tokio::spawn(async move {
         let mut buf = Vec::new();
@@ -359,15 +405,24 @@ pub async fn claude_send(
 
     let app_for_lines = app.clone();
     let id_for_lines = request_id.clone();
+    let log_for_lines = log.clone();
     let stdout_task = tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
         while let Ok(Some(line)) = lines.next_line().await {
             if line.trim().is_empty() {
                 continue;
             }
+            // 溜めてから送る。受け取り直しと購読が重なっても index で重複を除ける
+            let index = match log_for_lines.lock() {
+                Ok(mut l) => {
+                    l.lines.push(line.clone());
+                    l.lines.len() - 1
+                }
+                Err(_) => continue,
+            };
             let _ = app_for_lines.emit(
                 "claude://line",
-                LineEvent { request_id: &id_for_lines, line: &line },
+                LineEvent { request_id: &id_for_lines, index, line: &line },
             );
         }
     });
@@ -389,10 +444,12 @@ pub async fn claude_send(
                 running.remove(&request_id);
             }
         }
-        let _ = app.emit(
-            "claude://exit",
-            ExitEvent { request_id, code: status.and_then(|s| s.code()), cancelled, stderr },
-        );
+        let exit = ExitEvent { request_id, code: status.and_then(|s| s.code()), cancelled, stderr };
+        if let Ok(mut l) = log.lock() {
+            l.exit = Some(exit.clone());
+            l.finished_at = Some(Instant::now());
+        }
+        let _ = app.emit("claude://exit", exit);
     });
 
     Ok(())
@@ -417,6 +474,23 @@ pub fn claude_cancel(state: State<'_, ClaudeState>, request_id: String) -> Resul
         let _ = tx.send(());
     }
     Ok(())
+}
+
+/// 再読み込みなどで画面が入れ替わった後に、実行中(または直前に終わった)の出力を受け取り直す。
+/// 記録が無ければ(アプリの再起動など) None
+#[tauri::command]
+pub fn claude_attach(state: State<'_, ClaudeState>, request_id: String) -> Option<AttachResult> {
+    let log = state.runs.lock().ok()?.get(&request_id)?.clone();
+    let log = log.lock().ok()?;
+    Some(AttachResult { lines: log.lines.clone(), exit: log.exit.clone() })
+}
+
+/// 結果を受け取り終えた実行の記録を捨てる
+#[tauri::command]
+pub fn claude_release(state: State<'_, ClaudeState>, request_id: String) {
+    if let Ok(mut runs) = state.runs.lock() {
+        runs.remove(&request_id);
+    }
 }
 
 #[cfg(test)]

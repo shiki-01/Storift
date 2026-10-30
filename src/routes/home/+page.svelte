@@ -322,10 +322,11 @@
 		</div>
 	{:else}
 		<div class="project-grid">
-			{#each projectsStore.filteredProjects as project (project.id)}
+			{#each projectsStore.filteredProjects as project, i (project.id)}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
 					class="project-item"
+					style="--i: {Math.min(i, 12)}"
 					use:longpress={{ onLongPress: (e) => handleProjectContextMenu(e, project) }}
 					oncontextmenu={(e) => handleProjectContextMenu(e, project)}
 				>
@@ -569,6 +570,8 @@
 
 	.project-item {
 		position: relative;
+		animation: card-in 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+		animation-delay: calc(var(--i, 0) * 30ms);
 		min-width: 0;
 		-webkit-touch-callout: none;
 	}
@@ -696,6 +699,19 @@
 		.project-item:hover .project-more,
 		.project-more:focus-visible {
 			opacity: 1;
+		}
+	}
+
+	@keyframes card-in {
+		from {
+			opacity: 0;
+			transform: translateY(8px);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.project-item {
+			animation: none;
 		}
 	}
 

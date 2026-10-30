@@ -50,8 +50,36 @@
 	} from '$lib/types';
 	import { defaultPreviewSettings } from '$lib/types';
 	import Icon from '$lib/components/ui/Icon.svelte';
+	import ClaudePanel from '$lib/components/desktop/ClaudePanel.svelte';
+	import { claudeStore } from '$lib/stores/claude.svelte';
+	import { isDesktop } from '$lib/desktop/platform';
+	import { slide } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
 
 	let isChapterModalOpen = $state(false);
+
+	// デスクトップ版(Tauri)だけ、本文の横に Claude Code のパネルを出せる
+	const desktop = isDesktop();
+	// シーンを切り替えた時だけ、本文を軽くフェードインさせる
+	let lastAnimatedSceneId: string | null = null;
+	$effect(() => {
+		const id = editorStore.currentScene?.id ?? null;
+		if (!id || id === lastAnimatedSceneId) return;
+		const first = lastAnimatedSceneId === null;
+		lastAnimatedSceneId = id;
+		if (first || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		editorDiv?.animate(
+			[
+				{ opacity: 0, transform: 'translateY(4px)' },
+				{ opacity: 1, transform: 'none' }
+			],
+			{ duration: 220, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)' }
+		);
+	});
+
+	let showClaude = $derived(
+		desktop && claudeStore.open && !viewport.isMobile && !editorStore.focusMode
+	);
 	let isSceneModalOpen = $state(false);
 	let isRenameModalOpen = $state(false);
 	let newChapterTitle = $state('');
@@ -1253,33 +1281,35 @@
 					</div>
 
 					{#if !collapsed}
-						{#each visibleScenes as scene (scene.id)}
-							<!-- svelte-ignore a11y_no_static_element_interactions -->
-							<div
-								class="scene-row"
-								class:active={editorStore.currentScene?.id === scene.id}
-								oncontextmenu={(e) => handleSceneContextMenu(e, scene)}
-								use:longpress={{ onLongPress: (e) => handleSceneContextMenu(e, scene) }}
-							>
-								<button
-									class="scene-main"
-									aria-current={editorStore.currentScene?.id === scene.id ? 'true' : undefined}
-									onclick={() => handleSceneSelect(scene)}
+						<div class="scene-group" transition:slide={{ duration: 180, easing: cubicOut }}>
+							{#each visibleScenes as scene (scene.id)}
+								<!-- svelte-ignore a11y_no_static_element_interactions -->
+								<div
+									class="scene-row"
+									class:active={editorStore.currentScene?.id === scene.id}
+									oncontextmenu={(e) => handleSceneContextMenu(e, scene)}
+									use:longpress={{ onLongPress: (e) => handleSceneContextMenu(e, scene) }}
 								>
-									<span class="scene-title">{scene.title}</span>
-									<span class="scene-count">{scene.characterCount.toLocaleString()}文字</span>
+									<button
+										class="scene-main"
+										aria-current={editorStore.currentScene?.id === scene.id ? 'true' : undefined}
+										onclick={() => handleSceneSelect(scene)}
+									>
+										<span class="scene-title">{scene.title}</span>
+										<span class="scene-count">{scene.characterCount.toLocaleString()}文字</span>
+									</button>
+									<button
+										class="more"
+										aria-label="シーンのメニュー"
+										onclick={(e) => openItemMenu(e, 'scene', scene)}>⋯</button
+									>
+								</div>
+							{:else}
+								<button class="scene-empty" onclick={() => openSceneModal(chapter.id)}>
+									シーンがありません。<span class="link">作成する</span>
 								</button>
-								<button
-									class="more"
-									aria-label="シーンのメニュー"
-									onclick={(e) => openItemMenu(e, 'scene', scene)}>⋯</button
-								>
-							</div>
-						{:else}
-							<button class="scene-empty" onclick={() => openSceneModal(chapter.id)}>
-								シーンがありません。<span class="link">作成する</span>
-							</button>
-						{/each}
+							{/each}
+						</div>
 					{/if}
 				</section>
 			{/if}
@@ -1563,6 +1593,20 @@
 							>
 								<Icon name="wallpaper" class="w:20px" />
 							</button>
+							{#if desktop}
+								<div class="tool-sep"></div>
+								<button
+									class="tool tool--claude"
+									class:on={claudeStore.open}
+									aria-pressed={claudeStore.open}
+									onclick={() => claudeStore.toggle()}
+									aria-label="Claude Code パネル (Ctrl+Shift+L)"
+									title="Claude Code パネル (Ctrl+Shift+L)"
+								>
+									<Icon name="sparkles" class="w:20px" />
+									<span>Claude</span>
+								</button>
+							{/if}
 							<div class="tool-sep"></div>
 							<span class="save-state font:12" data-state={saveState} role="status">
 								{saveLabels[saveState]}
@@ -1572,72 +1616,79 @@
 				</div>
 			{/if}
 
-			<!-- エディタ & プレビューエリア -->
-			<div class="editor-panels flex-grow:1 flex overflow:hidden">
-				<!-- エディタ -->
-				{#if effectiveViewMode !== 'preview'}
-					<div
-						bind:this={editorScrollContainer}
-						onscroll={onEditorScroll}
-						ontouchstart={markUserScroll}
-						ontouchmove={markUserScroll}
-						onwheel={markUserScroll}
-						class="editor-panel editor-panel--editor overflow-y:auto bg:editor-background {effectiveViewMode ===
-						'split'
-							? 'w:50%'
-							: 'w:100%'} transition:width|0.3s"
-					>
-						<div class="editor-page" class:typewriter={editorStore.typewriter}>
-							<!-- contentEditable div -->
-							<!-- svelte-ignore a11y_no_static_element_interactions -->
-							<div
-								bind:this={editorDiv}
-								contenteditable="true"
-								role="textbox"
-								aria-label="エディタ"
-								aria-multiline="true"
-								tabindex="0"
-								oninput={handleEditorInput}
-								oncontextmenu={handleContextMenu}
-								onpaste={handlePaste}
-								class="editor-text w:full min-h:600 border:none outline:none bg:editor-background fg:$(editor.text) white-space:pre-wrap"
-								style="
+			<!-- エディタ & プレビューエリア(デスクトップ版は右に Claude パネル) -->
+			<div class="editor-workspace">
+				<div class="editor-panels flex-grow:1 flex overflow:hidden">
+					<!-- エディタ -->
+					{#if effectiveViewMode !== 'preview'}
+						<div
+							bind:this={editorScrollContainer}
+							onscroll={onEditorScroll}
+							ontouchstart={markUserScroll}
+							ontouchmove={markUserScroll}
+							onwheel={markUserScroll}
+							class="editor-panel editor-panel--editor overflow-y:auto bg:editor-background {effectiveViewMode ===
+							'split'
+								? 'w:50%'
+								: 'w:100%'} transition:width|0.3s"
+						>
+							<div class="editor-page" class:typewriter={editorStore.typewriter}>
+								<!-- contentEditable div -->
+								<!-- svelte-ignore a11y_no_static_element_interactions -->
+								<div
+									bind:this={editorDiv}
+									contenteditable="true"
+									role="textbox"
+									aria-label="エディタ"
+									aria-multiline="true"
+									tabindex="0"
+									oninput={handleEditorInput}
+									oncontextmenu={handleContextMenu}
+									onpaste={handlePaste}
+									class="editor-text w:full min-h:600 border:none outline:none bg:editor-background fg:$(editor.text) white-space:pre-wrap"
+									style="
 									font-family: {getFontFamily(settingsStore.editorFont)};
 									font-size: {effectiveFontSize}px;
 									line-height: {localFormatting.lineHeight ?? 2};
 									letter-spacing: {localFormatting.letterSpacing ?? 0}em;
 								"
-								data-placeholder="ここに執筆を開始..."
-							>
-								{editorStore.content}
-							</div>
-
-							{#if viewport.isMobile}
-								<div class="scene-nav">
-									<button disabled={!prevScene} onclick={() => goToScene(prevScene)}>
-										‹ {prevScene ? prevScene.title : '最初のシーン'}
-									</button>
-									<button disabled={!nextScene} onclick={() => goToScene(nextScene)}>
-										{nextScene ? nextScene.title : '最後のシーン'} ›
-									</button>
+									data-placeholder="ここに執筆を開始..."
+								>
+									{editorStore.content}
 								</div>
-							{/if}
-						</div>
-					</div>
-				{/if}
 
-				<!-- プレビューエリア -->
-				{#if effectiveViewMode !== 'editor'}
-					<div
-						class="editor-panel editor-panel--preview {effectiveViewMode === 'split'
-							? 'w:50% border-left:1|solid|theme-border'
-							: 'w:100%'} overflow:hidden"
-					>
-						<PreviewViewer
-							bind:this={previewViewerRef}
-							content={editorStore.content}
-							settings={previewSettings}
-						/>
+								{#if viewport.isMobile}
+									<div class="scene-nav">
+										<button disabled={!prevScene} onclick={() => goToScene(prevScene)}>
+											‹ {prevScene ? prevScene.title : '最初のシーン'}
+										</button>
+										<button disabled={!nextScene} onclick={() => goToScene(nextScene)}>
+											{nextScene ? nextScene.title : '最後のシーン'} ›
+										</button>
+									</div>
+								{/if}
+							</div>
+						</div>
+					{/if}
+
+					<!-- プレビューエリア -->
+					{#if effectiveViewMode !== 'editor'}
+						<div
+							class="editor-panel editor-panel--preview {effectiveViewMode === 'split'
+								? 'w:50% border-left:1|solid|theme-border'
+								: 'w:100%'} overflow:hidden"
+						>
+							<PreviewViewer
+								bind:this={previewViewerRef}
+								content={editorStore.content}
+								settings={previewSettings}
+							/>
+						</div>
+					{/if}
+				</div>
+				{#if showClaude}
+					<div class="claude-slot" transition:slide={{ axis: 'x', duration: 220 }}>
+						<ClaudePanel />
 					</div>
 				{/if}
 			</div>
@@ -2186,9 +2237,30 @@
 		position: relative;
 	}
 
-	.editor-panels {
+	.editor-workspace {
 		flex: 1;
 		min-height: 0;
+		display: flex;
+	}
+
+	.editor-panels {
+		flex: 1;
+		min-width: 0;
+		min-height: 0;
+	}
+
+	.claude-slot {
+		flex: none;
+		display: flex;
+		min-height: 0;
+	}
+
+	.tool--claude {
+		width: auto;
+		gap: 6px;
+		padding: 0 10px 0 8px;
+		font: inherit;
+		font-size: 12.5px;
 	}
 
 	.sidebar-overlay {

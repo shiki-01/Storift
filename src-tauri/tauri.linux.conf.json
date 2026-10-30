@@ -1,0 +1,16 @@
+{
+	"$schema": "https://schema.tauri.app/config/2",
+	"app": {
+		"windows": [
+			{
+				"title": "Storift",
+				"width": 1400,
+				"height": 900,
+				"minWidth": 800,
+				"minHeight": 560,
+				"dragDropEnabled": false,
+				"decorations": false
+			}
+		]
+	}
+}

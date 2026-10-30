@@ -24,7 +24,8 @@
 	import { themes, themeStore } from '$lib/stores/theme.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
 	import { claudeStore } from '$lib/stores/claude.svelte';
-	import ClaudePanel from '$lib/components/desktop/ClaudePanel.svelte';
+	import TitleBar from '$lib/components/desktop/TitleBar.svelte';
+	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import SelectionAsk from '$lib/components/desktop/SelectionAsk.svelte';
 	import EditorDiff from '$lib/components/desktop/EditorDiff.svelte';
 	import AppRail from '$lib/components/layout/AppRail.svelte';
@@ -32,11 +33,8 @@
 
 	let { children } = $props();
 
-	// デスクトップ版(Tauri)だけ、Claude Code のサイドパネルを使える
+	// デスクトップ版(Tauri)だけ、Claude Code のパネル(執筆画面)と自前のタイトルバーを使う
 	const desktop = isDesktop();
-	let showClaudePanel = $derived(
-		desktop && claudeStore.open && !viewport.isMobile && !editorStore.focusMode
-	);
 
 	function onGlobalKeydown(e: KeyboardEvent) {
 		// Ctrl(Cmd)+Shift+L でパネルの開閉
@@ -73,6 +71,15 @@
 		}
 		return staticTitles[path];
 	});
+	// タイトルバーには作品名と画面名を出す
+	let windowTitle = $derived.by(() => {
+		const project = isProjectPage ? currentProjectStore.project?.title : '';
+		return [project, sectionLabel].filter(Boolean).join(' — ') || 'Storift';
+	});
+
+	// 画面が切り替わった時だけ、ふわっと出す。作品の中の移動ではプロジェクトの読み込みをやり直さない
+	let pageKey = $derived(isProjectPage ? `project/${projectId}` : $page.url.pathname);
+
 	let pageTitle = $derived(
 		sectionLabel ? `${sectionLabel} - Storift` : 'Storift - 小説執筆PWAアプリ'
 	);
@@ -176,77 +183,83 @@
 	<meta name="description" content="個人向け小説執筆アプリ" />
 </svelte:head>
 
-<div class="app-shell" class:with-rail={showRail} style={shellStyle}>
-	{#if showRail}
-		<AppRail {desktop} />
+<div class="app-frame">
+	{#if desktop}
+		<TitleBar title={windowTitle} />
 	{/if}
+	<div class="app-shell" class:with-rail={showRail} style={shellStyle}>
+		{#if showRail}
+			<AppRail />
+		{/if}
 
-	<div class="app-column">
-		{#if showMobileHeader}
-			<header class="app-header">
-				<div class="app-header-inner">
-					{#if isProjectPage}
-						<a href="/home" class="icon-btn" aria-label="作品一覧へ戻る">
+		<div class="app-column">
+			{#if showMobileHeader}
+				<header class="app-header">
+					<div class="app-header-inner">
+						{#if isProjectPage}
+							<a href="/home" class="icon-btn" aria-label="作品一覧へ戻る">
+								<svg
+									viewBox="0 0 24 24"
+									width="22"
+									height="22"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.8"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg
+								>
+							</a>
+							<span class="header-title">{sectionLabel ?? ''}</span>
+						{:else}
+							<a href="/home" class="header-logo" aria-label="ホーム">
+								{@html logo(themes[themeStore.theme.id].colors.text)}
+							</a>
+							<span class="flex:1"></span>
+						{/if}
+						<SyncStatus />
+						{#if !isProjectPage}
+							<a href="/settings" class="header-link">設定</a>
+						{/if}
+					</div>
+				</header>
+			{/if}
+
+			<div class="app-body">
+				<main class="app-main rel">
+					{#key pageKey}
+						<div class="page-enter">
+							{@render children()}
+						</div>
+					{/key}
+				</main>
+			</div>
+
+			{#if showBottomNav}
+				<nav class="bottom-nav" aria-label="プロジェクト">
+					{#each projectNavItems as item (item.path)}
+						<a
+							href="/project/{projectId}/{item.path}"
+							aria-current={isActive(item.path) ? 'page' : undefined}
+							class="bottom-nav-item {isActive(item.path) ? 'is-active' : ''}"
+						>
 							<svg
 								viewBox="0 0 24 24"
 								width="22"
 								height="22"
 								fill="none"
 								stroke="currentColor"
-								stroke-width="1.8"
+								stroke-width="1.6"
 								stroke-linecap="round"
 								stroke-linejoin="round"
-								aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg
+								aria-hidden="true">{@html navIcons[item.icon]}</svg
 							>
+							<span class="bottom-nav-label">{item.label}</span>
 						</a>
-						<span class="header-title">{sectionLabel ?? ''}</span>
-					{:else}
-						<a href="/home" class="header-logo" aria-label="ホーム">
-							{@html logo(themes[themeStore.theme.id].colors.text)}
-						</a>
-						<span class="flex:1"></span>
-					{/if}
-					<SyncStatus />
-					{#if !isProjectPage}
-						<a href="/settings" class="header-link">設定</a>
-					{/if}
-				</div>
-			</header>
-		{/if}
-
-		<div class="app-body">
-			<main class="app-main rel">
-				{@render children()}
-			</main>
-			{#if showClaudePanel}
-				<ClaudePanel />
+					{/each}
+				</nav>
 			{/if}
 		</div>
-
-		{#if showBottomNav}
-			<nav class="bottom-nav" aria-label="プロジェクト">
-				{#each projectNavItems as item (item.path)}
-					<a
-						href="/project/{projectId}/{item.path}"
-						aria-current={isActive(item.path) ? 'page' : undefined}
-						class="bottom-nav-item {isActive(item.path) ? 'is-active' : ''}"
-					>
-						<svg
-							viewBox="0 0 24 24"
-							width="22"
-							height="22"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.6"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							aria-hidden="true">{@html navIcons[item.icon]}</svg
-						>
-						<span class="bottom-nav-label">{item.label}</span>
-					</a>
-				{/each}
-			</nav>
-		{/if}
 	</div>
 </div>
 
@@ -259,12 +272,39 @@
 <ConflictHost />
 
 <style>
-	.app-shell {
+	.app-frame {
 		display: flex;
+		flex-direction: column;
 		height: 100vh;
 		height: 100dvh;
 		overflow: hidden;
 		background: var(--color-background);
+	}
+
+	.app-shell {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		overflow: hidden;
+		background: var(--color-background);
+	}
+
+	.page-enter {
+		height: 100%;
+		animation: page-enter 0.24s cubic-bezier(0.2, 0.7, 0.2, 1);
+	}
+
+	@keyframes page-enter {
+		from {
+			opacity: 0;
+			transform: translateY(6px);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.page-enter {
+			animation: none;
+		}
 	}
 
 	.app-shell.with-rail {

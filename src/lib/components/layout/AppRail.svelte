@@ -3,11 +3,8 @@
 	import { goto } from '$app/navigation';
 	import { syncStore } from '$lib/stores/sync.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
-	import { claudeStore } from '$lib/stores/claude.svelte';
 	import { formatRelativeTime } from '$lib/utils/dateUtils';
 	import { projectNavItems, navIcons } from './nav';
-
-	let { desktop = false }: { desktop?: boolean } = $props();
 
 	let pathname = $derived($page.url.pathname);
 	let projectId = $derived($page.params.id || '');
@@ -110,19 +107,6 @@
 				{@render icon('home')}
 				<span class="rail-label">作品一覧</span>
 			</a>
-		{/if}
-		{#if desktop}
-			<button
-				type="button"
-				class="rail-item"
-				class:active={claudeStore.open}
-				aria-pressed={claudeStore.open}
-				title="Claude Code パネル (Ctrl+Shift+L)"
-				onclick={() => claudeStore.toggle()}
-			>
-				{@render icon('claude')}
-				<span class="rail-label">Claude</span>
-			</button>
 		{/if}
 		<a
 			href="/settings"
@@ -231,11 +215,20 @@
 		content: '';
 		position: absolute;
 		top: 50%;
-		right: -7px;
-		margin-top: -6px;
+		right: -6px;
+		margin-top: -8px;
 		border-style: solid;
-		border-width: 6px 6px 6px 0;
-		border-color: transparent var(--color-primary) transparent transparent;
+		border-width: 8px 8px 8px 0;
+		border-color: transparent var(--color-border) transparent transparent;
+		transform-origin: right center;
+		animation: notch-in 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
+	}
+
+	@keyframes notch-in {
+		from {
+			opacity: 0;
+			transform: scaleX(0.2);
+		}
 	}
 
 	.rail-label {

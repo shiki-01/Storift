@@ -672,7 +672,6 @@
 		background: var(--color-background);
 		color: var(--color-text);
 		font-weight: 600;
-		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 	}
 
 	.actions {
@@ -692,7 +691,7 @@
 		flex: 1;
 		border: none;
 		background: var(--color-primary);
-		color: #fff;
+		color: var(--color-background);
 		font-weight: 600;
 	}
 

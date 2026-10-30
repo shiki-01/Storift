@@ -151,7 +151,7 @@
 		return [
 			'aspect:1/1 r:8 p:8 flex flex-direction:column align-items:center justify-content:center gap:4 transition:all|.2s cursor:pointer',
 			getHeatmapColor(charactersWritten),
-			isToday ? 'b:2px|solid|$(theme.primary)' : 'b:1px|solid|theme-border',
+			isToday ? 'b:1px|solid|theme-primary' : 'b:1px|solid|theme-border',
 			'hover:bg:$(theme.primary)/.12'
 		].join(' ');
 	}
@@ -232,7 +232,7 @@
 
 <div class="flex w:100% h:100% bg:theme-background fg:theme-text">
 	<div class="flex-grow:1 flex flex-direction:column min-w:0 min-h:0">
-		<header class="bg:theme-background border-bottom:2|solid|theme-text">
+		<header class="bg:theme-background border-bottom:1|solid|theme-border">
 			<div
 				class="page-header max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 justify-content:space-between align-items:center"
 			>
@@ -242,7 +242,7 @@
 				</div>
 				<div class="flex flex-wrap:wrap align-items:center gap:12 max-w:100%">
 					<Button
-						class="px:18 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8 font:14"
+						class="px:18 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
 						onclick={() => openLogModal(new Date())}
 						disabled={!currentProjectStore.project}
 					>
@@ -491,7 +491,7 @@
 				>キャンセル</Button
 			>
 			<Button
-				class="px:18 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8"
+				class="px:18 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8"
 				onclick={handleSaveLog}>保存</Button
 			>
 		</div>

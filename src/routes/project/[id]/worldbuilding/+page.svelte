@@ -195,7 +195,7 @@
 
 <div class="flex w:100% h:100% bg:theme-background fg:theme-text">
 	<div class="flex-grow:1 flex flex-direction:column min-w:0 min-h:0">
-		<header class="bg:theme-background border-bottom:2|solid|theme-text">
+		<header class="bg:theme-background border-bottom:1|solid|theme-border">
 			<div
 				class="page-header max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 justify-content:space-between align-items:center"
 			>
@@ -204,7 +204,7 @@
 					<p class="font:14 fg:theme-text-secondary mt:8">世界観や用語の設定資料を管理します</p>
 				</div>
 				<Button
-					class="px:18 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8 font:14"
+					class="px:18 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
 					onclick={openCreateModal}
 					disabled={!currentProjectStore.project}
 				>
@@ -313,7 +313,7 @@
 									: '設定資料がまだありません'}
 							</p>
 							<Button
-								class="px:18 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8"
+								class="px:18 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8"
 								onclick={openCreateModal}
 							>
 								最初の資料を作成
@@ -395,7 +395,7 @@
 						}}
 					/>
 					<Button
-						class="px:16 py:8 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:6"
+						class="px:16 py:8 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:6"
 						onclick={handleAddTag}
 					>
 						追加
@@ -430,7 +430,7 @@
 				onclick={() => (showCreateModal = false)}>キャンセル</Button
 			>
 			<Button
-				class="px:18 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8"
+				class="px:18 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8"
 				onclick={handleCreate}
 				disabled={!formData.title.trim()}
 			>
@@ -488,7 +488,7 @@
 						}}
 					/>
 					<Button
-						class="px:16 py:8 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:6"
+						class="px:16 py:8 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:6"
 						onclick={handleAddTag}
 					>
 						追加
@@ -523,7 +523,7 @@
 				onclick={() => (showEditModal = false)}>キャンセル</Button
 			>
 			<Button
-				class="px:18 py:10 bg:theme.primary fg:theme-background b:2px|solid|theme-text r:8"
+				class="px:18 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8"
 				onclick={handleUpdate}
 				disabled={!formData.title.trim()}
 			>

@@ -9,9 +9,7 @@
 	import { queueChange } from '$lib/services/sync.service';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
-	import Card from '$lib/components/ui/Card.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
-	import DefoImg from '$lib/components/ui/DefoImg.svelte';
 	import SyncStatus from '$lib/components/ui/SyncStatus.svelte';
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
 	import { formatRelativeTime } from '$lib/utils/dateUtils';
@@ -91,12 +89,6 @@
 		draft: '下書き',
 		writing: '執筆中',
 		completed: '完成'
-	};
-
-	const statusColors = {
-		draft: 'bg:theme-surface fg:theme-text-secondary',
-		writing: 'bg:theme-surface fg:theme-primary',
-		completed: 'bg:theme-surface fg:theme-success'
 	};
 
 	// 前回開いた作品(続きから書く)
@@ -275,28 +267,53 @@
 </script>
 
 <div class="home-page">
+	<header class="home-head">
+		<div class="home-heading">
+			<h1>作品</h1>
+			{#if projectsStore.projects.length > 0}
+				<span class="home-total">{projectsStore.projects.length}作品</span>
+			{/if}
+		</div>
+		<div class="home-actions">
+			<input
+				class="home-search"
+				type="search"
+				value={projectsStore.searchQuery}
+				placeholder="作品を検索"
+				aria-label="作品を検索"
+				oninput={handleSearchInput}
+			/>
+			<Button onclick={() => (isCreateModalOpen = true)}>＋ 新しい作品</Button>
+		</div>
+	</header>
+
 	{#if lastProject && !projectsStore.searchQuery}
 		<a class="continue" href="/project/{lastProject.id}/editor">
-			<span class="continue-label">続きから書く</span>
-			<span class="continue-title">{lastProject.title}</span>
+			<span class="continue-body">
+				<span class="continue-label">続きから書く</span>
+				<span class="continue-title">{lastProject.title}</span>
+			</span>
+			<span class="continue-meta">{formatRelativeTime(lastProject.updatedAt)}に更新</span>
+			<svg
+				class="continue-arrow"
+				viewBox="0 0 24 24"
+				width="18"
+				height="18"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="1.6"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg
+			>
 		</a>
 	{/if}
 
-	<div class="mb:24">
-		<Input
-			value={projectsStore.searchQuery}
-			placeholder="作品を検索..."
-			oninput={handleSearchInput}
-		/>
-	</div>
-
 	{#if projectsStore.isLoading}
-		<div class="text-align:center p:48">
-			<p class="fg:theme-text-secondary">読み込み中...</p>
-		</div>
+		<p class="home-empty">読み込み中...</p>
 	{:else if projectsStore.filteredProjects.length === 0}
-		<div class="text-align:center p:48">
-			<p class="fg:theme-text-secondary font:18 mb:16">
+		<div class="home-empty">
+			<p>
 				{projectsStore.searchQuery ? '作品が見つかりませんでした' : 'まだ作品がありません'}
 			</p>
 			{#if !projectsStore.searchQuery}
@@ -310,37 +327,19 @@
 				<div
 					class="project-item"
 					use:longpress={{ onLongPress: (e) => handleProjectContextMenu(e, project) }}
+					oncontextmenu={(e) => handleProjectContextMenu(e, project)}
 				>
-					<Card
-						hoverable
-						padding="none"
-						onclick={() => goto(`/project/${project.id}/editor`)}
-						oncontextmenu={(e) => handleProjectContextMenu(e, project)}
-						class="w:100% h:fit p:0 flex flex-direction:column gap:1rem bg:transparent b:none"
-					>
-						<DefoImg />
-						<div class="w:100% flex justify-content:space-between align-items:start gap:8">
-							<div class="flex:1 min-w:0 overflow:hidden position:relative">
-								<h3
-									class="font:20 font-weight:600 text-align:start white-space:nowrap overflow:hidden text-overflow:ellipsis"
-								>
-									{project.title}
-								</h3>
-							</div>
-							<span class="py:6px r:4 font:12 {statusColors[project.status]}">
-								{statusLabels[project.status]}
-							</span>
-						</div>
+					<a class="project-link" href="/project/{project.id}/editor">
+						<span class="cover" data-status={project.status}>
+							<span class="cover-title">{project.title}</span>
+							<span class="cover-status">{statusLabels[project.status]}</span>
+						</span>
+						<span class="project-title">{project.title}</span>
 						{#if project.description}
-							<p class="text-align:start font:14 line-clamp:2">
-								{project.description}
-							</p>
+							<span class="project-desc">{project.description}</span>
 						{/if}
-						<div class="text-align:start font:12">
-							<p>作成: {formatRelativeTime(project.createdAt)}</p>
-							<p>更新: {formatRelativeTime(project.updatedAt)}</p>
-						</div>
-					</Card>
+						<span class="project-meta">{formatRelativeTime(project.updatedAt)}に更新</span>
+					</a>
 					<button
 						class="project-more"
 						aria-label="{project.title}のメニュー"
@@ -357,7 +356,13 @@
 							);
 						}}
 					>
-						⋯
+						<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"
+							><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle
+								cx="19"
+								cy="12"
+								r="1.6"
+							/></svg
+						>
 					</button>
 				</div>
 			{/each}
@@ -430,71 +435,300 @@
 
 <style>
 	.home-page {
-		padding: 24px 60px;
+		max-width: 68rem;
+		height: 100%;
+		margin: 0 auto;
+		padding: 40px 48px 64px;
+		overflow-y: auto;
+	}
+
+	.home-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
+		margin-bottom: 28px;
+	}
+
+	.home-heading {
+		display: flex;
+		align-items: baseline;
+		gap: 12px;
+	}
+
+	.home-heading h1 {
+		margin: 0;
+		font-size: 22px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+	}
+
+	.home-total {
+		font-size: 13px;
+		color: var(--color-text-secondary);
+	}
+
+	.home-actions {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.home-search {
+		width: 15rem;
+		height: 36px;
+		padding: 0 12px;
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		background: var(--color-background);
+		color: var(--color-text);
+		font: inherit;
+		font-size: 13.5px;
+	}
+
+	.home-search:focus {
+		outline: none;
+		border-color: color-mix(in srgb, var(--color-primary) 60%, var(--color-border));
 	}
 
 	.continue {
 		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		margin-bottom: 20px;
-		padding: 14px 16px;
+		align-items: center;
+		gap: 16px;
+		margin-bottom: 36px;
+		padding: 16px 20px;
 		border: 1px solid var(--color-border);
-		border-radius: 12px;
-		background: color-mix(in srgb, var(--color-primary) 10%, var(--color-background));
+		border-radius: 10px;
+		background: var(--editor-background);
 		color: var(--color-text);
+		transition: border-color 0.15s;
+	}
+
+	.continue:hover {
+		border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+	}
+
+	.continue-body {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
 	}
 
 	.continue-label {
-		font-size: 12px;
+		font-size: 11.5px;
+		letter-spacing: 0.06em;
 		color: var(--color-primary);
 	}
 
 	.continue-title {
-		font-size: 17px;
+		font-size: 16px;
 		font-weight: 600;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.continue-meta {
+		flex: none;
+		font-size: 12px;
+		color: var(--color-text-secondary);
+	}
+
+	.continue-arrow {
+		flex: none;
+		color: var(--color-text-secondary);
+		transition: transform 0.15s;
+	}
+
+	.continue:hover .continue-arrow {
+		transform: translateX(2px);
+		color: var(--color-primary);
+	}
+
+	.home-empty {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 16px;
+		padding: 80px 0;
+		color: var(--color-text-secondary);
+		font-size: 14px;
+	}
+
+	.home-empty p {
+		margin: 0;
 	}
 
 	.project-grid {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 24px;
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+		gap: 32px 28px;
 	}
 
 	.project-item {
 		position: relative;
-		width: 200px;
+		min-width: 0;
 		-webkit-touch-callout: none;
+	}
+
+	.project-link {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		color: var(--color-text);
+	}
+
+	/* 表紙: 縦書きの題字と、状態で色の変わる背(左端の帯) */
+	.cover {
+		--spine: color-mix(in srgb, var(--color-text) 22%, transparent);
+		position: relative;
+		display: flex;
+		justify-content: center;
+		aspect-ratio: 3 / 4;
+		margin-bottom: 10px;
+		padding: 18px 14px 14px 22px;
+		border: 1px solid var(--color-border);
+		border-radius: 4px 8px 8px 4px;
+		background: var(--editor-background);
+		overflow: hidden;
+		transition:
+			border-color 0.15s,
+			transform 0.2s ease;
+	}
+
+	.cover::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		left: 0;
+		width: 6px;
+		background: var(--spine);
+	}
+
+	.cover[data-status='writing'] {
+		--spine: var(--color-primary);
+	}
+
+	.cover[data-status='completed'] {
+		--spine: var(--color-success);
+	}
+
+	.project-link:hover .cover {
+		border-color: color-mix(in srgb, var(--color-text) 25%, var(--color-border));
+		transform: translateY(-2px);
+	}
+
+	.cover-title {
+		max-height: 100%;
+		writing-mode: vertical-rl;
+		font-family: 'Noto Serif JP', serif;
+		font-size: 17px;
+		font-weight: 600;
+		line-height: 1.5;
+		letter-spacing: 0.12em;
+		overflow: hidden;
+	}
+
+	.cover-status {
+		position: absolute;
+		left: 18px;
+		bottom: 12px;
+		font-size: 10.5px;
+		letter-spacing: 0.06em;
+		color: var(--color-text-secondary);
+	}
+
+	.project-title {
+		font-size: 14.5px;
+		font-weight: 600;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.project-desc {
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		font-size: 12.5px;
+		line-height: 1.6;
+		color: var(--color-text-secondary);
+	}
+
+	.project-meta {
+		font-size: 11.5px;
+		color: var(--color-text-secondary);
 	}
 
 	.project-more {
 		position: absolute;
 		top: 8px;
 		right: 8px;
-		width: 36px;
-		height: 36px;
-		border: 1px solid var(--color-border);
-		border-radius: 50%;
-		background: color-mix(in srgb, var(--color-background) 90%, transparent);
-		color: var(--color-text);
-		font-size: 18px;
-		line-height: 1;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 30px;
+		height: 30px;
+		padding: 0;
+		border: none;
+		border-radius: 6px;
+		background: transparent;
+		color: var(--color-text-secondary);
 		cursor: pointer;
+	}
+
+	.project-more:hover {
+		background: var(--hover);
+		color: var(--color-text);
+	}
+
+	@media (hover: hover) {
+		.project-more {
+			opacity: 0;
+			transition: opacity 0.12s;
+		}
+
+		.project-item:hover .project-more,
+		.project-more:focus-visible {
+			opacity: 1;
+		}
 	}
 
 	@media (max-width: 768px) {
 		.home-page {
-			padding: 16px;
+			padding: 20px 16px 32px;
+		}
+
+		.home-head {
+			flex-direction: column;
+			align-items: stretch;
+			gap: 14px;
+			margin-bottom: 20px;
+		}
+
+		.home-search {
+			flex: 1;
+			width: auto;
+			min-width: 0;
+			font-size: 16px;
+		}
+
+		.continue {
+			margin-bottom: 24px;
+		}
+
+		.continue-meta {
+			display: none;
 		}
 
 		.project-grid {
-			display: grid;
 			grid-template-columns: repeat(2, minmax(0, 1fr));
-			gap: 16px;
-		}
-
-		.project-item {
-			width: auto;
+			gap: 24px 16px;
 		}
 	}
 </style>

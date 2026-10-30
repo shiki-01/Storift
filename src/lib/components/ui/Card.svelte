@@ -25,12 +25,12 @@
 	};
 
 	const baseClass =
-		'bg:theme-surface b:2px|solid|theme-border fg:theme-text shadow:sm transition:all|.2s';
+		'bg:theme-background b:1px|solid|theme-border fg:theme-text transition:border-color|.15s';
 </script>
 
 {#if onclick}
 	<button
-		class="r:8 {paddingClasses[padding]} {hoverable
+		class="r:10 {paddingClasses[padding]} {hoverable
 			? 'cursor:pointer'
 			: ''} {baseClass} {className}"
 		type="button"
@@ -43,7 +43,7 @@
 	</button>
 {:else}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="r:8 {paddingClasses[padding]} {baseClass} {className}" {oncontextmenu}>
+	<div class="r:10 {paddingClasses[padding]} {baseClass} {className}" {oncontextmenu}>
 		{#if children}
 			{@render children()}
 		{/if}

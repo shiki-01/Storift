@@ -51,24 +51,24 @@
 						<div class="flex gap:8">
 							<button
 								class="flex-1 py:8 px:16 r:8 border:1|solid|{options.writingMode === 'horizontal'
-									? 'blue-500'
-									: 'gray-300'} bg:{options.writingMode === 'horizontal'
-									? 'blue-50'
-									: 'white'} fg:{options.writingMode === 'horizontal'
-									? 'blue-700'
-									: 'gray-700'} cursor:pointer transition:all|0.2s"
+									? 'theme-primary'
+									: 'theme-border'} bg:{options.writingMode === 'horizontal'
+									? 'theme-surface'
+									: 'theme-background'} fg:{options.writingMode === 'horizontal'
+									? 'theme-primary'
+									: 'theme-text-secondary'} cursor:pointer transition:all|0.2s"
 								onclick={() => (options.writingMode = 'horizontal')}
 							>
 								横書き
 							</button>
 							<button
 								class="flex-1 py:8 px:16 r:8 border:1|solid|{options.writingMode === 'vertical'
-									? 'blue-500'
-									: 'gray-300'} bg:{options.writingMode === 'vertical'
-									? 'blue-50'
-									: 'white'} fg:{options.writingMode === 'vertical'
-									? 'blue-700'
-									: 'gray-700'} cursor:pointer transition:all|0.2s"
+									? 'theme-primary'
+									: 'theme-border'} bg:{options.writingMode === 'vertical'
+									? 'theme-surface'
+									: 'theme-background'} fg:{options.writingMode === 'vertical'
+									? 'theme-primary'
+									: 'theme-text-secondary'} cursor:pointer transition:all|0.2s"
 								onclick={() => (options.writingMode = 'vertical')}
 							>
 								縦書き
@@ -150,12 +150,12 @@
 							{#each ['A4', 'A5', 'B5', 'letter'] as size}
 								<button
 									class="py:8 px:16 r:8 border:1|solid|{options.paperSize === size
-										? 'blue-500'
-										: 'gray-300'} bg:{options.paperSize === size
-										? 'blue-50'
-										: 'white'} fg:{options.paperSize === size
-										? 'blue-700'
-										: 'gray-700'} cursor:pointer transition:all|0.2s"
+										? 'theme-primary'
+										: 'theme-border'} bg:{options.paperSize === size
+										? 'theme-surface'
+										: 'theme-background'} fg:{options.paperSize === size
+										? 'theme-primary'
+										: 'theme-text-secondary'} cursor:pointer transition:all|0.2s"
 									onclick={() => (options.paperSize = size as any)}
 								>
 									{size}
@@ -240,9 +240,9 @@
 			</div>
 
 			<!-- アクションボタン -->
-			<div class="flex gap:12 justify-content:flex-end pt:16 border-top:1|solid|gray-200">
+			<div class="flex gap:12 justify-content:flex-end pt:16 border-top:1|solid|theme-border">
 				<Button variant="secondary" onclick={onClose}>キャンセル</Button>
-				<Button variant="primary" onclick={handlePrint}>🖨️ プレビュー表示</Button>
+				<Button variant="primary" onclick={handlePrint}>プレビュー表示</Button>
 			</div>
 		</div>
 	</Modal>
@@ -254,7 +254,7 @@
 		appearance: none;
 		height: 6px;
 		border-radius: 3px;
-		background: #e5e7eb;
+		background: var(--color-border);
 		outline: none;
 	}
 
@@ -264,7 +264,7 @@
 		width: 18px;
 		height: 18px;
 		border-radius: 50%;
-		background: #3b82f6;
+		background: var(--color-primary);
 		cursor: pointer;
 	}
 
@@ -272,13 +272,13 @@
 		width: 18px;
 		height: 18px;
 		border-radius: 50%;
-		background: #3b82f6;
+		background: var(--color-primary);
 		cursor: pointer;
 		border: none;
 	}
 
 	input[type='checkbox'] {
 		cursor: pointer;
-		accent-color: #3b82f6;
+		accent-color: var(--color-primary);
 	}
 </style>

@@ -262,7 +262,6 @@
 		background: var(--color-background);
 		color: var(--color-text);
 		font-weight: 600;
-		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 	}
 
 	.search,
@@ -362,7 +361,7 @@
 		border: none;
 		border-radius: 10px;
 		background: var(--color-primary);
-		color: #fff;
+		color: var(--color-background);
 		font-size: 14px;
 		cursor: pointer;
 	}

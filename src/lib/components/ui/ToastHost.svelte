@@ -125,7 +125,7 @@
 		border-radius: 12px;
 		background: var(--color-background);
 		color: var(--color-text);
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+		box-shadow: var(--shadow-float);
 		font-size: 14px;
 		animation: toast-in 0.2s ease-out;
 	}
@@ -201,7 +201,7 @@
 		border-radius: 16px;
 		background: var(--color-background);
 		color: var(--color-text);
-		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+		box-shadow: var(--shadow-float);
 		animation: toast-in 0.18s ease-out;
 	}
 
@@ -243,7 +243,7 @@
 	.ok {
 		border: none;
 		background: var(--color-primary);
-		color: #fff;
+		color: var(--color-background);
 		font-weight: 600;
 	}
 

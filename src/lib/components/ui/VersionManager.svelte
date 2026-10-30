@@ -119,7 +119,7 @@
 
 <div class="version-manager space-y:20">
 	<!-- 履歴リスト -->
-	<div class="bg:theme-background r:12 p:20 shadow:0|2|8|rgba(0,0,0,0.1)">
+	<div class="bg:theme-background r:12 p:20">
 		<h3 class="font:18 font:semibold fg:theme-text mb:16">変更履歴</h3>
 
 		{#if history.length === 0}
@@ -164,7 +164,7 @@
 									新
 								</label>
 								<button
-									class="px:8 py:2 bg:theme-surface fg:theme-text-secondary font:12 r:4 hover:bg:gray-200 cursor:pointer"
+									class="px:8 py:2 bg:theme-surface fg:theme-text-secondary font:12 r:4 hover:bg:var(--hover) cursor:pointer"
 									onclick={() => {
 										selectedHistory = entry.id;
 										showCreateRestorePoint = true;
@@ -191,7 +191,7 @@
 	</div>
 
 	<!-- 復元ポイント -->
-	<div class="bg:theme-background r:12 p:20 shadow:0|2|8|rgba(0,0,0,0.1)">
+	<div class="bg:theme-background r:12 p:20">
 		<h3 class="font:18 font:semibold fg:theme-text mb:16">復元ポイント</h3>
 
 		{#if restorePoints.length === 0}
@@ -250,7 +250,7 @@
 			</div>
 
 			<!-- 差分表示 -->
-			<div class="diff-content p:16 bg:gray-900 r:8 overflow:auto max-h:500">
+			<div class="diff-content p:16 bg:theme-surface r:8 overflow:auto max-h:500">
 				{@html getDiffHtml()}
 			</div>
 		</div>
@@ -314,16 +314,16 @@
 	}
 
 	:global(.diff-add) {
-		background-color: rgba(34, 197, 94, 0.2);
-		color: #16a34a;
+		background-color: color-mix(in srgb, var(--color-success) 20%, transparent);
+		color: var(--color-success);
 	}
 
 	:global(.diff-remove) {
-		background-color: rgba(239, 68, 68, 0.2);
-		color: #dc2626;
+		background-color: color-mix(in srgb, var(--color-error) 20%, transparent);
+		color: var(--color-error);
 	}
 
 	:global(.diff-unchanged) {
-		color: #9ca3af;
+		color: var(--color-text-secondary);
 	}
 </style>

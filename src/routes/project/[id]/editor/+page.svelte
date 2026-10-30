@@ -68,7 +68,6 @@
 	let showExportModal = $state(false);
 	let showSearch = $state(false);
 	let showProofread = $state(false);
-	let isSidebarOpen = $state(false);
 
 	// プレビュー機能
 	let viewMode = $state<ViewMode>('editor');
@@ -138,6 +137,11 @@
 	});
 
 	onMount(() => {
+		// 狭い画面では章・シーン一覧が本文に重なるので、開いた直後は閉じておく
+		if (window.matchMedia('(max-width: 1024px)').matches) {
+			editorStore.sceneListOpen = false;
+		}
+
 		// 初期化処理を即座に実行（非同期）
 		(async () => {
 			const { isFirebaseInitialized } = await import('$lib/firebase');
@@ -383,7 +387,7 @@
 		editorStore.currentScene = scene;
 		rememberLastScene(scene.id);
 		if (window.matchMedia('(max-width: 1024px)').matches) {
-			isSidebarOpen = false;
+			editorStore.sceneListOpen = false;
 		}
 		showSceneSheet = false;
 	}
@@ -1187,7 +1191,9 @@
 				aria-label="シーンを検索"
 				bind:value={sceneFilter}
 			/>
-			<Button size="sm" onclick={() => (isChapterModalOpen = true)}>+ 章</Button>
+			<button class="add-chapter" onclick={() => (isChapterModalOpen = true)} title="章を追加"
+				>＋ 章</button
+			>
 		</div>
 
 		{#if currentProjectStore.chapters.length === 0}
@@ -1217,13 +1223,28 @@
 							aria-expanded={!collapsed}
 							onclick={() => toggleChapter(chapter.id)}
 						>
-							<span class="chev" class:collapsed>▾</span>
+							<svg
+								class="chev"
+								class:collapsed
+								viewBox="0 0 12 12"
+								width="10"
+								height="10"
+								aria-hidden="true"
+								><path
+									d="M3 4.5l3 3 3-3"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.5"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/></svg
+							>
 							<span class="chapter-title">{chapter.title}</span>
 							<span class="count"
 								>{allScenes.reduce((n, s) => n + s.characterCount, 0).toLocaleString()}字</span
 							>
 						</button>
-						<button class="mini" onclick={() => openSceneModal(chapter.id)}>+ シーン</button>
+						<button class="mini" onclick={() => openSceneModal(chapter.id)}>＋ シーン</button>
 						<button
 							class="more"
 							aria-label="章のメニュー"
@@ -1256,7 +1277,7 @@
 							</div>
 						{:else}
 							<button class="scene-empty" onclick={() => openSceneModal(chapter.id)}>
-								シーンがありません。作成する
+								シーンがありません。<span class="link">作成する</span>
 							</button>
 						{/each}
 					{/if}
@@ -1272,22 +1293,20 @@
 
 <div
 	class="editor-layout w:100% h:100%"
-	data-sidebar-open={isSidebarOpen ? 'true' : 'false'}
+	data-sidebar-open={editorStore.sceneListOpen ? 'true' : 'false'}
 	data-focus={editorStore.focusMode ? 'true' : 'false'}
 	data-mobile={viewport.isMobile ? 'true' : 'false'}
 >
 	<!-- サイドバー(デスクトップ/タブレット) -->
 	{#if !viewport.isMobile && !editorStore.focusMode}
-		<aside
-			class="editor-sidebar w:100% bg:theme-background br:2px|solid|theme-text flex flex-direction:column"
-		>
-			<div class="flex-grow:1 overflow-y:auto p:16 pt:24px">
+		<aside class="editor-sidebar" aria-label="章・シーン一覧">
+			<div class="editor-sidebar-scroll">
 				{@render sceneList()}
 			</div>
 		</aside>
 		<button
 			aria-label="scene list overlay"
-			onclick={() => (isSidebarOpen = false)}
+			onclick={() => (editorStore.sceneListOpen = false)}
 			class="sidebar-overlay"
 		></button>
 	{/if}
@@ -1372,7 +1391,7 @@
 				<div class="mobile-sidebar-open">
 					<button
 						class="mobile-sidebar-button"
-						onclick={() => (isSidebarOpen = true)}
+						onclick={() => (editorStore.sceneListOpen = true)}
 						aria-label="章・シーンを開く"
 						title="章・シーンを開く"
 					>
@@ -1398,25 +1417,39 @@
 		{:else}
 			<!-- ツールバー(デスクトップ/タブレット) -->
 			{#if !viewport.isMobile && !editorStore.focusMode}
-				<div
-					class="editor-toolbar bg:theme-background border-bottom:2|solid|theme-text px:16 w:100% h:60px flex flex-direction:column jc:center gap:8"
-				>
+				<div class="editor-toolbar">
 					<!-- タイトルと保存状態 -->
 					<div class="editor-toolbar-row flex justify-content:space-between align-items:center">
 						<div class="editor-title-area flex align-items:center gap:16">
 							<button
-								class="sidebar-toggle p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
-								onclick={() => (isSidebarOpen = !isSidebarOpen)}
+								class="tool sidebar-toggle"
+								class:on={editorStore.sceneListOpen}
+								onclick={() => (editorStore.sceneListOpen = !editorStore.sceneListOpen)}
 								aria-label="章・シーンの表示切替"
 								title="章・シーンの表示切替"
 							>
-								<Icon name="list" class="w:20px" />
+								<svg
+									viewBox="0 0 24 24"
+									width="19"
+									height="19"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.6"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									aria-hidden="true"
+									><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><path
+										d="M9.5 4.5v15"
+									/></svg
+								>
 							</button>
-							<h3 class="editor-title font:16 font-weight:500 m:0 fg:theme-text">
-								{editorStore.currentScene.title}
-							</h3>
-							<span class="font:13 fg:theme-text-secondary white-space:nowrap">
-								{editorStore.characterCount}文字
+							<div class="editor-heading">
+								{#if currentChapterTitle}<span class="editor-crumb">{currentChapterTitle}</span
+									>{/if}
+								<h1 class="editor-title">{editorStore.currentScene.title}</h1>
+							</div>
+							<span class="editor-count">
+								{editorStore.characterCount.toLocaleString()}<small>字</small>
 							</span>
 							{#if goalRatio !== null}
 								<button
@@ -1432,19 +1465,19 @@
 						<div class="editor-toolbar-actions flex align-items:center gap:8">
 							<!-- 書式設定ボタン -->
 							<button
-								class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
+								class="tool"
 								onclick={openFormattingModal}
 								aria-label="書式設定"
 								title="書式設定"
 							>
-								<Icon name="palette" class="w:24px" />
+								<Icon name="palette" class="w:20px" />
 							</button>
 							<!-- プレビューボタン -->
-							<div class="flex align-items:center gap:2 bg:theme-background-secondary r:6 p:2">
+							<div class="seg-tools" role="group" aria-label="表示モード">
 								<button
-									class="p:6 r:4 cursor:pointer transition:all|0.2s {viewMode === 'editor'
-										? 'bg:theme-surface fg:theme-primary'
-										: 'hover:bg:theme-background fg:theme-text'}"
+									class="seg-tool"
+									class:on={viewMode === 'editor'}
+									aria-pressed={viewMode === 'editor'}
 									onclick={() => (viewMode = 'editor')}
 									aria-label="エディタのみ"
 									title="エディタのみ"
@@ -1452,9 +1485,9 @@
 									<Icon name="edit" class="w:18px" />
 								</button>
 								<button
-									class="p:6 r:4 cursor:pointer transition:all|0.2s {viewMode === 'split'
-										? 'bg:theme-surface fg:theme-primary'
-										: 'hover:bg:theme-background fg:theme-text'}"
+									class="seg-tool"
+									class:on={viewMode === 'split'}
+									aria-pressed={viewMode === 'split'}
 									onclick={() => (viewMode = 'split')}
 									aria-label="二画面表示"
 									title="二画面表示"
@@ -1462,9 +1495,9 @@
 									<Icon name="layout-columns" class="w:18px" />
 								</button>
 								<button
-									class="p:6 r:4 cursor:pointer transition:all|0.2s {viewMode === 'preview'
-										? 'bg:theme-surface fg:theme-primary'
-										: 'hover:bg:theme-background fg:theme-text'}"
+									class="seg-tool"
+									class:on={viewMode === 'preview'}
+									aria-pressed={viewMode === 'preview'}
 									onclick={() => (viewMode = 'preview')}
 									aria-label="プレビューのみ"
 									title="プレビューのみ"
@@ -1472,70 +1505,66 @@
 									<Icon name="eye" class="w:18px" />
 								</button>
 							</div>
-							<div class="w:1 h:20 bg:theme-text"></div>
+							<div class="tool-sep"></div>
 							<!-- Phase 2: 執筆支援ツール -->
 							<button
-								class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
+								class="tool"
 								onclick={() => (showWritingAssistant = true)}
 								aria-label="執筆支援"
 								title="執筆支援"
 							>
-								<Icon name="pencil-bolt" class="w:24px" />
+								<Icon name="pencil-bolt" class="w:20px" />
 							</button>
 							<button
-								class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
+								class="tool"
 								onclick={() => (showExportModal = true)}
 								aria-label="エクスポート"
 								title="エクスポート"
 							>
-								<Icon name="download" class="w:24px" />
+								<Icon name="download" class="w:20px" />
 							</button>
 							<button
-								class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
+								class="tool"
 								onclick={() => (showPrintPreview = true)}
 								aria-label="印刷プレビュー"
 								title="印刷プレビュー"
 							>
-								<Icon name="printer" class="w:24px" />
+								<Icon name="printer" class="w:20px" />
 							</button>
 							<button
-								class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
+								class="tool"
 								onclick={() => (showVersionManager = true)}
 								aria-label="バージョン履歴"
 								title="バージョン履歴"
 							>
-								<Icon name="history" class="w:24px" />
+								<Icon name="history" class="w:20px" />
 							</button>
 							<button
-								class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
+								class="tool"
 								onclick={() => (showProofread = true)}
 								aria-label="校正"
 								title="校正"
 							>
-								<Icon name="abc" class="w:24px" />
+								<Icon name="abc" class="w:20px" />
 							</button>
 							<button
-								class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
+								class="tool"
 								onclick={openSearch}
 								aria-label="検索・置換 (Ctrl+Shift+F)"
 								title="検索・置換 (Ctrl+Shift+F)"
 							>
-								<Icon name="search" class="w:24px" />
+								<Icon name="search" class="w:20px" />
 							</button>
 							<button
-								class="p:8 r:6 hover:bg:theme-background cursor:pointer transition:all|0.2s"
+								class="tool"
 								onclick={() => (editorStore.focusMode = true)}
 								aria-label="集中モード"
 								title="集中モード"
 							>
-								<Icon name="wallpaper" class="w:24px" />
+								<Icon name="wallpaper" class="w:20px" />
 							</button>
-							<div class="w:1 h:20 bg:theme-text"></div>
-							<span
-								class="save-state font:13 white-space:nowrap"
-								data-state={saveState}
-								role="status"
-							>
+							<div class="tool-sep"></div>
+							<span class="save-state font:12" data-state={saveState} role="status">
 								{saveLabels[saveState]}
 							</span>
 						</div>
@@ -1553,15 +1582,12 @@
 						ontouchstart={markUserScroll}
 						ontouchmove={markUserScroll}
 						onwheel={markUserScroll}
-						class="editor-panel editor-panel--editor overflow-y:auto p:32 bg:editor-background {effectiveViewMode ===
+						class="editor-panel editor-panel--editor overflow-y:auto bg:editor-background {effectiveViewMode ===
 						'split'
 							? 'w:50%'
 							: 'w:100%'} transition:width|0.3s"
 					>
-						<div
-							class="editor-page max-w:800 mx:auto bg:editor-background p:48 r:8 min-h:full h:fit"
-							class:typewriter={editorStore.typewriter}
-						>
+						<div class="editor-page" class:typewriter={editorStore.typewriter}>
 							<!-- contentEditable div -->
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<div
@@ -1604,7 +1630,7 @@
 				{#if effectiveViewMode !== 'editor'}
 					<div
 						class="editor-panel editor-panel--preview {effectiveViewMode === 'split'
-							? 'w:50% border-left:1|solid|theme-text'
+							? 'w:50% border-left:1|solid|theme-border'
 							: 'w:100%'} overflow:hidden"
 					>
 						<PreviewViewer
@@ -1953,7 +1979,7 @@
 <Modal bind:isOpen={showFormattingModal} title="書式設定" size="large" onClose={cancelFormatting}>
 	<div class="flex flex-direction:column gap:24">
 		<!-- タブ -->
-		<div class="flex gap:4 bg:theme-background-secondary r:8 p:4">
+		<div class="flex gap:4 bg:theme-surface r:8 p:4">
 			<button
 				class="flex:1 p:12 r:6 font:14 font-weight:500 cursor:pointer transition:all|0.2s border:none {formattingTab ===
 				'editor'
@@ -2113,15 +2139,43 @@
 	}
 
 	.editor-layout {
+		--scene-panel-width: 17.5rem;
 		display: grid;
-		grid-template-columns: 17.5rem 1fr;
+		grid-template-columns: var(--scene-panel-width) minmax(0, 1fr);
 		grid-template-rows: 1fr;
 		position: relative;
+		transition: grid-template-columns 0.22s ease;
+	}
+
+	.editor-layout[data-sidebar-open='false'] {
+		grid-template-columns: 0 minmax(0, 1fr);
 	}
 
 	.editor-layout[data-focus='true'],
 	.editor-layout[data-mobile='true'] {
 		grid-template-columns: 1fr;
+	}
+
+	.editor-sidebar {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		background: var(--color-background);
+		border-right: 1px solid var(--color-border);
+	}
+
+	.editor-layout[data-sidebar-open='false'] .editor-sidebar {
+		border-right-color: transparent;
+		visibility: hidden;
+		transition: visibility 0s 0.22s;
+	}
+
+	.editor-sidebar-scroll {
+		flex: 1;
+		width: var(--scene-panel-width);
+		overflow-y: auto;
+		padding: 18px 4px 16px;
 	}
 
 	.editor-main {
@@ -2141,16 +2195,177 @@
 		display: none;
 	}
 
-	.sidebar-toggle {
-		display: none;
-	}
-
 	.mobile-sidebar-open {
 		display: none;
 	}
 
 	.mobile-sidebar-button {
 		display: none;
+	}
+
+	/* ===== ツールバー ===== */
+	.editor-toolbar {
+		flex: none;
+		display: flex;
+		align-items: center;
+		height: 52px;
+		padding: 0 12px 0 8px;
+		background: var(--color-background);
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.editor-toolbar-row {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
+	}
+
+	.editor-title-area {
+		min-width: 0;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.editor-heading {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		line-height: 1.3;
+	}
+
+	.editor-crumb {
+		font-size: 11px;
+		color: var(--color-text-secondary);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.editor-title {
+		margin: 0;
+		font-size: 15px;
+		font-weight: 600;
+		color: var(--color-text);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.editor-count {
+		flex: none;
+		padding-left: 10px;
+		border-left: 1px solid var(--color-border);
+		font-size: 13px;
+		color: var(--color-text-secondary);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+
+	.editor-count small {
+		margin-left: 1px;
+		font-size: 11px;
+	}
+
+	.editor-toolbar-actions {
+		flex: none;
+		display: flex;
+		align-items: center;
+		gap: 2px;
+	}
+
+	.tool {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 34px;
+		height: 34px;
+		padding: 0;
+		border: none;
+		border-radius: 8px;
+		background: transparent;
+		color: var(--color-text-secondary);
+		cursor: pointer;
+		transition:
+			background-color 0.15s,
+			color 0.15s;
+	}
+
+	.tool:hover {
+		background: var(--hover);
+		color: var(--color-text);
+	}
+
+	.tool.on {
+		color: var(--color-primary);
+	}
+
+	.tool :global(div),
+	.seg-tool :global(div) {
+		display: flex;
+	}
+
+	.tool :global(svg) {
+		width: 19px;
+		height: 19px;
+		stroke-width: 1.7;
+	}
+
+	.seg-tools {
+		display: flex;
+		gap: 2px;
+		margin: 0 4px;
+		padding: 2px;
+		border-radius: 9px;
+		background: var(--color-surface);
+	}
+
+	.seg-tool {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 30px;
+		height: 26px;
+		padding: 0;
+		border: none;
+		border-radius: 7px;
+		background: transparent;
+		color: var(--color-text-secondary);
+		cursor: pointer;
+	}
+
+	.seg-tool:hover {
+		color: var(--color-text);
+	}
+
+	.seg-tool.on {
+		background: var(--color-background);
+		color: var(--color-text);
+		box-shadow: 0 0 0 1px var(--color-border);
+	}
+
+	.seg-tool :global(svg) {
+		width: 16px;
+		height: 16px;
+	}
+
+	.tool-sep {
+		flex: none;
+		width: 1px;
+		height: 18px;
+		margin: 0 6px;
+		background: var(--color-border);
+	}
+
+	/* ===== 原稿 ===== */
+	.editor-page {
+		max-width: 46rem;
+		min-height: 100%;
+		margin: 0 auto;
+		padding: 56px 56px 120px;
 	}
 
 	/* 今の段落以外を薄くする(CSS Custom Highlight API) */
@@ -2202,7 +2417,6 @@
 	.scene-list {
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
 		padding: 0 12px 12px;
 	}
 
@@ -2210,37 +2424,79 @@
 		display: flex;
 		gap: 8px;
 		align-items: center;
-		margin-bottom: 8px;
+		margin-bottom: 14px;
 	}
 
 	.scene-filter {
 		flex: 1;
 		min-width: 0;
-		padding: 8px 12px;
+		height: 36px;
+		padding: 0 12px;
 		border: 1px solid var(--color-border);
-		border-radius: 10px;
+		border-radius: 8px;
 		background: var(--color-background);
 		color: var(--color-text);
-		font-size: 16px;
+		font-size: 13.5px;
 		font-family: inherit;
+		transition: border-color 0.15s;
+	}
+
+	.scene-filter::placeholder {
+		color: var(--color-text-secondary);
+	}
+
+	.scene-filter:focus {
+		outline: none;
+		border-color: color-mix(in srgb, var(--color-primary) 60%, var(--color-border));
+	}
+
+	.add-chapter {
+		flex: none;
+		height: 36px;
+		padding: 0 12px;
+		border: none;
+		border-radius: 8px;
+		background: var(--selected);
+		color: var(--color-primary);
+		font: inherit;
+		font-size: 13px;
+		font-weight: 600;
+		white-space: nowrap;
+		cursor: pointer;
+		transition: background-color 0.15s;
+	}
+
+	.add-chapter:hover {
+		background: color-mix(in srgb, var(--color-primary) 16%, transparent);
 	}
 
 	.list-empty {
-		padding: 24px 0;
-		text-align: center;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 12px;
+		padding: 32px 0;
 		color: var(--color-text-secondary);
-		font-size: 14px;
+		font-size: 13px;
+	}
+
+	.list-empty p {
+		margin: 0;
 	}
 
 	.chapter {
-		margin-bottom: 8px;
+		padding-bottom: 6px;
+	}
+
+	.chapter + .chapter {
+		padding-top: 6px;
 	}
 
 	.chapter-head,
 	.scene-row {
 		display: flex;
 		align-items: center;
-		gap: 4px;
+		gap: 2px;
 		-webkit-touch-callout: none;
 		-webkit-user-select: none;
 		user-select: none;
@@ -2250,19 +2506,21 @@
 		flex: 1;
 		min-width: 0;
 		display: flex;
-		align-items: baseline;
+		align-items: center;
 		gap: 8px;
-		padding: 10px 4px;
+		height: 36px;
+		padding: 0 4px 0 2px;
 		border: none;
 		background: transparent;
 		color: var(--color-text);
+		font: inherit;
 		text-align: left;
 		cursor: pointer;
 	}
 
 	.chev {
-		display: inline-block;
-		font-size: 11px;
+		flex: none;
+		width: 16px;
 		color: var(--color-text-secondary);
 		transition: transform 0.15s;
 	}
@@ -2272,97 +2530,159 @@
 	}
 
 	.chapter-title {
+		min-width: 0;
 		font-size: 14px;
 		font-weight: 600;
+		letter-spacing: 0.02em;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 
+	.count {
+		margin-left: auto;
+		padding-left: 6px;
+	}
+
 	.count,
 	.scene-count {
 		flex: none;
-		font-size: 11px;
+		font-size: 11.5px;
 		color: var(--color-text-secondary);
+		font-variant-numeric: tabular-nums;
 	}
 
-	.mini,
+	.mini {
+		flex: none;
+		height: 26px;
+		padding: 0 9px;
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		background: var(--color-background);
+		color: var(--color-text-secondary);
+		font: inherit;
+		font-size: 11.5px;
+		white-space: nowrap;
+		cursor: pointer;
+		transition:
+			color 0.15s,
+			border-color 0.15s;
+	}
+
+	.mini:hover {
+		color: var(--color-text);
+		border-color: color-mix(in srgb, var(--color-text) 25%, transparent);
+	}
+
 	.more {
 		flex: none;
-		min-width: 36px;
-		height: 36px;
-		padding: 0 8px;
+		width: 28px;
+		height: 28px;
+		padding: 0;
 		border: none;
-		border-radius: 8px;
+		border-radius: 6px;
 		background: transparent;
 		color: var(--color-text-secondary);
-		font-size: 12px;
+		font-size: 16px;
+		line-height: 1;
+		letter-spacing: -0.05em;
 		cursor: pointer;
 	}
 
-	.more {
-		font-size: 18px;
-		line-height: 1;
-	}
-
-	.mini:hover,
 	.more:hover {
-		background: var(--color-surface);
+		background: var(--hover);
 		color: var(--color-text);
 	}
 
+	/* マウス操作では「⋯」を行に重ねた時だけ出し、一覧を静かに保つ */
+	@media (hover: hover) {
+		.chapter-head .more,
+		.scene-row .more {
+			opacity: 0;
+			transition: opacity 0.12s;
+		}
+
+		.chapter-head:hover .more,
+		.scene-row:hover .more,
+		.scene-row.active .more,
+		.more:focus-visible {
+			opacity: 1;
+		}
+	}
+
 	.scene-row {
-		border-radius: 10px;
+		margin: 1px 0;
+		padding-right: 4px;
+		border-radius: 8px;
+		transition: background-color 0.12s;
+	}
+
+	.scene-row:hover {
+		background: var(--hover);
 	}
 
 	.scene-row.active {
-		background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+		background: var(--selected);
 	}
 
 	.scene-main {
 		flex: 1;
 		min-width: 0;
 		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 8px;
-		padding: 10px 8px 10px 20px;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 2px;
+		padding: 8px 8px 8px 26px;
 		border: none;
 		background: transparent;
 		color: var(--color-text);
+		font: inherit;
 		text-align: left;
 		cursor: pointer;
 	}
 
-	.scene-row.active .scene-main {
-		color: var(--color-primary);
-		font-weight: 600;
-	}
-
 	.scene-title {
+		max-width: 100%;
 		font-size: 14px;
+		line-height: 1.4;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 
+	.scene-row.active .scene-title {
+		color: var(--color-primary);
+		font-weight: 600;
+	}
+
 	.scene-empty {
 		width: 100%;
-		padding: 8px 20px;
+		padding: 6px 8px 8px 26px;
 		border: none;
 		background: transparent;
-		color: var(--color-primary);
+		color: var(--color-text-secondary);
+		font: inherit;
+		font-size: 12.5px;
 		text-align: left;
-		font-size: 13px;
 		cursor: pointer;
 	}
 
+	.scene-empty .link {
+		color: var(--color-primary);
+		text-decoration: underline;
+		text-decoration-color: color-mix(in srgb, var(--color-primary) 35%, transparent);
+		text-underline-offset: 3px;
+	}
+
 	.scene-list-foot {
+		display: flex;
+		justify-content: space-between;
+		margin-top: 10px;
 		padding: 12px 4px 0;
+		border-top: 1px solid var(--color-border);
 		font-size: 12px;
 		color: var(--color-text-secondary);
-		border-top: 1px solid var(--color-border);
-		margin-top: 8px;
+		font-variant-numeric: tabular-nums;
 	}
 
 	/* ===== 集中モード終了ボタン ===== */
@@ -2753,8 +3073,9 @@
 	}
 
 	@media (max-width: 1024px) {
-		.editor-layout {
-			grid-template-columns: 1fr;
+		.editor-layout,
+		.editor-layout[data-sidebar-open='false'] {
+			grid-template-columns: minmax(0, 1fr);
 		}
 
 		.editor-sidebar {
@@ -2762,11 +3083,11 @@
 			top: 0;
 			left: 0;
 			height: 100%;
-			width: 17.5rem;
+			width: var(--scene-panel-width);
 			transform: translateX(-100%);
 			transition: transform 0.2s ease-in-out;
 			z-index: 3;
-			box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+			box-shadow: var(--shadow-float);
 		}
 
 		.editor-layout[data-sidebar-open='true'] .editor-sidebar {
@@ -2777,7 +3098,8 @@
 			display: block;
 			position: absolute;
 			inset: 0;
-			background: rgba(0, 0, 0, 0.4);
+			border: none;
+			background: rgb(0 0 0 / 0.25);
 			opacity: 0;
 			pointer-events: none;
 			transition: opacity 0.2s ease-in-out;
@@ -2787,12 +3109,6 @@
 		.editor-layout[data-sidebar-open='true'] .sidebar-overlay {
 			opacity: 1;
 			pointer-events: auto;
-		}
-
-		.sidebar-toggle {
-			display: inline-flex;
-			align-items: center;
-			justify-content: center;
 		}
 
 		.mobile-sidebar-open {
@@ -2816,7 +3132,7 @@
 			padding: 6px 10px;
 			border-radius: 8px;
 			border: 1px solid var(--color-border);
-			background: var(--color-surface);
+			background: var(--color-background);
 			color: var(--color-text);
 			font-size: 12px;
 			cursor: pointer;
@@ -2829,6 +3145,10 @@
 		.editor-panel--editor,
 		.editor-panel--preview {
 			width: 100% !important;
+		}
+
+		.editor-page {
+			padding: 40px 32px 96px;
 		}
 	}
 

@@ -127,9 +127,9 @@ Linux では WebKitGTK などが必要(`.github/workflows/desktop.yml` の「Ins
 
 ### 署名について
 
-現状はコード署名をしていない。
+Apple Developer ID による署名・公証はしていない。macOS 版はアドホック署名(`bundle.macOS.signingIdentity: "-"`)だけをしている。署名がまったく無いと、ブラウザでダウンロードした `.app` は Apple Silicon で「壊れているため開けません」と表示され、通常の手順では開けない。
 
-- macOS: 初回は Finder で右クリック →「開く」で起動する。「壊れている」と出る場合は `xattr -cr /Applications/Storift.app` を実行する。
+- macOS: 初回は Finder で右クリック →「開く」、または「システム設定」→「プライバシーとセキュリティ」→「このまま開く」で起動する。それでも「壊れている」と出る場合は `xattr -dr com.apple.quarantine /Applications/Storift.app` を実行する。
 - Windows: SmartScreen の警告が出たら「詳細情報」→「実行」。
 
 署名する場合は Apple Developer ID / Windows のコード署名証明書を用意し、Tauri の署名用の環境変数(`APPLE_CERTIFICATE` など)をリポジトリの Secrets に登録してワークフローに渡す。

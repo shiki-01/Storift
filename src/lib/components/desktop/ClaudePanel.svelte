@@ -373,7 +373,11 @@
 			{#each claudeStore.messages as message (message.id)}
 				{#if message.role === 'user'}
 					{@const last = claudeStore.isLastQuestion(message)}
-					<div class="user-turn" in:fly={{ y: 6, duration: 180 }}>
+					<div
+						class="user-turn"
+						class:editing={editingId === message.id}
+						in:fly={{ y: 6, duration: 180 }}
+					>
 						{#if editingId === message.id}
 							<div class="msg user editing">
 								<!-- svelte-ignore a11y_autofocus -->
@@ -1026,9 +1030,14 @@
 		opacity: 1;
 	}
 
+	/* 編集中は文面の長さに関係なく、パネルの幅いっぱいに広げて書きやすくする */
+	.user-turn.editing {
+		align-self: stretch;
+		max-width: none;
+	}
+
 	.msg.user.editing {
 		width: 100%;
-		min-width: 260px;
 		padding: 8px;
 	}
 

@@ -340,7 +340,7 @@
 		display: flex;
 		flex-direction: column;
 		height: 100%;
-		background: var(--color-background, #fff);
+		background-color: var(--color-background, #fff);
 	}
 
 	.settings-header {
@@ -436,7 +436,8 @@
 		font-size: 0.875rem;
 		border: 1px solid var(--color-border, #e0e0e0);
 		border-radius: 6px;
-		background: var(--color-background, #fff);
+		background-color: var(--color-background, #fff);
+		padding-right: 30px;
 		color: var(--color-text, #333);
 	}
 

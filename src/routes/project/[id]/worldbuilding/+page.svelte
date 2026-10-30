@@ -35,18 +35,18 @@
 	};
 
 	const categoryColors = {
-		term: 'bg:$(theme.info)/.15 fg:$(theme.info)',
-		timeline: 'bg:$(theme.success)/.15 fg:$(theme.success)',
-		location: 'bg:$(theme.secondary)/.15 fg:$(theme.secondary)',
+		term: 'bg:theme-surface fg:theme-info',
+		timeline: 'bg:theme-surface fg:theme-success',
+		location: 'bg:theme-surface fg:theme-secondary',
 		other: 'bg:theme-surface fg:theme-text-secondary'
 	};
 
 	function actionButtonClass(variant: 'default' | 'secondary' | 'danger' = 'default'): string {
 		const base = 'px:12 py:8 r:6 b:1px|solid|theme-border bg:theme-background transition:all|.2s';
 		const variants = {
-			default: 'fg:theme-text hover:bg:$(theme.primary)/.12 hover:fg:$(theme.primary)',
+			default: 'fg:theme-text hover:bg:theme-surface hover:fg:theme-primary',
 			secondary: 'fg:theme-text-secondary hover:bg:theme-surface',
-			danger: 'fg:theme-error hover:bg:$(theme.error)/.15'
+			danger: 'fg:theme-error hover:bg:theme-surface'
 		} as const;
 		return `${base} ${variants[variant]}`;
 	}
@@ -62,7 +62,7 @@
 		return [
 			'px:16 py:10 r:8 font:14 transition:all|.2s b:1px|solid|theme-border',
 			isActive
-				? 'bg:$(theme.primary)/.15 fg:$(theme.primary)'
+				? 'bg:theme-surface fg:theme-primary'
 				: 'bg:theme-background fg:theme-text-secondary hover:bg:theme-surface'
 		].join(' ');
 	}
@@ -259,7 +259,7 @@
 											{categoryLabels[worldbuilding.category]}
 										</span>
 										<button
-											class="font:18 font-weight:600 text-align:left bg:transparent b:none fg:theme-text hover:fg:$(theme.primary)"
+											class="font:18 font-weight:600 text-align:left bg:transparent b:none fg:theme-text hover:fg:theme-primary"
 											onclick={() => openEditModal(worldbuilding)}
 										>
 											{worldbuilding.title}
@@ -276,9 +276,7 @@
 								{#if worldbuilding.tags.length > 0}
 									<div class="flex flex-wrap gap:6">
 										{#each worldbuilding.tags as tag}
-											<span
-												class="px:10 py:4 r:full bg:$(theme.primary)/.12 fg:$(theme.primary) font:12"
-											>
+											<span class="px:10 py:4 r:full bg:theme-surface fg:theme-primary font:12">
 												#{tag}
 											</span>
 										{/each}
@@ -330,7 +328,7 @@
 						<div class="flex flex-wrap gap:8">
 							{#each allTags as tag}
 								<button
-									class="px:12 py:6 r:full bg:theme-background b:1px|solid|theme-border fg:theme-text font:12 transition:all|.2s hover:bg:$(theme.primary)/.12 hover:fg:$(theme.primary)"
+									class="px:12 py:6 r:full bg:theme-background b:1px|solid|theme-border fg:theme-text font:12 transition:all|.2s hover:bg:theme-surface hover:fg:theme-primary"
 									onclick={() => (searchQuery = tag)}
 								>
 									#{tag}
@@ -405,11 +403,11 @@
 					<div class="flex flex-wrap gap:6">
 						{#each formData.tags as tag, index}
 							<span
-								class="px:12 py:6 r:full bg:$(theme.primary)/.12 fg:$(theme.primary) font:12 flex align-items:center gap:6"
+								class="px:12 py:6 r:full bg:theme-surface fg:theme-primary font:12 flex align-items:center gap:6"
 							>
 								#{tag}
 								<button
-									class="w:18 h:18 r:full hover:bg:$(theme.primary)/.2 flex align-items:center justify-content:center b:none bg:transparent fg:$(theme.primary)"
+									class="w:18 h:18 r:full hover:bg:theme-surface flex align-items:center justify-content:center b:none bg:transparent fg:theme-primary"
 									onclick={() => handleRemoveTag(index)}
 								>
 									×
@@ -498,11 +496,11 @@
 					<div class="flex flex-wrap gap:6">
 						{#each formData.tags as tag, index}
 							<span
-								class="px:12 py:6 r:full bg:$(theme.primary)/.12 fg:$(theme.primary) font:12 flex align-items:center gap:6"
+								class="px:12 py:6 r:full bg:theme-surface fg:theme-primary font:12 flex align-items:center gap:6"
 							>
 								#{tag}
 								<button
-									class="w:18 h:18 r:full hover:bg:$(theme.primary)/.2 flex align-items:center justify-content:center b:none bg:transparent fg:$(theme.primary)"
+									class="w:18 h:18 r:full hover:bg:theme-surface flex align-items:center justify-content:center b:none bg:transparent fg:theme-primary"
 									onclick={() => handleRemoveTag(index)}
 								>
 									×

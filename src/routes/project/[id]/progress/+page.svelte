@@ -133,18 +133,18 @@
 
 	function getHeatmapColor(charactersWritten: number): string {
 		if (charactersWritten === 0) return 'bg:theme-surface';
-		if (charactersWritten < 500) return 'bg:$(theme.primary)/.08';
-		if (charactersWritten < 1000) return 'bg:$(theme.primary)/.16';
-		if (charactersWritten < 2000) return 'bg:$(theme.primary)/.24';
-		return 'bg:$(theme.primary)/.32';
+		if (charactersWritten < 500) return 'bg:theme-surface';
+		if (charactersWritten < 1000) return 'bg:theme-surface';
+		if (charactersWritten < 2000) return 'bg:theme-surface';
+		return 'bg:theme-surface';
 	}
 
 	const heatmapLegend = [
 		{ label: '0', className: 'bg:theme-surface' },
-		{ label: '~500', className: 'bg:$(theme.primary)/.08' },
-		{ label: '~1000', className: 'bg:$(theme.primary)/.16' },
-		{ label: '~2000', className: 'bg:$(theme.primary)/.24' },
-		{ label: '2000+', className: 'bg:$(theme.primary)/.32' }
+		{ label: '~500', className: 'bg:theme-surface' },
+		{ label: '~1000', className: 'bg:theme-surface' },
+		{ label: '~2000', className: 'bg:theme-surface' },
+		{ label: '2000+', className: 'bg:theme-surface' }
 	];
 
 	function calendarDayClass(charactersWritten: number, isToday: boolean): string {
@@ -152,7 +152,7 @@
 			'aspect:1/1 r:8 p:8 flex flex-direction:column align-items:center justify-content:center gap:4 transition:all|.2s cursor:pointer',
 			getHeatmapColor(charactersWritten),
 			isToday ? 'b:1px|solid|theme-primary' : 'b:1px|solid|theme-border',
-			'hover:bg:$(theme.primary)/.12'
+			'hover:bg:theme-surface'
 		].join(' ');
 	}
 
@@ -303,7 +303,7 @@
 						<Card class="flex:1 min-w:200">
 							<div class="p:20 text-align:center flex flex-direction:column gap:8">
 								<p class="font:14 fg:theme-text-secondary">目標達成率</p>
-								<p class="font:30 font-weight:600 fg:$(theme.primary)">{stats.goalProgress}%</p>
+								<p class="font:30 font-weight:600 fg:theme-primary">{stats.goalProgress}%</p>
 								<p class="font:12 fg:theme-text-secondary">達成</p>
 							</div>
 						</Card>
@@ -330,7 +330,7 @@
 										</div>
 									</div>
 
-									<div class="p:12 bg:$(theme.primary)/.12 r:8 b:1px|solid|theme-border">
+									<div class="p:12 bg:theme-surface r:8 b:1px|solid|theme-border">
 										<p class="font:14 fg:theme-text">
 											今月の合計: <span class="font-weight:600"
 												>{monthlyTotal.toLocaleString()}</span
@@ -403,7 +403,7 @@
 														{format(parseISO(log.date), 'M月d日(E)', { locale: ja })}
 													</span>
 													<button
-														class="px:10 py:6 bg:$(theme.primary)/.12 fg:$(theme.primary) r:6 font:12 transition:all|.2s hover:bg:$(theme.primary)/.2"
+														class="px:10 py:6 bg:theme-surface fg:theme-primary r:6 font:12 transition:all|.2s hover:bg:theme-surface"
 														onclick={() => openLogModal(parseISO(log.date))}
 													>
 														編集

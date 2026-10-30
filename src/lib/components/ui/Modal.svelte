@@ -36,6 +36,20 @@
 	};
 
 	let dialogEl = $state<HTMLDivElement | null>(null);
+
+	// タブの切り替えなどで中身の高さが変わったら、高さをなめらかに追従させる。
+	// 開いた直後の高さは測るだけで、アニメーションさせない
+	let bodyHeight = $state(0);
+	let animateHeight = $state(false);
+	let resizing = $state(false);
+	$effect(() => {
+		if (!isOpen) {
+			animateHeight = false;
+			return;
+		}
+		const frame = requestAnimationFrame(() => requestAnimationFrame(() => (animateHeight = true)));
+		return () => cancelAnimationFrame(frame);
+	});
 	let returnFocusTo: HTMLElement | null = null;
 
 	const FOCUSABLE =
@@ -135,10 +149,20 @@
 					×
 				</button>
 			</div>
-			<div class="modal-body p:24">
-				{#if children}
-					{@render children()}
-				{/if}
+			<div
+				class="modal-body-frame"
+				class:animate={animateHeight}
+				class:resizing
+				style:height={bodyHeight ? `${bodyHeight}px` : undefined}
+				ontransitionrun={() => (resizing = true)}
+				ontransitionend={() => (resizing = false)}
+				ontransitioncancel={() => (resizing = false)}
+			>
+				<div class="modal-body p:24" bind:offsetHeight={bodyHeight}>
+					{#if children}
+						{@render children()}
+					{/if}
+				</div>
 			</div>
 			{#if footer}
 				<div class="modal-footer p:24 pt:0">
@@ -174,6 +198,21 @@
 {/if}
 
 <style>
+	.modal-body-frame.animate {
+		transition: height 0.24s cubic-bezier(0.2, 0.7, 0.2, 1);
+	}
+
+	/* 伸び縮みしている間だけ、はみ出した中身を隠す */
+	.modal-body-frame.resizing {
+		overflow: hidden;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.modal-body-frame.animate {
+			transition: none;
+		}
+	}
+
 	@media (max-width: 768px) {
 		.modal-container {
 			width: 100%;

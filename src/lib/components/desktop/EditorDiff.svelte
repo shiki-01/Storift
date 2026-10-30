@@ -2,13 +2,14 @@
 	/**
 	 * エディタ上に、Claude の変更を色付きで表示する(VS Code の Copilot のインライン差分に当たる)。
 	 *
-	 * - 反映済みで未確認の変更: 追加した文字を緑、消えた文字のあった位置に赤い印
-	 * - 未反映の提案: 消える文字を赤(取り消し線)、入る位置に緑の印
+	 * - 反映済みで未確認の変更: 追加した文字を緑、消えた文字はその位置に赤い取り消し線の札で示す
+	 * - 未反映の提案: 消える文字を赤(取り消し線)、入る文字はその位置に緑の札で示す
 	 *
 	 * 本文の DOM は書き換えず、CSS Custom Highlight API で色を付ける(非対応の環境では半透明の枠を重ねる)。
 	 * 変更にマウスを乗せると差分と「保持 / 元に戻す」(提案なら「反映 / 却下」)が出る。
 	 */
 	import { onMount } from 'svelte';
+	import { fly } from 'svelte/transition';
 	import { claudeStore, type EditorEdit } from '$lib/stores/claude.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
 	import {
@@ -40,7 +41,8 @@
 		deco: Decoration;
 		/** Highlight API が使えないときに重ねる枠 */
 		marks: (Box & { kind: 'add' | 'del' })[];
-		ghosts: (Box & { kind: 'add' | 'del' })[];
+		/** 本文に無い側の文字(反映済みなら消えた文字、提案なら入る文字)の位置と中身 */
+		ghosts: (Box & { kind: 'add' | 'del'; text: string })[];
 		/** ホバーの判定に使う、変更全体の矩形 */
 		hits: Box[];
 	}
@@ -49,6 +51,7 @@
 
 	let placed = $state<Placed[]>([]);
 	let clip = $state<Box | null>(null);
+	let vertical = $state(false);
 	let active = $state<number | null>(null);
 	let cardBox = $state<{ left: number; top: number } | null>(null);
 	let cursor = -1;
@@ -110,7 +113,7 @@
 		const next: Placed[] = [];
 
 		if (root) {
-			const vertical = getComputedStyle(root).writingMode.startsWith('vertical');
+			vertical = getComputedStyle(root).writingMode.startsWith('vertical');
 			entries.forEach((entry, key) => {
 				const deco =
 					entry.edit.status === 'applied'
@@ -126,7 +129,7 @@
 				}
 				for (const g of deco.ghosts) {
 					const b = ghostBox(root, g.at, content.length, vertical);
-					if (b) item.ghosts.push({ ...b, kind: g.kind });
+					if (b) item.ghosts.push({ ...b, kind: g.kind, text: g.text });
 				}
 				item.hits = [...item.marks, ...item.ghosts, ...rects(root, deco.start, deco.end)];
 				next.push(item);
@@ -276,27 +279,93 @@
 					style="left:{b.left - clip.left}px;top:{b.top -
 						clip.top}px;width:{b.width}px;height:{b.height}px"
 				></div>
+				{#if b.text.trim()}
+					<!-- 本文に無い側の文字を、その位置の上(縦書きなら右)に小さな札で出す -->
+					<div
+						class="ghost-text {b.kind}"
+						class:vertical
+						class:active={active === item.key}
+						style="left:{b.left - clip.left + (vertical ? b.width + 2 : 0)}px;top:{b.top -
+							clip.top}px"
+					>
+						{b.text}
+					</div>
+				{/if}
 			{/each}
 		{/each}
 	</div>
 
 	<div
 		class="bar"
-		style="left:{clip.left + clip.width / 2}px;top:{clip.top + clip.height - 52}px"
+		style="left:{clip.left + clip.width / 2}px;top:{clip.top + clip.height - 72}px"
 		role="toolbar"
 		aria-label="AI の変更"
+		transition:fly={{ y: 16, duration: 220 }}
 	>
-		<span class="bar-label">AI の変更 {placed.length} 件</span>
-		<button onclick={() => go(-1)} title="前の変更" aria-label="前の変更">↑</button>
-		<button onclick={() => go(1)} title="次の変更" aria-label="次の変更">↓</button>
+		<span class="bar-icon" aria-hidden="true">
+			<svg
+				viewBox="0 0 24 24"
+				width="16"
+				height="16"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="1.8"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" /></svg
+			>
+		</span>
+		<span class="bar-label">
+			<strong>AI の変更 {placed.length} 件</strong>
+			<small
+				>{appliedCount ? `反映済み ${appliedCount}` : ''}{appliedCount && pendingCount
+					? '・'
+					: ''}{pendingCount ? `提案 ${pendingCount}` : ''}</small
+			>
+		</span>
+		<span class="bar-nav">
+			<button class="nav" onclick={() => go(-1)} title="前の変更" aria-label="前の変更">
+				<svg
+					viewBox="0 0 24 24"
+					width="16"
+					height="16"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					aria-hidden="true"><path d="M6 15l6-6 6 6" /></svg
+				>
+			</button>
+			<button class="nav" onclick={() => go(1)} title="次の変更" aria-label="次の変更">
+				<svg
+					viewBox="0 0 24 24"
+					width="16"
+					height="16"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg
+				>
+			</button>
+		</span>
 		{#if appliedCount}
-			<button class="primary" onclick={() => claudeStore.forEditorEdits('keep')}>すべて保持</button>
-			<button onclick={() => claudeStore.forEditorEdits('revert')}>すべて元に戻す</button>
+			<button class="bar-btn" onclick={() => claudeStore.forEditorEdits('revert')}
+				>すべて元に戻す</button
+			>
+			<button class="bar-btn primary" onclick={() => claudeStore.forEditorEdits('keep')}
+				>すべて保持</button
+			>
 		{/if}
 		{#if pendingCount}
-			<button class="primary" onclick={() => claudeStore.forEditorEdits('apply')}>すべて反映</button
+			<button class="bar-btn" onclick={() => claudeStore.forEditorEdits('reject')}
+				>すべて却下</button
 			>
-			<button onclick={() => claudeStore.forEditorEdits('reject')}>すべて却下</button>
+			<button class="bar-btn primary" onclick={() => claudeStore.forEditorEdits('apply')}
+				>すべて反映</button
+			>
 		{/if}
 	</div>
 {/if}
@@ -374,25 +443,146 @@
 		box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 30%, transparent);
 	}
 
+	.ghost-text {
+		position: absolute;
+		max-width: 260px;
+		padding: 0 5px;
+		border-radius: 4px;
+		font-size: 12px;
+		line-height: 18px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		transform: translate(-2px, -100%);
+		box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+		transition: box-shadow 0.15s;
+	}
+
+	.ghost-text.vertical {
+		max-width: none;
+		max-height: 260px;
+		padding: 5px 0;
+		writing-mode: vertical-rl;
+		transform: none;
+	}
+
+	/* 反映済みで消えた文字 */
+	.ghost-text.del {
+		color: var(--color-error);
+		background: color-mix(in srgb, var(--color-error) 12%, var(--editor-background));
+		text-decoration: line-through;
+	}
+
+	/* 提案で入る文字 */
+	.ghost-text.add {
+		color: var(--color-success);
+		background: color-mix(in srgb, var(--color-success) 14%, var(--editor-background));
+	}
+
+	.ghost-text.active {
+		box-shadow: 0 0 0 1.5px currentColor;
+	}
+
+	/* 変更の承認バー: 原稿の上で見落とさないよう、墨色の帯にする */
 	.bar {
 		position: fixed;
 		z-index: 60;
 		transform: translateX(-50%);
 		display: flex;
 		align-items: center;
-		gap: 4px;
-		padding: 4px 6px 4px 12px;
-		border: 1px solid var(--color-border);
-		border-radius: 999px;
-		background: var(--color-background);
-		box-shadow: var(--shadow-float);
-		font-size: 12px;
+		gap: 6px;
+		padding: 6px 6px 6px 12px;
+		border-radius: 14px;
+		background: var(--color-text);
+		color: var(--color-background);
+		box-shadow:
+			0 2px 6px rgb(0 0 0 / 0.12),
+			0 12px 32px rgb(0 0 0 / 0.18);
+		font-size: 13px;
 		white-space: nowrap;
 	}
 
+	.bar-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		border-radius: 50%;
+		background: color-mix(in srgb, var(--color-background) 14%, transparent);
+	}
+
 	.bar-label {
+		display: flex;
+		flex-direction: column;
+		line-height: 1.25;
 		margin-right: 4px;
-		color: var(--color-text-secondary);
+	}
+
+	.bar-label strong {
+		font-weight: 600;
+	}
+
+	.bar-label small {
+		font-size: 11px;
+		opacity: 0.7;
+	}
+
+	.bar-nav {
+		display: flex;
+		gap: 2px;
+		padding: 0 6px;
+		border-left: 1px solid color-mix(in srgb, var(--color-background) 22%, transparent);
+		border-right: 1px solid color-mix(in srgb, var(--color-background) 22%, transparent);
+	}
+
+	.bar .nav {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		padding: 0;
+		border: none;
+		border-radius: 8px;
+		background: transparent;
+		color: inherit;
+	}
+
+	.bar .nav:hover {
+		background: color-mix(in srgb, var(--color-background) 14%, transparent);
+	}
+
+	.bar-btn {
+		height: 32px;
+		padding: 0 14px;
+		border: 1px solid color-mix(in srgb, var(--color-background) 30%, transparent);
+		border-radius: 9px;
+		background: transparent;
+		color: inherit;
+		font-size: 13px;
+		transition:
+			background-color 0.15s,
+			transform 0.1s;
+	}
+
+	.bar-btn:hover {
+		background: color-mix(in srgb, var(--color-background) 12%, transparent);
+	}
+
+	.bar-btn:active {
+		transform: scale(0.97);
+	}
+
+	.bar-btn.primary {
+		border-color: transparent;
+		background: var(--color-background);
+		color: var(--color-text);
+		font-weight: 600;
+	}
+
+	.bar-btn.primary:hover {
+		background: color-mix(in srgb, var(--color-background) 88%, var(--color-text));
 	}
 
 	.card {
@@ -450,10 +640,6 @@
 		cursor: pointer;
 		color: var(--color-text);
 		background: var(--color-surface);
-	}
-
-	.bar button {
-		border-radius: 999px;
 	}
 
 	button.primary {

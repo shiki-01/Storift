@@ -253,7 +253,7 @@
 		border: none;
 		border-radius: 8px;
 		background: transparent;
-		color: var(--color-text-secondary);
+		color: var(--color-text);
 		font-size: 13px;
 		cursor: pointer;
 	}
@@ -262,6 +262,7 @@
 		background: var(--color-background);
 		color: var(--color-text);
 		font-weight: 600;
+		box-shadow: 0 0 0 1px var(--color-border);
 	}
 
 	.search,

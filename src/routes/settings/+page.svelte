@@ -19,6 +19,8 @@
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import ConflictBackups from '$lib/components/ui/ConflictBackups.svelte';
 	import NotificationSettings from '$lib/components/ui/NotificationSettings.svelte';
+	import ClaudeSettings from '$lib/components/desktop/ClaudeSettings.svelte';
+	import { isDesktop } from '$lib/desktop/platform';
 	import type { AppSettings } from '$lib/types/settings';
 	import { isFirebaseInitialized } from '$lib/firebase/config';
 	import { setupRealtimeSync, stopAllRealtimeSync } from '$lib/firebase/sync';
@@ -343,6 +345,13 @@
 
 <div class="w:100% h:100% overflow-y:auto settings-page flex flex-direction:column gap:2rem">
 	<h1 class="font:1.25rem">設定</h1>
+
+	{#if isDesktop()}
+		<Card class="flex flex-direction:column gap:1rem b:1px|solid|theme-border">
+			<h2 id="claude" class="font:bold">Claude Code</h2>
+			<ClaudeSettings />
+		</Card>
+	{/if}
 
 	<!-- テーマ設定 -->
 	<Card class="flex flex-direction:column gap:1rem b:1px|solid|theme-border">

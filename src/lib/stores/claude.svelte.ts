@@ -3,6 +3,7 @@
  *
  * - 会話は作品ごと(作品を開いていないときは「全体」)に分け、Claude Code のセッション(--resume)で続ける。
  *   作品をまたいで履歴が混ざらないので、1 回あたりに読み直す会話が短く済む。
+ * - 作品ごとに複数の会話(セッション)を履歴として残し、パネルを開くと前回の会話を開く。
  * - 本文はプロンプトに毎回添付せず、ワークスペースのファイル(未保存の本文も反映)を Claude が必要なときに読む。
  * - 本文の編集は設定(editMode)に応じて、提案のみ / 差分を確認して反映 / 自動で反映 を切り替える。
  */
@@ -79,7 +80,25 @@ export interface ChatMessage {
 	auth?: boolean;
 }
 
-interface Conversation {
+/** 1 つの会話。Claude Code のセッション 1 つに当たる */
+export interface ChatSession {
+	id: string;
+	/** Claude Code のセッション ID(--resume に渡す) */
+	sessionId?: string;
+	title: string;
+	createdAt: number;
+	updatedAt: number;
+	messages: ChatMessage[];
+}
+
+/** 作品ごと(または全体)の会話の一覧と、開いている会話 */
+interface Scope {
+	currentId: string | null;
+	sessions: ChatSession[];
+}
+
+/** 以前の保存形式(作品ごとに会話 1 つ) */
+interface LegacyConversation {
 	sessionId?: string;
 	messages: ChatMessage[];
 }
@@ -151,6 +170,7 @@ const PANEL_KEY = 'storift:claude-panel';
 const CHAT_KEY = 'storift:claude-chats';
 const GLOBAL_KEY = '__global__';
 const MAX_SAVED_MESSAGES = 100;
+const MAX_SAVED_SESSIONS = 30;
 
 const DEFAULT_SETTINGS: ClaudeSettings = {
 	model: '',
@@ -181,7 +201,7 @@ const panel = load(PANEL_KEY, { open: false, width: 420 });
 let open = $state(panel.open);
 let width = $state(panel.width);
 let settings = $state<ClaudeSettings>(load(SETTINGS_KEY, DEFAULT_SETTINGS));
-const conversations = $state<Record<string, Conversation>>(load(CHAT_KEY, {}));
+const scopes = $state<Record<string, Scope>>(loadScopes());
 let runningId = $state<string | null>(null);
 let status = $state<ClaudeStatus | null>(null);
 let quote = $state<Quote | null>(null);
@@ -195,24 +215,89 @@ function currentKey(): string {
 	return page.params?.id ?? GLOBAL_KEY;
 }
 
-function conversation(key = currentKey()): Conversation {
-	return (conversations[key] ??= { messages: [] });
+function newId(): string {
+	return crypto.randomUUID();
+}
+
+/** 会話の見出し(最初の質問の冒頭) */
+function titleOf(messages: ChatMessage[]): string {
+	const first = messages
+		.find((m) => m.role === 'user')
+		?.text?.replace(/\s+/g, ' ')
+		.trim();
+	if (!first) return '新しい会話';
+	return first.length > 40 ? first.slice(0, 40) + '…' : first;
+}
+
+function createSession(): ChatSession {
+	const now = Date.now();
+	return { id: newId(), title: '新しい会話', createdAt: now, updatedAt: now, messages: [] };
+}
+
+function isEmpty(session: ChatSession): boolean {
+	return !session.messages.length && !session.sessionId;
+}
+
+function loadScopes(): Record<string, Scope> {
+	const raw = load<Record<string, Scope | LegacyConversation>>(CHAT_KEY, {});
+	const out: Record<string, Scope> = {};
+	for (const [key, value] of Object.entries(raw)) {
+		if ('sessions' in value) {
+			out[key] = value;
+			continue;
+		}
+		// 以前の形式は、その会話を 1 件目の履歴として引き継ぐ
+		const now = Date.now();
+		const session: ChatSession = {
+			id: newId(),
+			sessionId: value.sessionId,
+			title: titleOf(value.messages ?? []),
+			createdAt: now,
+			updatedAt: now,
+			messages: value.messages ?? []
+		};
+		out[key] = { currentId: session.id, sessions: [session] };
+	}
+	return out;
+}
+
+function scopeOf(key = currentKey()): Scope {
+	return (scopes[key] ??= { currentId: null, sessions: [] });
+}
+
+/** 開いている会話(読むだけ。無ければ null) */
+function currentSession(key = currentKey()): ChatSession | null {
+	const scope = scopes[key];
+	return scope?.sessions.find((s) => s.id === scope.currentId) ?? null;
+}
+
+/** 開いている会話。無ければ作る(送信時など、状態を書き換えてよい場面でだけ使う) */
+function conversation(key = currentKey()): ChatSession {
+	const scope = scopeOf(key);
+	let session = scope.sessions.find((s) => s.id === scope.currentId);
+	if (!session) {
+		scope.sessions.unshift(createSession());
+		session = scope.sessions[0];
+		scope.currentId = session.id;
+	}
+	return session;
 }
 
 function persistChats() {
-	const out: Record<string, Conversation> = {};
-	for (const [key, conv] of Object.entries(conversations)) {
-		if (!conv.messages.length && !conv.sessionId) continue;
-		out[key] = {
-			sessionId: conv.sessionId,
-			messages: conv.messages.slice(-MAX_SAVED_MESSAGES).map((m) => ({ ...m, running: false }))
-		};
+	const out: Record<string, Scope> = {};
+	for (const [key, scope] of Object.entries(scopes)) {
+		const sessions = scope.sessions
+			.filter((s) => !isEmpty(s))
+			.sort((a, b) => b.updatedAt - a.updatedAt)
+			.slice(0, MAX_SAVED_SESSIONS)
+			.map((s) => ({
+				...s,
+				messages: s.messages.slice(-MAX_SAVED_MESSAGES).map((m) => ({ ...m, running: false }))
+			}));
+		if (!sessions.length) continue;
+		out[key] = { currentId: scope.currentId, sessions };
 	}
 	save(CHAT_KEY, out);
-}
-
-function newId(): string {
-	return crypto.randomUUID();
 }
 
 function isEditorOpenOn(sceneId: string): boolean {
@@ -332,7 +417,16 @@ export const claudeStore = {
 		if (pathChanged) void this.checkStatus();
 	},
 	get messages(): ChatMessage[] {
-		return conversations[currentKey()]?.messages ?? [];
+		return currentSession()?.messages ?? [];
+	},
+	/** 今の作品(または全体)の会話の履歴。新しく話した順 */
+	get sessions(): ChatSession[] {
+		return (scopes[currentKey()]?.sessions ?? [])
+			.filter((s) => !isEmpty(s))
+			.sort((a, b) => b.updatedAt - a.updatedAt);
+	},
+	get currentSessionId(): string | null {
+		return scopes[currentKey()]?.currentId ?? null;
 	},
 	/** 会話の範囲の表示名 */
 	get scopeLabel() {
@@ -380,9 +474,35 @@ export const claudeStore = {
 		}
 	},
 
+	/** 新しい会話を始める(今の会話が空ならそのまま使う) */
 	newChat() {
 		if (runningId) return;
-		conversations[currentKey()] = { messages: [] };
+		const scope = scopeOf();
+		const current = currentSession();
+		if (current && isEmpty(current)) return;
+		const session = createSession();
+		scope.sessions.unshift(session);
+		scope.currentId = session.id;
+		persistChats();
+	},
+
+	/** 履歴から会話を開く */
+	openSession(id: string) {
+		if (runningId) return;
+		const scope = scopeOf();
+		if (!scope.sessions.some((s) => s.id === id)) return;
+		// 開いていた空の会話は残さない
+		scope.sessions = scope.sessions.filter((s) => s.id === id || !isEmpty(s));
+		scope.currentId = id;
+		persistChats();
+	},
+
+	/** 履歴から会話を消す */
+	deleteSession(id: string) {
+		const scope = scopeOf();
+		if (runningId && scope.currentId === id) return;
+		scope.sessions = scope.sessions.filter((s) => s.id !== id);
+		if (scope.currentId === id) scope.currentId = this.sessions[0]?.id ?? null;
 		persistChats();
 	},
 
@@ -408,6 +528,8 @@ export const claudeStore = {
 		const mode = settings.editMode;
 
 		conv.messages.push({ id: newId(), role: 'user', text: body, quote: attached?.text });
+		conv.updatedAt = Date.now();
+		if (conv.title === '新しい会話') conv.title = titleOf(conv.messages);
 		conv.messages.push({
 			id: requestId,
 			role: 'assistant',
@@ -534,7 +656,7 @@ export const claudeStore = {
 		if (!scene || !isEditorOpenOn(scene.id)) return [];
 		const file = sceneFiles[scene.id];
 		const out: EditorEdit[] = [];
-		for (const message of conversations[currentKey()]?.messages ?? []) {
+		for (const message of currentSession()?.messages ?? []) {
 			for (const edit of message.edits ?? []) {
 				const applied = edit.status === 'applied' && !edit.reviewed && edit.sceneId === scene.id;
 				const pending = edit.status === 'pending' && !!file && edit.file === file;

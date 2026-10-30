@@ -13,10 +13,12 @@ const PREFS_KEY = 'storift:editor-prefs';
 interface EditorPrefs {
 	typewriter: boolean;
 	dimOthers: boolean;
+	/** 章・シーン一覧のパネルを開いているか */
+	sceneListOpen: boolean;
 }
 
 function loadPrefs(): EditorPrefs {
-	const fallback: EditorPrefs = { typewriter: false, dimOthers: false };
+	const fallback: EditorPrefs = { typewriter: false, dimOthers: false, sceneListOpen: true };
 	try {
 		if (typeof localStorage === 'undefined') return fallback;
 		const raw = localStorage.getItem(PREFS_KEY);
@@ -28,7 +30,7 @@ function loadPrefs(): EditorPrefs {
 
 function savePrefs() {
 	try {
-		localStorage.setItem(PREFS_KEY, JSON.stringify({ typewriter, dimOthers }));
+		localStorage.setItem(PREFS_KEY, JSON.stringify({ typewriter, dimOthers, sceneListOpen }));
 	} catch {
 		// 保存できなくても動作には影響しない
 	}
@@ -37,6 +39,7 @@ function savePrefs() {
 const initialPrefs = loadPrefs();
 let typewriter = $state(initialPrefs.typewriter);
 let dimOthers = $state(initialPrefs.dimOthers);
+let sceneListOpen = $state(initialPrefs.sceneListOpen);
 // 集中モード: 上下のバーをすべて隠す(永続化しない)
 let focusMode = $state(false);
 
@@ -106,6 +109,13 @@ export const editorStore = {
 	},
 	set dimOthers(value: boolean) {
 		dimOthers = value;
+		savePrefs();
+	},
+	get sceneListOpen() {
+		return sceneListOpen;
+	},
+	set sceneListOpen(value: boolean) {
+		sceneListOpen = value;
 		savePrefs();
 	},
 	get focusMode() {

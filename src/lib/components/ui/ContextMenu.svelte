@@ -122,7 +122,7 @@
 		position: fixed;
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+		box-shadow: var(--shadow-float);
 		min-width: 200px;
 		padding: 4px;
 		animation: fadeIn 0.15s ease-out;
@@ -169,7 +169,7 @@
 	}
 
 	.menu-item.danger:hover:not(.disabled) {
-		background: var(--error-bg, rgba(220, 38, 38, 0.1));
+		background: color-mix(in srgb, var(--color-error) 10%, transparent);
 	}
 
 	:global(.menu-item .icon) {

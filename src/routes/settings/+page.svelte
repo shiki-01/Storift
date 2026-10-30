@@ -345,7 +345,7 @@
 	<h1 class="font:1.25rem">設定</h1>
 
 	<!-- テーマ設定 -->
-	<Card class="flex flex-direction:column gap:1rem b:2px|solid|var(--color-text)">
+	<Card class="flex flex-direction:column gap:1rem b:1px|solid|theme-border">
 		<h2 class="font:bold">テーマ</h2>
 
 		<div>
@@ -364,7 +364,7 @@
 			{#each Object.values(themes) as theme}
 				<button
 					onclick={() => handleThemeChange(theme.id)}
-					class="p:4 r:8px b:2px|solid|var(--color-text) cursor:pointer flex flex-direction:row ai:center jc:space-between gap:2rem rel px:1rem py:.75rem {settings.autoTheme
+					class="p:4 r:8px b:1px|solid|theme-border cursor:pointer flex flex-direction:row ai:center jc:space-between gap:2rem rel px:1rem py:.75rem {settings.autoTheme
 						? 'opacity:.5'
 						: ''}"
 					style="background-color: {theme.colors.background}; color: {theme.colors.text};"
@@ -397,7 +397,7 @@
 	</Card>
 
 	<!-- Phase 2: 通知設定 -->
-	<Card class="b:2px|solid|var(--color-text)">
+	<Card class="b:1px|solid|theme-border">
 		<h2 class="font:bold">通知とリマインダー</h2>
 		{#if currentProjectStore.project}
 			<NotificationSettings projectId={currentProjectStore.project.id} />
@@ -407,7 +407,7 @@
 	</Card>
 
 	<!-- 書式設定 -->
-	<Card class="b:2px|solid|var(--color-text) flex flex-direction:column gap:1rem">
+	<Card class="b:1px|solid|theme-border flex flex-direction:column gap:1rem">
 		<h2 class="font:bold">書式設定</h2>
 		<p class="fg:theme-text-secondary font:.875rem">
 			エディタのテキスト表示形式を一括で調整できます。
@@ -511,7 +511,7 @@
 			</div>
 
 			<!-- プレビュー -->
-			<div class="p:1rem b:2px|solid|theme-border r:8px bg:theme-background-secondary">
+			<div class="p:1rem b:1px|solid|theme-border r:8px bg:theme-surface">
 				<p class="font:.75rem fg:theme-text-secondary mb:.5rem">プレビュー</p>
 				<div
 					class="fg:theme-text"
@@ -548,7 +548,7 @@
 	</Card>
 
 	<!-- 同期設定 -->
-	<Card class="b:2px|solid|var(--color-text)  flex flex-direction:column gap:1rem">
+	<Card class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem">
 		<h2 class="font:bold">同期</h2>
 
 		<div class="flex flex-direction:column gap:1rem">
@@ -576,7 +576,7 @@
 					id="conflictResolution"
 					bind:value={settings.conflictResolution}
 					onchange={saveSettings}
-					class="px:.75rem py:.5rem b:2px|solid|theme-text r:8px bg:theme-background fg:theme-text"
+					class="px:.75rem py:.5rem b:1px|solid|theme-border r:8px bg:theme-background fg:theme-text"
 				>
 					<option value="manual">手動で選択（推奨）</option>
 					<option value="local">常にこの端末の変更を優先</option>
@@ -642,14 +642,14 @@
 						</span>
 					</div>
 					{#if syncStore.lastSyncTime}
-						<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+						<p class="text-xs fg:theme-text-secondary mt-1">
 							最終同期: {new Date(syncStore.lastSyncTime).toLocaleString('ja-JP')}
 						</p>
 					{/if}
 				</div>
 			{:else}
 				<div
-					class="px:1rem py:1em b:2px|solid|theme-warning r:8px flex flex-direction:column gap:1rem"
+					class="px:1rem py:1em b:1px|solid|theme-warning r:8px flex flex-direction:column gap:1rem"
 					style="background-color: color-mix(in srgb, var(--color-warning) 10%, transparent);"
 				>
 					<p class="font:bold fg:theme-warning">Firebase連携が設定されていません</p>
@@ -660,7 +660,7 @@
 	</Card>
 
 	<!-- エディタ(自動保存) -->
-	<Card class="b:2px|solid|var(--color-text) flex flex-direction:column gap:1rem">
+	<Card class="b:1px|solid|theme-border flex flex-direction:column gap:1rem">
 		<h2 class="font:bold">エディタ</h2>
 
 		<label class="flex ai:center gap:.5rem cursor:pointer">
@@ -686,14 +686,14 @@
 					step="5"
 					bind:value={autoSaveSeconds}
 					onchange={handleAutoSaveSeconds}
-					class="w:8rem px:.75rem py:.5rem b:2px|solid|theme-text r:8px bg:theme-background fg:theme-text"
+					class="w:8rem px:.75rem py:.5rem b:1px|solid|theme-border r:8px bg:theme-background fg:theme-text"
 				/>
 			</label>
 		{/if}
 	</Card>
 
 	<!-- ショートカットキー -->
-	<Card class="b:2px|solid|var(--color-text)  flex flex-direction:column gap:1rem">
+	<Card class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem">
 		<h2 class="font:bold">ショートカットキー</h2>
 		<p class="fg:theme-text-secondary font:.875rem">
 			「変更」を押してからキーを押すと割り当てられます（Ctrl または Alt
@@ -731,14 +731,14 @@
 	</Card>
 
 	<!-- データ管理 -->
-	<Card class="b:2px|solid|var(--color-text)  flex flex-direction:column gap:1rem">
+	<Card class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem">
 		<h2 class="font:bold">データ管理</h2>
 
 		<div class="flex flex-direction:column gap:1rem">
 			<div class="flex flex-direction:column gap:.6rem">
 				<Button
 					onclick={() => (showExportModal = true)}
-					class="p:.5rem|1rem b:2px|solid|theme-text"
+					class="p:.5rem|1rem b:1px|solid|theme-border"
 				>
 					全データをエクスポート
 				</Button>
@@ -749,7 +749,7 @@
 				<Button
 					onclick={() => (showImportModal = true)}
 					variant="secondary"
-					class="p:.5rem|1rem b:2px|solid|theme-text"
+					class="p:.5rem|1rem b:1px|solid|theme-border"
 				>
 					データをインポート
 				</Button>
@@ -760,7 +760,7 @@
 				<Button
 					onclick={() => (showClearDataModal = true)}
 					variant="danger"
-					class="p:.5rem|1rem b:2px|solid|theme-text"
+					class="p:.5rem|1rem b:1px|solid|theme-border"
 				>
 					全データを削除
 				</Button>
@@ -770,7 +770,7 @@
 	</Card>
 
 	<!-- バージョン情報 -->
-	<Card class="b:2px|solid|var(--color-text)  flex flex-direction:column gap:1rem">
+	<Card class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem">
 		<h2 class="font:bold">バージョン情報</h2>
 		<div class="fg:theme-text-secondary">
 			<p>Storift v0.0.1</p>
@@ -835,12 +835,12 @@
 			</div>
 
 			{#if importProgress}
-				<div class="p-3 bg-gray-100 rounded">
+				<div class="p-3 bg:theme-surface rounded">
 					{importProgress}
 				</div>
 			{/if}
 
-			<p class="text-sm text-gray-600">
+			<p class="text-sm fg:theme-text-secondary">
 				※ 既存のプロジェクトと同じタイトルの場合、新しいプロジェクトとして追加されます。
 			</p>
 		</div>
@@ -857,7 +857,7 @@
 		confirmVariant="danger"
 	>
 		<div class="space-y-4">
-			<p class="text-red-600 font-semibold">
+			<p class="fg:theme-error font-semibold">
 				⚠️ すべてのプロジェクト、キャラクター、プロット、設定資料が削除されます。
 			</p>
 			<p>この操作は取り消すことができません。事前にバックアップを取ることをお勧めします。</p>

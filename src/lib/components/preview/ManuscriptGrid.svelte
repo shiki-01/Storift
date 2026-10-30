@@ -20,9 +20,9 @@
 	function calculateGridCells(chars: string[], cols: number, rowCount: number): string[][] {
 		const grid: string[][] = [];
 		const totalCells = cols * rowCount;
-		
+
 		let charIndex = 0;
-		
+
 		if (writingMode === 'vertical') {
 			// 縦書き: 列ごとに上から下へ
 			for (let col = 0; col < cols; col++) {
@@ -78,7 +78,7 @@
 				grid.push(rowArr);
 			}
 		}
-		
+
 		return grid;
 	}
 
@@ -146,7 +146,6 @@
 		background: #fff;
 		border: 2px solid #c4a77d;
 		padding: 1rem;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 	}
 
 	/* 縦書きグリッド */
@@ -190,7 +189,7 @@
 		justify-content: center;
 		border: 1px solid #e8dcc8;
 		box-sizing: border-box;
-		font-family: "Noto Serif JP", "Yu Mincho", "游明朝", serif;
+		font-family: 'Noto Serif JP', 'Yu Mincho', '游明朝', serif;
 		font-size: calc(var(--cell-size) * 0.7);
 		color: #333;
 	}
@@ -220,7 +219,7 @@
 
 	/* 装飾線（原稿用紙の罫線） */
 	.manuscript-paper::before {
-		content: "";
+		content: '';
 		position: absolute;
 		top: 50%;
 		left: 0;

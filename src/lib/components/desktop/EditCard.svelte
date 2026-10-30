@@ -228,7 +228,7 @@
 	.buttons button.primary {
 		border-color: var(--color-primary);
 		background: var(--color-primary);
-		color: #fff;
+		color: var(--color-background);
 	}
 
 	.buttons button:disabled {

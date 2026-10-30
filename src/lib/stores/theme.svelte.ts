@@ -31,30 +31,32 @@ export interface Theme {
 	};
 }
 
+// 配色は「紙と墨」を基調にする。
+// 原色に近い青や紫は避け、藍・朱・松葉といった落ち着いた色を差し色に使う。
 export const themes: Record<string, Theme> = {
 	light: {
 		id: 'light',
-		name: 'ライト',
+		name: '和紙',
 		colors: {
-			primary: '#3b82f6',
-			secondary: '#8b5cf6',
-			background: '#ffffff',
-			surface: '#f9fafb',
-			text: '#1f2937',
-			textSecondary: '#6b7280',
-			border: '#e5e7eb',
-			accent: '#f59e0b',
-			success: '#10b981',
-			warning: '#f59e0b',
-			error: '#ef4444',
-			info: '#3b82f6'
+			primary: '#33507a', // 藍
+			secondary: '#6b5b7b', // 藤鼠
+			background: '#f6f4ef',
+			surface: '#ece8df',
+			text: '#2a2925', // 墨
+			textSecondary: '#78736a',
+			border: '#dfdad0',
+			accent: '#b4543a', // 朱
+			success: '#557a4c', // 松葉
+			warning: '#b0812c', // 黄土
+			error: '#a83c3c', // 臙脂
+			info: '#33507a'
 		},
 		editor: {
-			background: '#ffffff',
-			text: '#1f2937',
-			selection: '#bfdbfe',
-			lineHighlight: '#f3f4f6',
-			cursor: '#3b82f6'
+			background: '#fbfaf6',
+			text: '#2a2925',
+			selection: '#d6dfeb',
+			lineHighlight: '#f1eee6',
+			cursor: '#33507a'
 		},
 		fonts: {
 			body: "'Noto Sans JP', sans-serif",
@@ -64,27 +66,27 @@ export const themes: Record<string, Theme> = {
 	},
 	dark: {
 		id: 'dark',
-		name: 'ダーク',
+		name: '墨',
 		colors: {
-			primary: '#60a5fa',
-			secondary: '#a78bfa',
-			background: '#111827',
-			surface: '#1f2937',
-			text: '#f9fafb',
-			textSecondary: '#9ca3af',
-			border: '#374151',
-			accent: '#fbbf24',
-			success: '#34d399',
-			warning: '#fbbf24',
-			error: '#f87171',
-			info: '#60a5fa'
+			primary: '#9db3d1',
+			secondary: '#b3a6c2',
+			background: '#1b1a18',
+			surface: '#24231f',
+			text: '#e7e3da',
+			textSecondary: '#9a958a',
+			border: '#34322d',
+			accent: '#d98a6e',
+			success: '#93b486',
+			warning: '#d6b06a',
+			error: '#e08a82',
+			info: '#9db3d1'
 		},
 		editor: {
-			background: '#1f2937',
-			text: '#f9fafb',
-			selection: '#1e40af',
-			lineHighlight: '#374151',
-			cursor: '#60a5fa'
+			background: '#201f1c',
+			text: '#e7e3da',
+			selection: '#3a4558',
+			lineHighlight: '#2a2925',
+			cursor: '#9db3d1'
 		},
 		fonts: {
 			body: "'Noto Sans JP', sans-serif",
@@ -94,27 +96,27 @@ export const themes: Record<string, Theme> = {
 	},
 	sepia: {
 		id: 'sepia',
-		name: 'セピア',
+		name: '古書',
 		colors: {
-			primary: '#92400e',
-			secondary: '#78350f',
-			background: '#fef3c7',
-			surface: '#fde68a',
-			text: '#451a03',
-			textSecondary: '#78350f',
-			border: '#fbbf24',
-			accent: '#dc2626',
-			success: '#15803d',
-			warning: '#ea580c',
-			error: '#dc2626',
-			info: '#92400e'
+			primary: '#7a4b2a', // 焦茶
+			secondary: '#6e5a45',
+			background: '#f1e8d8',
+			surface: '#e7dcc6',
+			text: '#3b2f22',
+			textSecondary: '#7f6c56',
+			border: '#d9cab0',
+			accent: '#a6452f',
+			success: '#5d7444',
+			warning: '#a8742a',
+			error: '#a3392e',
+			info: '#7a4b2a'
 		},
 		editor: {
-			background: '#fef3c7',
-			text: '#451a03',
-			selection: '#fde68a',
-			lineHighlight: '#fef3c7',
-			cursor: '#92400e'
+			background: '#f6efe2',
+			text: '#3b2f22',
+			selection: '#e3d0ad',
+			lineHighlight: '#efe5d2',
+			cursor: '#7a4b2a'
 		},
 		fonts: {
 			body: "'Noto Sans JP', sans-serif",
@@ -124,27 +126,27 @@ export const themes: Record<string, Theme> = {
 	},
 	night: {
 		id: 'night',
-		name: 'ナイト',
+		name: '夜',
 		colors: {
-			primary: '#818cf8',
-			secondary: '#c084fc',
-			background: '#0f172a',
-			surface: '#1e293b',
-			text: '#e2e8f0',
-			textSecondary: '#94a3b8',
-			border: '#334155',
-			accent: '#fb923c',
-			success: '#4ade80',
-			warning: '#fb923c',
-			error: '#fb7185',
-			info: '#818cf8'
+			primary: '#a9bedb',
+			secondary: '#b9adc9',
+			background: '#141920',
+			surface: '#1b2129',
+			text: '#d8dde3',
+			textSecondary: '#8a939e',
+			border: '#2a323c',
+			accent: '#d9a46e',
+			success: '#8fb39a',
+			warning: '#d9b56e',
+			error: '#e0918a',
+			info: '#a9bedb'
 		},
 		editor: {
-			background: '#1e293b',
-			text: '#e2e8f0',
-			selection: '#312e81',
-			lineHighlight: '#334155',
-			cursor: '#818cf8'
+			background: '#171c23',
+			text: '#d8dde3',
+			selection: '#33425a',
+			lineHighlight: '#1f2630',
+			cursor: '#a9bedb'
 		},
 		fonts: {
 			body: "'Noto Sans JP', sans-serif",

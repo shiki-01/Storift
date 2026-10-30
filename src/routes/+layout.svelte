@@ -27,6 +27,8 @@
 	import ClaudePanel from '$lib/components/desktop/ClaudePanel.svelte';
 	import SelectionAsk from '$lib/components/desktop/SelectionAsk.svelte';
 	import EditorDiff from '$lib/components/desktop/EditorDiff.svelte';
+	import AppRail from '$lib/components/layout/AppRail.svelte';
+	import { projectNavItems, navIcons } from '$lib/components/layout/nav';
 
 	let { children } = $props();
 
@@ -48,15 +50,6 @@
 	$effect(() => {
 		if (updated.current) void checkForUpdate();
 	});
-
-	// プロジェクトページのナビゲーションアイテム
-	const projectNavItems = [
-		{ path: 'editor', label: '執筆' },
-		{ path: 'plot', label: 'プロット' },
-		{ path: 'characters', label: 'キャラクター' },
-		{ path: 'worldbuilding', label: '設定資料' },
-		{ path: 'progress', label: '進捗' }
-	];
 
 	// プロジェクトページかどうかを判定
 	let isProjectPage = $derived($page.url.pathname.startsWith('/project/'));
@@ -84,9 +77,11 @@
 		sectionLabel ? `${sectionLabel} - Storift` : 'Storift - 小説執筆PWAアプリ'
 	);
 
-	// スマホのエディタは専用の上部バーを自前で持つため、共通ヘッダーを出さない
+	// デスクトップは左端のレールで画面を切り替える(上部ヘッダーは持たない)。
+	// スマホは細い上部バーを出すが、エディタは専用の上部バーを自前で持つため出さない
 	let isEditorRoute = $derived(isProjectPage && $page.url.pathname.endsWith('/editor'));
-	let showGlobalHeader = $derived(!(viewport.isMobile && isEditorRoute) && !editorStore.focusMode);
+	let showRail = $derived(!viewport.isMobile && !editorStore.focusMode);
+	let showMobileHeader = $derived(viewport.isMobile && !isEditorRoute && !editorStore.focusMode);
 	let showBottomNav = $derived(
 		viewport.isMobile && isProjectPage && !viewport.isKeyboardOpen && !editorStore.focusMode
 	);
@@ -181,99 +176,78 @@
 	<meta name="description" content="個人向け小説執筆アプリ" />
 </svelte:head>
 
-<div class="app-shell bg:theme-background" style={shellStyle}>
-	{#if showGlobalHeader}
-		<header class="app-header bb:1px|solid|theme-border">
-			{#if viewport.isMobile}
-				<!-- スマホ: 細い1本のバー -->
-				<div class="app-header-inner flex ai:center gap:8 px:12">
+<div class="app-shell" class:with-rail={showRail} style={shellStyle}>
+	{#if showRail}
+		<AppRail {desktop} />
+	{/if}
+
+	<div class="app-column">
+		{#if showMobileHeader}
+			<header class="app-header">
+				<div class="app-header-inner">
 					{#if isProjectPage}
-						<a href="/home" class="icon-btn" aria-label="ホームへ戻る">
+						<a href="/home" class="icon-btn" aria-label="作品一覧へ戻る">
 							<svg
 								viewBox="0 0 24 24"
 								width="22"
 								height="22"
 								fill="none"
 								stroke="currentColor"
-								stroke-width="2"
+								stroke-width="1.8"
 								stroke-linecap="round"
 								stroke-linejoin="round"
 								aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg
 							>
 						</a>
-						<span class="font:15 font-weight:600 fg:theme-text flex:1">{sectionLabel ?? ''}</span>
+						<span class="header-title">{sectionLabel ?? ''}</span>
 					{:else}
-						<a href="/home" class="w:90px flex" aria-label="ホーム">
+						<a href="/home" class="header-logo" aria-label="ホーム">
 							{@html logo(themes[themeStore.theme.id].colors.text)}
 						</a>
 						<span class="flex:1"></span>
 					{/if}
 					<SyncStatus />
 					{#if !isProjectPage}
-						<a href="/settings" class="font:13 fg:theme-text px:8 py:6">設定</a>
+						<a href="/settings" class="header-link">設定</a>
 					{/if}
 				</div>
-			{:else}
-				<!-- デスクトップ: ロゴ + 常時表示のナビゲーション -->
-				<div class="app-header-inner flex ai:center gap:24 px:24">
-					<a href="/home" class="w:100px flex" aria-label="ホーム">
-						{@html logo(themes[themeStore.theme.id].colors.text)}
-					</a>
-					{#if isProjectPage}
-						<nav class="flex ai:center gap:4 flex:1" aria-label="プロジェクト">
-							{#each projectNavItems as item}
-								<a
-									href="/project/{projectId}/{item.path}"
-									aria-current={isActive(item.path) ? 'page' : undefined}
-									class="nav-link {isActive(item.path) ? 'is-active' : ''}"
-								>
-									{item.label}
-								</a>
-							{/each}
-						</nav>
-					{:else}
-						<span class="flex:1"></span>
-					{/if}
-					<SyncStatus />
-					{#if desktop}
-						<button
-							type="button"
-							class="nav-link cursor:pointer {claudeStore.open ? 'is-active' : ''}"
-							onclick={() => claudeStore.toggle()}
-							title="Claude Code パネル (Ctrl+Shift+L)">Claude</button
-						>
-					{/if}
-					<a
-						href="/settings"
-						class="nav-link {$page.url.pathname === '/settings' ? 'is-active' : ''}">設定</a
-					>
-				</div>
-			{/if}
-		</header>
-	{/if}
+			</header>
+		{/if}
 
-	<div class="app-body">
-		<main class="app-main rel">
-			{@render children()}
-		</main>
-		{#if showClaudePanel}
-			<ClaudePanel />
+		<div class="app-body">
+			<main class="app-main rel">
+				{@render children()}
+			</main>
+			{#if showClaudePanel}
+				<ClaudePanel />
+			{/if}
+		</div>
+
+		{#if showBottomNav}
+			<nav class="bottom-nav" aria-label="プロジェクト">
+				{#each projectNavItems as item (item.path)}
+					<a
+						href="/project/{projectId}/{item.path}"
+						aria-current={isActive(item.path) ? 'page' : undefined}
+						class="bottom-nav-item {isActive(item.path) ? 'is-active' : ''}"
+					>
+						<svg
+							viewBox="0 0 24 24"
+							width="22"
+							height="22"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.6"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true">{@html navIcons[item.icon]}</svg
+						>
+						<span class="bottom-nav-label">{item.label}</span>
+					</a>
+				{/each}
+			</nav>
 		{/if}
 	</div>
-
-	{#if showBottomNav}
-		<nav class="bottom-nav bt:1px|solid|theme-border" aria-label="プロジェクト">
-			{#each projectNavItems as item}
-				<a
-					href="/project/{projectId}/{item.path}"
-					aria-current={isActive(item.path) ? 'page' : undefined}
-					class="bottom-nav-item {isActive(item.path) ? 'is-active' : ''}"
-				>
-					<span class="bottom-nav-label">{item.label}</span>
-				</a>
-			{/each}
-		</nav>
-	{/if}
 </div>
 
 {#if desktop && !viewport.isMobile}
@@ -287,23 +261,56 @@
 <style>
 	.app-shell {
 		display: flex;
-		flex-direction: column;
 		height: 100vh;
 		height: 100dvh;
 		overflow: hidden;
+		background: var(--color-background);
+	}
+
+	.app-shell.with-rail {
+		padding-left: var(--safe-left);
+	}
+
+	.app-column {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
 	}
 
 	.app-header {
 		flex: none;
 		background: var(--color-background);
+		border-bottom: 1px solid var(--color-border);
 		padding-top: var(--safe-top);
 		padding-left: var(--safe-left);
 		padding-right: var(--safe-right);
 	}
 
 	.app-header-inner {
+		display: flex;
+		align-items: center;
+		gap: 8px;
 		height: var(--bar-height);
-		min-height: var(--bar-height);
+		padding: 0 12px;
+	}
+
+	.header-title {
+		flex: 1;
+		font-size: 15px;
+		font-weight: 600;
+		color: var(--color-text);
+	}
+
+	.header-logo {
+		display: flex;
+		width: 88px;
+	}
+
+	.header-link {
+		padding: 6px 8px;
+		font-size: 13px;
+		color: var(--color-text);
 	}
 
 	.app-body {
@@ -329,27 +336,11 @@
 		border-radius: 8px;
 	}
 
-	.nav-link {
-		padding: 6px 12px;
-		border-radius: 8px;
-		font-size: 14px;
-		color: var(--color-text-secondary);
-		white-space: nowrap;
-	}
-
-	.nav-link:hover {
-		color: var(--color-text);
-	}
-
-	.nav-link.is-active {
-		color: var(--color-primary);
-		background: color-mix(in srgb, var(--color-primary) 14%, transparent);
-	}
-
 	.bottom-nav {
 		flex: none;
 		display: flex;
-		background: var(--color-background);
+		background: var(--color-surface);
+		border-top: 1px solid var(--color-border);
 		padding-bottom: var(--safe-bottom);
 		padding-left: var(--safe-left);
 		padding-right: var(--safe-right);
@@ -358,27 +349,24 @@
 	.bottom-nav-item {
 		flex: 1;
 		display: flex;
+		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		height: var(--bottom-nav-height);
-		font-size: 12px;
+		gap: 2px;
+		height: calc(var(--bottom-nav-height) + 4px);
 		color: var(--color-text-secondary);
-		position: relative;
+	}
+
+	.bottom-nav-label {
+		font-size: 10.5px;
+		letter-spacing: 0.02em;
 	}
 
 	.bottom-nav-item.is-active {
-		color: var(--color-primary);
-		font-weight: 600;
+		color: var(--color-text);
 	}
 
-	.bottom-nav-item.is-active::before {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: 25%;
-		right: 25%;
-		height: 2px;
-		border-radius: 0 0 2px 2px;
-		background: var(--color-primary);
+	.bottom-nav-item.is-active svg {
+		color: var(--color-primary);
 	}
 </style>

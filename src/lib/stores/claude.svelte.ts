@@ -14,11 +14,18 @@ import { queueChange } from '$lib/services/sync.service';
 import {
 	cancelClaude,
 	getClaudeStatus,
+	openClaudeLogin,
 	sendToClaude,
 	syncWorkspace,
 	type ClaudeStatus
 } from '$lib/desktop/claude';
-import { applyStreamLine, createTurnState, turnParts, type TurnPart } from '$lib/desktop/stream';
+import {
+	applyStreamLine,
+	createTurnState,
+	isAuthError,
+	turnParts,
+	type TurnPart
+} from '$lib/desktop/stream';
 import { buildWorkspace, loadWorkspaceData } from '$lib/desktop/workspace';
 import {
 	EDIT_INSTRUCTIONS,
@@ -68,6 +75,8 @@ export interface ChatMessage {
 	editMode?: EditMode;
 	running?: boolean;
 	costUsd?: number;
+	/** error: ログインが切れている・未ログインのエラー */
+	auth?: boolean;
 }
 
 interface Conversation {
@@ -377,6 +386,11 @@ export const claudeStore = {
 		persistChats();
 	},
 
+	/** ターミナルでログインを始める */
+	async openLogin() {
+		await openClaudeLogin(settings.claudePath);
+	},
+
 	async cancel() {
 		if (runningId) await cancelClaude(runningId);
 	},
@@ -443,7 +457,9 @@ export const claudeStore = {
 				const detail = exit.stderr.trim() || turn.resultText || `終了コード ${exit.code}`;
 				// 古いセッションが見つからないときは、次から新しい会話で始める
 				if (/No conversation found/i.test(detail)) conv.sessionId = undefined;
-				conv.messages.push({ id: newId(), role: 'error', text: detail });
+				const auth = isAuthError(detail);
+				if (auth && status) status = { ...status, loggedIn: false };
+				conv.messages.push({ id: newId(), role: 'error', text: detail, auth });
 			}
 
 			if (mode !== 'suggest' && !exit.cancelled) {

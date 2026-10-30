@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyStreamLine, createTurnState, turnParts } from './stream';
+import { applyStreamLine, createTurnState, isAuthError, turnParts } from './stream';
 
 const line = (value: unknown) => JSON.stringify(value);
 
@@ -84,5 +84,33 @@ describe('applyStreamLine', () => {
 			);
 		}
 		expect(turnParts(state)).toEqual([{ kind: 'text', text: '調べます。\n\n結果です。' }]);
+	});
+});
+
+describe('エラーの result', () => {
+	it('エラー文を本文として出さない', () => {
+		const state = createTurnState();
+		applyStreamLine(
+			state,
+			JSON.stringify({
+				type: 'result',
+				subtype: 'success',
+				is_error: true,
+				result: 'Failed to authenticate: OAuth session expired and could not be refreshed'
+			})
+		);
+		expect(state.isError).toBe(true);
+		expect(turnParts(state)).toEqual([]);
+	});
+});
+
+describe('isAuthError', () => {
+	it('ログイン切れのエラーを判定する', () => {
+		expect(
+			isAuthError('Failed to authenticate: OAuth session expired and could not be refreshed')
+		).toBe(true);
+		expect(isAuthError('Invalid API key · Please run /login')).toBe(true);
+		expect(isAuthError('No conversation found with session ID: abc')).toBe(false);
+		expect(isAuthError('終了コード 1')).toBe(false);
 	});
 });

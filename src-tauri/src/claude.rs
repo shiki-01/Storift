@@ -65,6 +65,8 @@ pub struct ClaudeStatus {
     path: Option<String>,
     version: Option<String>,
     error: Option<String>,
+    /// `claude auth status` の結果。確かめられなかったときは None
+    logged_in: Option<bool>,
 }
 
 /// claude の実行ファイルを探す。PATH に無ければよくあるインストール先を順に見る
@@ -132,6 +134,7 @@ pub async fn claude_status(claude_path: Option<String>) -> ClaudeStatus {
             path: None,
             version: None,
             error: Some("claude コマンドが見つかりません".into()),
+            logged_in: None,
         };
     };
     let output = command_for(&path)
@@ -147,21 +150,117 @@ pub async fn claude_status(claude_path: Option<String>) -> ClaudeStatus {
             path: path_str,
             version: Some(String::from_utf8_lossy(&out.stdout).trim().to_string()),
             error: None,
+            logged_in: auth_status(&path).await,
         },
         Ok(Ok(out)) => ClaudeStatus {
             found: false,
             path: path_str,
             version: None,
             error: Some(String::from_utf8_lossy(&out.stderr).trim().to_string()),
+            logged_in: None,
         },
-        Ok(Err(e)) => ClaudeStatus { found: false, path: path_str, version: None, error: Some(e.to_string()) },
+        Ok(Err(e)) => ClaudeStatus {
+            found: false,
+            path: path_str,
+            version: None,
+            error: Some(e.to_string()),
+            logged_in: None,
+        },
         Err(_) => ClaudeStatus {
             found: false,
             path: path_str,
             version: None,
             error: Some("claude --version が応答しません".into()),
+            logged_in: None,
         },
     }
+}
+
+/// `claude auth status --json` でログインしているか確かめる。
+/// トークンの期限切れまでは分からないので、送信時のエラーでも判定する(フロントエンド側)
+async fn auth_status(program: &Path) -> Option<bool> {
+    let output = command_for(program)
+        .args(["auth", "status", "--json"])
+        .stdin(Stdio::null())
+        .kill_on_drop(true)
+        .output();
+    let out = tokio::time::timeout(std::time::Duration::from_secs(15), output).await.ok()?.ok()?;
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    json.get("loggedIn")?.as_bool()
+}
+
+/// ログインはブラウザとのやり取りが要るので、OS のターミナルで `claude auth login` を開く。
+/// ログイン情報はユーザー単位(~/.claude、macOS はキーチェーン)で共有されるため、
+/// どのディレクトリで行ってもアプリから使える
+#[tauri::command]
+pub fn claude_open_login(app: AppHandle, claude_path: Option<String>) -> Result<(), String> {
+    let program = find_claude(claude_path.as_deref())
+        .ok_or("claude コマンドが見つかりません")?
+        .to_string_lossy()
+        .into_owned();
+    let dir = crate::app_data_dir(&app)?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    open_login_terminal(&program, &dir)
+}
+
+#[cfg(target_os = "macos")]
+fn open_login_terminal(program: &str, dir: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    // .command ファイルは Finder から開くとターミナルで実行される
+    let script = dir.join("claude-login.command");
+    let body = format!(
+        "#!/bin/zsh -l\n'{}' auth login\necho\necho 'ログインが終わったら、このウィンドウを閉じて Storift に戻ってください。'\n",
+        program.replace('\'', "'\\''")
+    );
+    std::fs::write(&script, body).map_err(|e| e.to_string())?;
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+    std::process::Command::new("open")
+        .arg(&script)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("ターミナルを開けません: {e}"))
+}
+
+#[cfg(windows)]
+fn open_login_terminal(program: &str, _dir: &Path) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    // start で新しいコンソールを開き、終わっても閉じないよう /K で実行する
+    std::process::Command::new("cmd")
+        .raw_arg(format!(r#"/C start "Claude Code login" cmd /K ""{program}" auth login""#))
+        .envs(crate::shell_env::get())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("コマンドプロンプトを開けません: {e}"))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn open_login_terminal(program: &str, _dir: &Path) -> Result<(), String> {
+    let quoted = format!("'{}'", program.replace('\'', "'\\''"));
+    let script = format!(
+        "{quoted} auth login; echo; echo 'ログインが終わったら Enter で閉じてください。'; read _"
+    );
+    // よくある端末を順に試す(引数の渡し方が端末ごとに違う)
+    let candidates: [(&str, &[&str]); 7] = [
+        ("x-terminal-emulator", &["-e"]),
+        ("gnome-terminal", &["--"]),
+        ("konsole", &["-e"]),
+        ("xfce4-terminal", &["-x"]),
+        ("kitty", &[]),
+        ("alacritty", &["-e"]),
+        ("xterm", &["-e"]),
+    ];
+    let env = crate::shell_env::get();
+    for (terminal, prefix) in candidates {
+        let spawned = std::process::Command::new(terminal)
+            .args(prefix)
+            .args(["sh", "-c", &script])
+            .envs(env)
+            .spawn();
+        if spawned.is_ok() {
+            return Ok(());
+        }
+    }
+    Err("ターミナルを開けませんでした。端末で `claude auth login` を実行してください。".into())
 }
 
 fn build_args(req: &SendRequest) -> Vec<String> {

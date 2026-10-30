@@ -32,6 +32,18 @@ export interface ExitEvent {
 	stderr: string;
 }
 
+/** 出力 1 行(index はその実行の何行目か) */
+interface LineEvent {
+	requestId: string;
+	index: number;
+	line: string;
+}
+
+interface AttachResult {
+	lines: string[];
+	exit: ExitEvent | null;
+}
+
 export function getClaudeStatus(claudePath?: string): Promise<ClaudeStatus> {
 	return invoke('claude_status', { claudePath: claudePath || null });
 }
@@ -62,7 +74,7 @@ export async function sendToClaude(
 			await listen<ExitEvent>('claude://exit', (e) => {
 				if (e.payload.requestId === request.requestId) resolveExit(e.payload);
 			}),
-			await listen<{ requestId: string; line: string }>('claude://line', (e) => {
+			await listen<LineEvent>('claude://line', (e) => {
 				if (e.payload.requestId === request.requestId) onLine(e.payload.line);
 			})
 		);
@@ -71,6 +83,53 @@ export async function sendToClaude(
 	} finally {
 		for (const u of unlisten) u();
 	}
+}
+
+/**
+ * 再読み込みなどで画面が入れ替わった後に、実行中(または直前に終わった)の出力を受け取り直し、
+ * 続きも流す。ネイティブ側に記録が無ければ(アプリを再起動した等) null を返す。
+ */
+export async function attachClaude(
+	requestId: string,
+	onLine: (line: string) => void
+): Promise<ExitEvent | null> {
+	const unlisten: UnlistenFn[] = [];
+	try {
+		let resolveExit!: (e: ExitEvent) => void;
+		const exited = new Promise<ExitEvent>((resolve) => (resolveExit = resolve));
+		// 受け取り直す前に届いた行は取っておき、index で重複を除いてから流す
+		let next = 0;
+		let replayed = false;
+		const early: LineEvent[] = [];
+		const deliver = (e: LineEvent) => {
+			if (e.index < next) return;
+			next = e.index + 1;
+			onLine(e.line);
+		};
+		unlisten.push(
+			await listen<ExitEvent>('claude://exit', (e) => {
+				if (e.payload.requestId === requestId) resolveExit(e.payload);
+			}),
+			await listen<LineEvent>('claude://line', (e) => {
+				if (e.payload.requestId !== requestId) return;
+				if (replayed) deliver(e.payload);
+				else early.push(e.payload);
+			})
+		);
+		const snapshot = await invoke<AttachResult | null>('claude_attach', { requestId });
+		if (!snapshot) return null;
+		snapshot.lines.forEach((line, index) => deliver({ requestId, index, line }));
+		replayed = true;
+		early.forEach(deliver);
+		return snapshot.exit ?? (await exited);
+	} finally {
+		for (const u of unlisten) u();
+	}
+}
+
+/** 結果を受け取り終えた実行の記録をネイティブ側から消す */
+export function releaseClaude(requestId: string): Promise<void> {
+	return invoke('claude_release', { requestId });
 }
 
 export function getWorkspacePath(): Promise<{ path: string }> {

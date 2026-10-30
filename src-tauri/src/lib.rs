@@ -33,6 +33,8 @@ pub fn run() {
             claude::claude_status,
             claude::claude_send,
             claude::claude_cancel,
+            claude::claude_attach,
+            claude::claude_release,
             claude::claude_open_login,
             workspace::workspace_sync,
             workspace::workspace_info,

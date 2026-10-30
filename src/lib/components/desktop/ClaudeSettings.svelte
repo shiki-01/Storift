@@ -229,7 +229,7 @@
 		padding: 0 10px;
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
-		background: var(--color-background);
+		background-color: var(--color-background);
 		color: var(--color-text);
 		font: inherit;
 		font-size: 14px;

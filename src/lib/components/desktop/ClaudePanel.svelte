@@ -1040,6 +1040,7 @@
 		line-height: 1.6;
 		resize: none;
 		outline: none;
+		box-shadow: none;
 	}
 
 	textarea::placeholder {
@@ -1072,14 +1073,16 @@
 
 	.mode-select select {
 		min-width: 0;
-		padding: 0 2px;
+		padding: 0 18px 0 2px;
 		border: none;
-		background: transparent;
+		background-color: transparent;
+		background-position: right 2px center;
 		color: inherit;
 		font: inherit;
 		font-size: 11.5px;
 		cursor: pointer;
 		outline: none;
+		box-shadow: none;
 	}
 
 	.send {

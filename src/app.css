@@ -1,4 +1,7 @@
-@import '@master/normal.css';
+/* Master CSS と同じレイヤー順を先に宣言し、リセット(normal.css)とフォーム部品の既定の見た目は最下層の base に置く。
+ * これで Master CSS のユーティリティや各コンポーネントの指定が、常にこれらより優先される。 */
+@layer base, theme, preset, components, general;
+@import '@master/normal.css' layer(base);
 
 @font-face {
 	font-family: 'Mobo';
@@ -120,4 +123,176 @@ body {
 * {
 	scrollbar-width: thin;
 	scrollbar-color: color-mix(in srgb, var(--color-text) 18%, transparent) transparent;
+}
+
+/* ===== フォーム部品の既定の見た目 =====
+ * ブラウザ標準の青い部品を、テーマの色に合わせる。
+ * base レイヤーに置くので、Master CSS のユーティリティや各コンポーネントの指定がそのまま優先される。 */
+:root {
+	accent-color: var(--color-primary);
+	color-scheme: light;
+}
+
+:root[data-theme='dark'],
+:root[data-theme='night'] {
+	color-scheme: dark;
+}
+
+@layer base {
+	input:where(
+		[type='text'],
+		[type='number'],
+		[type='search'],
+		[type='email'],
+		[type='password'],
+		[type='url'],
+		:not([type])
+	),
+	select,
+	textarea {
+		padding: 6px 10px;
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		background-color: var(--color-background);
+		color: var(--color-text);
+		font: inherit;
+		transition:
+			border-color 0.15s,
+			box-shadow 0.15s;
+	}
+
+	input:where(
+			[type='text'],
+			[type='number'],
+			[type='search'],
+			[type='email'],
+			[type='password'],
+			[type='url'],
+			:not([type])
+		):focus,
+	select:focus,
+	textarea:focus {
+		outline: none;
+		border-color: color-mix(in srgb, var(--color-primary) 60%, var(--color-border));
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 14%, transparent);
+	}
+
+	/* セレクトは矢印を細い山形に差し替える */
+	select {
+		appearance: none;
+		padding-right: 30px;
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%238a857b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+		background-repeat: no-repeat;
+		background-position: right 10px center;
+		background-size: 12px;
+		cursor: pointer;
+	}
+
+	/* チェックボックス */
+	input[type='checkbox'] {
+		appearance: none;
+		flex: none;
+		width: 18px;
+		height: 18px;
+		margin: 0;
+		border: 1.5px solid color-mix(in srgb, var(--color-text) 30%, transparent);
+		border-radius: 5px;
+		background: var(--color-background) center / 12px no-repeat;
+		cursor: pointer;
+		transition:
+			background-color 0.15s,
+			border-color 0.15s;
+	}
+
+	input[type='checkbox']:checked {
+		border-color: var(--color-primary);
+		background-color: var(--color-primary);
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.3 2.3 4.7-5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+	}
+
+	/* 暗いテーマは藍が明るいので、チェックの印を濃い色にする */
+	:root[data-theme='dark'] input[type='checkbox']:checked,
+	:root[data-theme='night'] input[type='checkbox']:checked {
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.3 2.3 4.7-5' fill='none' stroke='%231b1a18' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+	}
+
+	input[type='checkbox']:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+
+	/* スライダー */
+	input[type='range'] {
+		appearance: none;
+		height: 20px;
+		background: transparent;
+		cursor: pointer;
+	}
+
+	input[type='range']::-webkit-slider-runnable-track {
+		height: 4px;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--color-text) 14%, transparent);
+	}
+
+	input[type='range']::-moz-range-track {
+		height: 4px;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--color-text) 14%, transparent);
+	}
+
+	input[type='range']::-moz-range-progress {
+		height: 4px;
+		border-radius: 999px;
+		background: var(--color-primary);
+	}
+
+	input[type='range']::-webkit-slider-thumb {
+		appearance: none;
+		width: 16px;
+		height: 16px;
+		margin-top: -6px;
+		border: 2px solid var(--color-background);
+		border-radius: 50%;
+		background: var(--color-primary);
+		box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary) 40%, transparent);
+		transition: transform 0.12s;
+	}
+
+	input[type='range']::-moz-range-thumb {
+		width: 12px;
+		height: 12px;
+		border: 2px solid var(--color-background);
+		border-radius: 50%;
+		background: var(--color-primary);
+		box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary) 40%, transparent);
+	}
+
+	input[type='range']:active::-webkit-slider-thumb {
+		transform: scale(1.15);
+	}
+
+	/* ファイル選択 */
+	input[type='file'] {
+		font: inherit;
+		font-size: 13px;
+		color: var(--color-text-secondary);
+	}
+
+	input[type='file']::file-selector-button {
+		height: 32px;
+		margin-right: 12px;
+		padding: 0 12px;
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		background: var(--color-background);
+		color: var(--color-text);
+		font: inherit;
+		font-size: 13px;
+		cursor: pointer;
+	}
+
+	input[type='file']::file-selector-button:hover {
+		background: var(--color-surface);
+	}
 }

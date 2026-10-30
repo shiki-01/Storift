@@ -343,458 +343,460 @@
 	});
 </script>
 
-<div class="w:100% h:100% overflow-y:auto settings-page flex flex-direction:column gap:2rem">
-	<h1 class="font:1.25rem">設定</h1>
+<div class="settings-scroll">
+	<div class="settings-page">
+		<h1 class="settings-title">設定</h1>
 
-	{#if isDesktop()}
-		<Card class="flex flex-direction:column gap:1rem b:1px|solid|theme-border">
-			<h2 id="claude" class="font:bold">Claude Code</h2>
-			<ClaudeSettings />
-		</Card>
-	{/if}
-
-	<!-- テーマ設定 -->
-	<Card class="flex flex-direction:column gap:1rem b:1px|solid|theme-border">
-		<h2 class="font:bold">テーマ</h2>
-
-		<div>
-			<label class="flex align-items:center gap:.5rem cursor:pointer">
-				<input
-					type="checkbox"
-					checked={settings.autoTheme}
-					onchange={handleAutoThemeToggle}
-					class="w-4 h-4"
-				/>
-				<span>システム設定に従う</span>
-			</label>
-		</div>
-
-		<div class="flex flex-direction:column gap:.5rem">
-			{#each Object.values(themes) as theme}
-				<button
-					onclick={() => handleThemeChange(theme.id)}
-					class="p:4 r:8px b:1px|solid|theme-border cursor:pointer flex flex-direction:row ai:center jc:space-between gap:2rem rel px:1rem py:.75rem {settings.autoTheme
-						? 'opacity:.5'
-						: ''}"
-					style="background-color: {theme.colors.background}; color: {theme.colors.text};"
-					disabled={settings.autoTheme}
-				>
-					{#if settings.theme === theme.id && !settings.autoTheme}
-						<div class="abs top:50% right:3.5rem transform:translateY(-50%)">
-							<span
-								class="w:8px h:2px flex transform:rotate(45deg)|translate(0,6px)"
-								style="background-color: {theme.colors.text};"
-							></span>
-							<span
-								class="w:16px h:2px flex transform:rotate(-45deg)"
-								style="background-color: {theme.colors.text};"
-							></span>
-						</div>
-					{/if}
-					<div class="">{theme.name}</div>
-					<div class="flex gap:1rem justify-content:center">
-						<div class="w:8px h:8px r:full" style="background-color: {theme.colors.primary};"></div>
-						<div
-							class="w:8px h:8px r:full"
-							style="background-color: {theme.colors.secondary};"
-						></div>
-						<div class="w:8px h:8px r:full" style="background-color: {theme.colors.accent};"></div>
-					</div>
-				</button>
-			{/each}
-		</div>
-	</Card>
-
-	<!-- Phase 2: 通知設定 -->
-	<Card class="b:1px|solid|theme-border">
-		<h2 class="font:bold">通知とリマインダー</h2>
-		{#if currentProjectStore.project}
-			<NotificationSettings projectId={currentProjectStore.project.id} />
-		{:else}
-			<p class="fg:theme-text-secondary">プロジェクトを開いて通知を設定してください</p>
+		{#if isDesktop()}
+			<Card class="flex flex-direction:column gap:1rem b:1px|solid|theme-border">
+				<h2 id="claude" class="font:bold">Claude Code</h2>
+				<ClaudeSettings />
+			</Card>
 		{/if}
-	</Card>
 
-	<!-- 書式設定 -->
-	<Card class="b:1px|solid|theme-border flex flex-direction:column gap:1rem">
-		<h2 class="font:bold">書式設定</h2>
-		<p class="fg:theme-text-secondary font:.875rem">
-			エディタのテキスト表示形式を一括で調整できます。
-		</p>
+		<!-- テーマ設定 -->
+		<Card class="flex flex-direction:column gap:1rem b:1px|solid|theme-border">
+			<h2 class="font:bold">テーマ</h2>
 
-		<div class="flex flex-direction:column gap:1.5rem">
-			<!-- フォントサイズ -->
-			<div class="flex flex-direction:column gap:.5rem">
-				<div class="flex justify-content:space-between align-items:center">
-					<label for="fontSize" class="font-weight:500">フォントサイズ</label>
-					<span class="fg:theme-text-secondary font:.875rem"
-						>{settings.editorFormatting.fontSize}px</span
-					>
-				</div>
-				<input
-					id="fontSize"
-					type="range"
-					bind:value={settings.editorFormatting.fontSize}
-					onchange={saveSettings}
-					min="12"
-					max="24"
-					step="1"
-					class="w:full"
-				/>
-				<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
-					<span>小 (12px)</span>
-					<span>大 (24px)</span>
-				</div>
+			<div>
+				<label class="flex align-items:center gap:.5rem cursor:pointer">
+					<input type="checkbox" checked={settings.autoTheme} onchange={handleAutoThemeToggle} />
+					<span>システム設定に従う</span>
+				</label>
 			</div>
 
-			<!-- 行間 -->
-			<div class="flex flex-direction:column gap:.5rem">
-				<div class="flex justify-content:space-between align-items:center">
-					<label for="lineHeight" class="font-weight:500">行間</label>
-					<span class="fg:theme-text-secondary font:.875rem"
-						>{settings.editorFormatting.lineHeight.toFixed(1)}</span
+			<!-- テーマの見本: 紙の色に、題字と本文の線、差し色の点を載せる -->
+			<div class="theme-grid" role="radiogroup" aria-label="テーマ">
+				{#each Object.values(themes) as theme (theme.id)}
+					{@const selected = settings.theme === theme.id && !settings.autoTheme}
+					<button
+						class="theme-card"
+						class:selected
+						role="radio"
+						aria-checked={selected}
+						onclick={() => handleThemeChange(theme.id)}
+						disabled={settings.autoTheme}
 					>
-				</div>
-				<input
-					id="lineHeight"
-					type="range"
-					bind:value={settings.editorFormatting.lineHeight}
-					onchange={saveSettings}
-					min="1.0"
-					max="3.0"
-					step="0.1"
-					class="w:full"
-				/>
-				<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
-					<span>狭い (1.0)</span>
-					<span>広い (3.0)</span>
-				</div>
+						<span
+							class="theme-swatch"
+							style="background:{theme.editor.background};color:{theme.colors
+								.text};border-color:{theme.colors.border}"
+						>
+							<span class="swatch-title">あ</span>
+							<span class="swatch-lines">
+								<span style="background:{theme.colors.text}"></span>
+								<span style="background:{theme.colors.textSecondary}"></span>
+								<span style="background:{theme.colors.textSecondary}"></span>
+							</span>
+							<span class="swatch-dots">
+								<span style="background:{theme.colors.primary}"></span>
+								<span style="background:{theme.colors.accent}"></span>
+								<span style="background:{theme.colors.success}"></span>
+							</span>
+						</span>
+						<span class="theme-name">
+							{theme.name}
+							{#if selected}
+								<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"
+									><path
+										d="M2.5 6.2l2.3 2.3 4.7-5"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.8"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/></svg
+								>
+							{/if}
+						</span>
+					</button>
+				{/each}
 			</div>
+		</Card>
 
-			<!-- 字間 -->
-			<div class="flex flex-direction:column gap:.5rem">
-				<div class="flex justify-content:space-between align-items:center">
-					<label for="letterSpacing" class="font-weight:500">字間</label>
-					<span class="fg:theme-text-secondary font:.875rem"
-						>{settings.editorFormatting.letterSpacing.toFixed(2)}em</span
-					>
-				</div>
-				<input
-					id="letterSpacing"
-					type="range"
-					bind:value={settings.editorFormatting.letterSpacing}
-					onchange={saveSettings}
-					min="-0.05"
-					max="0.2"
-					step="0.01"
-					class="w:full"
-				/>
-				<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
-					<span>狭い (-0.05em)</span>
-					<span>広い (0.2em)</span>
-				</div>
-			</div>
+		<!-- Phase 2: 通知設定 -->
+		<Card class="b:1px|solid|theme-border">
+			<h2 class="font:bold">通知とリマインダー</h2>
+			{#if currentProjectStore.project}
+				<NotificationSettings projectId={currentProjectStore.project.id} />
+			{:else}
+				<p class="fg:theme-text-secondary">プロジェクトを開いて通知を設定してください</p>
+			{/if}
+		</Card>
 
-			<!-- 段落間隔 -->
-			<div class="flex flex-direction:column gap:.5rem">
-				<div class="flex justify-content:space-between align-items:center">
-					<label for="paragraphSpacing" class="font-weight:500">段落間隔</label>
-					<span class="fg:theme-text-secondary font:.875rem"
-						>{settings.editorFormatting.paragraphSpacing}px</span
-					>
-				</div>
-				<input
-					id="paragraphSpacing"
-					type="range"
-					bind:value={settings.editorFormatting.paragraphSpacing}
-					onchange={saveSettings}
-					min="0"
-					max="48"
-					step="4"
-					class="w:full"
-				/>
-				<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
-					<span>なし (0px)</span>
-					<span>広い (48px)</span>
-				</div>
-			</div>
+		<!-- 書式設定 -->
+		<Card class="b:1px|solid|theme-border flex flex-direction:column gap:1rem">
+			<h2 class="font:bold">書式設定</h2>
+			<p class="fg:theme-text-secondary font:.875rem">
+				エディタのテキスト表示形式を一括で調整できます。
+			</p>
 
-			<!-- プレビュー -->
-			<div class="p:1rem b:1px|solid|theme-border r:8px bg:theme-surface">
-				<p class="font:.75rem fg:theme-text-secondary mb:.5rem">プレビュー</p>
-				<div
-					class="fg:theme-text"
-					style="
+			<div class="flex flex-direction:column gap:1.5rem">
+				<!-- フォントサイズ -->
+				<div class="flex flex-direction:column gap:.5rem">
+					<div class="flex justify-content:space-between align-items:center">
+						<label for="fontSize" class="font-weight:500">フォントサイズ</label>
+						<span class="fg:theme-text-secondary font:.875rem"
+							>{settings.editorFormatting.fontSize}px</span
+						>
+					</div>
+					<input
+						id="fontSize"
+						type="range"
+						bind:value={settings.editorFormatting.fontSize}
+						onchange={saveSettings}
+						min="12"
+						max="24"
+						step="1"
+						class="w:full"
+					/>
+					<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
+						<span>小 (12px)</span>
+						<span>大 (24px)</span>
+					</div>
+				</div>
+
+				<!-- 行間 -->
+				<div class="flex flex-direction:column gap:.5rem">
+					<div class="flex justify-content:space-between align-items:center">
+						<label for="lineHeight" class="font-weight:500">行間</label>
+						<span class="fg:theme-text-secondary font:.875rem"
+							>{settings.editorFormatting.lineHeight.toFixed(1)}</span
+						>
+					</div>
+					<input
+						id="lineHeight"
+						type="range"
+						bind:value={settings.editorFormatting.lineHeight}
+						onchange={saveSettings}
+						min="1.0"
+						max="3.0"
+						step="0.1"
+						class="w:full"
+					/>
+					<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
+						<span>狭い (1.0)</span>
+						<span>広い (3.0)</span>
+					</div>
+				</div>
+
+				<!-- 字間 -->
+				<div class="flex flex-direction:column gap:.5rem">
+					<div class="flex justify-content:space-between align-items:center">
+						<label for="letterSpacing" class="font-weight:500">字間</label>
+						<span class="fg:theme-text-secondary font:.875rem"
+							>{settings.editorFormatting.letterSpacing.toFixed(2)}em</span
+						>
+					</div>
+					<input
+						id="letterSpacing"
+						type="range"
+						bind:value={settings.editorFormatting.letterSpacing}
+						onchange={saveSettings}
+						min="-0.05"
+						max="0.2"
+						step="0.01"
+						class="w:full"
+					/>
+					<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
+						<span>狭い (-0.05em)</span>
+						<span>広い (0.2em)</span>
+					</div>
+				</div>
+
+				<!-- 段落間隔 -->
+				<div class="flex flex-direction:column gap:.5rem">
+					<div class="flex justify-content:space-between align-items:center">
+						<label for="paragraphSpacing" class="font-weight:500">段落間隔</label>
+						<span class="fg:theme-text-secondary font:.875rem"
+							>{settings.editorFormatting.paragraphSpacing}px</span
+						>
+					</div>
+					<input
+						id="paragraphSpacing"
+						type="range"
+						bind:value={settings.editorFormatting.paragraphSpacing}
+						onchange={saveSettings}
+						min="0"
+						max="48"
+						step="4"
+						class="w:full"
+					/>
+					<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
+						<span>なし (0px)</span>
+						<span>広い (48px)</span>
+					</div>
+				</div>
+
+				<!-- プレビュー -->
+				<div class="p:1rem b:1px|solid|theme-border r:8px bg:theme-surface">
+					<p class="font:.75rem fg:theme-text-secondary mb:.5rem">プレビュー</p>
+					<div
+						class="fg:theme-text"
+						style="
 						font-size: {settings.editorFormatting.fontSize}px;
 						line-height: {settings.editorFormatting.lineHeight};
 						letter-spacing: {settings.editorFormatting.letterSpacing}em;
 					"
-				>
-					<p style="margin-bottom: {settings.editorFormatting.paragraphSpacing}px;">
-						吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。
-					</p>
-					<p>何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。</p>
-				</div>
-			</div>
-
-			<!-- リセットボタン -->
-			<Button
-				onclick={() => {
-					settings.editorFormatting = {
-						fontSize: 16,
-						lineHeight: 2,
-						letterSpacing: 0,
-						paragraphSpacing: 16
-					};
-					saveSettings();
-				}}
-				variant="secondary"
-				class="w:fit"
-			>
-				デフォルトに戻す
-			</Button>
-		</div>
-	</Card>
-
-	<!-- 同期設定 -->
-	<Card class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem">
-		<h2 class="font:bold">同期</h2>
-
-		<div class="flex flex-direction:column gap:1rem">
-			<div>
-				<label class="flex ai:center gap:.5rem cursor:pointer">
-					<input
-						type="checkbox"
-						checked={settings.syncEnabled}
-						onchange={handleSyncToggle}
-						class="w:1rem h:1rem"
-					/>
-					<span>クラウド同期を有効にする</span>
-				</label>
-				<p class="">
-					Firebase連携が設定されている場合、プロジェクトデータを自動的にクラウドに同期します。
-				</p>
-			</div>
-
-			<div class="flex flex-direction:column gap:.5rem">
-				<label for="conflictResolution" class="font:bold">競合解決方法</label>
-				<p class="fg:theme-text-secondary font:.875rem">
-					同じデータが複数の端末で編集された場合の処理方法を選択します。
-				</p>
-				<select
-					id="conflictResolution"
-					bind:value={settings.conflictResolution}
-					onchange={saveSettings}
-					class="px:.75rem py:.5rem b:1px|solid|theme-border r:8px bg:theme-background fg:theme-text"
-				>
-					<option value="manual">手動で選択（推奨）</option>
-					<option value="local">常にこの端末の変更を優先</option>
-					<option value="remote">常にクラウドの変更を優先</option>
-				</select>
-				<div
-					class="px:1rem py:.75rem r:6px"
-					style="background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);"
-				>
-					{#if settings.conflictResolution === 'manual'}
-						<p class="font:.875rem">
-							競合が発生した場合、どちらの変更を採用するか手動で選択できます。
-						</p>
-					{:else if settings.conflictResolution === 'local'}
-						<p class="font:.875rem fg:theme-warning">
-							⚠️ クラウドの変更が自動的に破棄されます。他の端末での編集が失われる可能性があります。
-						</p>
-					{:else if settings.conflictResolution === 'remote'}
-						<p class="font:.875rem fg:theme-warning">
-							⚠️ この端末の変更が自動的に破棄されます。ローカルでの編集が失われる可能性があります。
-						</p>
-					{/if}
-				</div>
-			</div>
-
-			<div class="flex flex-direction:column gap:.5rem">
-				<span class="font:bold">同期バックアップ</span>
-				<p class="fg:theme-text-secondary font:.875rem">
-					競合や他端末の削除で上書きされた版は90日間保存され、ここから復元できます。
-				</p>
-				<div>
-					<Button variant="secondary" onclick={() => (backupsOpen = true)}
-						>バックアップを表示</Button
 					>
+						<p style="margin-bottom: {settings.editorFormatting.paragraphSpacing}px;">
+							吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。
+						</p>
+						<p>何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。</p>
+					</div>
 				</div>
-			</div>
-			<ConflictBackups bind:isOpen={backupsOpen} />
 
-			{#if isFirebaseInitialized()}
-				<div class="flex">
-					<div class="flex ai:center gap:.5rem">
-						<span
-							class="w:1rem h:1rem block r:full {syncStore.status === 'synced'
-								? 'bg:theme-success'
-								: syncStore.status === 'syncing'
-									? 'bg:theme-warning'
-									: syncStore.status === 'error'
-										? 'bg:theme-error'
-										: 'bg:theme-border'}"
-						></span>
-						<span>
-							{#if syncStore.status === 'synced'}
-								{settings.syncEnabled ? '同期済み' : '同期無効'}
-							{:else if syncStore.status === 'syncing'}
-								同期中...
-							{:else if syncStore.status === 'error'}
-								エラー: {syncStore.error}
-							{:else if syncStore.status === 'offline'}
-								オフライン
+				<!-- リセットボタン -->
+				<Button
+					onclick={() => {
+						settings.editorFormatting = {
+							fontSize: 16,
+							lineHeight: 2,
+							letterSpacing: 0,
+							paragraphSpacing: 16
+						};
+						saveSettings();
+					}}
+					variant="secondary"
+					class="w:fit"
+				>
+					デフォルトに戻す
+				</Button>
+			</div>
+		</Card>
+
+		<!-- 同期設定 -->
+		<Card class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem">
+			<h2 class="font:bold">同期</h2>
+
+			<div class="flex flex-direction:column gap:1rem">
+				<div>
+					<label class="flex ai:center gap:.5rem cursor:pointer">
+						<input type="checkbox" checked={settings.syncEnabled} onchange={handleSyncToggle} />
+						<span>クラウド同期を有効にする</span>
+					</label>
+					<p class="fg:theme-text-secondary font:.875rem mt:6 ml:26">
+						Firebase連携が設定されている場合、プロジェクトデータを自動的にクラウドに同期します。
+					</p>
+				</div>
+
+				<div class="flex flex-direction:column gap:.5rem">
+					<label for="conflictResolution" class="font:bold">競合解決方法</label>
+					<p class="fg:theme-text-secondary font:.875rem">
+						同じデータが複数の端末で編集された場合の処理方法を選択します。
+					</p>
+					<select
+						id="conflictResolution"
+						bind:value={settings.conflictResolution}
+						onchange={saveSettings}
+						class="px:.75rem py:.5rem pr:30 b:1px|solid|theme-border r:8px fg:theme-text"
+					>
+						<option value="manual">手動で選択（推奨）</option>
+						<option value="local">常にこの端末の変更を優先</option>
+						<option value="remote">常にクラウドの変更を優先</option>
+					</select>
+					<div
+						class="px:1rem py:.75rem r:6px"
+						style="background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);"
+					>
+						{#if settings.conflictResolution === 'manual'}
+							<p class="font:.875rem">
+								競合が発生した場合、どちらの変更を採用するか手動で選択できます。
+							</p>
+						{:else if settings.conflictResolution === 'local'}
+							<p class="font:.875rem fg:theme-warning">
+								⚠️
+								クラウドの変更が自動的に破棄されます。他の端末での編集が失われる可能性があります。
+							</p>
+						{:else if settings.conflictResolution === 'remote'}
+							<p class="font:.875rem fg:theme-warning">
+								⚠️
+								この端末の変更が自動的に破棄されます。ローカルでの編集が失われる可能性があります。
+							</p>
+						{/if}
+					</div>
+				</div>
+
+				<div class="flex flex-direction:column gap:.5rem">
+					<span class="font:bold">同期バックアップ</span>
+					<p class="fg:theme-text-secondary font:.875rem">
+						競合や他端末の削除で上書きされた版は90日間保存され、ここから復元できます。
+					</p>
+					<div>
+						<Button variant="secondary" onclick={() => (backupsOpen = true)}
+							>バックアップを表示</Button
+						>
+					</div>
+				</div>
+				<ConflictBackups bind:isOpen={backupsOpen} />
+
+				{#if isFirebaseInitialized()}
+					<div class="flex">
+						<div class="flex ai:center gap:.5rem">
+							<span
+								class="w:1rem h:1rem block r:full {syncStore.status === 'synced'
+									? 'bg:theme-success'
+									: syncStore.status === 'syncing'
+										? 'bg:theme-warning'
+										: syncStore.status === 'error'
+											? 'bg:theme-error'
+											: 'bg:theme-border'}"
+							></span>
+							<span>
+								{#if syncStore.status === 'synced'}
+									{settings.syncEnabled ? '同期済み' : '同期無効'}
+								{:else if syncStore.status === 'syncing'}
+									同期中...
+								{:else if syncStore.status === 'error'}
+									エラー: {syncStore.error}
+								{:else if syncStore.status === 'offline'}
+									オフライン
+								{:else}
+									待機中
+								{/if}
+							</span>
+						</div>
+						{#if syncStore.lastSyncTime}
+							<p class="font:12 fg:theme-text-secondary mt:4">
+								最終同期: {new Date(syncStore.lastSyncTime).toLocaleString('ja-JP')}
+							</p>
+						{/if}
+					</div>
+				{:else}
+					<div
+						class="px:1rem py:1em b:1px|solid|theme-warning r:8px flex flex-direction:column gap:1rem"
+						style="background-color: color-mix(in srgb, var(--color-warning) 10%, transparent);"
+					>
+						<p class="font:bold fg:theme-warning">Firebase連携が設定されていません</p>
+						<a href="/setup" class="fg:theme-primary"> Firebase設定ページへ → </a>
+					</div>
+				{/if}
+			</div>
+		</Card>
+
+		<!-- エディタ(自動保存) -->
+		<Card class="b:1px|solid|theme-border flex flex-direction:column gap:1rem">
+			<h2 class="font:bold">エディタ</h2>
+
+			<label class="flex ai:center gap:.5rem cursor:pointer">
+				<input type="checkbox" checked={settings.autoSave} onchange={handleAutoSaveToggle} />
+				<span>自動保存を有効にする</span>
+			</label>
+			<p class="fg:theme-text-secondary font:.875rem">
+				入力が止まって約2秒後に保存します。オフにすると、Ctrl+S や「今すぐ保存」で保存します。
+			</p>
+
+			{#if settings.autoSave}
+				<label class="flex flex-direction:column gap:.5rem">
+					<span>入力し続けているときの最大の待ち時間（秒）</span>
+					<input
+						type="number"
+						min="5"
+						max="300"
+						step="5"
+						bind:value={autoSaveSeconds}
+						onchange={handleAutoSaveSeconds}
+						class="w:8rem px:.75rem py:.5rem b:1px|solid|theme-border r:8px bg:theme-background fg:theme-text"
+					/>
+				</label>
+			{/if}
+		</Card>
+
+		<!-- ショートカットキー -->
+		<Card class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem">
+			<h2 class="font:bold">ショートカットキー</h2>
+			<p class="fg:theme-text-secondary font:.875rem">
+				「変更」を押してからキーを押すと割り当てられます（Ctrl または Alt
+				と組み合わせてください）。Mac では Cmd が Ctrl として扱われます。
+			</p>
+
+			<div class="flex flex-direction:column gap:.6rem">
+				{#each Object.entries(settings.shortcuts) as [name, key] (name)}
+					{@const action = name as ShortcutAction}
+					{@const fixed = FIXED_SHORTCUTS.includes(action)}
+					<div class="flex flex-direction:row ai:center jc:space-between gap:.75rem">
+						<span>{SHORTCUT_LABELS[action]}</span>
+						<span class="flex ai:center gap:.5rem">
+							<kbd class="shortcut-key" class:recording={recordingAction === action}>
+								{recordingAction === action ? 'キーを押してください…' : key}
+							</kbd>
+							{#if fixed}
+								<span class="fg:theme-text-secondary font:.75rem">固定</span>
 							{:else}
-								待機中
+								<button class="link-btn" onclick={() => startRecording(action)}>変更</button>
+								{#if key !== DEFAULT_SHORTCUTS[action]}
+									<button class="link-btn" onclick={() => resetShortcut(action)}>初期値</button>
+								{/if}
 							{/if}
 						</span>
 					</div>
-					{#if syncStore.lastSyncTime}
-						<p class="text-xs fg:theme-text-secondary mt-1">
-							最終同期: {new Date(syncStore.lastSyncTime).toLocaleString('ja-JP')}
-						</p>
-					{/if}
-				</div>
-			{:else}
-				<div
-					class="px:1rem py:1em b:1px|solid|theme-warning r:8px flex flex-direction:column gap:1rem"
-					style="background-color: color-mix(in srgb, var(--color-warning) 10%, transparent);"
-				>
-					<p class="font:bold fg:theme-warning">Firebase連携が設定されていません</p>
-					<a href="/setup" class=""> Firebase設定ページへ → </a>
-				</div>
-			{/if}
-		</div>
-	</Card>
+				{/each}
+			</div>
 
-	<!-- エディタ(自動保存) -->
-	<Card class="b:1px|solid|theme-border flex flex-direction:column gap:1rem">
-		<h2 class="font:bold">エディタ</h2>
-
-		<label class="flex ai:center gap:.5rem cursor:pointer">
-			<input
-				type="checkbox"
-				checked={settings.autoSave}
-				onchange={handleAutoSaveToggle}
-				class="w:1rem h:1rem"
-			/>
-			<span>自動保存を有効にする</span>
-		</label>
-		<p class="fg:theme-text-secondary font:.875rem">
-			入力が止まって約2秒後に保存します。オフにすると、Ctrl+S や「今すぐ保存」で保存します。
-		</p>
-
-		{#if settings.autoSave}
-			<label class="flex flex-direction:column gap:.5rem">
-				<span>入力し続けているときの最大の待ち時間（秒）</span>
-				<input
-					type="number"
-					min="5"
-					max="300"
-					step="5"
-					bind:value={autoSaveSeconds}
-					onchange={handleAutoSaveSeconds}
-					class="w:8rem px:.75rem py:.5rem b:1px|solid|theme-border r:8px bg:theme-background fg:theme-text"
-				/>
-			</label>
-		{/if}
-	</Card>
-
-	<!-- ショートカットキー -->
-	<Card class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem">
-		<h2 class="font:bold">ショートカットキー</h2>
-		<p class="fg:theme-text-secondary font:.875rem">
-			「変更」を押してからキーを押すと割り当てられます（Ctrl または Alt
-			と組み合わせてください）。Mac では Cmd が Ctrl として扱われます。
-		</p>
-
-		<div class="flex flex-direction:column gap:.6rem">
-			{#each Object.entries(settings.shortcuts) as [name, key] (name)}
-				{@const action = name as ShortcutAction}
-				{@const fixed = FIXED_SHORTCUTS.includes(action)}
-				<div class="flex flex-direction:row ai:center jc:space-between gap:.75rem">
-					<span>{SHORTCUT_LABELS[action]}</span>
-					<span class="flex ai:center gap:.5rem">
-						<kbd class="shortcut-key" class:recording={recordingAction === action}>
-							{recordingAction === action ? 'キーを押してください…' : key}
-						</kbd>
-						{#if fixed}
-							<span class="fg:theme-text-secondary font:.75rem">固定</span>
-						{:else}
-							<button class="link-btn" onclick={() => startRecording(action)}>変更</button>
-							{#if key !== DEFAULT_SHORTCUTS[action]}
-								<button class="link-btn" onclick={() => resetShortcut(action)}>初期値</button>
-							{/if}
-						{/if}
-					</span>
-				</div>
+			{#each conflicts as group (group.join())}
+				<p class="fg:theme-warning font:.875rem" role="alert">
+					{group.map((a) => SHORTCUT_LABELS[a]).join('・')} に同じキーが割り当てられています。
+				</p>
 			{/each}
-		</div>
+		</Card>
 
-		{#each conflicts as group (group.join())}
-			<p class="fg:theme-warning font:.875rem" role="alert">
-				{group.map((a) => SHORTCUT_LABELS[a]).join('・')} に同じキーが割り当てられています。
-			</p>
-		{/each}
-	</Card>
+		<!-- データ管理 -->
+		<Card class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem">
+			<h2 class="font:bold">データ管理</h2>
 
-	<!-- データ管理 -->
-	<Card class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem">
-		<h2 class="font:bold">データ管理</h2>
+			<div class="flex flex-direction:column gap:1rem">
+				<div class="flex flex-direction:column gap:.6rem">
+					<Button
+						onclick={() => (showExportModal = true)}
+						class="p:.5rem|1rem b:1px|solid|theme-border"
+					>
+						全データをエクスポート
+					</Button>
+					<p class="">すべてのプロジェクトをJSONファイルとしてバックアップします。</p>
+				</div>
 
-		<div class="flex flex-direction:column gap:1rem">
-			<div class="flex flex-direction:column gap:.6rem">
-				<Button
-					onclick={() => (showExportModal = true)}
-					class="p:.5rem|1rem b:1px|solid|theme-border"
-				>
-					全データをエクスポート
-				</Button>
-				<p class="">すべてのプロジェクトをJSONファイルとしてバックアップします。</p>
+				<div class="flex flex-direction:column gap:.6rem">
+					<Button
+						onclick={() => (showImportModal = true)}
+						variant="secondary"
+						class="p:.5rem|1rem b:1px|solid|theme-border"
+					>
+						データをインポート
+					</Button>
+					<p class="">バックアップファイルからプロジェクトを復元します。</p>
+				</div>
+
+				<div class="flex flex-direction:column gap:.6rem">
+					<Button
+						onclick={() => (showClearDataModal = true)}
+						variant="danger"
+						class="p:.5rem|1rem b:1px|solid|theme-border"
+					>
+						全データを削除
+					</Button>
+					<p class="">すべてのプロジェクトとキャッシュを削除します。この操作は取り消せません。</p>
+				</div>
 			</div>
+		</Card>
 
-			<div class="flex flex-direction:column gap:.6rem">
-				<Button
-					onclick={() => (showImportModal = true)}
-					variant="secondary"
-					class="p:.5rem|1rem b:1px|solid|theme-border"
-				>
-					データをインポート
-				</Button>
-				<p class="">バックアップファイルからプロジェクトを復元します。</p>
+		<!-- バージョン情報 -->
+		<Card class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem">
+			<h2 class="font:bold">バージョン情報</h2>
+			<div class="fg:theme-text-secondary">
+				<p>Storift v0.0.1</p>
+				<p class="font:.875rem">ビルド: {buildVersion}</p>
+				<p class="font:.875rem">
+					オフライン対応: {swVersion
+						? `有効 (${swVersion})`
+						: '未有効(初回の読み込み後に有効になります)'}
+				</p>
+				<button class="link-btn" onclick={handleCheckUpdate} disabled={checkingUpdate}>
+					更新を確認
+				</button>
+				<p>&copy shiki 2025</p>
 			</div>
-
-			<div class="flex flex-direction:column gap:.6rem">
-				<Button
-					onclick={() => (showClearDataModal = true)}
-					variant="danger"
-					class="p:.5rem|1rem b:1px|solid|theme-border"
-				>
-					全データを削除
-				</Button>
-				<p class="">すべてのプロジェクトとキャッシュを削除します。この操作は取り消せません。</p>
-			</div>
-		</div>
-	</Card>
-
-	<!-- バージョン情報 -->
-	<Card class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem">
-		<h2 class="font:bold">バージョン情報</h2>
-		<div class="fg:theme-text-secondary">
-			<p>Storift v0.0.1</p>
-			<p class="font:.875rem">ビルド: {buildVersion}</p>
-			<p class="font:.875rem">
-				オフライン対応: {swVersion
-					? `有効 (${swVersion})`
-					: '未有効(初回の読み込み後に有効になります)'}
-			</p>
-			<button class="link-btn" onclick={handleCheckUpdate} disabled={checkingUpdate}>
-				更新を確認
-			</button>
-			<p>&copy shiki 2025</p>
-		</div>
-	</Card>
+		</Card>
+	</div>
 </div>
 
 <!-- エクスポートモーダル -->
@@ -804,12 +806,14 @@
 		onClose={() => (showExportModal = false)}
 		onConfirm={handleExport}
 	>
-		<div class="space-y-4">
+		<div class="flex flex-direction:column gap:16">
 			<p>すべてのプロジェクトをエクスポートします。</p>
 
 			<div>
-				<label for="exportFormat" class="block mb-2">形式</label>
-				<select id="exportFormat" bind:value={exportFormat} class="w-full px-3 py-2 border rounded">
+				<label for="exportFormat" class="display:block mb:8 font:14 fg:theme-text-secondary"
+					>形式</label
+				>
+				<select id="exportFormat" bind:value={exportFormat} class="w:full">
 					<option value="json">JSON (バックアップ用)</option>
 				</select>
 			</div>
@@ -828,9 +832,11 @@
 		}}
 		onConfirm={handleImport}
 	>
-		<div class="space-y-4">
+		<div class="flex flex-direction:column gap:16">
 			<div>
-				<label for="importFile" class="block mb-2">バックアップファイルを選択</label>
+				<label for="importFile" class="display:block mb:8 font:14 fg:theme-text-secondary"
+					>バックアップファイルを選択</label
+				>
 				<input
 					id="importFile"
 					type="file"
@@ -839,17 +845,17 @@
 						const target = e.target as HTMLInputElement;
 						importFile = target.files?.[0] || null;
 					}}
-					class="w-full"
+					class="w:full"
 				/>
 			</div>
 
 			{#if importProgress}
-				<div class="p-3 bg:theme-surface rounded">
+				<div class="p:12 bg:theme-surface r:8 font:14">
 					{importProgress}
 				</div>
 			{/if}
 
-			<p class="text-sm fg:theme-text-secondary">
+			<p class="font:13 fg:theme-text-secondary">
 				※ 既存のプロジェクトと同じタイトルの場合、新しいプロジェクトとして追加されます。
 			</p>
 		</div>
@@ -865,7 +871,7 @@
 		confirmText="削除"
 		confirmVariant="danger"
 	>
-		<div class="space-y-4">
+		<div class="flex flex-direction:column gap:16">
 			<p class="fg:theme-error font-semibold">
 				⚠️ すべてのプロジェクト、キャラクター、プロット、設定資料が削除されます。
 			</p>
@@ -899,13 +905,153 @@
 		cursor: pointer;
 	}
 
+	.settings-scroll {
+		height: 100%;
+		overflow-y: auto;
+	}
+
 	.settings-page {
-		padding: 2rem 4rem;
+		max-width: 48rem;
+		margin: 0 auto;
+		padding: 40px 48px 80px;
+		display: flex;
+		flex-direction: column;
+		gap: 20px;
+	}
+
+	.theme-grid {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 12px;
+	}
+
+	.theme-card {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding: 0;
+		border: none;
+		background: none;
+		color: var(--color-text);
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.theme-card:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+
+	.theme-swatch {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		aspect-ratio: 4 / 3;
+		padding: 12px 14px;
+		border: 1px solid;
+		border-radius: 10px;
+		transition:
+			box-shadow 0.15s,
+			transform 0.2s ease;
+	}
+
+	.theme-card:hover:not(:disabled) .theme-swatch {
+		transform: translateY(-2px);
+	}
+
+	.theme-card.selected .theme-swatch {
+		box-shadow:
+			0 0 0 2px var(--color-background),
+			0 0 0 4px var(--color-primary);
+	}
+
+	.swatch-title {
+		font-family: 'Noto Serif JP', serif;
+		font-size: 18px;
+		font-weight: 600;
+		line-height: 1;
+	}
+
+	.swatch-lines {
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+	}
+
+	.swatch-lines span {
+		height: 3px;
+		border-radius: 2px;
+		opacity: 0.55;
+	}
+
+	.swatch-lines span:nth-child(1) {
+		width: 80%;
+	}
+
+	.swatch-lines span:nth-child(2) {
+		width: 92%;
+	}
+
+	.swatch-lines span:nth-child(3) {
+		width: 60%;
+	}
+
+	.swatch-dots {
+		position: absolute;
+		right: 12px;
+		bottom: 10px;
+		display: flex;
+		gap: 4px;
+	}
+
+	.swatch-dots span {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+	}
+
+	.theme-name {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding-left: 2px;
+		font-size: 13px;
+	}
+
+	.theme-card.selected .theme-name {
+		font-weight: 600;
+		color: var(--color-primary);
+	}
+
+	.settings-title {
+		margin: 0 0 8px;
+		font-size: 22px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+	}
+
+	/* 各項目の見出し */
+	.settings-page :global(h2) {
+		margin: 0;
+		font-size: 15px;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+	}
+
+	/* チェックボックスと文言の行 */
+	.settings-page :global(label:has(> input[type='checkbox'])) {
+		gap: 10px;
 	}
 
 	@media (max-width: 768px) {
 		.settings-page {
-			padding: 1rem;
+			padding: 20px 16px 40px;
+		}
+
+		.theme-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
 	}
 </style>

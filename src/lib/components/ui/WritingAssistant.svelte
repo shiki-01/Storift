@@ -211,7 +211,7 @@
 				<div class="flex flex-direction:column gap:12">
 					<select
 						bind:value={selectedConvertFormat}
-						class="w:full p:10 r:6 b:1|solid|theme-border bg:theme-background fg:theme-text font:14"
+						class="w:full p:10 r:6 b:1|solid|theme-border fg:theme-text font:14"
 					>
 						{#each convertPatterns as pattern}
 							<option value={pattern.id}>{pattern.name}</option>

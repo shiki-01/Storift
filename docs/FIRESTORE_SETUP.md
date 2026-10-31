@@ -44,20 +44,25 @@ Firebase Consoleで以下の手順を実行してください:
 2. プロジェクトを選択
 3. 左メニューから **Firestore Database** を選択
 4. **ルール** タブをクリック
-5. 以下のルールをコピー＆ペースト:
+5. リポジトリの [`firestore.rules`](../firestore.rules) の内容をコピー＆ペースト(アプリは読み込まないため、Console への貼り付けが必要です。以下は同じ内容です):
 
 ```
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 認証済みユーザー（匿名含む）のみアクセス可能
+    // 同期に使うコレクションだけを、認証済みユーザー(匿名認証を含む)に許可する。
+    // ユーザーごとの分離はしない。同じ Firebase 設定を読み込んだ端末が同じデータを共有する。
     match /{collection}/{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if request.auth != null
+        && collection in ['projects', 'chapters', 'scenes', 'characters', 'plots', 'worldbuilding'];
     }
+    // 上記以外は拒否される(既定)
   }
 }
 ```
+
+認証済み(匿名認証を含む)で、同期に使う 6 つのコレクションだけを許可し、それ以外は拒否します。事前に Authentication で「匿名」プロバイダを有効にしてください。
 
 6. **公開** をクリック
 
@@ -78,14 +83,6 @@ service cloud.firestore {
    - `Missing or insufficient permissions` → Firestoreルールが正しく設定されていない
    - `Auth not initialized` → ページをリロードしてみる
 
-### 既存データの移行
-
-以前のユーザー別コレクション (`users/{uid}/projects`) にデータがある場合:
-
-1. Firebase Consoleで **Firestore Database** を開く
-2. 古いデータを手動で新しいコレクション構造にコピー
-3. または、アプリ側で一度全データをダウンロードして再アップロード
-
 ## セキュリティについて
 
 現在の実装では、同じFirebase設定を持つすべてのユーザーがデータを共有します。
@@ -98,20 +95,6 @@ service cloud.firestore {
 3. **共有キー**: プロジェクトごとに共有キーを設定し、キーを持つユーザーのみアクセス可能
 
 ## 開発者向け情報
-
-### データパスの変更点
-
-**変更前:**
-
-```typescript
-doc(db, `users/${user.uid}/projects/${projectId}`);
-```
-
-**変更後:**
-
-```typescript
-doc(db, `projects/${projectId}`);
-```
 
 ### リアルタイム同期の仕組み
 

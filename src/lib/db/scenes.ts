@@ -23,7 +23,7 @@ export const scenesDB = {
 		const maxOrder = existingScenes.reduce((max, s) => Math.max(max, s.order), -1);
 
 		const scene: Scene = {
-			id: uuidv4(),
+			id: input.id ?? uuidv4(),
 			chapterId: input.chapterId,
 			projectId: input.projectId,
 			title: input.title,

@@ -16,7 +16,7 @@ export const charactersDB = {
 	async create(input: CharacterCreateInput): Promise<Character> {
 		const now = Date.now();
 		const character: Character = {
-			id: uuidv4(),
+			id: input.id ?? uuidv4(),
 			projectId: input.projectId,
 			name: input.name,
 			role: input.role || '',

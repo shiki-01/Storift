@@ -14,7 +14,7 @@ export const projectsDB = {
 	async create(input: ProjectCreateInput): Promise<Project> {
 		const now = Date.now();
 		const project: Project = {
-			id: uuidv4(),
+			id: input.id ?? uuidv4(),
 			title: input.title,
 			description: input.description || '',
 			createdAt: now,

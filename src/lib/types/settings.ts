@@ -35,6 +35,10 @@ export interface EditorFormatting {
 export interface AppSettings {
 	id: 'app-settings';
 	firebase?: FirebaseConfig;
+	/** 初回の Firebase 設定の案内に答え済み(設定した、または同期なしで始めた) */
+	setupCompleted?: boolean;
+	/** チュートリアルの案内を閉じた、または終えた */
+	tutorialDismissed?: boolean;
 	theme: 'light' | 'dark' | 'auto';
 	autoTheme: boolean;
 	editorFont?: EditorFont;

@@ -19,6 +19,7 @@ export interface Attachment {
 }
 
 export interface WorldbuildingCreateInput {
+	id?: string;
 	projectId: string;
 	category: Worldbuilding['category'];
 	title: string;

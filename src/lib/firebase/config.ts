@@ -7,6 +7,7 @@ import {
 } from 'firebase/firestore';
 import { getAuth, type Auth } from 'firebase/auth';
 import type { FirebaseConfig } from '$lib/types';
+import { syncStore } from '$lib/stores/sync.svelte';
 
 let app: FirebaseApp | null = null;
 let firestore: Firestore | null = null;
@@ -30,6 +31,8 @@ export function initializeFirebase(config: FirebaseConfig): void {
 			})
 		});
 
+		// 同期の有無を画面に反映するため、初期化できたことをストアにも伝える
+		syncStore.isConfigured = true;
 		console.log('✅ Firebase initialized successfully');
 	} catch (error) {
 		console.error('❌ Firebase initialization error:', error);

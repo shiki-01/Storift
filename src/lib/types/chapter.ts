@@ -11,6 +11,7 @@ export interface Chapter {
 }
 
 export interface ChapterCreateInput {
+	id?: string;
 	projectId: string;
 	title: string;
 	synopsis?: string;

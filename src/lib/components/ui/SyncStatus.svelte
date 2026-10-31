@@ -30,14 +30,25 @@
 		}
 	};
 
-	const config = $derived(statusConfig[syncStore.status]);
+	// Firebase 未設定(同期なし)のときは「オフライン」ではなく、この端末に保存していることを示す
+	const localConfig = {
+		icon: '○',
+		text: '同期なし',
+		color: 'fg:theme-text-secondary'
+	};
+
+	const config = $derived(syncStore.isConfigured ? statusConfig[syncStore.status] : localConfig);
 </script>
 
 <svelte:element
 	this={syncStore.status === 'conflict' ? 'button' : 'div'}
 	class="sync-root flex align-items:center gap:8 font:13"
 	role={syncStore.status === 'conflict' ? 'button' : undefined}
-	title={syncStore.status === 'conflict' ? 'クリックして競合を解決' : undefined}
+	title={!syncStore.isConfigured
+		? '同期は行わず、作品はこの端末に保存されます'
+		: syncStore.status === 'conflict'
+			? 'クリックして競合を解決'
+			: undefined}
 	onclick={syncStore.status === 'conflict'
 		? () => (syncStore.conflictDialogOpen = true)
 		: undefined}

@@ -25,7 +25,7 @@ export const worldbuildingDB = {
 	async create(input: WorldbuildingCreateInput): Promise<Worldbuilding> {
 		const now = Date.now();
 		const worldbuilding: Worldbuilding = {
-			id: uuidv4(),
+			id: input.id ?? uuidv4(),
 			projectId: input.projectId,
 			category: input.category,
 			title: input.title,

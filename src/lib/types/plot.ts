@@ -20,6 +20,7 @@ export interface Plot {
 }
 
 export interface PlotCreateInput {
+	id?: string;
 	projectId: string;
 	title: string;
 	type: Plot['type'];

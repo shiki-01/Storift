@@ -19,7 +19,7 @@ export const chaptersDB = {
 		const maxOrder = existingChapters.reduce((max, c) => Math.max(max, c.order), -1);
 
 		const chapter: Chapter = {
-			id: uuidv4(),
+			id: input.id ?? uuidv4(),
 			projectId: input.projectId,
 			title: input.title,
 			synopsis: input.synopsis || '',

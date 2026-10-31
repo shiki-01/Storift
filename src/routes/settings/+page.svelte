@@ -18,6 +18,7 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import ConflictBackups from '$lib/components/ui/ConflictBackups.svelte';
+	import TutorialModal from '$lib/components/tutorial/TutorialModal.svelte';
 	import NotificationSettings from '$lib/components/ui/NotificationSettings.svelte';
 	import ClaudeSettings from '$lib/components/desktop/ClaudeSettings.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
@@ -31,6 +32,7 @@
 	import { getServiceWorkerVersion, checkForUpdate } from '$lib/utils/sw-register';
 
 	let backupsOpen = $state(false);
+	let tutorialOpen = $state(false);
 
 	let settings = $state<Omit<AppSettings, 'id' | 'updatedAt'>>({
 		theme: themeStore.theme.id as 'light' | 'dark' | 'auto',
@@ -740,6 +742,16 @@
 			{/each}
 		</Card>
 
+		<!-- 使い方 -->
+		<Card class="b:1px|solid|theme-border flex flex-direction:column gap:1rem">
+			<h2 class="font:bold">使い方</h2>
+			<div>
+				<Button variant="secondary" onclick={() => (tutorialOpen = true)}
+					>チュートリアルをもう一度見る</Button
+				>
+			</div>
+		</Card>
+
 		<!-- データ管理 -->
 		<Card class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem">
 			<h2 class="font:bold">データ管理</h2>
@@ -798,6 +810,8 @@
 		</Card>
 	</div>
 </div>
+
+<TutorialModal bind:isOpen={tutorialOpen} />
 
 <!-- エクスポートモーダル -->
 {#if showExportModal}

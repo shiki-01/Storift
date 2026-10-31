@@ -22,6 +22,8 @@ export interface ProjectSettings {
 }
 
 export interface ProjectCreateInput {
+	/** 省略時は自動採番。サンプル作品のように固定 ID が必要なときだけ指定する */
+	id?: string;
 	title: string;
 	description?: string;
 }

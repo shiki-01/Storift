@@ -10,6 +10,8 @@ let isSyncing = $state(false);
 let error = $state<string | null>(null);
 let conflictCount = $state(0);
 let conflictDialogOpen = $state(false);
+// Firebase の設定が読み込まれて初期化済みか(同期の有無の表示に使う)
+let configured = $state(false);
 
 export const syncStore = {
 	get status() {
@@ -48,6 +50,13 @@ export const syncStore = {
 	},
 	set conflictDialogOpen(value: boolean) {
 		conflictDialogOpen = value;
+	},
+	/** Firebase が初期化済み(= 同期の対象になっている)か */
+	get isConfigured() {
+		return configured;
+	},
+	set isConfigured(value: boolean) {
+		configured = value;
 	},
 	get isOnline() {
 		return status !== 'offline';

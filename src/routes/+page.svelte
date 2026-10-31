@@ -36,6 +36,9 @@
 				// 初期化エラーの場合はセットアップへ
 				goto('/setup');
 			}
+		} else if (settings.setupCompleted) {
+			// 同期なしで始めた場合は、そのままホームへ
+			goto('/home');
 		} else {
 			goto('/setup');
 		}

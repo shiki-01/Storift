@@ -4,8 +4,9 @@
 	import title from '$lib/assets/title.svg';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { projectsDB } from '$lib/db';
+	import { projectsDB, settingsDB } from '$lib/db';
 	import { projectsStore } from '$lib/stores/projects.svelte';
+	import TutorialModal from '$lib/components/tutorial/TutorialModal.svelte';
 	import { queueChange } from '$lib/services/sync.service';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
@@ -24,6 +25,10 @@
 	let renameValue = $state('');
 	let isCreating = $state(false);
 
+	// 初回の案内バナーとチュートリアル(閉じる・始めたら保存し、以後は自動では出さない)
+	let showTutorialBanner = $state(false);
+	let isTutorialOpen = $state(false);
+
 	// コンテキストメニュー
 	let contextMenu = $state<{
 		visible: boolean;
@@ -34,6 +39,7 @@
 	}>({ visible: false, x: 0, y: 0, items: [] });
 
 	onMount(async () => {
+		void loadTutorialBanner();
 		await loadProjects();
 
 		// Firebaseが初期化済みで、同期状態がofflineの場合、オンラインに戻す
@@ -52,6 +58,30 @@
 		} finally {
 			projectsStore.isLoading = false;
 		}
+	};
+
+	const loadTutorialBanner = async () => {
+		try {
+			const settings = await settingsDB.get();
+			showTutorialBanner = !settings.tutorialDismissed;
+		} catch (error) {
+			console.error('Failed to load settings:', error);
+		}
+	};
+
+	// 案内を閉じたことを保存する
+	const dismissTutorialBanner = async () => {
+		showTutorialBanner = false;
+		try {
+			await settingsDB.update({ tutorialDismissed: true });
+		} catch (error) {
+			console.error('Failed to save tutorial state:', error);
+		}
+	};
+
+	const startTutorial = () => {
+		void dismissTutorialBanner();
+		isTutorialOpen = true;
 	};
 
 	const handleCreateProject = async () => {
@@ -273,6 +303,7 @@
 			{#if projectsStore.projects.length > 0}
 				<span class="home-total">{projectsStore.projects.length}作品</span>
 			{/if}
+			<Button variant="ghost" size="sm" onclick={() => (isTutorialOpen = true)}>使い方</Button>
 		</div>
 		<div class="home-actions">
 			<input
@@ -286,6 +317,18 @@
 			<Button onclick={() => (isCreateModalOpen = true)}>＋ 新しい作品</Button>
 		</div>
 	</header>
+
+	{#if showTutorialBanner}
+		<section class="tutorial-banner" aria-label="チュートリアルの案内">
+			<p class="tutorial-banner-text">はじめての方へ。使い方を数分で確認できます。</p>
+			<div class="tutorial-banner-actions">
+				<Button size="sm" onclick={startTutorial}>チュートリアルを始める</Button>
+				<Button variant="ghost" size="sm" onclick={() => void dismissTutorialBanner()}>
+					あとで
+				</Button>
+			</div>
+		</section>
+	{/if}
 
 	{#if lastProject && !projectsStore.searchQuery}
 		<a class="continue" href="/project/{lastProject.id}/editor">
@@ -434,6 +477,8 @@
 	onClose={() => (contextMenu.visible = false)}
 />
 
+<TutorialModal bind:isOpen={isTutorialOpen} />
+
 <style>
 	.home-page {
 		max-width: 68rem;
@@ -490,6 +535,33 @@
 	.home-search:focus {
 		outline: none;
 		border-color: color-mix(in srgb, var(--color-primary) 60%, var(--color-border));
+	}
+
+	/* 初回の案内(控えめに、作品一覧の上に出す) */
+	.tutorial-banner {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px 16px;
+		margin-bottom: 28px;
+		padding: 12px 16px;
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		background: var(--color-surface);
+	}
+
+	.tutorial-banner-text {
+		margin: 0;
+		font-size: 13.5px;
+		color: var(--color-text);
+	}
+
+	.tutorial-banner-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px;
 	}
 
 	.continue {

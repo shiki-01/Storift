@@ -22,6 +22,7 @@ export interface CharacterRelationship {
 }
 
 export interface CharacterCreateInput {
+	id?: string;
 	projectId: string;
 	name: string;
 	role?: string;

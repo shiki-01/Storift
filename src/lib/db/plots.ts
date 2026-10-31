@@ -18,7 +18,7 @@ export const plotsDB = {
 		const maxOrder = existingPlots.reduce((max, p) => Math.max(max, p.order), -1);
 
 		const plot: Plot = {
-			id: uuidv4(),
+			id: input.id ?? uuidv4(),
 			projectId: input.projectId,
 			title: input.title,
 			type: input.type,

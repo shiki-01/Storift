@@ -14,6 +14,7 @@ export interface Scene {
 }
 
 export interface SceneCreateInput {
+	id?: string;
 	chapterId: string;
 	projectId: string;
 	title: string;

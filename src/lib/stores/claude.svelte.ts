@@ -57,7 +57,7 @@ export interface EditState {
 	/** 反映した位置と、その直前の文(元に戻すときに同じ場所か確かめる) */
 	appliedAt?: number;
 	contextBefore?: string;
-	/** 反映済みの変更を確認し終えた(エディタ上の色付けを消す)。Copilot の「保持」に当たる */
+	/** 反映済みの変更を確認し終えた(エディタ上の色付けを消す)。UI 上の「保持」に当たる */
 	reviewed?: boolean;
 }
 

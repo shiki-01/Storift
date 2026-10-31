@@ -92,6 +92,12 @@
 		}
 	};
 
+	// 同期を使わずに始める(Firebase は設定画面から後で設定できる)
+	const handleSkip = async () => {
+		await settingsDB.update({ setupCompleted: true });
+		goto('/home');
+	};
+
 	const handleSave = async () => {
 		error = '';
 		isLoading = true;
@@ -117,7 +123,7 @@
 			authStore.isInitialized = true;
 
 			// IndexedDBに保存
-			await settingsDB.setFirebaseConfig(config);
+			await settingsDB.update({ firebase: config, setupCompleted: true });
 
 			// 同期システムを初期化
 			try {
@@ -140,7 +146,10 @@
 <div class="h:100% overflow-y:auto bg:theme-background flex ai:start jc:center p:24">
 	<div class="max-w:600 w:full">
 		<Card padding="lg">
-			<h2 class="font:24 font-weight:600 m:0|0|24|0">Firebase初期設定</h2>
+			<h2 class="font:24 font-weight:600 m:0|0|8|0">Firebase初期設定(任意)</h2>
+			<p class="font:14 fg:theme-text-secondary m:0|0|24|0">
+				複数の端末で作品を同期したい場合だけ設定します。設定しなくても、作品はこの端末に保存されて使えます。あとから設定画面でも設定できます。
+			</p>
 
 			<!-- 一括ペーストセクション -->
 			<div class="bg:theme-surface p:16 r:8 mb:24 b:1|solid|theme-border">
@@ -269,6 +278,10 @@ projectId: 'your-project',
 				</div>
 			{/if}
 		</Card>
+
+		<div class="text-align:center mt:24">
+			<Button type="button" variant="secondary" onclick={handleSkip}>設定せずに始める</Button>
+		</div>
 
 		<p class="text-align:center fg:theme-text-secondary font:14 mt:24">
 			Firebase Consoleで取得した設定情報を入力してください

@@ -27,11 +27,17 @@
 		syncing: '同期中',
 		offline: 'オフライン',
 		conflict: '競合あり(クリックで解決)',
-		error: '同期エラー'
+		error: '同期エラー',
+		// Firebase 未設定のとき。オフラインではなく、この端末に保存していることを示す
+		local: '同期なし(この端末に保存)'
 	};
 
+	let shownStatus = $derived(
+		(syncStore.isConfigured ? syncStore.status : 'local') as keyof typeof syncLabels
+	);
+
 	let syncTitle = $derived.by(() => {
-		let label = syncLabels[syncStore.status];
+		let label = syncLabels[shownStatus];
 		if (syncStore.lastSyncTime) label += ` ・ ${formatRelativeTime(syncStore.lastSyncTime)}`;
 		if (syncStore.error) label += `\n${syncStore.error}`;
 		return label;
@@ -118,19 +124,17 @@
 			<span class="rail-label">設定</span>
 		</a>
 		<svelte:element
-			this={syncStore.status === 'conflict' ? 'button' : 'div'}
+			this={shownStatus === 'conflict' ? 'button' : 'div'}
 			class="rail-sync"
-			data-status={syncStore.status}
+			data-status={shownStatus}
 			title={syncTitle}
-			role={syncStore.status === 'conflict' ? 'button' : 'status'}
-			aria-label={syncLabels[syncStore.status]}
-			onclick={syncStore.status === 'conflict'
-				? () => (syncStore.conflictDialogOpen = true)
-				: undefined}
+			role={shownStatus === 'conflict' ? 'button' : 'status'}
+			aria-label={syncLabels[shownStatus]}
+			onclick={shownStatus === 'conflict' ? () => (syncStore.conflictDialogOpen = true) : undefined}
 		>
 			<span class="dot"></span>
 			<span class="rail-sync-label"
-				>{syncStore.status === 'synced' ? '同期' : syncLabels[syncStore.status].split('(')[0]}</span
+				>{shownStatus === 'synced' ? '同期' : syncLabels[shownStatus].split('(')[0]}</span
 			>
 		</svelte:element>
 	</div>
@@ -268,7 +272,8 @@
 		animation: pulse 1.2s ease-in-out infinite;
 	}
 
-	.rail-sync[data-status='offline'] .dot {
+	.rail-sync[data-status='offline'] .dot,
+	.rail-sync[data-status='local'] .dot {
 		background: var(--color-text-secondary);
 	}
 

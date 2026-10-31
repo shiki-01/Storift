@@ -62,7 +62,7 @@ workspace/
 
 ### エディタ上の差分表示
 
-開いているシーンに対する AI の変更は、エディタ上に色付きで表示する(VS Code の Copilot のインライン差分に当たる。`src/lib/components/desktop/EditorDiff.svelte`)。
+開いているシーンに対する AI の変更は、エディタ上に色付きで表示する(実装は `src/lib/components/desktop/EditorDiff.svelte`)。
 
 - 反映済みで未確認の変更: 追加した文字を緑、消えた文字があった位置に赤い印。
 - 未反映の提案(差分を確認して反映): 消える文字を赤の取り消し線、入る位置に緑の印。

@@ -1,15 +1,25 @@
 <script lang="ts">
-	import { APP_URL, NAV, SITE_NAME } from '$lib/config';
+	import { APP_URL, NAV, RELEASES_URL } from '$lib/config';
+	import Logo from '$lib/Logo.svelte';
 </script>
 
 <footer>
 	<div class="wrap inner">
-		<p class="name">{SITE_NAME}</p>
-		<nav aria-label="フッター">
+		<div class="about">
+			<Logo height={22} />
+			<p>小説を書くための、ひとつの場所。</p>
+		</div>
+		<nav aria-label="サイト">
+			<p class="head">サイト</p>
+			<a href="/">ホーム</a>
 			{#each NAV as item (item.href)}
 				<a href={item.href}>{item.label}</a>
 			{/each}
-			<a href={APP_URL}>エディタを開く</a>
+		</nav>
+		<nav aria-label="アプリ">
+			<p class="head">アプリ</p>
+			<a href={APP_URL}>エディタを開く(Web)</a>
+			<a href={RELEASES_URL}>デスクトップ版</a>
 		</nav>
 		<p class="copy">© {new Date().getFullYear()} Storift</p>
 	</div>
@@ -17,33 +27,66 @@
 
 <style>
 	footer {
-		margin-top: 64px;
-		border-top: 1px solid var(--border);
-		padding: 32px 0 48px;
-		color: var(--muted);
-		font-size: 0.9rem;
+		margin-top: 96px;
+		border-top: 1px solid var(--color-border);
+		background: var(--color-surface);
+		padding: 48px 0 40px;
+		font-size: 13.5px;
+		color: var(--color-text-secondary);
 	}
+
 	.inner {
+		display: grid;
+		grid-template-columns: 1fr auto auto;
+		gap: 32px 64px;
+	}
+
+	.about {
 		display: flex;
-		flex-wrap: wrap;
-		gap: 12px 28px;
-		align-items: center;
+		flex-direction: column;
+		gap: 12px;
+		color: var(--color-text);
 	}
-	.name {
-		font-family: var(--serif);
-		font-weight: 700;
-		color: var(--fg);
-		margin-right: auto;
+
+	.about p {
+		color: var(--color-text-secondary);
 	}
+
 	nav {
 		display: flex;
-		flex-wrap: wrap;
-		gap: 4px 20px;
+		flex-direction: column;
+		gap: 6px;
 	}
+
+	.head {
+		font-size: 12px;
+		letter-spacing: 0.08em;
+		margin-bottom: 4px;
+	}
+
 	nav a {
-		color: var(--muted);
+		color: var(--color-text);
+		text-decoration: none;
 	}
+
+	nav a:hover {
+		text-decoration: underline;
+	}
+
 	.copy {
-		flex-basis: 100%;
+		grid-column: 1 / -1;
+		padding-top: 24px;
+		border-top: 1px solid var(--color-border);
+		font-size: 12.5px;
+	}
+
+	@media (max-width: 640px) {
+		.inner {
+			grid-template-columns: 1fr 1fr;
+		}
+
+		.about {
+			grid-column: 1 / -1;
+		}
 	}
 </style>

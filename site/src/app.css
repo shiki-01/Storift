@@ -1,29 +1,63 @@
+/* 製品(src/app.css・テーマ「和紙」「墨」)と同じ色・書体・部品の形を使う */
+
+@font-face {
+	font-family: 'Mobo';
+	src: url('/font/MOBO-Regular.woff2') format('woff2');
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Mobo';
+	src: url('/font/MOBO-SemiBold.woff2') format('woff2');
+	font-weight: 600;
+	font-style: normal;
+	font-display: swap;
+}
+
 :root {
-	--bg: #fbfaf7;
-	--surface: #ffffff;
-	--fg: #1c1b19;
-	--muted: #6b675f;
-	--border: #e4e0d6;
-	--accent: #2f4a6b;
-	--accent-fg: #ffffff;
-	--accent-soft: #e9eef5;
-	--radius: 12px;
-	--max: 1040px;
-	--serif: 'Noto Serif JP', 'Hiragino Mincho ProN', 'Yu Mincho', serif;
-	--sans: 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', system-ui, sans-serif;
-	color-scheme: light dark;
+	/* 和紙 */
+	--color-primary: #33507a; /* 藍 */
+	--color-background: #f6f4ef;
+	--color-surface: #ece8df;
+	--color-text: #2a2925; /* 墨 */
+	--color-text-secondary: #78736a;
+	--color-border: #dfdad0;
+	--color-accent: #b4543a; /* 朱 */
+	--color-success: #557a4c; /* 松葉 */
+	--editor-background: #fbfaf6;
+	--editor-selection: #d6dfeb;
+	--editor-line-highlight: #f1eee6;
+
+	--hover: color-mix(in srgb, var(--color-text) 6%, transparent);
+	--selected: color-mix(in srgb, var(--color-primary) 13%, transparent);
+	--shadow-float: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px rgb(0 0 0 / 0.08);
+
+	--font-ui: 'Mobo', 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', system-ui, sans-serif;
+	--font-serif: 'Noto Serif JP', 'Hiragino Mincho ProN', 'Yu Mincho', serif;
+
+	--max: 1080px;
+	--gutter: 24px;
+	color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
 	:root {
-		--bg: #131312;
-		--surface: #1b1b19;
-		--fg: #ece9e1;
-		--muted: #a09b90;
-		--border: #2e2d29;
-		--accent: #9db8da;
-		--accent-fg: #101418;
-		--accent-soft: #1f2833;
+		/* 墨 */
+		--color-primary: #9db3d1;
+		--color-background: #1b1a18;
+		--color-surface: #24231f;
+		--color-text: #e7e3da;
+		--color-text-secondary: #9a958a;
+		--color-border: #34322d;
+		--color-accent: #d98a6e;
+		--color-success: #93b486;
+		--editor-background: #201f1c;
+		--editor-selection: #3a4558;
+		--editor-line-highlight: #2a2925;
+		--shadow-float: 0 1px 2px rgb(0 0 0 / 0.2), 0 12px 32px rgb(0 0 0 / 0.35);
+		color-scheme: dark;
 	}
 }
 
@@ -33,90 +67,188 @@
 
 html {
 	scroll-behavior: smooth;
+	scroll-padding-top: 72px;
 }
 
 body {
 	margin: 0;
-	background: var(--bg);
-	color: var(--fg);
-	font-family: var(--sans);
-	line-height: 1.8;
+	background: var(--color-background);
+	color: var(--color-text);
+	font-family: var(--font-ui);
+	font-size: 15px;
+	line-height: 1.85;
+	letter-spacing: 0.02em;
+	font-feature-settings: 'palt' 1;
+	-webkit-font-smoothing: antialiased;
 	-webkit-text-size-adjust: 100%;
 }
 
+::selection {
+	background: var(--editor-selection);
+}
+
+:focus-visible {
+	outline: 2px solid color-mix(in srgb, var(--color-primary) 55%, transparent);
+	outline-offset: 2px;
+}
+
 a {
-	color: var(--accent);
+	color: var(--color-primary);
+	text-underline-offset: 3px;
 }
 
 h1,
 h2,
 h3 {
-	font-family: var(--serif);
-	line-height: 1.4;
 	margin: 0;
+	line-height: 1.45;
+	font-weight: 600;
 }
 
 p {
 	margin: 0;
 }
 
+ul,
+ol {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+code,
+kbd {
+	font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace;
+	font-size: 0.88em;
+	padding: 1px 6px;
+	border: 1px solid var(--color-border);
+	border-radius: 5px;
+	background: var(--editor-background);
+}
+
 .wrap {
 	width: 100%;
 	max-width: var(--max);
 	margin: 0 auto;
-	padding: 0 20px;
+	padding: 0 var(--gutter);
 }
 
+/* ===== ボタン(製品の Button.svelte と同じ寸法) ===== */
 .btn {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	gap: 0.5em;
-	padding: 0.7em 1.4em;
-	border-radius: 999px;
-	border: 1px solid var(--accent);
-	background: var(--accent);
-	color: var(--accent-fg);
+	gap: 8px;
+	height: 44px;
+	padding: 0 20px;
+	border: 1px solid transparent;
+	border-radius: 8px;
 	font: inherit;
-	font-weight: 700;
+	font-size: 15px;
+	line-height: 1;
+	letter-spacing: 0.02em;
+	white-space: nowrap;
 	text-decoration: none;
 	cursor: pointer;
+	transition:
+		background-color 0.15s,
+		border-color 0.15s,
+		color 0.15s,
+		transform 0.1s;
 }
 
-.btn:hover {
-	opacity: 0.88;
+.btn:active {
+	transform: scale(0.97);
 }
 
-.btn.ghost {
-	background: transparent;
-	color: var(--accent);
+.btn.primary {
+	background: var(--color-primary);
+	color: var(--color-background);
 }
 
-.btn.small {
-	padding: 0.4em 1em;
-	font-size: 0.9rem;
+.btn.primary:hover {
+	background: color-mix(in srgb, var(--color-primary) 88%, var(--color-text));
 }
 
+.btn.secondary {
+	background: var(--color-background);
+	border-color: var(--color-border);
+	color: var(--color-text);
+}
+
+.btn.secondary:hover {
+	background: var(--hover);
+}
+
+.btn.sm {
+	height: 32px;
+	padding: 0 12px;
+	font-size: 13px;
+}
+
+/* ===== 下層ページの見出し ===== */
 .page-head {
-	padding: 56px 0 24px;
+	padding: 72px 0 40px;
+	border-bottom: 1px solid var(--color-border);
+	margin-bottom: 48px;
+}
+
+.page-head .label {
+	font-size: 12.5px;
+	letter-spacing: 0.08em;
+	color: var(--color-text-secondary);
 }
 
 .page-head h1 {
-	font-size: clamp(1.7rem, 4vw, 2.4rem);
+	margin-top: 6px;
+	font-family: var(--font-serif);
+	font-size: clamp(1.8rem, 4vw, 2.4rem);
+	letter-spacing: 0.06em;
 }
 
-.page-head p {
-	margin-top: 12px;
-	color: var(--muted);
+.page-head p:not(.label) {
+	margin-top: 14px;
+	max-width: 36em;
+	color: var(--color-text-secondary);
 }
 
-.section {
-	padding: 40px 0;
+/* 本文の末尾に置く、次のページへの導線 */
+.next {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 12px;
+	margin-top: 64px;
+	padding-top: 32px;
+	border-top: 1px solid var(--color-border);
 }
 
-.card {
-	background: var(--surface);
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
-	padding: 24px;
+.next p {
+	margin-right: auto;
+	color: var(--color-text-secondary);
+	font-size: 14px;
+}
+
+@media (max-width: 640px) {
+	:root {
+		--gutter: 16px;
+	}
+
+	.page-head {
+		padding: 48px 0 28px;
+		margin-bottom: 32px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	html {
+		scroll-behavior: auto;
+	}
+
+	*,
+	*::before,
+	*::after {
+		transition: none !important;
+		animation: none !important;
+	}
 }

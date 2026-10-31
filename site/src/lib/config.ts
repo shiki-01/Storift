@@ -6,11 +6,15 @@ export const APP_URL = (env.PUBLIC_APP_URL || 'https://app.storift.shiki-01.com'
 	/\/$/,
 	''
 );
+/** デスクトップ版の配布先(GitHub Releases) */
+export const RELEASES_URL = (
+	env.PUBLIC_RELEASES_URL || 'https://github.com/shiki-01/Storift/releases'
+).replace(/\/$/, '');
 
 export const SITE_NAME = 'Storift';
 export const SITE_TAGLINE = '小説を書くための、ひとつの場所。';
 export const SITE_DESCRIPTION =
-	'Storift は、執筆・プロット・キャラクター・設定資料・進捗をひとつにまとめた小説執筆アプリ。ブラウザで動き、オフラインでも書けます。';
+	'Storift は、原稿・プロット・人物・設定資料・進捗をひとつにまとめた小説執筆アプリ。ブラウザで動き、オフラインでも書けます。';
 
 export const NAV = [
 	{ href: '/features', label: '機能' },

@@ -2,6 +2,7 @@
 	import { tick, untrack } from 'svelte';
 	import { fly } from 'svelte/transition';
 	import { goto } from '$app/navigation';
+	import { logo } from '$lib/assets/logo';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { projectsStore } from '$lib/stores/projects.svelte';
@@ -34,6 +35,9 @@
 	let busy = $state(false);
 	/** ステップの切り替えごとに増やす。古い非同期処理を無効にするために使う */
 	let runId = 0;
+	/** 強調枠を滑らせるか。false の間は目標の位置に置いてフェードで出す */
+	let slide = $state(false);
+	let holeShown = false;
 
 	const step = $derived(tourStore.current);
 	const total = $derived(tourStore.steps.length);
@@ -208,6 +212,9 @@
 			} else if (rect) {
 				rect = null;
 			}
+			// 直前のフレームにも強調があったときだけ滑らせる
+			slide = holeShown && hasHole;
+			holeShown = hasHole;
 			frame = requestAnimationFrame(tickFrame);
 		};
 		untrack(tickFrame);
@@ -310,13 +317,14 @@
 </script>
 
 {#if tourStore.active && step}
-	<div class="tour">
+	<div class="tour" class:tour--snap={!slide}>
 		<svg class="tour-dim" aria-hidden="true" focusable="false">
 			<defs>
 				<mask id="tour-spotlight" x="0" y="0" width="100%" height="100%">
 					<rect x="0" y="0" width="100%" height="100%" fill="#fff" />
 					<rect
 						class="tour-hole"
+						class:tour-hole--on={hasHole}
 						x={hole.x}
 						y={hole.y}
 						width={hole.width}
@@ -367,6 +375,10 @@
 					<div class="tour-progress" aria-hidden="true">
 						<span style="width: {((tourStore.index + 1) / total) * 100}%"></span>
 					</div>
+
+					{#if step.logo}
+						<div class="tour-logo" aria-hidden="true">{@html logo('currentColor')}</div>
+					{/if}
 
 					<h2 id="tour-card-title" class="tour-title">{step.title}</h2>
 					{#each step.body as paragraph, i (i)}
@@ -435,11 +447,27 @@
 	}
 
 	.tour-hole {
+		opacity: 0;
 		transition:
 			x 0.3s ease,
 			y 0.3s ease,
 			width 0.3s ease,
-			height 0.3s ease;
+			height 0.3s ease,
+			opacity 0.2s ease;
+	}
+
+	.tour-hole--on {
+		opacity: 1;
+	}
+
+	/* 強調が新しく現れるときは、左上から滑らせず、その場でフェードさせる */
+	.tour--snap .tour-hole,
+	.tour--snap .tour-ring {
+		transition: opacity 0.2s ease;
+	}
+
+	.tour--snap .tour-block {
+		transition: none;
 	}
 
 	.tour-block {
@@ -552,6 +580,18 @@
 		color: var(--color-text);
 	}
 
+	.tour-logo {
+		display: flex;
+		justify-content: center;
+		padding: 18px 0 6px;
+		color: var(--color-text);
+	}
+
+	.tour-logo :global(svg) {
+		width: auto;
+		height: 44px;
+	}
+
 	.tour-progress {
 		height: 3px;
 		border-radius: 2px;
@@ -601,6 +641,8 @@
 		.tour-hole,
 		.tour-block,
 		.tour-ring,
+		.tour--snap .tour-hole,
+		.tour--snap .tour-ring,
 		.tour-card,
 		.tour-progress span {
 			transition: none;

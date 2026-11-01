@@ -179,6 +179,8 @@ export const TOUR_STEPS: TourStep[] = [
 			'目標に対する達成率と、日ごとの執筆量を確認できます。',
 			'1 日の目標文字数は、執筆画面の「執筆の目標」から設定します。'
 		],
+		// 設定画面から戻ったときにも進捗画面を開く
+		route: ({ projectId }) => `/project/${projectId}/progress`,
 		target: '[data-tour="progress-goal"]'
 	},
 	{
@@ -212,6 +214,8 @@ export const TOUR_STEPS: TourStep[] = [
 			'データは、この端末のブラウザ内に保存されます。',
 			'サイトデータを削除すると消えるため、定期的に全データをエクスポートしてバックアップしてください。'
 		],
+		// 完了(ホーム)から戻ったときにも設定画面を開く
+		route: () => '/settings',
 		target: '[data-tour="settings-backup"]'
 	},
 	{
@@ -220,6 +224,8 @@ export const TOUR_STEPS: TourStep[] = [
 		body: [
 			'チュートリアルは以上です。',
 			'設定画面の「チュートリアルをもう一度見る」から、いつでも再開できます。サンプル作品が不要であれば、作品一覧から削除できます。'
-		]
+		],
+		route: () => '/home',
+		logo: true
 	}
 ];

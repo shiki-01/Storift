@@ -35,6 +35,8 @@ export interface TourStep {
 	when?: 'desktop' | 'web' | 'mobile' | 'wide';
 	/** カード内に出す外部リンク */
 	link?: { label: string; href: string };
+	/** カードの先頭にロゴを出す */
+	logo?: boolean;
 }
 
 /** 直前に移動した向き。要素が無く飛ばすステップで、戻る操作中かどうかの判断に使う */
@@ -87,8 +89,15 @@ export const tourStore = {
 		return active ? (steps[index] ?? null) : null;
 	},
 
-	/** ツアーを最初のステップから始める */
+	/**
+	 * ツアーを最初のステップから始める。開始時に「表示済み」として設定に記録し、
+	 * 完了時にホームへ戻っても案内が出ないようにする。
+	 * 設定画面の「チュートリアルをもう一度見る」から再開できる。
+	 */
 	start() {
+		settingsDB.update({ tutorialDismissed: true }).catch((error: unknown) => {
+			console.error('Failed to save tutorial state:', error);
+		});
 		const desktop = isDesktop();
 		const mobile = viewport.isMobile;
 		steps = TOUR_STEPS.filter((step) => matchesWhen(step, desktop, mobile));
@@ -123,17 +132,11 @@ export const tourStore = {
 		index = i;
 	},
 
-	/**
-	 * ツアーを終了する。終了時は「表示済み」として設定に記録する。
-	 * 設定画面の「チュートリアルをもう一度見る」から再開できる。
-	 */
+	/** ツアーを終了する */
 	stop() {
 		if (!active) return;
 		active = false;
 		index = 0;
 		direction = 'forward';
-		settingsDB.update({ tutorialDismissed: true }).catch((error: unknown) => {
-			console.error('Failed to save tutorial state:', error);
-		});
 	}
 };

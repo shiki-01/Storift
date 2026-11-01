@@ -21,6 +21,12 @@
 			<a href={APP_URL}>エディタを開く(Web)</a>
 			<a href={RELEASES_URL}>デスクトップ版</a>
 		</nav>
+		<nav aria-label="ガイドと規約">
+			<p class="head">ガイドと規約</p>
+			<a href="/guide/firebase">Firebase 設定ガイド</a>
+			<a href="/privacy">プライバシーポリシー</a>
+			<a href="/terms">利用規約</a>
+		</nav>
 		<p class="copy">© {new Date().getFullYear()} Storift</p>
 	</div>
 </footer>
@@ -37,8 +43,8 @@
 
 	.inner {
 		display: grid;
-		grid-template-columns: 1fr auto auto;
-		gap: 32px 64px;
+		grid-template-columns: 1fr auto auto auto;
+		gap: 32px 48px;
 	}
 
 	.about {

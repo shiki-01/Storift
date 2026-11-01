@@ -11,7 +11,8 @@
 		{
 			title: '同期の設定をする(初回のみ)',
 			body: '初めて開くと Firebase の設定画面が出ます。Firebase Console でプロジェクトを作り、表示された設定をそのまま貼り付けて「設定を読み込む」を押します。',
-			tip: '設定は一度だけです。同じ設定をほかの端末でも読み込むと、作品が同期されます。'
+			tip: '設定は一度だけです。同じ設定をほかの端末でも読み込むと、作品が同期されます。',
+			link: { href: '/guide/firebase', label: 'Firebase 設定ガイドを見る' }
 		},
 		{
 			title: '作品を作る',
@@ -54,6 +55,9 @@
 					<p>{s.body}</p>
 					{#if s.tip}
 						<p class="tip">{s.tip}</p>
+					{/if}
+					{#if s.link}
+						<p class="more"><a href={s.link.href}>{s.link.label}</a></p>
 					{/if}
 				</div>
 			</li>
@@ -153,6 +157,11 @@
 		border-left: 2px solid var(--color-primary);
 		background: var(--editor-background);
 		font-size: 13.5px !important;
+	}
+
+	.more {
+		margin-top: 10px;
+		font-size: 14px !important;
 	}
 
 	.desktop {

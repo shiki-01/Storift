@@ -7,6 +7,8 @@
 		class?: string;
 		onclick?: () => void;
 		children?: import('svelte').Snippet;
+		/** data-tour などの data-* 属性は、そのまま button に渡す */
+		[key: `data-${string}`]: string | undefined;
 	}
 
 	let {
@@ -16,11 +18,12 @@
 		type = 'button',
 		class: className = '',
 		onclick,
-		children
+		children,
+		...rest
 	}: ButtonProps = $props();
 </script>
 
-<button class="btn btn--{variant} btn--{size} {className}" {type} {disabled} {onclick}>
+<button class="btn btn--{variant} btn--{size} {className}" {type} {disabled} {onclick} {...rest}>
 	{#if children}
 		{@render children()}
 	{/if}

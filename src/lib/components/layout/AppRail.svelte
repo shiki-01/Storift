@@ -14,6 +14,17 @@
 		return pathname.includes(`/project/${projectId}/${path}`);
 	}
 
+	// 選択中の項目を指す三角は 1 つだけ置き、項目間を滑らせて移動させる
+	let groupEl = $state<HTMLElement>();
+	let notchTop = $state<number | null>(null);
+
+	$effect(() => {
+		void pathname;
+		void projectId;
+		const el = groupEl?.querySelector<HTMLElement>('.rail-item.active');
+		notchTop = el ? el.offsetTop + el.offsetHeight / 2 : null;
+	});
+
 	// 執筆を開いている時にもう一度押すと、章・シーン一覧のパネルを開閉する
 	function onNavClick(e: MouseEvent, path: string) {
 		if (path === 'editor' && isActive('editor')) {
@@ -78,7 +89,11 @@
 		</svg>
 	</a>
 
-	<div class="rail-group">
+	<div class="rail-group rail-main" bind:this={groupEl}>
+		{#if notchTop !== null}
+			<span class="rail-notch" style="transform: translateY({notchTop}px)" aria-hidden="true"
+			></span>
+		{/if}
 		{#if isProjectPage}
 			{#each projectNavItems as item (item.path)}
 				{@const active = isActive(item.path)}
@@ -88,6 +103,7 @@
 					class:active
 					aria-current={active ? 'page' : undefined}
 					title={item.path === 'editor' && active ? '章・シーン一覧の表示切替' : item.label}
+					data-tour="nav-{item.path}"
 					onclick={(e) => onNavClick(e, item.path)}
 				>
 					{@render icon(item.icon)}
@@ -214,24 +230,26 @@
 		color: var(--color-primary);
 	}
 
-	/* 選択中の項目を指す小さな三角(境界線の上に乗せる) */
-	.rail-item.active::after {
-		content: '';
+	.rail-main {
+		position: relative;
+	}
+
+	/* 選択中の項目を指す小さな三角(境界線の上に乗せる)。項目間を滑って移動する */
+	.rail-notch {
 		position: absolute;
-		top: 50%;
-		right: -6px;
-		margin-top: -8px;
+		top: -8px;
+		right: 0;
 		border-style: solid;
 		border-width: 8px 8px 8px 0;
 		border-color: transparent var(--color-border) transparent transparent;
-		transform-origin: right center;
-		animation: notch-in 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
+		transition: transform 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
+		animation: notch-in 0.22s ease-out;
+		pointer-events: none;
 	}
 
 	@keyframes notch-in {
 		from {
 			opacity: 0;
-			transform: scaleX(0.2);
 		}
 	}
 
@@ -299,6 +317,10 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
+		.rail-notch {
+			transition: none;
+		}
+
 		.rail-sync[data-status='syncing'] .dot {
 			animation: none;
 		}

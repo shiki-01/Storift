@@ -35,6 +35,40 @@ export function edgeStyleKey(from: string, to: string, label: string): string {
 	return `${from}>${to}>${label}`;
 }
 
+/** 逆向きの線と重ならないための既定のずれ(px) */
+export const DEFAULT_EDGE_GAP = 40;
+
+interface Point {
+	x: number;
+	y: number;
+}
+
+/**
+ * 逆向きの関係がある線の既定のずれ。直線に垂直な方向へ DEFAULT_EDGE_GAP ずらす。
+ * 向きで符号が反転しないよう、id の小さい側から大きい側へのベクトルで法線を決める。
+ * (A→B と B→A は必ず反対側に膨らむ)
+ */
+export function defaultEdgeOffset(
+	sourceId: string,
+	source: Point,
+	targetId: string,
+	target: Point
+): Point {
+	const forward = sourceId < targetId;
+	const lo = forward ? source : target;
+	const hi = forward ? target : source;
+	const dx = hi.x - lo.x;
+	const dy = hi.y - lo.y;
+	const len = Math.hypot(dx, dy);
+	if (len === 0) return { x: 0, y: 0 };
+	const sign = forward ? 1 : -1;
+	// `|| 0` で -0 を 0 に揃える
+	return {
+		x: Math.round((sign * -dy * DEFAULT_EDGE_GAP) / len) || 0,
+		y: Math.round((sign * dx * DEFAULT_EDGE_GAP) / len) || 0
+	};
+}
+
 export interface RelationEdgeSpec {
 	id: string;
 	source: string;
@@ -44,18 +78,40 @@ export interface RelationEdgeSpec {
 	index: number;
 	color: string;
 	curve: RelationCurve;
+	/** 逆向き(target→source)の関係が存在するか */
+	hasReverse: boolean;
+	/** 保存済み、または既定のずれ。逆向きが無ければ {0,0} */
+	offset: Point;
 }
 
+/**
+ * 関係の線を組み立てる。positions はノードの座標(既定のずれの計算に使う)。
+ */
 export function buildEdgeSpecs(
 	characters: Character[],
-	edgeStyles: Record<string, RelationEdgeStyle>
+	edgeStyles: Record<string, RelationEdgeStyle>,
+	positions: Record<string, Point> = {}
 ): RelationEdgeSpec[] {
 	const ids = new Set(characters.map((c) => c.id));
+	const pairs = new Set<string>();
+	for (const character of characters) {
+		for (const rel of character.relationships) {
+			if (ids.has(rel.characterId)) pairs.add(`${character.id}>${rel.characterId}`);
+		}
+	}
+	const at = (id: string): Point => positions[id] ?? { x: 0, y: 0 };
+
 	const specs: RelationEdgeSpec[] = [];
 	for (const character of characters) {
 		character.relationships.forEach((rel, index) => {
 			if (!ids.has(rel.characterId)) return; // 削除済みキャラへの関係は描かない
 			const style = edgeStyles[edgeStyleKey(character.id, rel.characterId, rel.relation)];
+			const hasReverse = pairs.has(`${rel.characterId}>${character.id}`);
+			const offset =
+				style?.offset ??
+				(hasReverse
+					? defaultEdgeOffset(character.id, at(character.id), rel.characterId, at(rel.characterId))
+					: { x: 0, y: 0 });
 			specs.push({
 				id: `${character.id}:${index}`,
 				source: character.id,
@@ -63,7 +119,9 @@ export function buildEdgeSpecs(
 				label: rel.relation,
 				index,
 				color: style?.color ?? RELATION_COLORS[0],
-				curve: style?.curve ?? 'bezier'
+				curve: style?.curve ?? 'bezier',
+				hasReverse,
+				offset: { x: offset.x, y: offset.y }
 			});
 		});
 	}

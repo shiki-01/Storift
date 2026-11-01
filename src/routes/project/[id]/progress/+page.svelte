@@ -300,7 +300,7 @@
 							</div>
 						</Card>
 
-						<Card class="flex:1 min-w:200">
+						<Card data-tour="progress-goal" class="flex:1 min-w:200">
 							<div class="p:20 text-align:center flex flex-direction:column gap:8">
 								<p class="font:14 fg:theme-text-secondary">目標達成率</p>
 								<p class="font:30 font-weight:600 fg:theme-primary">{stats.goalProgress}%</p>

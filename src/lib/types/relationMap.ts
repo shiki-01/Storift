@@ -13,6 +13,8 @@ export interface RelationGroup {
 export interface RelationEdgeStyle {
 	color?: string;
 	curve?: RelationCurve;
+	/** 始点と終点を結ぶ直線の中点からの制御点のずれ(フロー座標)。未保存なら既定値 */
+	offset?: { x: number; y: number };
 }
 
 /**

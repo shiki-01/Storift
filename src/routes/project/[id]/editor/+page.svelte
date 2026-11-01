@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
-	import { onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
-	import { chaptersDB, scenesDB, settingsDB, progressLogsDB, projectsDB } from '$lib/db';
+	import { chaptersDB, scenesDB, settingsDB, progressLogsDB, projectsDB, memosDB } from '$lib/db';
 	import { getDateKey } from '$lib/utils/dateUtils';
 	import { queueChange } from '$lib/services/sync.service';
 	import { AutoSave, enableUnsavedWarning, enableVisibilityAutoSave } from '$lib/utils/autoSave';
@@ -33,7 +33,9 @@
 		typewriterScroll,
 		ensureCaretVisible,
 		updateDimHighlight,
-		selectTextRange
+		selectTextRange,
+		supportsHighlight,
+		textRange
 	} from '$lib/utils/editorInput';
 	import {
 		createEditorContextMenu,
@@ -41,16 +43,20 @@
 		createSceneContextMenu,
 		type ContextMenuItem
 	} from '$lib/utils/contextMenu';
+	import { makeAnchor, rangeTextOffsets, resolveAnchor } from '$lib/utils/memos';
 	import type {
 		Chapter,
 		Scene,
 		EditorFont,
+		Memo,
+		MemoDraft,
 		PreviewSettings as PreviewSettingsType,
 		ViewMode
 	} from '$lib/types';
 	import { defaultPreviewSettings } from '$lib/types';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import ClaudePanel from '$lib/components/desktop/ClaudePanel.svelte';
+	import MemoPanel from '$lib/components/memo/MemoPanel.svelte';
 	import { claudeStore } from '$lib/stores/claude.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
 	import { slide } from 'svelte/transition';
@@ -80,6 +86,14 @@
 	let showClaude = $derived(
 		desktop && claudeStore.open && !viewport.isMobile && !editorStore.focusMode
 	);
+	// メモパネルは Claude パネルと同じ位置に出す(Claude が開いているときは Claude を優先)
+	let showMemo = $derived(
+		editorStore.memoOpen && !showClaude && !viewport.isMobile && !editorStore.focusMode
+	);
+	// Claude パネルが開いたら、メモパネルは閉じる(どちらか一方だけ出す)
+	$effect(() => {
+		if (desktop && claudeStore.open && editorStore.memoOpen) editorStore.memoOpen = false;
+	});
 	let isSceneModalOpen = $state(false);
 	let isRenameModalOpen = $state(false);
 	let newChapterTitle = $state('');
@@ -198,7 +212,11 @@
 		// キーボードショートカット(設定画面で変更できる)
 		const handleKeyDown = (e: KeyboardEvent) => {
 			const shortcuts = settingsStore.settings.shortcuts;
-			if (matchesShortcut(e, shortcuts.find) || matchesShortcut(e, shortcuts.replace)) {
+			// メモパネルの開閉(固定。Ctrl+Shift+M)
+			if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'm') {
+				e.preventDefault();
+				toggleMemoPanel();
+			} else if (matchesShortcut(e, shortcuts.find) || matchesShortcut(e, shortcuts.replace)) {
 				e.preventDefault();
 				void openSearch();
 			} else if (matchesShortcut(e, shortcuts.save)) {
@@ -399,6 +417,118 @@
 			typewriterScroll(editorScrollContainer, 0.35);
 		}
 	}
+
+	// ===== メモ(執筆画面のサイドパネル・範囲メモ・本文の強調) =====
+	const MEMO_HIGHLIGHT = 'storift-memo';
+	// 本文の強調に使う、この作品のメモ(範囲があるものだけ)
+	let memoAnchors = $state<Memo[]>([]);
+
+	// パネルは Claude パネルと同じ位置に出すので、Claude は閉じる
+	function openMemoPanel(draft: MemoDraft | null = null) {
+		if (desktop) claudeStore.open = false;
+		editorStore.requestMemo(draft);
+	}
+
+	function toggleMemoPanel() {
+		if (showMemo) editorStore.memoOpen = false;
+		else openMemoPanel();
+	}
+
+	/** 本文で選んだ範囲を、新規メモの範囲にする(選択がなければ null) */
+	function memoDraftFromSelection(): MemoDraft | null {
+		const scene = editorStore.currentScene;
+		const selection = window.getSelection();
+		if (!scene || !editorDiv || !selection || selection.isCollapsed || selection.rangeCount === 0) {
+			return null;
+		}
+		const offsets = rangeTextOffsets(editorDiv, selection.getRangeAt(0));
+		if (!offsets || offsets.end <= offsets.start) return null;
+		return {
+			sceneId: scene.id,
+			anchor: makeAnchor(editorStore.content, offsets.start, offsets.end)
+		};
+	}
+
+	function memoFromSelection() {
+		const draft = memoDraftFromSelection();
+		if (!draft) {
+			toast.info('本文の範囲を選択してからメモを付けてください');
+			return;
+		}
+		openMemoPanel(draft);
+	}
+
+	/** メモの範囲へ移る。別のシーンのメモなら、先にそのシーンを開く */
+	async function jumpToMemo(memo: Memo) {
+		if (!memo.sceneId) return;
+		if (memo.sceneId !== editorStore.currentScene?.id) {
+			const scene = currentProjectStore.scenes.find((s) => s.id === memo.sceneId);
+			if (!scene) return;
+			await goToScene(scene);
+		}
+		if (viewMode === 'preview') viewMode = 'editor';
+		await tick();
+		if (!memo.anchor) return;
+		const span = resolveAnchor(editorStore.content, memo.anchor);
+		if (!span) {
+			toast.info('本文の位置が見つかりませんでした');
+			return;
+		}
+		jumpToText(span.start, span.end);
+	}
+
+	async function reloadMemoAnchors() {
+		const projectId = currentProjectStore.project?.id;
+		if (!projectId) return;
+		try {
+			memoAnchors = (await memosDB.getByProject(projectId)).filter((m) => !!m.anchor);
+		} catch (error) {
+			console.error('Failed to load memo anchors:', error);
+		}
+	}
+
+	$effect(() => {
+		void editorStore.memoVersion;
+		void currentProjectStore.project?.id;
+		void reloadMemoAnchors();
+	});
+
+	/**
+	 * 現在のシーンの範囲メモを薄く強調する。CSS Custom Highlight API が無ければ何もしない。
+	 * 本文の DOM は書き換えない(強調は Range の集合として別に持つ)。
+	 */
+	function updateMemoHighlight() {
+		if (!supportsHighlight()) return;
+		const highlights = (CSS as unknown as { highlights: Map<string, unknown> }).highlights;
+		const scene = editorStore.currentScene;
+		const root = editorDiv;
+		const ranges: Range[] = [];
+		if (scene && root) {
+			for (const memo of memoAnchors) {
+				if (!memo.anchor || memo.sceneId !== scene.id) continue;
+				const span = resolveAnchor(editorStore.content, memo.anchor);
+				const range = span ? textRange(root, span.start, span.end) : null;
+				if (range) ranges.push(range);
+			}
+		}
+		if (ranges.length > 0) highlights.set(MEMO_HIGHLIGHT, new Highlight(...ranges));
+		else highlights.delete(MEMO_HIGHLIGHT);
+	}
+
+	// 本文・シーン・メモ・表示が変わったら、DOM の反映を待ってから強調を描き直す
+	$effect(() => {
+		void editorStore.content;
+		void editorStore.currentScene;
+		void memoAnchors;
+		void effectiveViewMode;
+		void tick().then(updateMemoHighlight);
+	});
+
+	onDestroy(() => {
+		if (supportsHighlight()) {
+			(CSS as unknown as { highlights: Map<string, unknown> }).highlights.delete(MEMO_HIGHLIGHT);
+		}
+	});
 
 	// 未保存の変更があれば保存してから次の操作へ進む
 	async function flushSave() {
@@ -849,7 +979,8 @@
 			onDuplicate: () => handleDuplicateScene(editorStore.currentScene!),
 			onExport: () => (showPrintPreview = true),
 			onPrint: () => (showPrintPreview = true),
-			onVersionHistory: () => (showVersionManager = true)
+			onVersionHistory: () => (showVersionManager = true),
+			onMemo: memoFromSelection
 		});
 
 		contextMenu = {
@@ -1329,7 +1460,7 @@
 >
 	<!-- サイドバー(デスクトップ/タブレット) -->
 	{#if !viewport.isMobile && !editorStore.focusMode}
-		<aside class="editor-sidebar" aria-label="章・シーン一覧">
+		<aside class="editor-sidebar" aria-label="章・シーン一覧" data-tour="editor-scene-list">
 			<div class="editor-sidebar-scroll">
 				{@render sceneList()}
 			</div>
@@ -1503,7 +1634,12 @@
 								<Icon name="palette" class="w:20px" />
 							</button>
 							<!-- プレビューボタン -->
-							<div class="seg-tools" role="group" aria-label="表示モード">
+							<div
+								class="seg-tools"
+								role="group"
+								aria-label="表示モード"
+								data-tour="editor-view-mode"
+							>
 								<button
 									class="seg-tool"
 									class:on={viewMode === 'editor'}
@@ -1547,6 +1683,7 @@
 							</button>
 							<button
 								class="tool"
+								data-tour="editor-export"
 								onclick={() => (showExportModal = true)}
 								aria-label="エクスポート"
 								title="エクスポート"
@@ -1593,12 +1730,24 @@
 							>
 								<Icon name="wallpaper" class="w:20px" />
 							</button>
+							<button
+								class="tool"
+								class:on={showMemo}
+								aria-pressed={showMemo}
+								data-tour="editor-memo-button"
+								onclick={toggleMemoPanel}
+								aria-label="メモ (Ctrl+Shift+M)"
+								title="メモ (Ctrl+Shift+M)"
+							>
+								<Icon name="clipboard-text" class="w:20px" />
+							</button>
 							{#if desktop}
 								<div class="tool-sep"></div>
 								<button
 									class="tool tool--claude"
 									class:on={claudeStore.open}
 									aria-pressed={claudeStore.open}
+									data-tour="editor-claude"
 									onclick={() => claudeStore.toggle()}
 									aria-label="Claude Code パネル (Ctrl+Shift+L)"
 									title="Claude Code パネル (Ctrl+Shift+L)"
@@ -1636,6 +1785,7 @@
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
 								<div
 									bind:this={editorDiv}
+									data-tour="editor-body"
 									contenteditable="true"
 									role="textbox"
 									aria-label="エディタ"
@@ -1688,6 +1838,14 @@
 				{#if showClaude}
 					<div class="claude-slot" transition:slide={{ axis: 'x', duration: 220 }}>
 						<ClaudePanel />
+					</div>
+				{:else if showMemo && currentProjectStore.project}
+					<div class="claude-slot" transition:slide={{ axis: 'x', duration: 220 }}>
+						<MemoPanel
+							projectId={currentProjectStore.project.id}
+							onJump={jumpToMemo}
+							onClose={() => (editorStore.memoOpen = false)}
+						/>
 					</div>
 				{/if}
 			</div>
@@ -2439,6 +2597,13 @@
 	/* 今の段落以外を薄くする(CSS Custom Highlight API) */
 	:global(::highlight(storift-dim)) {
 		color: color-mix(in srgb, var(--editor-text) 35%, transparent);
+	}
+
+	/* 範囲メモの位置を薄く示す(本文の DOM は変えない) */
+	:global(::highlight(storift-memo)) {
+		background-color: color-mix(in srgb, var(--color-accent) 16%, transparent);
+		text-decoration-line: underline;
+		text-decoration-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
 	}
 
 	/* ===== 保存状態 ===== */

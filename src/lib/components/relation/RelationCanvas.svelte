@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 	import {
 		SvelteFlow,
 		Background,
@@ -21,13 +22,13 @@
 		RELATION_CURVES,
 		buildEdgeSpecs,
 		circleLayout,
-		curveToEdgeType,
 		edgeStyleKey,
 		insideRect
 	} from '$lib/utils/relationGraph';
 	import Sheet from '$lib/components/mobile/Sheet.svelte';
 	import CharacterNode from './CharacterNode.svelte';
 	import GroupNode from './GroupNode.svelte';
+	import RelationEdge from './RelationEdge.svelte';
 
 	interface Props {
 		characters: Character[];
@@ -40,6 +41,7 @@
 	let { characters, projectId, onChanged, onOpenCharacter }: Props = $props();
 
 	const nodeTypes = { character: CharacterNode, region: GroupNode };
+	const edgeTypes = { relation: RelationEdge };
 	const NODE_W = 96;
 	const NODE_H = 88;
 
@@ -118,7 +120,12 @@
 	function rebuildEdges() {
 		if (!map) return;
 		const pos = (id: string) => nodes.find((n) => n.id === id)?.position ?? map!.positions[id];
-		edges = buildEdgeSpecs(characters, map.edgeStyles).map((s) => {
+		const positions: Record<string, { x: number; y: number }> = {};
+		for (const c of characters) {
+			const p = pos(c.id);
+			if (p) positions[c.id] = p;
+		}
+		edges = buildEdgeSpecs(characters, map.edgeStyles, positions).map((s) => {
 			const sides = handleSides(pos(s.source) ?? { x: 0, y: 0 }, pos(s.target) ?? { x: 0, y: 0 });
 			return {
 				id: s.id,
@@ -126,14 +133,43 @@
 				target: s.target,
 				sourceHandle: sides.source,
 				targetHandle: sides.target,
-				type: curveToEdgeType(s.curve),
+				type: 'relation',
 				label: s.label,
 				style: `stroke:${s.color};stroke-width:2;`,
-				labelStyle: `fill:${s.color};font-weight:600;`,
 				markerEnd: { type: MarkerType.ArrowClosed, color: s.color },
-				data: { from: s.source, to: s.target, index: s.index, label: s.label }
+				data: {
+					from: s.source,
+					to: s.target,
+					index: s.index,
+					label: s.label,
+					curve: s.curve,
+					color: s.color,
+					offset: s.offset,
+					onOffsetChange: (offset: { x: number; y: number } | null) =>
+						changeEdgeOffset(s.source, s.target, s.label, offset)
+				}
 			} satisfies Edge;
 		});
+	}
+
+	/** 線の制御点を変える。null は既定値へ戻す(保存から削除) */
+	function changeEdgeOffset(
+		from: string,
+		to: string,
+		label: string,
+		offset: { x: number; y: number } | null
+	) {
+		if (!map) return;
+		const key = edgeStyleKey(from, to, label);
+		const styles = { ...map.edgeStyles };
+		const current = { ...styles[key] };
+		delete current.offset;
+		if (offset) styles[key] = { ...current, offset };
+		else if (Object.keys(current).length > 0) styles[key] = current;
+		else delete styles[key];
+		map = { ...map, edgeStyles: styles };
+		void relationMapsDB.save(map);
+		rebuildEdges();
 	}
 
 	// --- 配置の保存 ---
@@ -183,7 +219,7 @@
 			width: targetNode.width ?? targetNode.measured?.width ?? 320,
 			height: targetNode.height ?? targetNode.measured?.height ?? 220
 		};
-		const contained = new Map<string, { x: number; y: number }>();
+		const contained = new SvelteMap<string, { x: number; y: number }>();
 		for (const n of nodes) {
 			if (
 				n.type === 'character' &&
@@ -336,6 +372,11 @@
 				if (!from) return;
 				const styles = { ...map.edgeStyles };
 				const rels = plainRelationships(from);
+				// 線の位置(offset)はラベル変更で付け替わらないよう引き継ぐ
+				const prevOffset =
+					editor.kind === 'edge'
+						? map.edgeStyles[edgeStyleKey(editor.from, editor.to, editor.label)]?.offset
+						: undefined;
 				if (editor.kind === 'new') {
 					rels.push({ characterId: editor.to, relation: label });
 				} else {
@@ -344,7 +385,8 @@
 				}
 				styles[edgeStyleKey(editor.from, editor.to, label)] = {
 					color: draftColor,
-					curve: draftCurve
+					curve: draftCurve,
+					...(prevOffset ? { offset: prevOffset } : {})
 				};
 				map = { ...map, edgeStyles: styles };
 				await relationMapsDB.save(map);
@@ -411,11 +453,12 @@
 	);
 </script>
 
-<div class="canvas" class:full={fullscreen} bind:this={canvasEl}>
+<div class="canvas" class:full={fullscreen} bind:this={canvasEl} data-tour="relation-canvas">
 	<SvelteFlow
 		bind:nodes
 		bind:edges
 		{nodeTypes}
+		{edgeTypes}
 		fitView
 		fitViewOptions={{ padding: 0.25 }}
 		minZoom={0.3}
@@ -448,7 +491,8 @@
 				{#if characters.length < 2}
 					キャラクターを2人以上作ると関係を結べます
 				{:else}
-					丸い点から別のキャラクターへドラッグして関係を作成 / 線をタップして編集
+					丸い点から別のキャラクターへドラッグして関係を作成 / 線をタップして編集 /
+					線の中央の点をドラッグして位置を調整(ダブルクリックで戻す)
 				{/if}
 			</p>
 		</Panel>

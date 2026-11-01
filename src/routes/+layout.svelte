@@ -21,6 +21,7 @@
 	import SyncStatus from '$lib/components/ui/SyncStatus.svelte';
 	import ToastHost from '$lib/components/ui/ToastHost.svelte';
 	import ConflictHost from '$lib/components/ui/ConflictHost.svelte';
+	import TourOverlay from '$lib/components/tutorial/TourOverlay.svelte';
 	import { themes, themeStore } from '$lib/stores/theme.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
 	import { claudeStore } from '$lib/stores/claude.svelte';
@@ -242,6 +243,7 @@
 							href="/project/{projectId}/{item.path}"
 							aria-current={isActive(item.path) ? 'page' : undefined}
 							class="bottom-nav-item {isActive(item.path) ? 'is-active' : ''}"
+							data-tour="nav-{item.path}"
 						>
 							<svg
 								viewBox="0 0 24 24"
@@ -270,6 +272,7 @@
 
 <ToastHost />
 <ConflictHost />
+<TourOverlay />
 
 <style>
 	.app-frame {

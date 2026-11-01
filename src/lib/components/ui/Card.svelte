@@ -6,6 +6,8 @@
 		oncontextmenu?: (e: MouseEvent) => void;
 		class?: string;
 		children?: import('svelte').Snippet;
+		/** data-tour などの data-* 属性は、そのまま外側の要素に渡す */
+		[key: `data-${string}`]: string | undefined;
 	}
 
 	let {
@@ -14,7 +16,8 @@
 		onclick,
 		oncontextmenu,
 		class: className = '',
-		children
+		children,
+		...rest
 	}: CardProps = $props();
 
 	const paddingClasses = {
@@ -36,14 +39,14 @@
 		type="button"
 		{onclick}
 		{oncontextmenu}
+		{...rest}
 	>
 		{#if children}
 			{@render children()}
 		{/if}
 	</button>
 {:else}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="r:10 {paddingClasses[padding]} {baseClass} {className}" {oncontextmenu}>
+	<div class="r:10 {paddingClasses[padding]} {baseClass} {className}" {oncontextmenu} {...rest}>
 		{#if children}
 			{@render children()}
 		{/if}

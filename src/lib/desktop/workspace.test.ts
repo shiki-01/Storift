@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildWorkspace, safeName, type WorkspaceData } from './workspace';
-import type { Chapter, Project, Scene } from '$lib/types';
+import type { Chapter, Memo, Project, Scene } from '$lib/types';
 
 function project(id: string, title: string, updatedAt = 1): Project {
 	return {
@@ -50,7 +50,8 @@ function scene(
 const empty: Omit<WorkspaceData, 'projects' | 'chapters' | 'scenes'> = {
 	characters: [],
 	plots: [],
-	worldbuilding: []
+	worldbuilding: [],
+	memos: []
 };
 
 describe('safeName', () => {
@@ -88,6 +89,45 @@ describe('buildWorkspace', () => {
 		});
 		expect(result.projectDirs.aaaaaa1).toBe('projects/同名');
 		expect(result.projectDirs.bbbbbb2).toBe('projects/同名-bbbbbb');
+	});
+});
+
+describe('buildWorkspace のメモ', () => {
+	const base = (memos: Memo[]): WorkspaceData => ({
+		...empty,
+		projects: [project('p1', '作品')],
+		chapters: [chapter('c1', 'p1', '章', 0)],
+		scenes: [scene('s1', 'c1', 'p1', '場面', 0, '本文')],
+		memos
+	});
+
+	it('メモがあれば作品フォルダに メモ.md を書き出す(タグ・完了・引用付き)', () => {
+		const result = buildWorkspace(
+			base([
+				{
+					id: 'm1',
+					projectId: 'p1',
+					text: '伏線を回収する\n詳細',
+					tags: ['todo', '伏線'],
+					sceneId: 's1',
+					anchor: { start: 0, end: 2, quote: '本文' },
+					done: true,
+					createdAt: 1,
+					updatedAt: 1
+				}
+			])
+		);
+		const file = result.files.find((f) => f.path === 'projects/作品/メモ.md');
+		expect(file?.content).toContain('## [完了] 伏線を回収する');
+		expect(file?.content).toContain('- タグ: #todo #伏線');
+		expect(file?.content).toContain('- シーン: 場面');
+		expect(file?.content).toContain('- 本文の引用: 「本文」');
+		expect(file?.content).toContain('詳細');
+	});
+
+	it('メモが無ければ メモ.md を作らない', () => {
+		const result = buildWorkspace(base([]));
+		expect(result.files.some((f) => f.path.endsWith('メモ.md'))).toBe(false);
 	});
 });
 

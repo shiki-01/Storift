@@ -5,8 +5,8 @@
  * Claude Code はそこを作業ディレクトリとして起動する(src-tauri/src/workspace.rs)。
  * ファイルはアプリ → ディスクの一方向で、ディスク側の変更はアプリに戻らない。
  */
-import { db } from '$lib/db';
-import type { Chapter, Character, Plot, Project, Scene, Worldbuilding } from '$lib/types';
+import { db, memosDB } from '$lib/db';
+import type { Chapter, Character, Memo, Plot, Project, Scene, Worldbuilding } from '$lib/types';
 
 export interface WorkspaceFile {
 	path: string;
@@ -28,6 +28,7 @@ export interface WorkspaceData {
 	characters: Character[];
 	plots: Plot[];
 	worldbuilding: Worldbuilding[];
+	memos: Memo[];
 }
 
 const STATUS_LABELS: Record<Project['status'], string> = {
@@ -86,6 +87,24 @@ function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
 		else map.set(k, [item]);
 	}
 	return map;
+}
+
+/** メモ一覧。タグ・完了状態・引用を付け、作成の古い順に並べる */
+function memosMarkdown(project: Project, memos: Memo[], sceneTitles: Map<string, string>): string {
+	const lines = [`# メモ(${project.title})\n`];
+	for (const m of [...memos].sort((a, b) => a.createdAt - b.createdAt)) {
+		const [first, ...rest] = m.text.trim().split('\n');
+		lines.push(`## ${m.done ? '[完了]' : '[未完了]'} ${first.slice(0, 60)}\n`);
+		const meta = [
+			m.tags.length && `タグ: ${m.tags.map((t) => `#${t}`).join(' ')}`,
+			m.sceneId && sceneTitles.has(m.sceneId) && `シーン: ${sceneTitles.get(m.sceneId)}`,
+			m.anchor?.quote && `本文の引用: 「${m.anchor.quote.replace(/\s+/g, ' ')}」`,
+			m.requestedAt && '依頼: Claude に依頼済み'
+		].filter(Boolean);
+		if (meta.length) lines.push(meta.map((x) => `- ${x}`).join('\n') + '\n');
+		if (rest.length) lines.push(`${rest.join('\n')}\n`);
+	}
+	return lines.join('\n');
 }
 
 function section(title: string, body: string | undefined): string {
@@ -160,6 +179,8 @@ export function buildWorkspace(
 	const charactersByProject = groupBy(data.characters, (c) => c.projectId);
 	const plotsByProject = groupBy(data.plots, (p) => p.projectId);
 	const worldByProject = groupBy(data.worldbuilding, (w) => w.projectId);
+	const memosByProject = groupBy(data.memos, (m) => m.projectId);
+	const sceneTitles = new Map(data.scenes.map((s) => [s.id, s.title]));
 
 	// 同名のプロジェクトがあってもフォルダが衝突しないよう、2 つ目以降は ID を添える
 	const usedDirs = new Set<string>();
@@ -210,6 +231,12 @@ export function buildWorkspace(
 			files.push({ path: `${dir}/設定資料.md`, content: worldbuildingMarkdown(project, world) });
 		if (plots.length)
 			files.push({ path: `${dir}/プロット.md`, content: plotMarkdown(project, plots) });
+		const memos = memosByProject.get(project.id) ?? [];
+		if (memos.length)
+			files.push({
+				path: `${dir}/メモ.md`,
+				content: memosMarkdown(project, memos, sceneTitles)
+			});
 
 		files.push({
 			path: `${dir}/概要.md`,
@@ -241,7 +268,7 @@ function claudeMd(index: string[]): string {
 
 - \`projects/<作品名>/概要.md\`: 作品の説明・目次・文字数
 - \`projects/<作品名>/本文/<章番号>_<章名>/<シーン番号>_<シーン名>.md\`: 本文(1 シーン 1 ファイル)
-- \`projects/<作品名>/キャラクター.md\` / \`設定資料.md\` / \`プロット.md\`
+- \`projects/<作品名>/キャラクター.md\` / \`設定資料.md\` / \`プロット.md\` / \`メモ.md\`(タグ・完了状態・引用付き)
 
 ## 注意
 
@@ -262,13 +289,14 @@ ${index.length ? index.join('\n') : '(まだ作品がありません)'}
 
 /** IndexedDB から全プロジェクトを読み込む */
 export async function loadWorkspaceData(): Promise<WorkspaceData> {
-	const [projects, chapters, scenes, characters, plots, worldbuilding] = await Promise.all([
+	const [projects, chapters, scenes, characters, plots, worldbuilding, memos] = await Promise.all([
 		db.projects.toArray(),
 		db.chapters.toArray(),
 		db.scenes.toArray(),
 		db.characters.toArray(),
 		db.plots.toArray(),
-		db.worldbuilding.toArray()
+		db.worldbuilding.toArray(),
+		memosDB.getAll()
 	]);
-	return { projects, chapters, scenes, characters, plots, worldbuilding };
+	return { projects, chapters, scenes, characters, plots, worldbuilding, memos };
 }

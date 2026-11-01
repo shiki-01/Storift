@@ -35,6 +35,8 @@ export function createEditorContextMenu(params: {
 	onExport: () => void;
 	onPrint: () => void;
 	onVersionHistory: () => void;
+	/** 選択範囲にメモを付ける(省略時は項目を出さない) */
+	onMemo?: () => void;
 }): ContextMenuItem[] {
 	const items: ContextMenuItem[] = [];
 
@@ -44,13 +46,21 @@ export function createEditorContextMenu(params: {
 			{ label: 'コピー', icon: 'clipboard-text', action: params.onCopy, shortcut: 'Ctrl+C' },
 			{ label: 'カット', icon: 'clipboard-text', action: params.onCut, shortcut: 'Ctrl+X' }
 		);
+		if (params.onMemo) {
+			items.push({ label: '選択範囲にメモ', icon: 'pencil', action: params.onMemo });
+		}
 	}
 
 	items.push({ label: '貼り付け', icon: 'files', action: params.onPaste, shortcut: 'Ctrl+V' });
 
 	if (params.hasSelection) {
 		items.push({ divider: true } as ContextMenuItem);
-		items.push({ label: 'すべて選択', icon: 'list', action: params.onSelectAll, shortcut: 'Ctrl+A' });
+		items.push({
+			label: 'すべて選択',
+			icon: 'list',
+			action: params.onSelectAll,
+			shortcut: 'Ctrl+A'
+		});
 	}
 
 	// シーン固有の操作

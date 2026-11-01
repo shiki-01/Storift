@@ -1,9 +1,10 @@
 <script lang="ts">
 	import Sheet from './Sheet.svelte';
-	import { charactersDB, worldbuildingDB, plotsDB } from '$lib/db';
-	import type { Character, Worldbuilding } from '$lib/types';
+	import { charactersDB, worldbuildingDB, plotsDB, memosDB } from '$lib/db';
+	import type { Character, Memo, Worldbuilding } from '$lib/types';
 	import { queueChange } from '$lib/services/sync.service';
-	import { addMemo, removeMemo, loadMemos, saveMemos, type Memo } from '$lib/utils/memos';
+	import { editorStore } from '$lib/stores/editor.svelte';
+	import MemoPanel from '$lib/components/memo/MemoPanel.svelte';
 
 	interface Props {
 		open?: boolean;
@@ -24,8 +25,6 @@
 	let query = $state('');
 	let characters = $state<Character[]>([]);
 	let world = $state<Worldbuilding[]>([]);
-	let memos = $state<Memo[]>([]);
-	let memoDraft = $state('');
 	let expandedId = $state<string | null>(null);
 	let loading = $state(false);
 	let notice = $state('');
@@ -43,7 +42,6 @@
 		query = '';
 		expandedId = null;
 		notice = '';
-		memos = loadMemos(projectId);
 		loading = true;
 		Promise.all([charactersDB.getByProjectId(projectId), worldbuildingDB.getByProjectId(projectId)])
 			.then(([c, w]) => {
@@ -78,18 +76,7 @@
 		expandedId = expandedId === id ? null : id;
 	}
 
-	function submitMemo(e: Event) {
-		e.preventDefault();
-		memos = addMemo(memos, memoDraft);
-		saveMemos(projectId, memos);
-		memoDraft = '';
-	}
-
-	function deleteMemo(id: string) {
-		memos = removeMemo(memos, id);
-		saveMemos(projectId, memos);
-	}
-
+	/** メモをプロットに移し、メモは消す */
 	async function memoToPlot(memo: Memo) {
 		try {
 			const firstLine = memo.text.split('\n')[0].slice(0, 40);
@@ -103,7 +90,8 @@
 				await plotsDB.update(plot.id, { content: memo.text });
 			}
 			await queueChange('plots', plot.id, 'create');
-			deleteMemo(memo.id);
+			await memosDB.delete(memo.id);
+			editorStore.bumpMemos();
 			notice = 'プロットに追加しました';
 			onPlotCreated?.();
 		} catch (error) {
@@ -200,32 +188,8 @@
 				</ul>
 			{/if}
 		{:else}
-			<form class="memo-form" onsubmit={submitMemo}>
-				<textarea
-					class="memo-input"
-					rows="2"
-					placeholder="思いついたことをすぐ書き留める"
-					aria-label="メモ"
-					bind:value={memoDraft}
-				></textarea>
-				<button class="add" type="submit" disabled={!memoDraft.trim()}>追加</button>
-			</form>
 			{#if notice}<p class="notice" role="status">{notice}</p>{/if}
-			{#if memos.length === 0}
-				<p class="empty">メモはまだありません</p>
-			{:else}
-				<ul class="list">
-					{#each memos as m (m.id)}
-						<li class="memo">
-							<p class="memo-text">{m.text}</p>
-							<div class="memo-actions">
-								<button class="link" onclick={() => memoToPlot(m)}>プロットへ</button>
-								<button class="link danger" onclick={() => deleteMemo(m.id)}>削除</button>
-							</div>
-						</li>
-					{/each}
-				</ul>
-			{/if}
+			<MemoPanel {projectId} sheet onToPlot={memoToPlot} />
 		{/if}
 	</div>
 </Sheet>
@@ -265,8 +229,7 @@
 		box-shadow: 0 0 0 1px var(--color-border);
 	}
 
-	.search,
-	.memo-input {
+	.search {
 		width: 100%;
 		box-sizing: border-box;
 		padding: 10px 12px;
@@ -342,63 +305,6 @@
 		text-align: center;
 		font-size: 14px;
 		color: var(--color-text-secondary);
-	}
-
-	.memo-form {
-		display: flex;
-		gap: 8px;
-		align-items: flex-end;
-	}
-
-	.memo-input {
-		resize: none;
-		flex: 1;
-	}
-
-	.add {
-		flex: none;
-		height: 40px;
-		padding: 0 16px;
-		border: none;
-		border-radius: 10px;
-		background: var(--color-primary);
-		color: var(--color-background);
-		font-size: 14px;
-		cursor: pointer;
-	}
-
-	.add:disabled {
-		opacity: 0.4;
-	}
-
-	.memo {
-		padding: 12px 4px;
-	}
-
-	.memo-text {
-		margin: 0;
-		font-size: 14px;
-		line-height: 1.7;
-		white-space: pre-wrap;
-	}
-
-	.memo-actions {
-		display: flex;
-		gap: 16px;
-		margin-top: 6px;
-	}
-
-	.link {
-		border: none;
-		background: transparent;
-		padding: 4px 0;
-		font-size: 13px;
-		color: var(--color-primary);
-		cursor: pointer;
-	}
-
-	.link.danger {
-		color: var(--color-error);
 	}
 
 	.notice {

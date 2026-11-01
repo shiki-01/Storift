@@ -9,7 +9,8 @@ import type {
 	History,
 	ProgressLog,
 	AppSettings,
-	RelationMap
+	RelationMap,
+	Memo
 } from '$lib/types';
 
 export class StoriftDB extends Dexie {
@@ -23,6 +24,7 @@ export class StoriftDB extends Dexie {
 	progressLogs!: Table<ProgressLog>;
 	settings!: Table<AppSettings>;
 	relationMaps!: Table<RelationMap>;
+	memos!: Table<Memo>;
 
 	constructor() {
 		super('StoriftDB');
@@ -42,6 +44,11 @@ export class StoriftDB extends Dexie {
 		// v2: 相関図キャンバスの配置情報
 		this.version(2).stores({
 			relationMaps: 'id, projectId, updatedAt'
+		});
+
+		// v3: 作品ごとのメモ(端末ごと。同期対象外)
+		this.version(3).stores({
+			memos: 'id, projectId, sceneId, updatedAt'
 		});
 	}
 }

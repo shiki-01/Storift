@@ -39,7 +39,8 @@ export interface AppSettings {
 	setupCompleted?: boolean;
 	/** チュートリアルの案内を閉じた、または終えた */
 	tutorialDismissed?: boolean;
-	theme: 'light' | 'dark' | 'auto';
+	/** 組み込みテーマ ID(light など)かカスタムテーマ ID(custom-*)。'auto' はシステム設定に従う */
+	theme: string;
 	autoTheme: boolean;
 	editorFont?: EditorFont;
 	editorFormatting: EditorFormatting;

@@ -48,7 +48,29 @@
 		<p class="fg:theme-error">プロジェクトが見つかりません</p>
 	</div>
 {:else}
-	<div class="w:100% h:100%">
-		{@render children()}
-	</div>
+	<!-- 執筆・プロットなどの切り替え時に、内容を軽く滑り込ませる -->
+	{#key $page.url.pathname}
+		<div class="section-enter w:100% h:100%">
+			{@render children()}
+		</div>
+	{/key}
 {/if}
+
+<style>
+	.section-enter {
+		animation: section-enter 0.26s cubic-bezier(0.2, 0.7, 0.2, 1);
+	}
+
+	@keyframes section-enter {
+		from {
+			opacity: 0;
+			transform: translateX(10px);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.section-enter {
+			animation: none;
+		}
+	}
+</style>

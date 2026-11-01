@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import type { Character } from '$lib/types';
 import {
+	DEFAULT_EDGE_GAP,
 	buildEdgeSpecs,
 	circleLayout,
 	curveToEdgeType,
+	defaultEdgeOffset,
 	edgeStyleKey,
 	insideRect
 } from './relationGraph';
@@ -26,9 +28,17 @@ const char = (id: string, rels: { characterId: string; relation: string }[] = []
 describe('buildEdgeSpecs', () => {
 	it('関係から有向の線を作り、保存済みの見た目を反映する', () => {
 		const chars = [char('a', [{ characterId: 'b', relation: '親友' }]), char('b')];
-		const styles = { [edgeStyleKey('a', 'b', '親友')]: { color: '#ef4444', curve: 'step' as const } };
+		const styles = {
+			[edgeStyleKey('a', 'b', '親友')]: { color: '#ef4444', curve: 'step' as const }
+		};
 		const [edge] = buildEdgeSpecs(chars, styles);
-		expect(edge).toMatchObject({ source: 'a', target: 'b', label: '親友', color: '#ef4444', curve: 'step' });
+		expect(edge).toMatchObject({
+			source: 'a',
+			target: 'b',
+			label: '親友',
+			color: '#ef4444',
+			curve: 'step'
+		});
 	});
 
 	it('存在しないキャラクターへの関係は描かない', () => {
@@ -45,6 +55,59 @@ describe('buildEdgeSpecs', () => {
 		];
 		const ids = buildEdgeSpecs(chars, {}).map((e) => e.id);
 		expect(new Set(ids).size).toBe(2);
+	});
+});
+
+describe('defaultEdgeOffset', () => {
+	it('直線に垂直な方向へ既定の距離だけずらす', () => {
+		const offset = defaultEdgeOffset('a', { x: 0, y: 0 }, 'b', { x: 100, y: 0 });
+		expect(offset).toEqual({ x: 0, y: DEFAULT_EDGE_GAP });
+	});
+
+	it('向きを入れ替えると反対側にずれる', () => {
+		const ab = defaultEdgeOffset('a', { x: 10, y: 20 }, 'b', { x: 70, y: 90 });
+		const ba = defaultEdgeOffset('b', { x: 70, y: 90 }, 'a', { x: 10, y: 20 });
+		expect(ba.x).toBe(-ab.x);
+		expect(ba.y).toBe(-ab.y);
+	});
+
+	it('ずれの大きさは直線の向きによらず既定値に近い', () => {
+		const offset = defaultEdgeOffset('a', { x: 0, y: 0 }, 'b', { x: 30, y: -70 });
+		expect(Math.hypot(offset.x, offset.y)).toBeCloseTo(DEFAULT_EDGE_GAP, 0);
+	});
+
+	it('始点と終点が同じ位置なら動かさない', () => {
+		expect(defaultEdgeOffset('a', { x: 5, y: 5 }, 'b', { x: 5, y: 5 })).toEqual({ x: 0, y: 0 });
+	});
+});
+
+describe('buildEdgeSpecs の既定のずれ', () => {
+	const pair = () => [
+		char('a', [{ characterId: 'b', relation: '友人' }]),
+		char('b', [{ characterId: 'a', relation: '友人' }])
+	];
+	const positions = { a: { x: 0, y: 0 }, b: { x: 200, y: 0 } };
+
+	it('逆向きの関係があると既定のずれを持ち、両線は反対側に膨らむ', () => {
+		const [ab, ba] = buildEdgeSpecs(pair(), {}, positions);
+		expect(ab.hasReverse).toBe(true);
+		expect(ba.hasReverse).toBe(true);
+		expect(ab.offset.y).toBe(DEFAULT_EDGE_GAP);
+		expect(ba.offset.y).toBe(-DEFAULT_EDGE_GAP);
+	});
+
+	it('逆向きが無い関係のずれは 0 になる', () => {
+		const chars = [char('a', [{ characterId: 'b', relation: '友人' }]), char('b')];
+		const [edge] = buildEdgeSpecs(chars, {}, positions);
+		expect(edge.hasReverse).toBe(false);
+		expect(edge.offset).toEqual({ x: 0, y: 0 });
+	});
+
+	it('保存済みのずれは既定値より優先する', () => {
+		const styles = { [edgeStyleKey('a', 'b', '友人')]: { offset: { x: 12, y: -34 } } };
+		const [ab, ba] = buildEdgeSpecs(pair(), styles, positions);
+		expect(ab.offset).toEqual({ x: 12, y: -34 });
+		expect(ba.offset.y).toBe(-DEFAULT_EDGE_GAP);
 	});
 });
 

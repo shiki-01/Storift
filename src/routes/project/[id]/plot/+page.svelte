@@ -255,7 +255,10 @@
 					<p class="font:14 fg:theme-text-secondary mt:8">作品の構成を計画・管理します</p>
 				</div>
 				<div class="flex flex-wrap:wrap align-items:center gap:12 max-w:100%">
-					<div class="flex bg:theme-surface b:1px|solid|theme-border r:10 p:6 gap:8">
+					<div
+						class="flex bg:theme-surface b:1px|solid|theme-border r:10 p:6 gap:8"
+						data-tour="plot-view-toggle"
+					>
 						<button class={viewToggleClass('board')} onclick={() => (viewMode = 'board')}>
 							ボード
 						</button>

@@ -6,7 +6,7 @@
 	import { goto } from '$app/navigation';
 	import { projectsDB, settingsDB } from '$lib/db';
 	import { projectsStore } from '$lib/stores/projects.svelte';
-	import TutorialModal from '$lib/components/tutorial/TutorialModal.svelte';
+	import { tourStore } from '$lib/tutorial/tour.svelte';
 	import { queueChange } from '$lib/services/sync.service';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
@@ -25,9 +25,8 @@
 	let renameValue = $state('');
 	let isCreating = $state(false);
 
-	// 初回の案内バナーとチュートリアル(閉じる・始めたら保存し、以後は自動では出さない)
+	// 初回の案内バナー(閉じる・始めたら保存し、以後は自動では出さない)
 	let showTutorialBanner = $state(false);
-	let isTutorialOpen = $state(false);
 
 	// コンテキストメニュー
 	let contextMenu = $state<{
@@ -81,7 +80,7 @@
 
 	const startTutorial = () => {
 		void dismissTutorialBanner();
-		isTutorialOpen = true;
+		tourStore.start();
 	};
 
 	const handleCreateProject = async () => {
@@ -303,7 +302,7 @@
 			{#if projectsStore.projects.length > 0}
 				<span class="home-total">{projectsStore.projects.length}作品</span>
 			{/if}
-			<Button variant="ghost" size="sm" onclick={() => (isTutorialOpen = true)}>使い方</Button>
+			<Button variant="ghost" size="sm" onclick={() => tourStore.start()}>使い方</Button>
 		</div>
 		<div class="home-actions">
 			<input
@@ -314,7 +313,9 @@
 				aria-label="作品を検索"
 				oninput={handleSearchInput}
 			/>
-			<Button onclick={() => (isCreateModalOpen = true)}>＋ 新しい作品</Button>
+			<Button data-tour="home-new-project" onclick={() => (isCreateModalOpen = true)}>
+				＋ 新しい作品
+			</Button>
 		</div>
 	</header>
 
@@ -476,8 +477,6 @@
 	items={contextMenu.items}
 	onClose={() => (contextMenu.visible = false)}
 />
-
-<TutorialModal bind:isOpen={isTutorialOpen} />
 
 <style>
 	.home-page {

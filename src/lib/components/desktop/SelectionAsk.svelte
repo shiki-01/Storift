@@ -6,6 +6,7 @@
 	import { onMount } from 'svelte';
 	import { claudeStore, QUICK_ACTIONS } from '$lib/stores/claude.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
+	import { makeAnchor, rangeTextOffsets } from '$lib/utils/memos';
 
 	const MAX_QUOTE = 20000;
 	const REWRITE_PROMPT =
@@ -65,6 +66,23 @@
 		quote();
 	}
 
+	/** 選んだ範囲に新規メモを付け、メモパネルを開く(入力欄にフォーカス) */
+	function memo() {
+		const range = editorRange();
+		const scene = editorStore.currentScene;
+		const root = range?.commonAncestorContainer;
+		const el = root instanceof Element ? root : root?.parentElement;
+		const editor = el?.closest<HTMLElement>('[contenteditable="true"]');
+		const offsets = range && editor ? rangeTextOffsets(editor, range) : null;
+		visible = false;
+		if (!scene || !offsets || offsets.end <= offsets.start) return;
+		claudeStore.open = false;
+		editorStore.requestMemo({
+			sceneId: scene.id,
+			anchor: makeAnchor(editorStore.content, offsets.start, offsets.end)
+		});
+	}
+
 	/** 引用してからプロンプトを作る(「引用した部分」を対象にするため) */
 	function run(prompt: () => string) {
 		if (quote()) void claudeStore.send(prompt());
@@ -101,6 +119,7 @@
 		<button onclick={() => run(() => REWRITE_PROMPT)} disabled={claudeStore.isRunning}
 			>書き換え</button
 		>
+		<button onclick={memo} title="選んだ範囲にメモを付ける">メモ</button>
 	</div>
 {/if}
 

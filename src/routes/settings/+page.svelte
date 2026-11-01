@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { toast } from '$lib/stores/toast.svelte';
+	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 	import { onMount } from 'svelte';
 	import { db, settingsDB } from '$lib/db';
 	import { settingsStore } from '$lib/stores/settings.svelte';
@@ -11,14 +11,16 @@
 		findConflicts,
 		type ShortcutAction
 	} from '$lib/utils/shortcuts';
-	import { themeStore, themes } from '$lib/stores/theme.svelte';
+	import { themeStore, type Theme } from '$lib/stores/theme.svelte';
+	import { parseThemeFile, serializeTheme } from '$lib/utils/themeTools';
+	import ThemeEditor from '$lib/components/ui/ThemeEditor.svelte';
 	import { exportAllProjects, exportAsJson } from '$lib/services/export.service';
 	import { importFromJson } from '$lib/services/import.service';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import ConflictBackups from '$lib/components/ui/ConflictBackups.svelte';
-	import TutorialModal from '$lib/components/tutorial/TutorialModal.svelte';
+	import { tourStore } from '$lib/tutorial/tour.svelte';
 	import NotificationSettings from '$lib/components/ui/NotificationSettings.svelte';
 	import ClaudeSettings from '$lib/components/desktop/ClaudeSettings.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
@@ -32,7 +34,6 @@
 	import { getServiceWorkerVersion, checkForUpdate } from '$lib/utils/sw-register';
 
 	let backupsOpen = $state(false);
-	let tutorialOpen = $state(false);
 
 	let settings = $state<Omit<AppSettings, 'id' | 'updatedAt'>>({
 		theme: themeStore.theme.id as 'light' | 'dark' | 'auto',
@@ -98,6 +99,61 @@
 		await themeStore.setAutoTheme(settings.autoTheme);
 		await saveSettings();
 	};
+
+	// テーマエディタ(新規作成・編集)
+	let themeEditorOpen = $state(false);
+	let themeEditorTarget = $state<Theme | null>(null);
+	let themeFileInput: HTMLInputElement | undefined = $state();
+
+	function openThemeEditor(target: Theme | null) {
+		themeEditorTarget = target;
+		themeEditorOpen = true;
+	}
+
+	async function handleThemeEditorSaved(theme: Theme) {
+		settings.theme = theme.id;
+		await saveSettings();
+	}
+
+	// テーマの書き出し(選択中のテーマを JSON ファイルとして保存)
+	async function handleThemeExport() {
+		const theme = themeStore.theme;
+		const { saveAs } = await import('file-saver');
+		const blob = new Blob([serializeTheme(theme)], { type: 'application/json' });
+		const fileName = theme.name.replace(/[\\/:*?"<>|]/g, '_');
+		saveAs(blob, `${fileName}.storift-theme.json`);
+	}
+
+	// テーマの読み込み(検証に通ったものを保存する。適用はしない)
+	async function handleThemeFileChange(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file) return;
+		try {
+			const theme = parseThemeFile(await file.text());
+			await themeStore.saveCustomTheme(theme);
+			toast.success(`「${theme.name}」を読み込みました`);
+		} catch (error) {
+			const reason = error instanceof Error ? error.message : String(error);
+			toast.error(`テーマを読み込めませんでした: ${reason}`);
+		}
+	}
+
+	// カスタムテーマの削除
+	async function handleThemeDelete(theme: Theme) {
+		const ok = await confirmDialog({
+			title: 'テーマを削除',
+			message: `「${theme.name}」を削除します。この操作は元に戻せません。`,
+			confirmText: '削除',
+			danger: true
+		});
+		if (!ok) return;
+		await themeStore.deleteCustomTheme(theme.id);
+		settings.theme = themeStore.theme.id;
+		await saveSettings();
+		toast.success(`「${theme.name}」を削除しました`);
+	}
 
 	// 同期設定の変更
 	const handleSyncToggle = async () => {
@@ -357,7 +413,10 @@
 		{/if}
 
 		<!-- テーマ設定 -->
-		<Card class="flex flex-direction:column gap:1rem b:1px|solid|theme-border">
+		<Card
+			data-tour="settings-theme"
+			class="flex flex-direction:column gap:1rem b:1px|solid|theme-border"
+		>
 			<h2 class="font:bold">テーマ</h2>
 
 			<div>
@@ -369,52 +428,87 @@
 
 			<!-- テーマの見本: 紙の色に、題字と本文の線、差し色の点を載せる -->
 			<div class="theme-grid" role="radiogroup" aria-label="テーマ">
-				{#each Object.values(themes) as theme (theme.id)}
+				{#each themeStore.allThemes as theme (theme.id)}
 					{@const selected = settings.theme === theme.id && !settings.autoTheme}
-					<button
-						class="theme-card"
-						class:selected
-						role="radio"
-						aria-checked={selected}
-						onclick={() => handleThemeChange(theme.id)}
-						disabled={settings.autoTheme}
-					>
-						<span
-							class="theme-swatch"
-							style="background:{theme.editor.background};color:{theme.colors
-								.text};border-color:{theme.colors.border}"
+					<div class="theme-item">
+						<button
+							class="theme-card"
+							class:selected
+							role="radio"
+							aria-checked={selected}
+							onclick={() => handleThemeChange(theme.id)}
+							disabled={settings.autoTheme}
 						>
-							<span class="swatch-title">あ</span>
-							<span class="swatch-lines">
-								<span style="background:{theme.colors.text}"></span>
-								<span style="background:{theme.colors.textSecondary}"></span>
-								<span style="background:{theme.colors.textSecondary}"></span>
+							<span
+								class="theme-swatch"
+								style="background:{theme.editor.background};color:{theme.colors
+									.text};border-color:{theme.colors.border}"
+							>
+								<span class="swatch-title">あ</span>
+								<span class="swatch-lines">
+									<span style="background:{theme.colors.text}"></span>
+									<span style="background:{theme.colors.textSecondary}"></span>
+									<span style="background:{theme.colors.textSecondary}"></span>
+								</span>
+								<span class="swatch-dots">
+									<span style="background:{theme.colors.primary}"></span>
+									<span style="background:{theme.colors.accent}"></span>
+									<span style="background:{theme.colors.success}"></span>
+								</span>
 							</span>
-							<span class="swatch-dots">
-								<span style="background:{theme.colors.primary}"></span>
-								<span style="background:{theme.colors.accent}"></span>
-								<span style="background:{theme.colors.success}"></span>
+							<span class="theme-name">
+								{theme.name}
+								{#if selected}
+									<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"
+										><path
+											d="M2.5 6.2l2.3 2.3 4.7-5"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.8"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										/></svg
+									>
+								{/if}
 							</span>
-						</span>
-						<span class="theme-name">
-							{theme.name}
-							{#if selected}
-								<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"
-									><path
-										d="M2.5 6.2l2.3 2.3 4.7-5"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="1.8"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-									/></svg
-								>
-							{/if}
-						</span>
-					</button>
+						</button>
+						{#if theme.id.startsWith('custom-')}
+							<div class="theme-actions">
+								<button type="button" class="theme-action" onclick={() => openThemeEditor(theme)}>
+									編集
+								</button>
+								<button type="button" class="theme-action" onclick={() => handleThemeDelete(theme)}>
+									削除
+								</button>
+							</div>
+						{/if}
+					</div>
 				{/each}
 			</div>
+
+			<div class="theme-tools">
+				<Button variant="secondary" size="sm" onclick={() => openThemeEditor(null)}>
+					＋ テーマを作る
+				</Button>
+				<Button variant="secondary" size="sm" onclick={() => themeFileInput?.click()}>
+					テーマを読み込む(.json)
+				</Button>
+				<Button variant="secondary" size="sm" onclick={handleThemeExport}>書き出す</Button>
+				<input
+					bind:this={themeFileInput}
+					type="file"
+					accept=".json,application/json"
+					hidden
+					onchange={handleThemeFileChange}
+				/>
+			</div>
 		</Card>
+
+		<ThemeEditor
+			bind:isOpen={themeEditorOpen}
+			target={themeEditorTarget}
+			onSaved={handleThemeEditorSaved}
+		/>
 
 		<!-- Phase 2: 通知設定 -->
 		<Card class="b:1px|solid|theme-border">
@@ -568,7 +662,10 @@
 		</Card>
 
 		<!-- 同期設定 -->
-		<Card class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem">
+		<Card
+			data-tour="settings-sync"
+			class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem"
+		>
 			<h2 class="font:bold">同期</h2>
 
 			<div class="flex flex-direction:column gap:1rem">
@@ -746,14 +843,17 @@
 		<Card class="b:1px|solid|theme-border flex flex-direction:column gap:1rem">
 			<h2 class="font:bold">使い方</h2>
 			<div>
-				<Button variant="secondary" onclick={() => (tutorialOpen = true)}
+				<Button variant="secondary" onclick={() => tourStore.start()}
 					>チュートリアルをもう一度見る</Button
 				>
 			</div>
 		</Card>
 
 		<!-- データ管理 -->
-		<Card class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem">
+		<Card
+			data-tour="settings-backup"
+			class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem"
+		>
 			<h2 class="font:bold">データ管理</h2>
 
 			<div class="flex flex-direction:column gap:1rem">
@@ -810,8 +910,6 @@
 		</Card>
 	</div>
 </div>
-
-<TutorialModal bind:isOpen={tutorialOpen} />
 
 <!-- エクスポートモーダル -->
 {#if showExportModal}
@@ -1024,6 +1122,41 @@
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
+	}
+
+	.theme-item {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		min-width: 0;
+	}
+
+	.theme-actions {
+		display: flex;
+		gap: 12px;
+		padding-left: 2px;
+	}
+
+	.theme-action {
+		padding: 0;
+		border: none;
+		background: none;
+		color: var(--color-text-secondary);
+		font: inherit;
+		font-size: 12px;
+		text-decoration: underline;
+		text-underline-offset: 3px;
+		cursor: pointer;
+	}
+
+	.theme-action:hover {
+		color: var(--color-primary);
+	}
+
+	.theme-tools {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
 	}
 
 	.theme-name {

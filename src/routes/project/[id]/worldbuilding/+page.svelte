@@ -223,7 +223,7 @@
 					<div class="flex:1 min-w:240">
 						<Input bind:value={searchQuery} placeholder="タイトル、内容、タグで検索..." />
 					</div>
-					<div class="filter-chips flex gap:8 flex-wrap">
+					<div class="filter-chips flex gap:8 flex-wrap" data-tour="worldbuilding-categories">
 						{#if getCategoryCounts()}
 							{@const counts = getCategoryCounts()}
 							{#each Object.entries({ all: 'すべて', ...categoryLabels }) as [key, label]}

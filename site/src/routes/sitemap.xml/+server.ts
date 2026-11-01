@@ -2,7 +2,7 @@ import { SITE_URL } from '$lib/config';
 
 export const prerender = true;
 
-const paths = ['', '/features', '/guide', '/faq'];
+const paths = ['', '/features', '/guide', '/guide/firebase', '/faq', '/privacy', '/terms'];
 
 export function GET() {
 	const urls = paths.map((p) => `\t<url><loc>${SITE_URL}${p}</loc></url>`).join('\n');

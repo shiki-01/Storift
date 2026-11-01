@@ -58,7 +58,8 @@ export const projectsDB = {
 				db.worldbuilding,
 				db.history,
 				db.progressLogs,
-				db.relationMaps
+				db.relationMaps,
+				db.memos
 			],
 			async () => {
 				await db.projects.delete(id);
@@ -70,6 +71,7 @@ export const projectsDB = {
 				await db.history.where('projectId').equals(id).delete();
 				await db.progressLogs.where('projectId').equals(id).delete();
 				await db.relationMaps.delete(id);
+				await db.memos.where('projectId').equals(id).delete();
 			}
 		);
 	},

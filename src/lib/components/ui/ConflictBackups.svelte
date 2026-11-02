@@ -45,13 +45,16 @@
 		}
 	}
 
+	// スナップショットは entityType によって形が異なるため、表示に使うキーだけを明示する
+	type SnapshotHead = { title?: string; name?: string; content?: unknown };
+
 	function nameOf(history: History): string {
-		const s = history.snapshot ?? {};
+		const s = (history.snapshot ?? {}) as SnapshotHead;
 		return s.title || s.name || history.entityId;
 	}
 
 	function preview(history: History): string {
-		const s = history.snapshot ?? {};
+		const s = (history.snapshot ?? {}) as SnapshotHead;
 		const text = typeof s.content === 'string' ? s.content : '';
 		return text.slice(0, 80);
 	}
@@ -84,7 +87,7 @@
 		<div class="max-h:500 overflow-y:auto">
 			{#each backups as history (history.id)}
 				<div class="border:1|solid|theme-border r:8 p:16 mb:12 bg:theme-background">
-					<div class="flex justify-content:space-between align-items:start gap:12">
+					<div class="flex jc:space-between ai:start gap:12">
 						<div class="min-w:0">
 							<div class="font:14 font-weight:600 mb:4">
 								{entityLabels[history.entityType]}: {nameOf(history)}

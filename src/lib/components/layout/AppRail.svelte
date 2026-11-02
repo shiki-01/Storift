@@ -1,13 +1,14 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { syncStore } from '$lib/stores/sync.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
 	import { formatRelativeTime } from '$lib/utils/dateUtils';
 	import { projectNavItems, navIcons } from './nav';
 
-	let pathname = $derived($page.url.pathname);
-	let projectId = $derived($page.params.id || '');
+	let pathname = $derived(page.url.pathname);
+	let projectId = $derived(page.params.id || '');
 	let isProjectPage = $derived(pathname.startsWith('/project/'));
 
 	function isActive(path: string): boolean {
@@ -65,19 +66,22 @@
 		stroke-width="1.6"
 		stroke-linecap="round"
 		stroke-linejoin="round"
-		aria-hidden="true">{@html navIcons[name]}</svg
+		aria-hidden="true"
 	>
+		<!-- eslint-disable-next-line svelte/no-at-html-tags -- 固定のアイコン定義 -->
+		{@html navIcons[name]}
+	</svg>
 {/snippet}
 
 <nav class="rail" aria-label="メイン">
 	<a
-		href="/home"
+		href={resolve('/home')}
 		class="rail-mark"
 		aria-label="ホームへ戻る"
 		title="ホームへ戻る"
 		onclick={(e) => {
 			e.preventDefault();
-			goto('/home');
+			goto(resolve('/home'));
 		}}
 	>
 		<svg viewBox="0 0 36 32" width="26" height="24" aria-hidden="true">
@@ -98,7 +102,7 @@
 			{#each projectNavItems as item (item.path)}
 				{@const active = isActive(item.path)}
 				<a
-					href="/project/{projectId}/{item.path}"
+					href={resolve(`/project/${projectId}/${item.path}`)}
 					class="rail-item"
 					class:active
 					aria-current={active ? 'page' : undefined}
@@ -112,7 +116,7 @@
 			{/each}
 		{:else}
 			<a
-				href="/home"
+				href={resolve('/home')}
 				class="rail-item"
 				class:active={pathname === '/home'}
 				aria-current={pathname === '/home' ? 'page' : undefined}
@@ -125,13 +129,13 @@
 
 	<div class="rail-group rail-bottom">
 		{#if isProjectPage}
-			<a href="/home" class="rail-item" title="作品一覧へ戻る">
+			<a href={resolve('/home')} class="rail-item" title="作品一覧へ戻る">
 				{@render icon('home')}
 				<span class="rail-label">作品一覧</span>
 			</a>
 		{/if}
 		<a
-			href="/settings"
+			href={resolve('/settings')}
 			class="rail-item"
 			class:active={pathname === '/settings'}
 			aria-current={pathname === '/settings' ? 'page' : undefined}

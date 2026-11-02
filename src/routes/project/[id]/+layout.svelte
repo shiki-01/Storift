@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { projectsDB, chaptersDB, scenesDB } from '$lib/db';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { startCurrentProjectSync, stopCurrentProjectSync } from '$lib/services/sync.service';
@@ -8,7 +8,7 @@
 	let { children } = $props();
 
 	onMount(async () => {
-		const projectId = $page.params.id;
+		const projectId = page.params.id;
 		if (!projectId) return;
 
 		try {
@@ -40,16 +40,16 @@
 </script>
 
 {#if currentProjectStore.isLoading}
-	<div class="flex align-items:center justify-content:center h:100%">
+	<div class="flex ai:center jc:center h:100%">
 		<p class="fg:theme-text-secondary">読み込み中...</p>
 	</div>
 {:else if !currentProjectStore.project}
-	<div class="flex align-items:center justify-content:center h:100%">
+	<div class="flex ai:center jc:center h:100%">
 		<p class="fg:theme-error">プロジェクトが見つかりません</p>
 	</div>
 {:else}
 	<!-- 執筆・プロットなどの切り替え時に、内容を軽く滑り込ませる -->
-	{#key $page.url.pathname}
+	{#key page.url.pathname}
 		<div class="section-enter w:100% h:100%">
 			{@render children()}
 		</div>

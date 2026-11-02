@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { confirmDialog } from '$lib/stores/toast.svelte';
-	import { onMount } from 'svelte';
 	import Modal from './Modal.svelte';
 	import Button from './Button.svelte';
 	import { historyDB } from '$lib/db';
@@ -10,7 +9,7 @@
 	interface HistoryViewerProps {
 		isOpen?: boolean;
 		entityId: string;
-		onRestore?: (snapshot: any) => void;
+		onRestore?: (snapshot: History['snapshot']) => void;
 		onClose?: () => void;
 	}
 
@@ -67,7 +66,7 @@
 		<div class="max-h:500 overflow-y:auto">
 			{#each histories as history (history.id)}
 				<div class="border:1|solid|theme-border r:8 p:16 mb:12 bg:theme-background">
-					<div class="flex justify-content:space-between align-items:start mb:12">
+					<div class="flex jc:space-between ai:start mb:12">
 						<div>
 							<div class="font:14 font-weight:600 mb:4">
 								{changeTypeLabels[history.changeType]}

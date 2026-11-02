@@ -1,12 +1,13 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 
-	let errorMessage = $derived($page.error?.message || '不明なエラーが発生しました');
-	let errorStatus = $derived($page.status || 500);
+	let errorMessage = $derived(page.error?.message || '不明なエラーが発生しました');
+	let errorStatus = $derived(page.status || 500);
 
 	const goToProjects = () => {
-		goto('/home');
+		goto(resolve('/home'));
 	};
 
 	const reload = () => {
@@ -14,13 +15,11 @@
 	};
 </script>
 
-<div
-	class="h:100% overflow-y:auto flex align-items:center justify-content:center bg:theme-surface p:24"
->
+<div class="h:100% overflow-y:auto flex ai:center jc:center bg:theme-surface p:24">
 	<div class="max-w:500 w:full bg:theme-background r:16 p:32">
 		<div class="text-align:center mb:24">
 			<div
-				class="inline-flex align-items:center justify-content:center w:64 h:64 r:full bg:theme-surface b:1px|solid|theme-warning mb:12"
+				class="inline-flex ai:center jc:center w:64 h:64 r:full bg:theme-surface b:1px|solid|theme-warning mb:12"
 			>
 				<svg class="w:32 h:32 fill:theme-warning" viewBox="0 0 24 24">
 					<path
@@ -40,7 +39,7 @@
 			</p>
 		</div>
 
-		<div class="flex gap:12 flex-direction:column">
+		<div class="flex gap:12 flex:column">
 			<button
 				onclick={goToProjects}
 				class="w:full py:12 px:24 bg:theme-primary fg:theme-background font:16 font:semibold rounded:8 cursor:pointer border:none transition:all|0.2s hover:bg:theme-primary"

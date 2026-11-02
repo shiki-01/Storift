@@ -48,12 +48,12 @@ bun run desktop:build  # デスクトップ版をビルド
 
 ### 構成
 
-| 場所         | 内容                                       |
-| ------------ | ------------------------------------------ |
-| `src/`       | アプリ本体(SvelteKit + Svelte 5)           |
-| `src-tauri/` | デスクトップ版のネイティブ側(Tauri v2)     |
-| `site/`      | 紹介サイト(静的サイト。アプリとは独立)     |
-| `docs/`      | 設計メモ・セットアップ手順                 |
+| 場所         | 内容                                   |
+| ------------ | -------------------------------------- |
+| `src/`       | アプリ本体(SvelteKit + Svelte 5)       |
+| `src-tauri/` | デスクトップ版のネイティブ側(Tauri v2) |
+| `site/`      | 紹介サイト(静的サイト。アプリとは独立) |
+| `docs/`      | 設計メモ・セットアップ手順             |
 
 ### 技術スタック
 
@@ -61,15 +61,15 @@ SvelteKit / Svelte 5 / TypeScript / Master CSS / Dexie(IndexedDB) / Firebase(Fir
 
 ## ドキュメント
 
-| ファイル                                                       | 内容                               |
-| -------------------------------------------------------------- | ---------------------------------- |
-| [docs/DESKTOP.md](docs/DESKTOP.md)                             | デスクトップ版と Claude Code 連携  |
-| [docs/PWA.md](docs/PWA.md)                                     | オフライン対応と自動更新           |
-| [docs/FIRESTORE_SETUP.md](docs/FIRESTORE_SETUP.md)             | Firestore の設定とセキュリティ     |
-| [docs/SYNC_OPTIMIZATION.md](docs/SYNC_OPTIMIZATION.md)         | 同期の仕組みと最適化               |
+| ファイル                                                           | 内容                                |
+| ------------------------------------------------------------------ | ----------------------------------- |
+| [docs/DESKTOP.md](docs/DESKTOP.md)                                 | デスクトップ版と Claude Code 連携   |
+| [docs/PWA.md](docs/PWA.md)                                         | オフライン対応と自動更新            |
+| [docs/FIRESTORE_SETUP.md](docs/FIRESTORE_SETUP.md)                 | Firestore の設定とセキュリティ      |
+| [docs/SYNC_OPTIMIZATION.md](docs/SYNC_OPTIMIZATION.md)             | 同期の仕組みと最適化                |
 | [docs/FIREBASE_USAGE_ESTIMATE.md](docs/FIREBASE_USAGE_ESTIMATE.md) | Firebase 無料枠での使用量の見積もり |
-| [docs/SITE.md](docs/SITE.md)                                   | 紹介サイトとドメイン構成           |
-| [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)                   | 自分の環境で配信する場合           |
+| [docs/SITE.md](docs/SITE.md)                                       | 紹介サイトとドメイン構成            |
+| [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)                       | 自分の環境で配信する場合            |
 
 ## コントリビュート
 

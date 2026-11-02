@@ -6,7 +6,6 @@
 		type PermissionState
 	} from '$lib/services/notification.service';
 	import Button from './Button.svelte';
-	import Input from './Input.svelte';
 	import Card from './Card.svelte';
 
 	interface Props {
@@ -20,7 +19,9 @@
 	let dailyWordCount = $state(2000);
 	let reminderTime = $state('20:00');
 	let reminderEnabled = $state(false);
-	let notificationHistory = $state<Array<any>>([]);
+	let notificationHistory = $state<ReturnType<typeof notificationService.getNotificationHistory>>(
+		[]
+	);
 	let showHistory = $state(false);
 
 	onMount(() => {
@@ -111,7 +112,7 @@
 	}
 </script>
 
-<div class="notification-settings space-y:20">
+<div class="flex flex:column gap:12">
 	<!-- 通知権限 -->
 	<Card>
 		<h3 class="font:16 font:semibold fg:theme-text mb:12">通知権限</h3>
@@ -119,16 +120,14 @@
 		<div class="space-y:12">
 			{#if permission === 'granted'}
 				<div
-					class="flex align-items:center gap:8 p:12 border:1px|solid|theme-success r:8 fg:theme-success"
+					class="flex ai:center gap:8 p:12 border:1px|solid|theme-success r:8 fg:theme-success"
 					style="background-color: color-mix(in srgb, var(--color-success) 10%, transparent);"
 				>
 					<span class="font:20">✓</span>
 					<span class="font:14">通知が有効です</span>
 				</div>
 			{:else if permission === 'denied'}
-				<div
-					class="flex align-items:center gap:8 p:12 bg:theme-surface border:1|solid|theme-error r:8"
-				>
+				<div class="flex ai:center gap:8 p:12 bg:theme-surface border:1|solid|theme-error r:8">
 					<span class="font:20">✗</span>
 					<div class="flex-grow">
 						<p class="font:14 fg:theme-error">通知が無効です</p>
@@ -162,7 +161,7 @@
 				<label for="dailyGoal" class="font:14 fg:theme-text-secondary mb:6 block">
 					1日の目標文字数
 				</label>
-				<div class="flex align-items:center gap:12">
+				<div class="flex ai:center gap:12">
 					<input
 						id="dailyGoal"
 						type="range"
@@ -180,7 +179,7 @@
 
 			<!-- リマインダー設定 -->
 			<div>
-				<label class="flex align-items:center gap:8 cursor:pointer mb:12">
+				<label class="flex ai:center gap:8 cursor:pointer mb:12">
 					<input
 						type="checkbox"
 						bind:checked={reminderEnabled}
@@ -213,7 +212,7 @@
 
 	<!-- 通知履歴 -->
 	<Card>
-		<div class="flex justify-content:space-between align-items:center mb:12">
+		<div class="flex jc:space-between ai:center mb:12">
 			<h3 class="font:16 font:semibold">通知履歴</h3>
 			<button
 				class="font:14 fg:theme-primary cursor:pointer hover:fg:theme-primary"
@@ -230,11 +229,11 @@
 						通知履歴はありません
 					</p>
 				{:else}
-					{#each notificationHistory as notification}
+					{#each notificationHistory as notification, i (i)}
 						<div class="p:12 border:1|solid|theme-border r:8">
-							<div class="flex justify-content:space-between align-items:start mb:4">
+							<div class="flex jc:space-between ai:start mb:4">
 								<div class="flex-grow">
-									<div class="flex align-items:center gap:8 mb:4">
+									<div class="flex ai:center gap:8 mb:4">
 										<span class="font:14 font:semibold fg:theme-text">
 											{notification.title}
 										</span>
@@ -251,7 +250,7 @@
 						</div>
 					{/each}
 
-					<div class="flex justify-content:flex-end pt:8">
+					<div class="flex jc:flex-end pt:8">
 						<Button variant="secondary" onclick={handleClearHistory}>履歴をクリア</Button>
 					</div>
 				{/if}

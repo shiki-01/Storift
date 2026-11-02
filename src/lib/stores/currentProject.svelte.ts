@@ -34,6 +34,7 @@ export const currentProjectStore = {
 		return scenes.reduce((sum, scene) => sum + scene.characterCount, 0);
 	},
 	get scenesByChapter() {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- 呼び出しごとに作り直す使い捨ての Map で、変更されない
 		const map = new Map<string, Scene[]>();
 		for (const chapter of chapters) {
 			map.set(

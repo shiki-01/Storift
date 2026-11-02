@@ -19,7 +19,6 @@
 	// グリッドセルの計算
 	function calculateGridCells(chars: string[], cols: number, rowCount: number): string[][] {
 		const grid: string[][] = [];
-		const totalCells = cols * rowCount;
 
 		let charIndex = 0;
 
@@ -103,9 +102,9 @@
 		{#if writingMode === 'vertical'}
 			<!-- 縦書き: 右から左へ列を配置 -->
 			<div class="vertical-grid">
-				{#each grid as column, colIndex}
+				{#each grid as column, colIndex (colIndex)}
 					<div class="column">
-						{#each column as char, rowIndex}
+						{#each column as char, rowIndex (rowIndex)}
 							<div class="cell" class:empty={!char}>
 								<span class="char">{char}</span>
 							</div>
@@ -116,9 +115,9 @@
 		{:else}
 			<!-- 横書き: 上から下へ行を配置 -->
 			<div class="horizontal-grid">
-				{#each grid as row, rowIndex}
+				{#each grid as row, rowIndex (rowIndex)}
 					<div class="row">
-						{#each row as char, colIndex}
+						{#each row as char, colIndex (colIndex)}
 							<div class="cell" class:empty={!char}>
 								<span class="char">{char}</span>
 							</div>

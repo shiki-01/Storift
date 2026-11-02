@@ -9,7 +9,7 @@ export const historyDB = {
 		entityType: History['entityType'],
 		entityId: string,
 		projectId: string,
-		snapshot: any,
+		snapshot: unknown,
 		changeType: History['changeType']
 	): Promise<History> {
 		const history: History = {
@@ -34,7 +34,7 @@ export const historyDB = {
 		entityType: History['entityType'],
 		entityId: string,
 		projectId: string,
-		snapshot: any,
+		snapshot: unknown,
 		changeType: History['changeType'],
 		minIntervalMs = 5 * 60 * 1000
 	): Promise<History | null> {
@@ -67,7 +67,7 @@ export const historyDB = {
 			.sortBy('createdAt');
 	},
 
-	async restore(historyId: string): Promise<any> {
+	async restore(historyId: string): Promise<History['snapshot']> {
 		const history = await db.history.get(historyId);
 		if (!history) {
 			throw new Error('History not found');

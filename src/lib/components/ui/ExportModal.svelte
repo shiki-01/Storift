@@ -2,7 +2,6 @@
 	import { toast } from '$lib/stores/toast.svelte';
 	import { exportProject, type ExportOptions } from '$lib/services/export.service';
 	import Modal from './Modal.svelte';
-	import Button from './Button.svelte';
 
 	interface Props {
 		projectId: string;

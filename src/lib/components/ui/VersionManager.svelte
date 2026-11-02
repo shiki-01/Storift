@@ -9,10 +9,9 @@
 	interface Props {
 		entityType: 'scene' | 'chapter' | 'character' | 'plot' | 'worldbuilding';
 		entityId: string;
-		projectId: string;
 	}
 
-	let { entityType, entityId, projectId }: Props = $props();
+	let { entityType, entityId }: Props = $props();
 
 	let history = $state<History[]>([]);
 	let restorePoints = $state<RestorePoint[]>([]);
@@ -126,13 +125,13 @@
 			<p class="font:14 fg:theme-text-secondary text-align:center py:20">履歴はありません</p>
 		{:else}
 			<div class="space-y:8">
-				{#each history as entry}
+				{#each history as entry (entry.id)}
 					<div
 						class="p:12 border:1|solid|theme-border r:8 hover:bg:theme-surface transition:all|0.2s"
 					>
-						<div class="flex justify-content:space-between align-items:start">
+						<div class="flex jc:space-between ai:start">
 							<div class="flex-grow">
-								<div class="flex align-items:center gap:8 mb:4">
+								<div class="flex ai:center gap:8 mb:4">
 									<span class="px:8 py:2 bg:theme-surface fg:theme-primary font:12 r:4">
 										{getChangeTypeLabel(entry.changeType)}
 									</span>
@@ -178,7 +177,7 @@
 				{/each}
 			</div>
 
-			<div class="flex justify-content:flex-end mt:16">
+			<div class="flex jc:flex-end mt:16">
 				<Button
 					variant="primary"
 					onclick={handleCompareVersions}
@@ -200,9 +199,9 @@
 			</p>
 		{:else}
 			<div class="space-y:8">
-				{#each restorePoints as point}
+				{#each restorePoints as point (point.id)}
 					<div class="p:12 border:1|solid|theme-border r:8">
-						<div class="flex justify-content:space-between align-items:start mb:8">
+						<div class="flex jc:space-between ai:start mb:8">
 							<div class="flex-grow">
 								<h4 class="font:15 font:semibold fg:theme-text mb:4">
 									{point.name}
@@ -251,6 +250,7 @@
 
 			<!-- 差分表示 -->
 			<div class="diff-content p:16 bg:theme-surface r:8 overflow:auto max-h:500">
+				<!-- eslint-disable-next-line svelte/no-at-html-tags -- renderDiffAsHtml でエスケープ済み -->
 				{@html getDiffHtml()}
 			</div>
 		</div>
@@ -287,7 +287,7 @@
 				></textarea>
 			</div>
 
-			<div class="flex gap:12 justify-content:flex-end">
+			<div class="flex gap:12 jc:flex-end">
 				<Button variant="secondary" onclick={() => (showCreateRestorePoint = false)}>
 					キャンセル
 				</Button>

@@ -24,6 +24,7 @@ interface ToastOptions {
 
 let items = $state<ToastItem[]>([]);
 let nextId = 1;
+// eslint-disable-next-line svelte/prefer-svelte-reactivity -- タイマー管理用で、UI には反映しない
 const timers = new Map<number, ReturnType<typeof setTimeout>>();
 
 function dismiss(id: number) {

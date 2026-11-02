@@ -42,7 +42,7 @@
 
 <svelte:element
 	this={syncStore.status === 'conflict' ? 'button' : 'div'}
-	class="sync-root flex align-items:center gap:8 font:13"
+	class="sync-root flex ai:center gap:8 font:13"
 	role={syncStore.status === 'conflict' ? 'button' : undefined}
 	title={!syncStore.isConfigured
 		? '同期は行わず、作品はこの端末に保存されます'

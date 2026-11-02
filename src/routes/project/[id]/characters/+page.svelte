@@ -284,16 +284,16 @@
 </script>
 
 <div class="flex w:100% h:100% bg:theme-background fg:theme-text">
-	<div class="flex-grow:1 flex flex-direction:column min-w:0 min-h:0">
+	<div class="flex-grow:1 flex flex:column min-w:0 min-h:0">
 		<header class="bg:theme-background border-bottom:1|solid|theme-border">
 			<div
-				class="page-header max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 justify-content:space-between align-items:center"
+				class="page-header max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 jc:space-between ai:center"
 			>
 				<div>
 					<h1 class="font:26 font-weight:600 m:0 fg:theme-text">キャラクター管理</h1>
 					<p class="font:14 fg:theme-text-secondary mt:8">登場人物の情報と相関図を管理します</p>
 				</div>
-				<div class="flex flex-wrap:wrap align-items:center gap:12 max-w:100%">
+				<div class="flex flex-wrap:wrap ai:center gap:12 max-w:100%">
 					<div class="flex bg:theme-surface b:1px|solid|theme-border r:10 p:6 gap:8">
 						<button class={viewToggleClass('grid')} onclick={() => (viewMode = 'grid')}>
 							グリッド
@@ -320,9 +320,9 @@
 		</header>
 
 		<main class="flex-grow:1 overflow-y:auto">
-			<div class="page-body max-w:1280 mx:auto px:24 py:24 flex flex-direction:column gap:24">
+			<div class="page-body max-w:1280 mx:auto px:24 py:24 flex flex:column gap:24">
 				{#if isLoading}
-					<div class="flex justify-content:center align-items:center h:400">
+					<div class="flex jc:center ai:center h:400">
 						<p class="fg:theme-text-secondary">読み込み中...</p>
 					</div>
 				{:else if viewMode === 'grid'}
@@ -337,12 +337,12 @@
 					<div class="grid cols:3 gap:20">
 						{#each visibleCharacters as character (character.id)}
 							<Card
-								class="bg:theme-surface b:1px|solid|theme-border p:24 flex flex-direction:column gap:16"
+								class="bg:theme-surface b:1px|solid|theme-border p:24 flex flex:column gap:16"
 								oncontextmenu={(e) => handleCharacterContextMenu(e, character)}
 							>
-								<div class="flex flex-direction:column align-items:center text-align:center gap:8">
+								<div class="flex flex:column ai:center text-align:center gap:8">
 									<div
-										class="w:72 h:72 r:full bg:theme-border flex align-items:center justify-content:center font:24 fg:theme-text"
+										class="w:72 h:72 r:full bg:theme-border flex ai:center jc:center font:24 fg:theme-text"
 									>
 										{character.name.charAt(0)}
 									</div>
@@ -358,7 +358,7 @@
 								</div>
 
 								{#if character.personality}
-									<div class="flex flex-direction:column gap:4">
+									<div class="flex flex:column gap:4">
 										<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">性格</p>
 										<p class="font:14 fg:theme-text-secondary line-clamp:2">
 											{character.personality}
@@ -367,10 +367,10 @@
 								{/if}
 
 								{#if character.relationships.length > 0}
-									<div class="flex flex-direction:column gap:4">
+									<div class="flex flex:column gap:4">
 										<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">関係</p>
 										<div class="flex flex-wrap gap:6">
-											{#each character.relationships.slice(0, 3) as rel}
+											{#each character.relationships.slice(0, 3) as rel, index (index)}
 												<span class="px:10 py:4 r:full bg:theme-surface fg:theme-primary font:12">
 													{getCharacterName(rel.characterId)}
 												</span>
@@ -418,20 +418,20 @@
 						bind:value={characterQuery}
 					/>
 					<!-- リストビュー -->
-					<div class="flex flex-direction:column gap:16">
+					<div class="flex flex:column gap:16">
 						{#each visibleCharacters as character (character.id)}
 							<Card
 								class="bg:theme-surface b:1px|solid|theme-border p:24"
 								oncontextmenu={(e) => handleCharacterContextMenu(e, character)}
 							>
-								<div class="flex gap:20 align-items:start">
+								<div class="flex gap:20 ai:start">
 									<div
-										class="w:64 h:64 r:full bg:theme-border flex align-items:center justify-content:center font:22 fg:theme-text flex-shrink:0"
+										class="w:64 h:64 r:full bg:theme-border flex ai:center jc:center font:22 fg:theme-text flex-shrink:0"
 									>
 										{character.name.charAt(0)}
 									</div>
-									<div class="flex:1 flex flex-direction:column gap:16">
-										<div class="flex justify-content:space-between align-items:start gap:16">
+									<div class="flex:1 flex flex:column gap:16">
+										<div class="flex jc:space-between ai:start gap:16">
 											<div>
 												<h3 class="font:18 font-weight:600 fg:theme-text m:0">{character.name}</h3>
 												<p class="font:14 fg:theme-text-secondary mt:6">
@@ -461,19 +461,19 @@
 
 										<div class="grid cols:3 gap:16">
 											{#if character.appearance}
-												<div class="flex flex-direction:column gap:4">
+												<div class="flex flex:column gap:4">
 													<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">外見</p>
 													<p class="font:14 fg:theme-text-secondary">{character.appearance}</p>
 												</div>
 											{/if}
 											{#if character.personality}
-												<div class="flex flex-direction:column gap:4">
+												<div class="flex flex:column gap:4">
 													<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">性格</p>
 													<p class="font:14 fg:theme-text-secondary">{character.personality}</p>
 												</div>
 											{/if}
 											{#if character.background}
-												<div class="flex flex-direction:column gap:4">
+												<div class="flex flex:column gap:4">
 													<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">背景</p>
 													<p class="font:14 fg:theme-text-secondary">{character.background}</p>
 												</div>
@@ -497,9 +497,7 @@
 				{/if}
 
 				{#if characters.length === 0 && !isLoading}
-					<div
-						class="flex flex-direction:column align-items:center justify-content:center h:400 gap:16"
-					>
+					<div class="flex flex:column ai:center jc:center h:400 gap:16">
 						<p class="fg:theme-text-secondary font:18">キャラクターがまだありません</p>
 						<Button
 							class="px:20 py:12 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:10 font:14"
@@ -516,56 +514,54 @@
 
 <!-- 新規作成モーダル -->
 <Modal bind:isOpen={showCreateModal} title="新規キャラクター作成">
-	{#snippet children()}
-		<div class="flex flex-direction:column gap:16">
-			<Input label="名前 *" bind:value={formData.name} placeholder="キャラクター名" />
-			<Input label="役割" bind:value={formData.role} placeholder="主人公、ヒロイン、悪役など" />
+	<div class="flex flex:column gap:16">
+		<Input label="名前 *" bind:value={formData.name} placeholder="キャラクター名" />
+		<Input label="役割" bind:value={formData.role} placeholder="主人公、ヒロイン、悪役など" />
 
-			<div class="grid cols:2 gap:16">
-				<div>
-					<label for="create-age" class="block mb:8 font:14 font:semibold">年齢</label>
-					<input
-						id="create-age"
-						type="number"
-						bind:value={formData.age}
-						placeholder="年齢"
-						class={`w:full ${fieldBaseClass}`}
-					/>
-				</div>
-				<Input label="性別" bind:value={formData.gender} placeholder="性別" />
-			</div>
-
+		<div class="grid cols:2 gap:16">
 			<div>
-				<label for="create-appearance" class="block mb:8 font:14 font:semibold">外見</label>
-				<textarea
-					id="create-appearance"
-					bind:value={formData.appearance}
-					class={`${textareaBaseClass} min-h:80 resize:vertical`}
-					placeholder="髪型、体格、服装など..."
-				></textarea>
+				<label for="create-age" class="block mb:8 font:14 font:semibold">年齢</label>
+				<input
+					id="create-age"
+					type="number"
+					bind:value={formData.age}
+					placeholder="年齢"
+					class={`w:full ${fieldBaseClass}`}
+				/>
 			</div>
-
-			<div>
-				<label for="create-personality" class="block mb:8 font:14 font:semibold">性格</label>
-				<textarea
-					id="create-personality"
-					bind:value={formData.personality}
-					class={`${textareaBaseClass} min-h:80 resize:vertical`}
-					placeholder="性格の特徴..."
-				></textarea>
-			</div>
-
-			<div>
-				<label for="create-background" class="block mb:8 font:14 font:semibold">背景</label>
-				<textarea
-					id="create-background"
-					bind:value={formData.background}
-					class={`${textareaBaseClass} min-h:80 resize:vertical`}
-					placeholder="生い立ち、経歴など..."
-				></textarea>
-			</div>
+			<Input label="性別" bind:value={formData.gender} placeholder="性別" />
 		</div>
-	{/snippet}
+
+		<div>
+			<label for="create-appearance" class="block mb:8 font:14 font:semibold">外見</label>
+			<textarea
+				id="create-appearance"
+				bind:value={formData.appearance}
+				class={`${textareaBaseClass} min-h:80 resize:vertical`}
+				placeholder="髪型、体格、服装など..."
+			></textarea>
+		</div>
+
+		<div>
+			<label for="create-personality" class="block mb:8 font:14 font:semibold">性格</label>
+			<textarea
+				id="create-personality"
+				bind:value={formData.personality}
+				class={`${textareaBaseClass} min-h:80 resize:vertical`}
+				placeholder="性格の特徴..."
+			></textarea>
+		</div>
+
+		<div>
+			<label for="create-background" class="block mb:8 font:14 font:semibold">背景</label>
+			<textarea
+				id="create-background"
+				bind:value={formData.background}
+				class={`${textareaBaseClass} min-h:80 resize:vertical`}
+				placeholder="生い立ち、経歴など..."
+			></textarea>
+		</div>
+	</div>
 
 	{#snippet footer()}
 		<div class="flex gap:12">
@@ -583,56 +579,54 @@
 
 <!-- 編集モーダル -->
 <Modal bind:isOpen={showEditModal} title="キャラクター編集">
-	{#snippet children()}
-		<div class="flex flex-direction:column gap:16">
-			<Input label="名前 *" bind:value={formData.name} placeholder="キャラクター名" />
-			<Input label="役割" bind:value={formData.role} placeholder="主人公、ヒロイン、悪役など" />
+	<div class="flex flex:column gap:16">
+		<Input label="名前 *" bind:value={formData.name} placeholder="キャラクター名" />
+		<Input label="役割" bind:value={formData.role} placeholder="主人公、ヒロイン、悪役など" />
 
-			<div class="grid cols:2 gap:16">
-				<div>
-					<label for="edit-age" class="block mb:8 font:14 font:semibold">年齢</label>
-					<input
-						id="edit-age"
-						type="number"
-						bind:value={formData.age}
-						placeholder="年齢"
-						class={`w:full ${fieldBaseClass}`}
-					/>
-				</div>
-				<Input label="性別" bind:value={formData.gender} placeholder="性別" />
-			</div>
-
+		<div class="grid cols:2 gap:16">
 			<div>
-				<label for="edit-appearance" class="block mb:8 font:14 font:semibold">外見</label>
-				<textarea
-					id="edit-appearance"
-					bind:value={formData.appearance}
-					class={`${textareaBaseClass} min-h:80 resize:vertical`}
-					placeholder="髪型、体格、服装など..."
-				></textarea>
+				<label for="edit-age" class="block mb:8 font:14 font:semibold">年齢</label>
+				<input
+					id="edit-age"
+					type="number"
+					bind:value={formData.age}
+					placeholder="年齢"
+					class={`w:full ${fieldBaseClass}`}
+				/>
 			</div>
-
-			<div>
-				<label for="edit-personality" class="block mb:8 font:14 font:semibold">性格</label>
-				<textarea
-					id="edit-personality"
-					bind:value={formData.personality}
-					class={`${textareaBaseClass} min-h:80 resize:vertical`}
-					placeholder="性格の特徴..."
-				></textarea>
-			</div>
-
-			<div>
-				<label for="edit-background" class="block mb:8 font:14 font:semibold">背景</label>
-				<textarea
-					id="edit-background"
-					bind:value={formData.background}
-					class={`${textareaBaseClass} min-h:80 resize:vertical`}
-					placeholder="生い立ち、経歴など..."
-				></textarea>
-			</div>
+			<Input label="性別" bind:value={formData.gender} placeholder="性別" />
 		</div>
-	{/snippet}
+
+		<div>
+			<label for="edit-appearance" class="block mb:8 font:14 font:semibold">外見</label>
+			<textarea
+				id="edit-appearance"
+				bind:value={formData.appearance}
+				class={`${textareaBaseClass} min-h:80 resize:vertical`}
+				placeholder="髪型、体格、服装など..."
+			></textarea>
+		</div>
+
+		<div>
+			<label for="edit-personality" class="block mb:8 font:14 font:semibold">性格</label>
+			<textarea
+				id="edit-personality"
+				bind:value={formData.personality}
+				class={`${textareaBaseClass} min-h:80 resize:vertical`}
+				placeholder="性格の特徴..."
+			></textarea>
+		</div>
+
+		<div>
+			<label for="edit-background" class="block mb:8 font:14 font:semibold">背景</label>
+			<textarea
+				id="edit-background"
+				bind:value={formData.background}
+				class={`${textareaBaseClass} min-h:80 resize:vertical`}
+				placeholder="生い立ち、経歴など..."
+			></textarea>
+		</div>
+	</div>
 
 	{#snippet footer()}
 		<div class="flex gap:12">
@@ -650,77 +644,73 @@
 
 <!-- 関係編集モーダル -->
 <Modal bind:isOpen={showRelationModal} title="キャラクター関係編集">
-	{#snippet children()}
-		{#if selectedCharacter}
-			<div class="flex flex-direction:column gap:16">
-				<div class="p:16 bg:theme-surface b:1px|solid|theme-border r:8">
-					<p class="font:14 fg:theme-text-secondary mb:4">対象キャラクター</p>
-					<p class="font:18 font-weight:600 fg:theme-text">{selectedCharacter.name}</p>
-				</div>
+	{#if selectedCharacter}
+		<div class="flex flex:column gap:16">
+			<div class="p:16 bg:theme-surface b:1px|solid|theme-border r:8">
+				<p class="font:14 fg:theme-text-secondary mb:4">対象キャラクター</p>
+				<p class="font:18 font-weight:600 fg:theme-text">{selectedCharacter.name}</p>
+			</div>
 
-				<div>
-					<p class="font:14 font:semibold mb:12">現在の関係</p>
-					{#if selectedCharacter.relationships.length === 0}
-						<p class="fg:theme-text-secondary font:14">関係が登録されていません</p>
-					{:else}
-						<div class="flex flex-direction:column gap:8">
-							{#each getRelationships(selectedCharacter) as rel, index}
-								<div
-									class="flex align-items:center justify-content:space-between p:12 bg:theme-background b:1px|solid|theme-border r:8"
-								>
-									<div class="flex align-items:center gap:12">
-										<span class="font:14 fg:theme-text-secondary">{rel.relation}</span>
-										<span class="fg:theme-text-secondary">→</span>
-										<span class="font:14 font-weight:600 fg:theme.primary">{rel.name}</span>
-									</div>
-									<button
-										class={actionButtonClass('danger')}
-										onclick={() => handleRemoveRelation(selectedCharacter!.id, index)}
-									>
-										削除
-									</button>
+			<div>
+				<p class="font:14 font:semibold mb:12">現在の関係</p>
+				{#if selectedCharacter.relationships.length === 0}
+					<p class="fg:theme-text-secondary font:14">関係が登録されていません</p>
+				{:else}
+					<div class="flex flex:column gap:8">
+						{#each getRelationships(selectedCharacter) as rel, index (index)}
+							<div
+								class="flex ai:center jc:space-between p:12 bg:theme-background b:1px|solid|theme-border r:8"
+							>
+								<div class="flex ai:center gap:12">
+									<span class="font:14 fg:theme-text-secondary">{rel.relation}</span>
+									<span class="fg:theme-text-secondary">→</span>
+									<span class="font:14 font-weight:600 fg:theme.primary">{rel.name}</span>
 								</div>
-							{/each}
-						</div>
-					{/if}
-				</div>
-
-				<div>
-					<p class="font:14 font:semibold mb:12">新しい関係を追加</p>
-					<div class="flex gap:8">
-						<input
-							type="text"
-							placeholder="関係性（例: 親友、ライバル）"
-							class={`flex:1 ${fieldBaseClass}`}
-							id="relation-input"
-						/>
-						<select class={fieldBaseClass} id="target-character">
-							<option value="">キャラクターを選択</option>
-							{#each characters.filter((c) => c.id !== selectedCharacter?.id) as char}
-								<option value={char.id}>{char.name}</option>
-							{/each}
-						</select>
-						<Button
-							class="px:16 py:10 bg:theme.primary fg:theme-background r:8"
-							onclick={() => {
-								const relationInput = document.getElementById('relation-input') as HTMLInputElement;
-								const targetSelect = document.getElementById(
-									'target-character'
-								) as HTMLSelectElement;
-								if (relationInput.value && targetSelect.value && selectedCharacter) {
-									handleAddRelation(selectedCharacter.id, targetSelect.value, relationInput.value);
-									relationInput.value = '';
-									targetSelect.value = '';
-								}
-							}}
-						>
-							追加
-						</Button>
+								<button
+									class={actionButtonClass('danger')}
+									onclick={() => handleRemoveRelation(selectedCharacter!.id, index)}
+								>
+									削除
+								</button>
+							</div>
+						{/each}
 					</div>
+				{/if}
+			</div>
+
+			<div>
+				<p class="font:14 font:semibold mb:12">新しい関係を追加</p>
+				<div class="flex gap:8">
+					<input
+						type="text"
+						placeholder="関係性（例: 親友、ライバル）"
+						class={`flex:1 ${fieldBaseClass}`}
+						id="relation-input"
+					/>
+					<select class={fieldBaseClass} id="target-character">
+						<option value="">キャラクターを選択</option>
+						{#each characters.filter((c) => c.id !== selectedCharacter?.id) as char (char.id)}
+							<option value={char.id}>{char.name}</option>
+						{/each}
+					</select>
+					<Button
+						class="px:16 py:10 bg:theme.primary fg:theme-background r:8"
+						onclick={() => {
+							const relationInput = document.getElementById('relation-input') as HTMLInputElement;
+							const targetSelect = document.getElementById('target-character') as HTMLSelectElement;
+							if (relationInput.value && targetSelect.value && selectedCharacter) {
+								handleAddRelation(selectedCharacter.id, targetSelect.value, relationInput.value);
+								relationInput.value = '';
+								targetSelect.value = '';
+							}
+						}}
+					>
+						追加
+					</Button>
 				</div>
 			</div>
-		{/if}
-	{/snippet}
+		</div>
+	{/if}
 
 	{#snippet footer()}
 		<div class="flex gap:12">

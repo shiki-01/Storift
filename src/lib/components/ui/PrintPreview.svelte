@@ -8,7 +8,6 @@
 	} from '$lib/utils/print';
 	import Modal from './Modal.svelte';
 	import Button from './Button.svelte';
-	import Input from './Input.svelte';
 
 	interface Props {
 		chapters: Array<{
@@ -22,6 +21,8 @@
 	let { chapters, isOpen, onClose }: Props = $props();
 
 	let options = $state<PrintOptions>({ ...defaultPrintOptions });
+
+	const paperSizeOptions: PrintOptions['paperSize'][] = ['A4', 'A5', 'B5', 'letter'];
 
 	const handlePrint = () => {
 		console.log('印刷プレビュー開始:', { chapters, options });
@@ -81,7 +82,7 @@
 						<label for="fontSize" class="font:14 fg:theme-text-secondary mb:6 block"
 							>フォントサイズ</label
 						>
-						<div class="flex align-items:center gap:12">
+						<div class="flex ai:center gap:12">
 							<input
 								id="fontSize"
 								type="range"
@@ -100,7 +101,7 @@
 					<!-- 行間 -->
 					<div>
 						<label for="lineHeight" class="font:14 fg:theme-text-secondary mb:6 block">行間</label>
-						<div class="flex align-items:center gap:12">
+						<div class="flex ai:center gap:12">
 							<input
 								id="lineHeight"
 								type="range"
@@ -147,7 +148,7 @@
 					<div>
 						<div class="font:14 fg:theme-text-secondary mb:6">用紙サイズ</div>
 						<div class="grid grid-cols:2 gap:8">
-							{#each ['A4', 'A5', 'B5', 'letter'] as size}
+							{#each paperSizeOptions as size (size)}
 								<button
 									class="py:8 px:16 r:8 border:1|solid|{options.paperSize === size
 										? 'theme-primary'
@@ -156,7 +157,7 @@
 										: 'theme-background'} fg:{options.paperSize === size
 										? 'theme-primary'
 										: 'theme-text-secondary'} cursor:pointer transition:all|0.2s"
-									onclick={() => (options.paperSize = size as any)}
+									onclick={() => (options.paperSize = size)}
 								>
 									{size}
 								</button>
@@ -227,12 +228,12 @@
 				<h3 class="font:16 font:semibold fg:theme-text mb:12">表示オプション</h3>
 
 				<div class="space-y:8">
-					<label class="flex align-items:center gap:8 cursor:pointer">
+					<label class="flex ai:center gap:8 cursor:pointer">
 						<input type="checkbox" bind:checked={options.showPageNumber} class="w:18 h:18" />
 						<span class="font:14 fg:theme-text-secondary">ページ番号を表示</span>
 					</label>
 
-					<label class="flex align-items:center gap:8 cursor:pointer">
+					<label class="flex ai:center gap:8 cursor:pointer">
 						<input type="checkbox" bind:checked={options.showChapterNumber} class="w:18 h:18" />
 						<span class="font:14 fg:theme-text-secondary">章番号を表示</span>
 					</label>
@@ -240,7 +241,7 @@
 			</div>
 
 			<!-- アクションボタン -->
-			<div class="flex gap:12 justify-content:flex-end pt:16 border-top:1|solid|theme-border">
+			<div class="flex gap:12 jc:flex-end pt:16 border-top:1|solid|theme-border">
 				<Button variant="secondary" onclick={onClose}>キャンセル</Button>
 				<Button variant="primary" onclick={handlePrint}>プレビュー表示</Button>
 			</div>

@@ -41,7 +41,7 @@ export function getErrorLogs(): ErrorLog[] {
 	try {
 		const logs = localStorage.getItem(ERROR_LOGS_KEY);
 		return logs ? JSON.parse(logs) : [];
-	} catch (e) {
+	} catch {
 		return [];
 	}
 }

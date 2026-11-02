@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { toast } from '$lib/stores/toast.svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 
-	let errorMessage = $derived($page.error?.message || '不明なエラーが発生しました');
-	let errorStatus = $derived($page.status || 500);
+	let errorMessage = $derived(page.error?.message || '不明なエラーが発生しました');
+	let errorStatus = $derived(page.status || 500);
 
 	const goHome = () => {
 		window.location.href = '/home';
@@ -19,7 +19,7 @@
 			{
 				status: errorStatus,
 				message: errorMessage,
-				url: $page.url.pathname,
+				url: page.url.pathname,
 				userAgent: navigator.userAgent,
 				time: new Date().toISOString()
 			},
@@ -35,14 +35,12 @@
 	};
 </script>
 
-<div
-	class="h:100% overflow-y:auto flex align-items:center justify-content:center bg:theme-surface p:24"
->
+<div class="h:100% overflow-y:auto flex ai:center jc:center bg:theme-surface p:24">
 	<div class="max-w:600 w:full bg:theme-background r:16 p:32">
 		<!-- エラーアイコン -->
 		<div class="text-align:center mb:24">
 			<div
-				class="inline-flex align-items:center justify-content:center w:80 h:80 r:full bg:theme-surface b:1px|solid|theme-error mb:16"
+				class="inline-flex ai:center jc:center w:80 h:80 r:full bg:theme-surface b:1px|solid|theme-error mb:16"
 			>
 				<svg class="w:40 h:40 fill:theme-error" viewBox="0 0 24 24">
 					<path
@@ -70,14 +68,14 @@
 		</div>
 
 		<!-- エラー詳細(開発モード時のみ) -->
-		{#if import.meta.env.DEV && $page.error}
+		{#if import.meta.env.DEV && page.error}
 			<details class="bg:theme-surface b:1px|solid|theme-warning rounded:8 p:16 mb:24">
 				<summary class="font:14 font:bold fg:theme-warning cursor:pointer">
 					開発者向け情報
 				</summary>
 				<pre
 					class="font:12 fg:theme-text-secondary overflow:auto mt:8 white-space:pre-wrap">{JSON.stringify(
-						$page.error,
+						page.error,
 						null,
 						2
 					)}</pre>
@@ -85,7 +83,7 @@
 		{/if}
 
 		<!-- アクションボタン -->
-		<div class="flex gap:12 flex-direction:column">
+		<div class="flex gap:12 flex:column">
 			<button
 				onclick={goHome}
 				class="w:full py:12 px:24 bg:theme-primary fg:theme-background font:16 font:semibold rounded:8 cursor:pointer border:none transition:all|0.2s hover:bg:theme-primary"
@@ -114,7 +112,7 @@
 				問題が解決しない場合は、ブラウザのキャッシュをクリアしてみてください。
 			</p>
 			<p class="font:12 fg:theme-text-secondary mt:8">
-				URL: {$page.url.pathname}
+				URL: {page.url.pathname}
 			</p>
 		</div>
 	</div>

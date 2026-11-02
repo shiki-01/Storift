@@ -245,16 +245,16 @@
 </script>
 
 <div class="flex w:100% h:100% bg:theme-background fg:theme-text">
-	<div class="flex-grow:1 flex flex-direction:column min-w:0 min-h:0">
+	<div class="flex-grow:1 flex flex:column min-w:0 min-h:0">
 		<header class="bg:theme-background border-bottom:1|solid|theme-border">
 			<div
-				class="page-header max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 justify-content:space-between align-items:center"
+				class="page-header max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 jc:space-between ai:center"
 			>
 				<div>
 					<h1 class="font:26 font-weight:600 m:0 fg:theme-text">プロット管理</h1>
 					<p class="font:14 fg:theme-text-secondary mt:8">作品の構成を計画・管理します</p>
 				</div>
-				<div class="flex flex-wrap:wrap align-items:center gap:12 max-w:100%">
+				<div class="flex flex-wrap:wrap ai:center gap:12 max-w:100%">
 					<div
 						class="flex bg:theme-surface b:1px|solid|theme-border r:10 p:6 gap:8"
 						data-tour="plot-view-toggle"
@@ -277,9 +277,7 @@
 		</header>
 
 		<main class="flex-grow:1 overflow-y:auto">
-			<div
-				class="page-body max-w:1280 mx:auto w:100% px:24 py:24 flex flex-direction:column gap:24"
-			>
+			<div class="page-body max-w:1280 mx:auto w:100% px:24 py:24 flex flex:column gap:24">
 				<input
 					class="plot-search"
 					type="search"
@@ -288,7 +286,7 @@
 					bind:value={plotQuery}
 				/>
 				{#if isLoading}
-					<div class="flex flex-direction:column gap:16">
+					<div class="flex flex:column gap:16">
 						<div class="h:140 bg:theme-surface b:1px|solid|theme-border r:12 animate:pulse"></div>
 						<div class="h:140 bg:theme-surface b:1px|solid|theme-border r:12 animate:pulse"></div>
 						<div class="h:140 bg:theme-surface b:1px|solid|theme-border r:12 animate:pulse"></div>
@@ -297,9 +295,9 @@
 					<div
 						class="grid gap:16 md:grid-template-columns:repeat(2,minmax(0,1fr)) xl:grid-template-columns:repeat(4,minmax(0,1fr))"
 					>
-						{#each Object.entries(statusGroups) as [status, config]}
-							<div class="flex flex-direction:column gap:12">
-								<div class="flex align-items:center justify-content:space-between">
+						{#each Object.entries(statusGroups) as [status, config] (status)}
+							<div class="flex flex:column gap:12">
+								<div class="flex ai:center jc:space-between">
 									<h3 class="font:18 font-weight:600 fg:theme-text">{config.label}</h3>
 									<span
 										class="px:10 py:4 r:999 b:1px|solid|theme-border bg:theme-background font:12 fg:theme-text-secondary"
@@ -308,17 +306,17 @@
 									</span>
 								</div>
 								<div
-									class="flex flex-direction:column gap:12 min-h:420 p:12 bg:theme-surface b:1px|solid|theme-border r:12"
+									class="flex flex:column gap:12 min-h:420 p:12 bg:theme-surface b:1px|solid|theme-border r:12"
 								>
 									{#each getPlotsByStatus(status as Plot['status']) as plot (plot.id)}
 										<Card
 											padding="sm"
 											hoverable={true}
-											class="flex flex-direction:column gap:12"
+											class="flex flex:column gap:12"
 											oncontextmenu={(e) => handlePlotContextMenu(e, plot)}
 										>
-											<div class="flex justify-content:space-between align-items:start">
-												<div class="flex align-items:center gap:8">
+											<div class="flex jc:space-between ai:start">
+												<div class="flex ai:center gap:8">
 													<div
 														class="w:12 h:12 r:full"
 														style="background-color: {plot.color}"
@@ -385,11 +383,11 @@
 						{/each}
 					</div>
 				{:else}
-					<div class="flex flex-direction:column gap:16">
+					<div class="flex flex:column gap:16">
 						{#each visiblePlots as plot (plot.id)}
 							<Card
 								oncontextmenu={(e) => handlePlotContextMenu(e, plot)}
-								class="flex flex-direction:column gap:16"
+								class="flex flex:column gap:16"
 							>
 								<div class="flex gap:16">
 									<div
@@ -397,9 +395,9 @@
 										style="background-color: {plot.color}"
 									></div>
 									<div class="flex:1">
-										<div class="flex justify-content:space-between align-items:start mb:12">
+										<div class="flex jc:space-between ai:start mb:12">
 											<div>
-												<div class="flex align-items:center gap:8 mb:8">
+												<div class="flex ai:center gap:8 mb:8">
 													<span
 														class="px:12 py:6 r:6 bg:theme-background b:1px|solid|theme-border font:14 fg:theme-text-secondary"
 													>
@@ -434,9 +432,7 @@
 				{/if}
 
 				{#if plots.length === 0 && !isLoading}
-					<div
-						class="flex flex-direction:column align-items:center justify-content:center h:400 gap:16"
-					>
+					<div class="flex flex:column ai:center jc:center h:400 gap:16">
 						<p class="fg:theme-text-secondary font:18">プロットがまだありません</p>
 						<Button
 							class="px:20 py:12 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:10 font:14"
@@ -453,30 +449,28 @@
 
 <!-- 新規作成モーダル -->
 <Modal bind:isOpen={showCreateModal} title="新規プロット作成">
-	{#snippet children()}
-		<div class="flex flex-direction:column gap:16">
-			<Input label="タイトル" bind:value={formData.title} placeholder="プロット名を入力" />
+	<div class="flex flex:column gap:16">
+		<Input label="タイトル" bind:value={formData.title} placeholder="プロット名を入力" />
 
-			<div>
-				<label for="type-select" class="block mb:8 font:14 font:semibold">種類</label>
-				<select id="type-select" bind:value={formData.type} class={`w:full ${fieldBaseClass}`}>
-					<option value="scene">シーン</option>
-					<option value="chapter">章</option>
-					<option value="arc">アーク</option>
-				</select>
-			</div>
-
-			<div>
-				<label for="status-select" class="block mb:8 font:14 font:semibold">ステータス</label>
-				<select id="status-select" bind:value={formData.status} class={`w:full ${fieldBaseClass}`}>
-					<option value="idea">アイデア</option>
-					<option value="planned">計画中</option>
-					<option value="written">執筆済み</option>
-					<option value="revised">推敲済み</option>
-				</select>
-			</div>
+		<div>
+			<label for="type-select" class="block mb:8 font:14 font:semibold">種類</label>
+			<select id="type-select" bind:value={formData.type} class={`w:full ${fieldBaseClass}`}>
+				<option value="scene">シーン</option>
+				<option value="chapter">章</option>
+				<option value="arc">アーク</option>
+			</select>
 		</div>
-	{/snippet}
+
+		<div>
+			<label for="status-select" class="block mb:8 font:14 font:semibold">ステータス</label>
+			<select id="status-select" bind:value={formData.status} class={`w:full ${fieldBaseClass}`}>
+				<option value="idea">アイデア</option>
+				<option value="planned">計画中</option>
+				<option value="written">執筆済み</option>
+				<option value="revised">推敲済み</option>
+			</select>
+		</div>
+	</div>
 
 	{#snippet footer()}
 		<div class="flex gap:12">
@@ -498,54 +492,52 @@
 
 <!-- 編集モーダル -->
 <Modal bind:isOpen={showEditModal} title="プロット編集">
-	{#snippet children()}
-		<div class="flex flex-direction:column gap:16">
-			<Input label="タイトル" bind:value={formData.title} placeholder="プロット名を入力" />
+	<div class="flex flex:column gap:16">
+		<Input label="タイトル" bind:value={formData.title} placeholder="プロット名を入力" />
 
-			<div>
-				<label for="edit-type-select" class="block mb:8 font:14 font:semibold">種類</label>
-				<select id="edit-type-select" bind:value={formData.type} class={`w:full ${fieldBaseClass}`}>
-					<option value="scene">シーン</option>
-					<option value="chapter">章</option>
-					<option value="arc">アーク</option>
-				</select>
-			</div>
-
-			<div>
-				<label for="edit-status-select" class="block mb:8 font:14 font:semibold">ステータス</label>
-				<select
-					id="edit-status-select"
-					bind:value={formData.status}
-					class={`w:full ${fieldBaseClass}`}
-				>
-					<option value="idea">アイデア</option>
-					<option value="planned">計画中</option>
-					<option value="written">執筆済み</option>
-					<option value="revised">推敲済み</option>
-				</select>
-			</div>
-
-			<div>
-				<label for="edit-content" class="block mb:8 font:14 font:semibold">内容</label>
-				<textarea
-					id="edit-content"
-					bind:value={formData.content}
-					class={`${textareaBaseClass} min-h:200 resize:vertical`}
-					placeholder="プロットの詳細を入力..."
-				></textarea>
-			</div>
-
-			<div>
-				<label for="edit-color" class="block mb:8 font:14 font:semibold">カラー</label>
-				<input
-					id="edit-color"
-					type="color"
-					bind:value={formData.color}
-					class="w:full h:48 b:1|solid|theme-border bg:theme-background r:8 cursor:pointer"
-				/>
-			</div>
+		<div>
+			<label for="edit-type-select" class="block mb:8 font:14 font:semibold">種類</label>
+			<select id="edit-type-select" bind:value={formData.type} class={`w:full ${fieldBaseClass}`}>
+				<option value="scene">シーン</option>
+				<option value="chapter">章</option>
+				<option value="arc">アーク</option>
+			</select>
 		</div>
-	{/snippet}
+
+		<div>
+			<label for="edit-status-select" class="block mb:8 font:14 font:semibold">ステータス</label>
+			<select
+				id="edit-status-select"
+				bind:value={formData.status}
+				class={`w:full ${fieldBaseClass}`}
+			>
+				<option value="idea">アイデア</option>
+				<option value="planned">計画中</option>
+				<option value="written">執筆済み</option>
+				<option value="revised">推敲済み</option>
+			</select>
+		</div>
+
+		<div>
+			<label for="edit-content" class="block mb:8 font:14 font:semibold">内容</label>
+			<textarea
+				id="edit-content"
+				bind:value={formData.content}
+				class={`${textareaBaseClass} min-h:200 resize:vertical`}
+				placeholder="プロットの詳細を入力..."
+			></textarea>
+		</div>
+
+		<div>
+			<label for="edit-color" class="block mb:8 font:14 font:semibold">カラー</label>
+			<input
+				id="edit-color"
+				type="color"
+				bind:value={formData.color}
+				class="w:full h:48 b:1|solid|theme-border bg:theme-background r:8 cursor:pointer"
+			/>
+		</div>
+	</div>
 
 	{#snippet footer()}
 		<div class="flex gap:12">

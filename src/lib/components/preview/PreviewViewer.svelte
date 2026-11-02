@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { rubyToHtml } from '$lib/utils/ruby';
+	import { previewToHtml } from '$lib/utils/ruby';
 	import type { PreviewSettings } from '$lib/types';
 	import ManuscriptGrid from './ManuscriptGrid.svelte';
 
@@ -35,49 +35,6 @@
 		}
 	}
 
-	// テキストをHTML形式に変換（ルビ・傍点対応）
-	function processContent(text: string, showRuby: boolean, showBouten: boolean): string {
-		let processed = text;
-
-		// 傍点処理を先に行う（ルビ処理より前に）
-		if (showBouten) {
-			// 傍点記法 《《テキスト》》 を一時的にプレースホルダーに変換
-			processed = processed.replace(
-				/《《([^》]+)》》/g,
-				'%%%BOUTEN_START%%%$1%%%BOUTEN_END%%%'
-			);
-		} else {
-			// 傍点記法を削除
-			processed = processed.replace(/《《([^》]+)》》/g, '$1');
-		}
-
-		// ルビ処理
-		if (showRuby) {
-			processed = rubyToHtml(processed);
-		} else {
-			// ルビ記法を削除（｜付きと漢字のみ両方対応）
-			processed = processed
-				.replace(/[｜|]([^《》\n]+)《[^》]+》/g, '$1')
-				.replace(/([一-龯々]+)《[^》]+》/g, '$1');
-		}
-
-		// 傍点のプレースホルダーを実際のHTMLに変換
-		if (showBouten) {
-			processed = processed.replace(
-				/%%%BOUTEN_START%%%([^%]+)%%%BOUTEN_END%%%/g,
-				'<span class="bouten">$1</span>'
-			);
-		}
-
-		// 改行を<br>に変換（段落として扱う）
-		processed = processed.replace(/\n/g, '</p><p>');
-		processed = '<p>' + processed + '</p>';
-		// 空の段落を処理
-		processed = processed.replace(/<p><\/p>/g, '<p class="empty-line">&nbsp;</p>');
-
-		return processed;
-	}
-
 	// フォントファミリーマップ
 	const fontFamilyMap: Record<string, string> = {
 		'yu-gothic': '"Yu Gothic", "游ゴシック", YuGothic, "游ゴシック体", sans-serif',
@@ -87,7 +44,7 @@
 		'noto-serif': '"Noto Serif JP", serif',
 		'hannari-mincho': '"はんなり明朝", "Hannari Mincho", serif',
 		'sawarabi-mincho': '"さわらび明朝", "Sawarabi Mincho", serif',
-		'sawarabi-gothic': '"さわらびゴシック", "Sawarabi Gothic", sans-serif',
+		'sawarabi-gothic': '"さわらびゴシック", "Sawarabi Gothic", sans-serif'
 	};
 
 	function getFontFamily(font: string): string {
@@ -98,16 +55,16 @@
 	function splitIntoPages(text: string, linesPerPage: number): string[] {
 		const lines = text.split('\n');
 		const pages: string[] = [];
-		
+
 		for (let i = 0; i < lines.length; i += linesPerPage) {
 			pages.push(lines.slice(i, i + linesPerPage).join('\n'));
 		}
-		
+
 		return pages;
 	}
 
 	let pages = $derived(splitIntoPages(content, settings.linesPerPage));
-	let processedContent = $derived(processContent(content, settings.showRuby, settings.showBouten));
+	let processedContent = $derived(previewToHtml(content, settings.showRuby, settings.showBouten));
 </script>
 
 <div
@@ -115,8 +72,10 @@
 	class:vertical={settings.writingMode === 'vertical'}
 	class:horizontal={settings.writingMode === 'horizontal'}
 	class:manuscript={settings.manuscriptMode}
-	class:orientation-upright={settings.writingMode === 'vertical' && settings.textOrientation === 'upright'}
-	class:orientation-sideways={settings.writingMode === 'vertical' && settings.textOrientation === 'sideways'}
+	class:orientation-upright={settings.writingMode === 'vertical' &&
+		settings.textOrientation === 'upright'}
+	class:orientation-sideways={settings.writingMode === 'vertical' &&
+		settings.textOrientation === 'sideways'}
 	bind:this={containerRef}
 	onwheel={handleWheel}
 	style="
@@ -138,17 +97,18 @@
 		<div class="preview-content">
 			{#if settings.showLineNumbers}
 				<div class="line-numbers">
-					{#each content.split('\n') as _, index}
+					{#each content.split('\n') as _, index (index)}
 						<span class="line-number">{index + 1}</span>
 					{/each}
 				</div>
 			{/if}
-			
+
 			<div class="text-area">
+				<!-- eslint-disable-next-line svelte/no-at-html-tags -- previewToHtml で本文をエスケープ済み -->
 				{@html processedContent}
 			</div>
 		</div>
-		
+
 		{#if settings.showPageNumbers && pages.length > 1}
 			<div class="page-info">
 				{pages.length} ページ

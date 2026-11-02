@@ -11,5 +11,6 @@
 </script>
 
 <div class={className}>
+	<!-- eslint-disable-next-line svelte/no-at-html-tags -- getIcon が返す固定の SVG -->
 	{@html icon}
 </div>

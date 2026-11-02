@@ -90,7 +90,7 @@
 			<div class="setting-group">
 				<span class="setting-label">書字方向</span>
 				<div class="toggle-group" role="radiogroup" aria-label="書字方向">
-					{#each writingModes as mode}
+					{#each writingModes as mode (mode.value)}
 						<button
 							class="toggle-button"
 							class:active={localSettings.writingMode === mode.value}
@@ -109,7 +109,7 @@
 				<div class="setting-group">
 					<span class="setting-label">英数字の向き</span>
 					<div class="toggle-group" role="radiogroup" aria-label="英数字の向き">
-						{#each textOrientations as orientation}
+						{#each textOrientations as orientation (orientation.value)}
 							<button
 								class="toggle-button"
 								class:active={localSettings.textOrientation === orientation.value}
@@ -138,7 +138,7 @@
 					bind:value={localSettings.fontFamily}
 					onchange={updateSettings}
 				>
-					{#each fonts as font}
+					{#each fonts as font (font.value)}
 						<option value={font.value}>{font.label}</option>
 					{/each}
 				</select>
@@ -249,7 +249,7 @@
 				<div class="setting-group">
 					<span class="setting-label">1行の文字数</span>
 					<div class="toggle-group" role="radiogroup" aria-label="1行の文字数">
-						{#each manuscriptColumnsOptions as cols}
+						{#each manuscriptColumnsOptions as cols (cols)}
 							<button
 								class="toggle-button"
 								class:active={localSettings.manuscriptColumns === cols}
@@ -267,7 +267,7 @@
 				<div class="setting-group">
 					<span class="setting-label">行数</span>
 					<div class="toggle-group" role="radiogroup" aria-label="行数">
-						{#each manuscriptRowsOptions as rowCount}
+						{#each manuscriptRowsOptions as rowCount (rowCount)}
 							<button
 								class="toggle-button"
 								class:active={localSettings.manuscriptRows === rowCount}

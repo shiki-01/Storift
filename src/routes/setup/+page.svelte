@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { settingsDB } from '$lib/db';
 	import { initializeFirebase, signInAnonymousUser } from '$lib/firebase';
 	import { authStore } from '$lib/stores/auth.svelte';
-	import { syncStore } from '$lib/stores/sync.svelte';
 	import { initializeSync } from '$lib/services/sync.service';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
@@ -57,7 +57,7 @@
 
 				configText = '';
 				error = '';
-			} catch (e) {
+			} catch {
 				error = '設定情報の解析に失敗しました';
 			}
 		}
@@ -85,8 +85,8 @@
 			initializeFirebase(config);
 			await signInAnonymousUser();
 			testResult = '✓ 接続成功!';
-		} catch (e: any) {
-			error = e.message || '接続に失敗しました';
+		} catch (e) {
+			error = (e instanceof Error ? e.message : '') || '接続に失敗しました';
 		} finally {
 			isLoading = false;
 		}
@@ -95,7 +95,7 @@
 	// 同期を使わずに始める(Firebase は設定画面から後で設定できる)
 	const handleSkip = async () => {
 		await settingsDB.update({ setupCompleted: true });
-		goto('/home');
+		goto(resolve('/home'));
 	};
 
 	const handleSave = async () => {
@@ -134,9 +134,9 @@
 			}
 
 			// ホームへ遷移
-			goto('/home');
-		} catch (e: any) {
-			error = e.message || '保存に失敗しました';
+			goto(resolve('/home'));
+		} catch (e) {
+			error = (e instanceof Error ? e.message : '') || '保存に失敗しました';
 		} finally {
 			isLoading = false;
 		}
@@ -153,7 +153,9 @@
 
 			<!-- 一括ペーストセクション -->
 			<div class="bg:theme-surface p:16 r:8 mb:24 b:1|solid|theme-border">
-				<h3 class="flex flex-direction:row gap:.5em font:16 font-weight:600 m:0|0|12|0 fg:theme-primary">
+				<h3
+					class="flex flex-direction:row gap:.5em font:16 font-weight:600 m:0|0|12|0 fg:theme-primary"
+				>
 					<Icon name="rocket" /> 設定を一括入力
 				</h3>
 				<p class="font:14 fg:theme-primary m:0|0|12|0">
@@ -177,7 +179,7 @@ projectId: 'your-project',
 					e.preventDefault();
 					handleSave();
 				}}
-				class="flex flex-direction:column gap:16"
+				class="flex flex:column gap:16"
 				class:display\:none={!showManualInput && !apiKey}
 			>
 				<div>

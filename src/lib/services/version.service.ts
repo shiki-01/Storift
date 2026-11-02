@@ -4,7 +4,7 @@
  */
 
 import { db } from '$lib/db';
-import type { History } from '$lib/types';
+import type { History, Chapter, Character, Plot, Scene, Worldbuilding } from '$lib/types';
 
 export interface TextDiff {
 	type: 'add' | 'remove' | 'unchanged';
@@ -240,35 +240,35 @@ class VersionService {
 				case 'scene': {
 					const scene = await db.scenes.get(entityId);
 					if (scene) {
-						await db.scenes.update(entityId, snapshot);
+						await db.scenes.update(entityId, snapshot as Partial<Scene>);
 					}
 					break;
 				}
 				case 'chapter': {
 					const chapter = await db.chapters.get(entityId);
 					if (chapter) {
-						await db.chapters.update(entityId, snapshot);
+						await db.chapters.update(entityId, snapshot as Partial<Chapter>);
 					}
 					break;
 				}
 				case 'character': {
 					const character = await db.characters.get(entityId);
 					if (character) {
-						await db.characters.update(entityId, snapshot);
+						await db.characters.update(entityId, snapshot as Partial<Character>);
 					}
 					break;
 				}
 				case 'plot': {
 					const plot = await db.plots.get(entityId);
 					if (plot) {
-						await db.plots.update(entityId, snapshot);
+						await db.plots.update(entityId, snapshot as Partial<Plot>);
 					}
 					break;
 				}
 				case 'worldbuilding': {
 					const worldbuilding = await db.worldbuilding.get(entityId);
 					if (worldbuilding) {
-						await db.worldbuilding.update(entityId, snapshot);
+						await db.worldbuilding.update(entityId, snapshot as Partial<Worldbuilding>);
 					}
 					break;
 				}
@@ -360,14 +360,14 @@ class VersionService {
 	 */
 	async createSnapshot(
 		projectId: string,
-		entityType: string,
+		entityType: History['entityType'],
 		entityId: string,
-		data: any
+		data: unknown
 	): Promise<void> {
 		const historyEntry: History = {
 			id: crypto.randomUUID(),
 			projectId,
-			entityType: entityType as any,
+			entityType,
 			entityId,
 			snapshot: data,
 			changeType: 'update',

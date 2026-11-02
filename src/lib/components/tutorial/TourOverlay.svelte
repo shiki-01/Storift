@@ -377,7 +377,10 @@
 					</div>
 
 					{#if step.logo}
-						<div class="tour-logo" aria-hidden="true">{@html logo('currentColor')}</div>
+						<div class="tour-logo" aria-hidden="true">
+							<!-- eslint-disable-next-line svelte/no-at-html-tags -- 固定のロゴ SVG -->
+							{@html logo('currentColor')}
+						</div>
 					{/if}
 
 					<h2 id="tour-card-title" class="tour-title">{step.title}</h2>

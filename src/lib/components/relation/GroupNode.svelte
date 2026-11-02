@@ -3,11 +3,9 @@
 
 	let {
 		data,
-		selected,
-		onResizeEnd
+		selected
 	}: NodeProps & {
 		data: { label: string; color: string; onResizeEnd?: () => void };
-		onResizeEnd?: () => void;
 	} = $props();
 </script>
 

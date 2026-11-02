@@ -1,4 +1,4 @@
-<script lang="ts">
+<script lang="ts" generics="T">
 	import Modal from './Modal.svelte';
 	import Button from './Button.svelte';
 	import type { ConflictData } from '$lib/firebase/conflict';
@@ -16,15 +16,26 @@
 		conflictData,
 		onResolve,
 		onClose
-	}: ConflictResolverProps<any> = $props();
+	}: ConflictResolverProps<T> = $props();
 
 	function handleResolve(resolution: 'local' | 'remote') {
 		onResolve?.(resolution);
 		isOpen = false;
 	}
+
+	// 競合の対象は呼び出し側のエンティティ型のため、表示に使うキーだけをここで読む
+	function updatedAtOf(entity: T): number | undefined {
+		return (entity as { updatedAt?: number }).updatedAt;
+	}
+
+	function fieldOf(entity: T, key: string): unknown {
+		return (entity as Record<string, unknown>)[key];
+	}
 </script>
 
 {#if conflictData}
+	{@const localUpdatedAt = updatedAtOf(conflictData.local)}
+	{@const remoteUpdatedAt = updatedAtOf(conflictData.remote)}
 	<Modal bind:isOpen title="変更の競合" {onClose}>
 		<div class="mb:24">
 			<p class="fg:theme-text-secondary mb:16">
@@ -35,17 +46,17 @@
 				<!-- ローカル版 -->
 				<div class="border:1|solid|theme-border r:8 p:16">
 					<h3 class="font:16 font-weight:600 mb:12 fg:theme-primary">この端末の変更</h3>
-					{#if conflictData.local.updatedAt}
+					{#if localUpdatedAt}
 						<p class="font:12 fg:theme-text-secondary mb:12">
-							更新: {formatDate(conflictData.local.updatedAt)}
+							更新: {formatDate(localUpdatedAt)}
 						</p>
 					{/if}
 					<div class="bg:theme-surface p:12 r:6 max-h:300 overflow-y:auto">
-						{#each conflictData.conflictFields as field}
+						{#each conflictData.conflictFields as field (field)}
 							<div class="mb:12">
 								<div class="font:12 font-weight:600 fg:theme-text-secondary mb:4">{field}:</div>
 								<div class="font:13 fg:theme-text white-space:pre-wrap">
-									{JSON.stringify(conflictData.local[field], null, 2)}
+									{JSON.stringify(fieldOf(conflictData.local, field), null, 2)}
 								</div>
 							</div>
 						{/each}
@@ -58,17 +69,17 @@
 				<!-- リモート版 -->
 				<div class="border:1|solid|theme-border r:8 p:16">
 					<h3 class="font:16 font-weight:600 mb:12 fg:theme-success">他の端末の変更</h3>
-					{#if conflictData.remote.updatedAt}
+					{#if remoteUpdatedAt}
 						<p class="font:12 fg:theme-text-secondary mb:12">
-							更新: {formatDate(conflictData.remote.updatedAt)}
+							更新: {formatDate(remoteUpdatedAt)}
 						</p>
 					{/if}
 					<div class="bg:theme-surface p:12 r:6 max-h:300 overflow-y:auto">
-						{#each conflictData.conflictFields as field}
+						{#each conflictData.conflictFields as field (field)}
 							<div class="mb:12">
 								<div class="font:12 font-weight:600 fg:theme-text-secondary mb:4">{field}:</div>
 								<div class="font:13 fg:theme-text white-space:pre-wrap">
-									{JSON.stringify(conflictData.remote[field], null, 2)}
+									{JSON.stringify(fieldOf(conflictData.remote, field), null, 2)}
 								</div>
 							</div>
 						{/each}

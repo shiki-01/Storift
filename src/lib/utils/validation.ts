@@ -11,14 +11,15 @@ export function isValidUrl(url: string): boolean {
 	}
 }
 
-export function isValidFirebaseConfig(config: any): boolean {
+export function isValidFirebaseConfig(config: unknown): boolean {
+	if (typeof config !== 'object' || config === null) return false;
+	const c = config as Record<string, unknown>;
 	return (
-		typeof config === 'object' &&
-		typeof config.apiKey === 'string' &&
-		typeof config.authDomain === 'string' &&
-		typeof config.projectId === 'string' &&
-		typeof config.storageBucket === 'string' &&
-		typeof config.messagingSenderId === 'string' &&
-		typeof config.appId === 'string'
+		typeof c.apiKey === 'string' &&
+		typeof c.authDomain === 'string' &&
+		typeof c.projectId === 'string' &&
+		typeof c.storageBucket === 'string' &&
+		typeof c.messagingSenderId === 'string' &&
+		typeof c.appId === 'string'
 	);
 }

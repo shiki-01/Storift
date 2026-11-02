@@ -5,7 +5,6 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
-	import Input from '$lib/components/ui/Input.svelte';
 	import { onMount } from 'svelte';
 	import {
 		format,
@@ -149,7 +148,7 @@
 
 	function calendarDayClass(charactersWritten: number, isToday: boolean): string {
 		return [
-			'aspect:1/1 r:8 p:8 flex flex-direction:column align-items:center justify-content:center gap:4 transition:all|.2s cursor:pointer',
+			'aspect:1/1 r:8 p:8 flex flex:column ai:center jc:center gap:4 transition:all|.2s cursor:pointer',
 			getHeatmapColor(charactersWritten),
 			isToday ? 'b:1px|solid|theme-primary' : 'b:1px|solid|theme-border',
 			'hover:bg:theme-surface'
@@ -231,16 +230,16 @@
 </script>
 
 <div class="flex w:100% h:100% bg:theme-background fg:theme-text">
-	<div class="flex-grow:1 flex flex-direction:column min-w:0 min-h:0">
+	<div class="flex-grow:1 flex flex:column min-w:0 min-h:0">
 		<header class="bg:theme-background border-bottom:1|solid|theme-border">
 			<div
-				class="page-header max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 justify-content:space-between align-items:center"
+				class="page-header max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 jc:space-between ai:center"
 			>
 				<div>
 					<h1 class="font:26 font-weight:600 m:0 fg:theme-text">進捗管理</h1>
 					<p class="font:14 fg:theme-text-secondary mt:8">執筆の進捗を記録・可視化します</p>
 				</div>
-				<div class="flex flex-wrap:wrap align-items:center gap:12 max-w:100%">
+				<div class="flex flex-wrap:wrap ai:center gap:12 max-w:100%">
 					<Button
 						class="px:18 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
 						onclick={() => openLogModal(new Date())}
@@ -253,17 +252,15 @@
 		</header>
 
 		<main class="flex-grow:1 overflow-y:auto">
-			<div
-				class="page-body max-w:1280 mx:auto w:100% px:24 py:24 flex flex-direction:column gap:24"
-			>
+			<div class="page-body max-w:1280 mx:auto w:100% px:24 py:24 flex flex:column gap:24">
 				{#if isLoading}
-					<div class="flex justify-content:center align-items:center h:320">
+					<div class="flex jc:center ai:center h:320">
 						<p class="fg:theme-text-secondary font:14">読み込み中...</p>
 					</div>
 				{:else}
-					<div class="stat-cards flex gap:16 flex-wrap:wrap justify-content:space-between">
+					<div class="stat-cards flex gap:16 flex-wrap:wrap jc:space-between">
 						<Card class="flex:1 min-w:200">
-							<div class="p:20 text-align:center flex flex-direction:column gap:8">
+							<div class="p:20 text-align:center flex flex:column gap:8">
 								<p class="font:14 fg:theme-text-secondary">累計文字数</p>
 								<p class="font:30 font-weight:600 fg:theme-text">
 									{stats.totalCharacters.toLocaleString()}
@@ -273,7 +270,7 @@
 						</Card>
 
 						<Card class="flex:1 min-w:200">
-							<div class="p:20 text-align:center flex flex-direction:column gap:8">
+							<div class="p:20 text-align:center flex flex:column gap:8">
 								<p class="font:14 fg:theme-text-secondary">平均執筆量</p>
 								<p class="font:30 font-weight:600 fg:theme-text">
 									{stats.averageDaily.toLocaleString()}
@@ -283,7 +280,7 @@
 						</Card>
 
 						<Card class="flex:1 min-w:200">
-							<div class="p:20 text-align:center flex flex-direction:column gap:8">
+							<div class="p:20 text-align:center flex flex:column gap:8">
 								<p class="font:14 fg:theme-text-secondary">最高記録</p>
 								<p class="font:30 font-weight:600 fg:theme-text">
 									{stats.maxDaily.toLocaleString()}
@@ -293,7 +290,7 @@
 						</Card>
 
 						<Card class="flex:1 min-w:200">
-							<div class="p:20 text-align:center flex flex-direction:column gap:8">
+							<div class="p:20 text-align:center flex flex:column gap:8">
 								<p class="font:14 fg:theme-text-secondary">連続執筆</p>
 								<p class="font:30 font-weight:600 fg:theme-text">{stats.consecutiveDays}</p>
 								<p class="font:12 fg:theme-text-secondary">日間</p>
@@ -301,7 +298,7 @@
 						</Card>
 
 						<Card data-tour="progress-goal" class="flex:1 min-w:200">
-							<div class="p:20 text-align:center flex flex-direction:column gap:8">
+							<div class="p:20 text-align:center flex flex:column gap:8">
 								<p class="font:14 fg:theme-text-secondary">目標達成率</p>
 								<p class="font:30 font-weight:600 fg:theme-primary">{stats.goalProgress}%</p>
 								<p class="font:12 fg:theme-text-secondary">達成</p>
@@ -312,8 +309,8 @@
 					<div class="grid gap:16 lg:grid-template-columns:repeat(3,minmax(0,1fr))">
 						<div class="lg:col:span-2">
 							<Card>
-								<div class="p:24 flex flex-direction:column gap:20">
-									<div class="flex justify-content:space-between align-items:center">
+								<div class="p:24 flex flex:column gap:20">
+									<div class="flex jc:space-between ai:center">
 										<h2 class="font:20 font-weight:600 fg:theme-text">
 											{format(currentMonth, 'yyyy年M月', { locale: ja })}
 										</h2>
@@ -339,7 +336,7 @@
 									</div>
 
 									<div class="grid gap:4 grid-template-columns:repeat(7,minmax(0,1fr)) mb:8">
-										{#each ['日', '月', '火', '水', '木', '金', '土'] as day}
+										{#each ['日', '月', '火', '水', '木', '金', '土'] as day (day)}
 											<div
 												class="text-align:center font:12 font-weight:600 fg:theme-text-secondary py:8"
 											>
@@ -349,7 +346,7 @@
 									</div>
 
 									<div class="grid gap:4 grid-template-columns:repeat(7,minmax(0,1fr))">
-										{#each getCalendarDays() as day}
+										{#each getCalendarDays() as day, index (index)}
 											{#if day === null}
 												<div class="w:full aspect:1/1"></div>
 											{:else}
@@ -373,11 +370,11 @@
 									</div>
 
 									<div
-										class="flex align-items:center gap:8 mt:16 pt:16 bt:1|solid|theme-border flex-wrap:wrap"
+										class="flex ai:center gap:8 mt:16 pt:16 bt:1|solid|theme-border flex-wrap:wrap"
 									>
 										<span class="font:12 fg:theme-text-secondary">執筆量:</span>
-										{#each heatmapLegend as level}
-											<div class="flex align-items:center gap:4">
+										{#each heatmapLegend as level (level.label)}
+											<div class="flex ai:center gap:4">
 												<div
 													class={`w:16 h:16 r:4 b:1px|solid|theme-border ${level.className}`}
 												></div>
@@ -391,14 +388,14 @@
 
 						<div>
 							<Card>
-								<div class="p:24 flex flex-direction:column gap:16">
+								<div class="p:24 flex flex:column gap:16">
 									<h3 class="font:18 font-weight:600 fg:theme-text">最近の記録</h3>
-									<div class="flex flex-direction:column gap:12">
+									<div class="flex flex:column gap:12">
 										{#each recentLogs as log (log.id)}
 											<div
-												class="p:12 bg:theme-surface r:8 b:1px|solid|theme-border flex flex-direction:column gap:8"
+												class="p:12 bg:theme-surface r:8 b:1px|solid|theme-border flex flex:column gap:8"
 											>
-												<div class="flex justify-content:space-between align-items:start">
+												<div class="flex jc:space-between ai:start">
 													<span class="font:14 font-weight:600 fg:theme-text">
 														{format(parseISO(log.date), 'M月d日(E)', { locale: ja })}
 													</span>
@@ -409,15 +406,15 @@
 														編集
 													</button>
 												</div>
-												<div class="flex flex-direction:column gap:4">
-													<div class="flex justify-content:space-between">
+												<div class="flex flex:column gap:4">
+													<div class="flex jc:space-between">
 														<span class="font:12 fg:theme-text-secondary">執筆量</span>
 														<span class="font:14 font-weight:600 fg:theme-text">
 															{log.charactersWritten.toLocaleString()}文字
 														</span>
 													</div>
 													{#if log.timeSpent > 0}
-														<div class="flex justify-content:space-between">
+														<div class="flex jc:space-between">
 															<span class="font:12 fg:theme-text-secondary">執筆時間</span>
 															<span class="font:14 font-weight:600 fg:theme-text">
 																{Math.floor(log.timeSpent / 60)}時間{log.timeSpent % 60}分
@@ -446,44 +443,42 @@
 
 <!-- 進捗記録モーダル -->
 <Modal bind:isOpen={showLogModal} title="進捗記録">
-	{#snippet children()}
-		{#if selectedDate}
-			<div class="flex flex-direction:column gap:16">
-				<div class="p:16 bg:theme-surface r:8 b:1px|solid|theme-border">
-					<p class="font:14 fg:theme-text-secondary mb:4">日付</p>
-					<p class="font:18 font-weight:600 fg:theme-text">
-						{format(selectedDate, 'yyyy年M月d日(E)', { locale: ja })}
-					</p>
-				</div>
-
-				<div>
-					<label for="characters-written" class="block mb:8 font:14 font-weight:600 fg:theme-text"
-						>執筆文字数</label
-					>
-					<input
-						id="characters-written"
-						type="number"
-						bind:value={logForm.charactersWritten}
-						placeholder="0"
-						class={fieldBaseClass}
-					/>
-				</div>
-
-				<div>
-					<label for="time-spent" class="block mb:8 font:14 font-weight:600 fg:theme-text"
-						>執筆時間(分)</label
-					>
-					<input
-						id="time-spent"
-						type="number"
-						bind:value={logForm.timeSpent}
-						placeholder="0"
-						class={fieldBaseClass}
-					/>
-				</div>
+	{#if selectedDate}
+		<div class="flex flex:column gap:16">
+			<div class="p:16 bg:theme-surface r:8 b:1px|solid|theme-border">
+				<p class="font:14 fg:theme-text-secondary mb:4">日付</p>
+				<p class="font:18 font-weight:600 fg:theme-text">
+					{format(selectedDate, 'yyyy年M月d日(E)', { locale: ja })}
+				</p>
 			</div>
-		{/if}
-	{/snippet}
+
+			<div>
+				<label for="characters-written" class="block mb:8 font:14 font-weight:600 fg:theme-text"
+					>執筆文字数</label
+				>
+				<input
+					id="characters-written"
+					type="number"
+					bind:value={logForm.charactersWritten}
+					placeholder="0"
+					class={fieldBaseClass}
+				/>
+			</div>
+
+			<div>
+				<label for="time-spent" class="block mb:8 font:14 font-weight:600 fg:theme-text"
+					>執筆時間(分)</label
+				>
+				<input
+					id="time-spent"
+					type="number"
+					bind:value={logForm.timeSpent}
+					placeholder="0"
+					class={fieldBaseClass}
+				/>
+			</div>
+		</div>
+	{/if}
 
 	{#snippet footer()}
 		<div class="flex gap:12">

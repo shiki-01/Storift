@@ -1,26 +1,24 @@
 Preview Viewer Implementation
- Analyze existing project structure and data models
- Design Preview Component
- Implement Core Preview Layout
- Vertical/Horizontal toggle
- Basic text rendering
- Integrate Preview into Editor Page
- Split view / Toggle logic
- Responsive layout
- Implement Display Settings
- Font size, line height, line length control
- Font selection
- Text orientation (upright/rotated)
- Implement Manuscript Paper Mode
- Grid overlay/background
- Character alignment
- Implement Advanced Text Formatting
- Ruby (Furigana) support
- Bouten (Emphasis dots) support
- Implement Pagination and Line Numbers
- Verify and Polish
-
-
+Analyze existing project structure and data models
+Design Preview Component
+Implement Core Preview Layout
+Vertical/Horizontal toggle
+Basic text rendering
+Integrate Preview into Editor Page
+Split view / Toggle logic
+Responsive layout
+Implement Display Settings
+Font size, line height, line length control
+Font selection
+Text orientation (upright/rotated)
+Implement Manuscript Paper Mode
+Grid overlay/background
+Character alignment
+Implement Advanced Text Formatting
+Ruby (Furigana) support
+Bouten (Emphasis dots) support
+Implement Pagination and Line Numbers
+Verify and Polish
 
 Preview Viewer Implementation Plan
 Goal Description
@@ -31,19 +29,19 @@ Integration: The preview will be integrated into the editor page for real-time f
 Data Source: Need to ensure the editor state is shared with the preview component efficiently.
 Proposed Changes
 Components
-[NEW] 
+[NEW]
 src/lib/components/preview/PreviewViewer.svelte
 Main component for rendering the preview.
 Props: content, settings.
-[NEW] 
+[NEW]
 src/lib/components/preview/PreviewSettings.svelte
 UI controls for toggling modes, adjusting sizes, etc.
 New Setting: Text orientation for alphanumeric characters in vertical mode (upright vs rotated).
-[NEW] 
+[NEW]
 src/lib/components/preview/ManuscriptGrid.svelte
 Component to render the manuscript paper background/grid.
 Routes
-[MODIFY] 
+[MODIFY]
 src/routes/project/[id]/editor/+page.svelte
 Integrate PreviewViewer alongside the editor.
 Add logic to toggle preview visibility or adjust layout based on screen size.

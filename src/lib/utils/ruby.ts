@@ -1,10 +1,10 @@
 /**
  * ルビ（ふりがな）・傍点ユーティリティ
- * 
+ *
  * ルビ記法:
  * - ｜親文字《ルビ文字》 または 親文字《ルビ文字》
  * - 例：｜紅蓮の炎《ヘルフレイム》
- * 
+ *
  * 傍点記法:
  * - 《《テキスト》》（二重山カッコ）
  * - 例：これは《《重要》》です
@@ -36,7 +36,8 @@ export function parseRuby(text: string): RubySegment[] {
 	// 傍点とルビのパターン
 	// 傍点: 《《テキスト》》
 	// ルビ: ｜または|で始まる場合は任意の文字列、そうでなければ漢字のみ
-	const combinedPattern = /《《([^》]+)》》|[｜|]([^《》\n]+)《([^》]+)》|([一-龯々]+)《([^》]+)》/g;
+	const combinedPattern =
+		/《《([^》]+)》》|[｜|]([^《》\n]+)《([^》]+)》|([一-龯々]+)《([^》]+)》/g;
 
 	let lastIndex = 0;
 	let match;
@@ -83,22 +84,79 @@ export function parseRuby(text: string): RubySegment[] {
 }
 
 /**
- * ルビ・傍点をHTMLに変換
+ * HTMLエスケープ
+ */
+export function escapeHtml(text: string): string {
+	return text
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;');
+}
+
+/**
+ * ルビ・傍点をHTMLに変換(本文はエスケープするので {@html} にそのまま渡せる)
  */
 export function rubyToHtml(text: string): string {
 	const segments = parseRuby(text);
 	return segments
 		.map((segment) => {
+			const body = escapeHtml(segment.text);
 			if (segment.bouten) {
 				// 傍点: 各文字にドットを付ける
-				return `<span class="bouten">${segment.text}</span>`;
+				return `<span class="bouten">${body}</span>`;
 			}
 			if (segment.ruby) {
-				return `<ruby>${segment.text}<rt>${segment.ruby}</rt></ruby>`;
+				return `<ruby>${body}<rt>${escapeHtml(segment.ruby)}</rt></ruby>`;
 			}
-			return segment.text;
+			return body;
 		})
 		.join('');
+}
+
+/**
+ * プレビュー用に本文をHTMLへ変換(本文はエスケープするので {@html} にそのまま渡せる)
+ */
+export function previewToHtml(text: string, showRuby: boolean, showBouten: boolean): string {
+	let processed = text;
+
+	// 傍点処理を先に行う（ルビ処理より前に）
+	if (showBouten) {
+		// 傍点記法 《《テキスト》》 を一時的にプレースホルダーに変換
+		processed = processed.replace(/《《([^》]+)》》/g, '%%%BOUTEN_START%%%$1%%%BOUTEN_END%%%');
+	} else {
+		// 傍点記法を削除
+		processed = processed.replace(/《《([^》]+)》》/g, '$1');
+	}
+
+	// ルビ処理
+	if (showRuby) {
+		processed = rubyToHtml(processed);
+	} else {
+		// ルビ記法を削除（｜付きと漢字のみ両方対応）
+		processed = escapeHtml(
+			processed
+				.replace(/[｜|]([^《》\n]+)《[^》]+》/g, '$1')
+				.replace(/([一-龯々]+)《[^》]+》/g, '$1')
+		);
+	}
+
+	// 傍点のプレースホルダーを実際のHTMLに変換
+	if (showBouten) {
+		processed = processed.replace(
+			/%%%BOUTEN_START%%%([^%]+)%%%BOUTEN_END%%%/g,
+			'<span class="bouten">$1</span>'
+		);
+	}
+
+	// 改行を<br>に変換（段落として扱う）
+	processed = processed.replace(/\n/g, '</p><p>');
+	processed = '<p>' + processed + '</p>';
+	// 空の段落を処理
+	processed = processed.replace(/<p><\/p>/g, '<p class="empty-line">&nbsp;</p>');
+
+	return processed;
 }
 
 /**

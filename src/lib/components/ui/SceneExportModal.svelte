@@ -150,13 +150,13 @@
 	}
 </script>
 
-<div class="flex flex-direction:column gap:24">
+<div class="flex flex:column gap:24">
 	<!-- エクスポート方法 -->
 	<div>
 		<span class="display:block font-weight:500 m:0|0|12|0 fg:theme-text">エクスポート方法</span>
 		<div class="flex gap:8">
 			<button
-				class="flex:1 flex align-items:center justify-content:center gap:8 p:12 r:8 cursor:pointer transition:all|0.2s border:1|solid|theme-border {exportMode ===
+				class="flex:1 flex ai:center jc:center gap:8 p:12 r:8 cursor:pointer transition:all|0.2s border:1|solid|theme-border {exportMode ===
 				'download'
 					? 'bg:theme-primary fg:theme-background border-color:theme-primary'
 					: 'bg:theme-background fg:theme-text hover:bg:theme-surface'}"
@@ -166,7 +166,7 @@
 				ファイルダウンロード
 			</button>
 			<button
-				class="flex:1 flex align-items:center justify-content:center gap:8 p:12 r:8 cursor:pointer transition:all|0.2s border:1|solid|theme-border {exportMode ===
+				class="flex:1 flex ai:center jc:center gap:8 p:12 r:8 cursor:pointer transition:all|0.2s border:1|solid|theme-border {exportMode ===
 				'clipboard'
 					? 'bg:theme-primary fg:theme-background border-color:theme-primary'
 					: 'bg:theme-background fg:theme-text hover:bg:theme-surface'}"
@@ -181,10 +181,10 @@
 	<!-- 変換形式 -->
 	<div>
 		<span class="display:block font-weight:500 m:0|0|12|0 fg:theme-text">ルビ・傍点の変換形式</span>
-		<div class="flex flex-direction:column gap:8 max-h:200 overflow-y:auto">
-			{#each allPatterns as pattern}
+		<div class="flex flex:column gap:8 max-h:200 overflow-y:auto">
+			{#each allPatterns as pattern (pattern.id)}
 				<button
-					class="flex align-items:center gap:12 p:12 r:8 cursor:pointer transition:all|0.2s border:1|solid|theme-border text-align:left {selectedPatternId ===
+					class="flex ai:center gap:12 p:12 r:8 cursor:pointer transition:all|0.2s border:1|solid|theme-border text-align:left {selectedPatternId ===
 					pattern.id
 						? 'bg:theme-surface border-color:theme-primary'
 						: 'bg:theme-background hover:bg:theme-surface'}"
@@ -193,7 +193,7 @@
 					<div
 						class="w:20 h:20 r:full border:1|solid|{selectedPatternId === pattern.id
 							? 'theme-primary'
-							: 'theme-border'} flex align-items:center justify-content:center"
+							: 'theme-border'} flex ai:center jc:center"
 					>
 						{#if selectedPatternId === pattern.id}
 							<div class="w:10 h:10 r:full bg:theme-primary"></div>
@@ -223,10 +223,10 @@
 	</div>
 
 	<!-- ボタン -->
-	<div class="flex justify-content:flex-end gap:12">
+	<div class="flex jc:flex-end gap:12">
 		<Button variant="secondary" onclick={onClose}>キャンセル</Button>
 		<Button onclick={handleExport}>
-			<span class="flex align-items:center gap:6">
+			<span class="flex ai:center gap:6">
 				<Icon name={exportMode === 'download' ? 'download' : 'copy'} class="w:16px" />
 				{exportMode === 'download' ? 'ダウンロード' : 'コピー'}
 			</span>

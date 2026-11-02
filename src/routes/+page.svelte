@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { settingsDB } from '$lib/db';
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { authStore } from '$lib/stores/auth.svelte';
@@ -30,22 +31,22 @@
 					}
 				}
 
-				goto('/home');
+				goto(resolve('/home'));
 			} catch (error) {
 				console.error('Firebase initialization error:', error);
 				// 初期化エラーの場合はセットアップへ
-				goto('/setup');
+				goto(resolve('/setup'));
 			}
 		} else if (settings.setupCompleted) {
 			// 同期なしで始めた場合は、そのままホームへ
-			goto('/home');
+			goto(resolve('/home'));
 		} else {
-			goto('/setup');
+			goto(resolve('/setup'));
 		}
 	});
 </script>
 
-<div class="flex align-items:center justify-content:center h:100%">
+<div class="flex ai:center jc:center h:100%">
 	<div class="text-align:center">
 		<h1 class="font:32 font-weight:700 m:0|0|16|0">Storift</h1>
 		<p class="fg:theme-text-secondary">読み込み中...</p>

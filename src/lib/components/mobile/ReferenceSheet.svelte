@@ -155,7 +155,7 @@
 									{#if c.relationships.length > 0}
 										<dt>関係</dt>
 										<dd>
-											{#each c.relationships as r}
+											{#each c.relationships as r, ri (ri)}
 												{@const other = characters.find((x) => x.id === r.characterId)}
 												<div>{other?.name ?? '(不明)'}: {r.relation}</div>
 											{/each}

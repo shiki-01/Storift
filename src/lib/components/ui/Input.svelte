@@ -27,7 +27,7 @@
 
 {#if label}
 	{@const inputId = `input-${Math.random().toString(36).slice(2, 9)}`}
-	<div class="flex flex-direction:column gap:8">
+	<div class="flex flex:column gap:8">
 		<label for={inputId} class="font:14 font:semibold fg:theme-text">{label}</label>
 		<input
 			id={inputId}

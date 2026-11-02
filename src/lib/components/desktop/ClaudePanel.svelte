@@ -2,6 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import { fade, fly, slide } from 'svelte/transition';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { formatRelativeTime } from '$lib/utils/dateUtils';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
@@ -101,7 +102,8 @@
 	}
 
 	function openSettings() {
-		void goto('/settings#claude');
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() の引数にハッシュは渡せないので、解決後に付ける
+		void goto(`${resolve('/settings')}#claude`);
 	}
 
 	// 入力に合わせて入力欄を伸ばす(最大 8 行ほど)
@@ -248,8 +250,11 @@
 		stroke-width="1.7"
 		stroke-linecap="round"
 		stroke-linejoin="round"
-		aria-hidden="true">{@html path}</svg
+		aria-hidden="true"
 	>
+		<!-- eslint-disable-next-line svelte/no-at-html-tags -- 固定のアイコン定義 -->
+		{@html path}
+	</svg>
 {/snippet}
 
 <aside class="panel" data-claude-panel style="width:{claudeStore.width}px" aria-label="Claude Code">

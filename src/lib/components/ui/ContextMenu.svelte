@@ -87,7 +87,7 @@
 		role="menu"
 		tabindex="-1"
 	>
-		{#each items as item}
+		{#each items as item, i (i)}
 			{#if item.divider}
 				<div class="divider"></div>
 			{:else}

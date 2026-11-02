@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { parseRuby, rubyToHtml, removeRuby, normalizeRuby } from '$lib/utils/ruby';
+	import { rubyToHtml, removeRuby, normalizeRuby } from '$lib/utils/ruby';
 	import Modal from './Modal.svelte';
 	import Button from './Button.svelte';
 	import Icon from './Icon.svelte';
@@ -53,7 +53,7 @@
 		const lines = text.split('\n');
 		const unindentedLines = lines.map((line) => {
 			// 行頭の全角スペースまたは半角スペースを削除
-			return line.replace(/^[　 ]+/, '');
+			return line.replace(/^[\u3000 ]+/, '');
 		});
 		text = unindentedLines.join('\n');
 	}
@@ -85,15 +85,15 @@
 	// 統計情報
 	let stats = $derived({
 		paragraphs: text.split('\n').filter((line) => line.trim() !== '').length,
-		indentedParagraphs: text.split('\n').filter((line) => /^[　 ]/.test(line)).length
+		indentedParagraphs: text.split('\n').filter((line) => /^[\u3000 ]/.test(line)).length
 	});
 </script>
 
-<div class="flex flex-direction:column gap:24">
+<div class="flex flex:column gap:24">
 	<!-- タブ -->
 	<div class="flex gap:4 bg:theme-surface r:10 p:4" role="tablist">
 		<button
-			class="flex:1 flex align-items:center justify-content:center gap:8 p:10 r:7 font:14 cursor:pointer transition:all|0.15s {activeTab ===
+			class="flex:1 flex ai:center jc:center gap:8 p:10 r:7 font:14 cursor:pointer transition:all|0.15s {activeTab ===
 			'formatting'
 				? 'bg:theme-background fg:theme-text font-weight:600 b:1px|solid|theme-border'
 				: 'bg:transparent fg:theme-text b:1px|solid|transparent hover:bg:theme-background'}"
@@ -103,7 +103,7 @@
 			テキスト整形
 		</button>
 		<button
-			class="flex:1 flex align-items:center justify-content:center gap:8 p:10 r:7 font:14 cursor:pointer transition:all|0.15s {activeTab ===
+			class="flex:1 flex ai:center jc:center gap:8 p:10 r:7 font:14 cursor:pointer transition:all|0.15s {activeTab ===
 			'ruby'
 				? 'bg:theme-background fg:theme-text font-weight:600 b:1px|solid|theme-border'
 				: 'bg:transparent fg:theme-text b:1px|solid|transparent hover:bg:theme-background'}"
@@ -116,7 +116,7 @@
 
 	{#if activeTab === 'formatting'}
 		<!-- テキスト整形 -->
-		<div class="flex flex-direction:column gap:20">
+		<div class="flex flex:column gap:20">
 			<!-- 字下げ -->
 			<div>
 				<span class="display:block font-weight:500 m:0|0|12|0 fg:theme-text">段落の字下げ</span>
@@ -125,13 +125,13 @@
 				</p>
 				<div class="flex gap:8">
 					<Button size="sm" onclick={applyIndentation}>
-						<span class="flex align-items:center gap:6">
+						<span class="flex ai:center gap:6">
 							<Icon name="indent-increase" class="w:16px" />
 							字下げを適用
 						</span>
 					</Button>
 					<Button size="sm" variant="secondary" onclick={removeIndentation}>
-						<span class="flex align-items:center gap:6">
+						<span class="flex ai:center gap:6">
 							<Icon name="indent-decrease" class="w:16px" />
 							字下げを削除
 						</span>
@@ -156,7 +156,7 @@
 		</div>
 	{:else}
 		<!-- ルビ -->
-		<div class="flex flex-direction:column gap:20">
+		<div class="flex flex:column gap:20">
 			<!-- 対応記法 -->
 			<div>
 				<span class="display:block font-weight:500 m:0|0|12|0 fg:theme-text">対応記法</span>
@@ -180,19 +180,19 @@
 				<span class="display:block font-weight:500 m:0|0|12|0 fg:theme-text">ルビ操作</span>
 				<div class="flex gap:8 flex-wrap">
 					<Button size="sm" onclick={previewRuby}>
-						<span class="flex align-items:center gap:6">
+						<span class="flex ai:center gap:6">
 							<Icon name="eye" class="w:16px" />
 							プレビュー
 						</span>
 					</Button>
 					<Button size="sm" variant="secondary" onclick={normalizeRubyFormat}>
-						<span class="flex align-items:center gap:6">
+						<span class="flex ai:center gap:6">
 							<Icon name="tool" class="w:16px" />
 							表記統一
 						</span>
 					</Button>
 					<Button size="sm" variant="secondary" onclick={removeRubyFromText}>
-						<span class="flex align-items:center gap:6">
+						<span class="flex ai:center gap:6">
 							<Icon name="trash" class="w:16px" />
 							ルビ削除
 						</span>
@@ -208,17 +208,17 @@
 				<p class="font:13 fg:theme-text-secondary m:0|0|12|0">
 					他サービスからコピーしたテキストのルビ記法をStorift形式に変換します。
 				</p>
-				<div class="flex flex-direction:column gap:12">
+				<div class="flex flex:column gap:12">
 					<select
 						bind:value={selectedConvertFormat}
 						class="w:full p:10 r:6 b:1|solid|theme-border fg:theme-text font:14"
 					>
-						{#each convertPatterns as pattern}
+						{#each convertPatterns as pattern (pattern.id)}
 							<option value={pattern.id}>{pattern.name}</option>
 						{/each}
 					</select>
 					<Button size="sm" onclick={convertToStorift}>
-						<span class="flex align-items:center gap:6">
+						<span class="flex ai:center gap:6">
 							<Icon name="refresh" class="w:16px" />
 							Storift形式に変換
 						</span>
@@ -245,6 +245,7 @@
 			class="ruby-preview p:24"
 			style="writing-mode: vertical-rl; text-orientation: mixed; line-height: 2;"
 		>
+			<!-- eslint-disable-next-line svelte/no-at-html-tags -- rubyToHtml でエスケープ済み -->
 			{@html rubyPreview}
 		</div>
 	</Modal>

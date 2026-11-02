@@ -2,7 +2,8 @@
 	import '../app.css';
 	import { logo } from '$lib/assets/logo';
 	import { onMount } from 'svelte';
-	import { page } from '$app/stores';
+	import { page, updated } from '$app/state';
+	import { resolve } from '$app/paths';
 	import {
 		startNetworkMonitoring,
 		stopNetworkMonitoring,
@@ -16,7 +17,6 @@
 	import { viewport, initViewport } from '$lib/stores/viewport.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
 	import { registerServiceWorker, checkForUpdate } from '$lib/utils/sw-register';
-	import { updated } from '$app/state';
 	import { initializeErrorHandler } from '$lib/utils/errorHandler';
 	import SyncStatus from '$lib/components/ui/SyncStatus.svelte';
 	import ToastHost from '$lib/components/ui/ToastHost.svelte';
@@ -51,11 +51,11 @@
 	});
 
 	// プロジェクトページかどうかを判定
-	let isProjectPage = $derived($page.url.pathname.startsWith('/project/'));
-	let projectId = $derived($page.params.id || '');
+	let isProjectPage = $derived(page.url.pathname.startsWith('/project/'));
+	let projectId = $derived(page.params.id || '');
 
 	function isActive(path: string): boolean {
-		return $page.url.pathname.includes(`/project/${projectId}/${path}`);
+		return page.url.pathname.includes(`/project/${projectId}/${path}`);
 	}
 
 	// ページタイトル(タブ名)
@@ -65,7 +65,7 @@
 		'/setup': 'セットアップ'
 	};
 	let sectionLabel = $derived.by(() => {
-		const path = $page.url.pathname;
+		const path = page.url.pathname;
 		if (isProjectPage) {
 			return projectNavItems.find((item) => path.includes(`/project/${projectId}/${item.path}`))
 				?.label;
@@ -79,7 +79,7 @@
 	});
 
 	// 画面が切り替わった時だけ、ふわっと出す。作品の中の移動ではプロジェクトの読み込みをやり直さない
-	let pageKey = $derived(isProjectPage ? `project/${projectId}` : $page.url.pathname);
+	let pageKey = $derived(isProjectPage ? `project/${projectId}` : page.url.pathname);
 
 	let pageTitle = $derived(
 		sectionLabel ? `${sectionLabel} - Storift` : 'Storift - 小説執筆PWAアプリ'
@@ -87,7 +87,7 @@
 
 	// デスクトップは左端のレールで画面を切り替える(上部ヘッダーは持たない)。
 	// スマホは細い上部バーを出すが、エディタは専用の上部バーを自前で持つため出さない
-	let isEditorRoute = $derived(isProjectPage && $page.url.pathname.endsWith('/editor'));
+	let isEditorRoute = $derived(isProjectPage && page.url.pathname.endsWith('/editor'));
 	let showRail = $derived(!viewport.isMobile && !editorStore.focusMode);
 	let showMobileHeader = $derived(viewport.isMobile && !isEditorRoute && !editorStore.focusMode);
 	let showBottomNav = $derived(
@@ -198,7 +198,7 @@
 				<header class="app-header">
 					<div class="app-header-inner">
 						{#if isProjectPage}
-							<a href="/home" class="icon-btn" aria-label="作品一覧へ戻る">
+							<a href={resolve('/home')} class="icon-btn" aria-label="作品一覧へ戻る">
 								<svg
 									viewBox="0 0 24 24"
 									width="22"
@@ -213,14 +213,15 @@
 							</a>
 							<span class="header-title">{sectionLabel ?? ''}</span>
 						{:else}
-							<a href="/home" class="header-logo" aria-label="ホーム">
+							<a href={resolve('/home')} class="header-logo" aria-label="ホーム">
+								<!-- eslint-disable-next-line svelte/no-at-html-tags -- 固定の SVG ロゴ(色のみ可変) -->
 								{@html logo(themes[themeStore.theme.id].colors.text)}
 							</a>
 							<span class="flex:1"></span>
 						{/if}
 						<SyncStatus />
 						{#if !isProjectPage}
-							<a href="/settings" class="header-link">設定</a>
+							<a href={resolve('/settings')} class="header-link">設定</a>
 						{/if}
 					</div>
 				</header>
@@ -240,7 +241,7 @@
 				<nav class="bottom-nav" aria-label="プロジェクト">
 					{#each projectNavItems as item (item.path)}
 						<a
-							href="/project/{projectId}/{item.path}"
+							href={resolve(`/project/${projectId}/${item.path}`)}
 							aria-current={isActive(item.path) ? 'page' : undefined}
 							class="bottom-nav-item {isActive(item.path) ? 'is-active' : ''}"
 							data-tour="nav-{item.path}"
@@ -254,8 +255,11 @@
 								stroke-width="1.6"
 								stroke-linecap="round"
 								stroke-linejoin="round"
-								aria-hidden="true">{@html navIcons[item.icon]}</svg
+								aria-hidden="true"
 							>
+								<!-- eslint-disable-next-line svelte/no-at-html-tags -- 固定のアイコン定義 -->
+								{@html navIcons[item.icon]}
+							</svg>
 							<span class="bottom-nav-label">{item.label}</span>
 						</a>
 					{/each}

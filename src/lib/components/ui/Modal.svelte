@@ -121,7 +121,7 @@
 	<!-- キーボード操作(Esc)は window 側で処理している -->
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
-		class="position:fixed inset:0 bg:rgba(0,0,0,0.28) z:1000 flex align-items:center justify-content:center"
+		class="position:fixed inset:0 bg:rgba(0,0,0,0.28) z:1000 flex ai:center jc:center"
 		onclick={handleBackdropClick}
 		role="dialog"
 		aria-modal="true"
@@ -138,7 +138,7 @@
 			]} w:90% max-h:90dvh overflow:auto box-shadow:var(--shadow-float)"
 		>
 			<div
-				class="modal-header flex justify-content:space-between align-items:center px:24 py:16 border-bottom:1|solid|theme-border"
+				class="modal-header flex jc:space-between ai:center px:24 py:16 border-bottom:1|solid|theme-border"
 			>
 				<h2 class="font:17 font-weight:600 m:0">{title}</h2>
 				<button
@@ -169,7 +169,7 @@
 					{@render footer()}
 				</div>
 			{:else if onConfirm}
-				<div class="modal-footer p:24 pt:0 flex gap:12 justify-content:flex-end">
+				<div class="modal-footer p:24 pt:0 flex gap:12 jc:flex-end">
 					<button
 						class="px:16 py:8 border:1|solid|theme-border r:6 bg:theme-background fg:theme-text cursor:pointer hover:bg:theme-surface"
 						onclick={handleClose}

@@ -141,17 +141,6 @@
 	// 書式設定モーダルのタブ
 	let formattingTab = $state<'editor' | 'preview'>('editor');
 
-	// 表示モード切替
-	function cycleViewMode() {
-		if (viewMode === 'editor') {
-			viewMode = 'split';
-		} else if (viewMode === 'split') {
-			viewMode = 'preview';
-		} else {
-			viewMode = 'editor';
-		}
-	}
-
 	// コンテキストメニュー
 	let contextMenu = $state<{
 		visible: boolean;
@@ -1004,11 +993,12 @@
 				try {
 					const range = selection.getRangeAt(0);
 					offset = range.startOffset;
-				} catch (err) {
+				} catch {
 					// getRangeAt失敗時はoffset = 0のまま
 				}
 			}
 
+			// eslint-disable-next-line svelte/no-dom-manipulating -- contenteditable の中身は Svelte の管理外
 			editorDiv.innerText = editorStore.content;
 
 			// カーソル位置を復元（可能な限り）
@@ -1022,7 +1012,7 @@
 					selection.removeAllRanges();
 					selection.addRange(newRange);
 				}
-			} catch (err) {
+			} catch {
 				// カーソル復元失敗時は無視
 			}
 		}
@@ -1473,7 +1463,7 @@
 	{/if}
 
 	<!-- エディタエリア -->
-	<div class="editor-main flex flex-direction:column w:100% h:100% overflow-y:auto">
+	<div class="editor-main flex flex:column w:100% h:100% overflow-y:auto">
 		<!-- スマホ: 1 本だけの上部バー -->
 		{#if viewport.isMobile && !editorStore.focusMode}
 			<div class="m-bar-wrap" class:hidden={chromeHidden}>
@@ -1561,7 +1551,7 @@
 					</button>
 				</div>
 			{/if}
-			<div class="flex align-items:center justify-content:center h:full">
+			<div class="flex ai:center jc:center h:full">
 				<div class="text-align:center p:24">
 					<p class="fg:theme-text-secondary font:16 mb:16">
 						{currentProjectStore.chapters.length === 0
@@ -1580,8 +1570,8 @@
 			{#if !viewport.isMobile && !editorStore.focusMode}
 				<div class="editor-toolbar">
 					<!-- タイトルと保存状態 -->
-					<div class="editor-toolbar-row flex justify-content:space-between align-items:center">
-						<div class="editor-title-area flex align-items:center gap:16">
+					<div class="editor-toolbar-row flex jc:space-between ai:center">
+						<div class="editor-title-area flex ai:center gap:16">
 							<button
 								class="tool sidebar-toggle"
 								class:on={editorStore.sceneListOpen}
@@ -1623,7 +1613,7 @@
 								</button>
 							{/if}
 						</div>
-						<div class="editor-toolbar-actions flex align-items:center gap:8">
+						<div class="editor-toolbar-actions flex ai:center gap:8">
 							<!-- 書式設定ボタン -->
 							<button
 								class="tool"
@@ -1782,7 +1772,6 @@
 						>
 							<div class="editor-page" class:typewriter={editorStore.typewriter}>
 								<!-- contentEditable div -->
-								<!-- svelte-ignore a11y_no_static_element_interactions -->
 								<div
 									bind:this={editorDiv}
 									data-tour="editor-body"
@@ -2090,7 +2079,7 @@
 			<label class="display:block font-weight:500 m:0|0|8|0" for="chapterTitle">章のタイトル</label>
 			<Input id="chapterTitle" bind:value={newChapterTitle} placeholder="第1章" required />
 		</div>
-		<div class="flex justify-content:flex-end gap:12">
+		<div class="flex jc:flex-end gap:12">
 			<Button type="button" variant="secondary" onclick={() => (isChapterModalOpen = false)}>
 				キャンセル
 			</Button>
@@ -2113,7 +2102,7 @@
 			>
 			<Input id="sceneTitle" bind:value={newSceneTitle} placeholder="オープニング" required />
 		</div>
-		<div class="flex justify-content:flex-end gap:12">
+		<div class="flex jc:flex-end gap:12">
 			<Button type="button" variant="secondary" onclick={() => (isSceneModalOpen = false)}>
 				キャンセル
 			</Button>
@@ -2159,11 +2148,7 @@
 		title="バージョン履歴"
 		size="large"
 	>
-		<VersionManager
-			entityType="scene"
-			entityId={editorStore.currentScene.id}
-			projectId={currentProjectStore.project.id}
-		/>
+		<VersionManager entityType="scene" entityId={editorStore.currentScene.id} />
 	</Modal>
 {/if}
 
@@ -2185,7 +2170,7 @@
 
 <!-- 書式設定モーダル -->
 <Modal bind:isOpen={showFormattingModal} title="書式設定" size="large" onClose={cancelFormatting}>
-	<div class="flex flex-direction:column gap:24">
+	<div class="flex flex:column gap:24">
 		<!-- タブ -->
 		<div class="flex gap:4 bg:theme-surface r:8 p:4">
 			<button
@@ -2229,7 +2214,7 @@
 					step="1"
 					class="w:full"
 				/>
-				<div class="flex justify-content:space-between font:12 fg:theme-text-secondary mt:4">
+				<div class="flex jc:space-between font:12 fg:theme-text-secondary mt:4">
 					<span>12px</span>
 					<span>24px</span>
 				</div>
@@ -2248,7 +2233,7 @@
 					step="0.1"
 					class="w:full"
 				/>
-				<div class="flex justify-content:space-between font:12 fg:theme-text-secondary mt:4">
+				<div class="flex jc:space-between font:12 fg:theme-text-secondary mt:4">
 					<span>1.0</span>
 					<span>3.0</span>
 				</div>
@@ -2267,7 +2252,7 @@
 					step="0.01"
 					class="w:full"
 				/>
-				<div class="flex justify-content:space-between font:12 fg:theme-text-secondary mt:4">
+				<div class="flex jc:space-between font:12 fg:theme-text-secondary mt:4">
 					<span>-0.05em</span>
 					<span>0.20em</span>
 				</div>
@@ -2290,7 +2275,7 @@
 			</div>
 
 			<!-- ボタン -->
-			<div class="flex justify-content:flex-end gap:12">
+			<div class="flex jc:flex-end gap:12">
 				<Button type="button" variant="secondary" onclick={() => (showFormattingModal = false)}>
 					キャンセル
 				</Button>
@@ -2315,7 +2300,7 @@
 			<label class="display:block font-weight:500 m:0|0|8|0" for="renameValue">新しい名前</label>
 			<Input id="renameValue" bind:value={renameValue} placeholder="名前を入力" required />
 		</div>
-		<div class="flex justify-content:flex-end gap:12">
+		<div class="flex jc:flex-end gap:12">
 			<Button type="button" variant="secondary" onclick={() => (isRenameModalOpen = false)}>
 				キャンセル
 			</Button>

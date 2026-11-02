@@ -15,6 +15,13 @@ export interface NotificationOptions {
 	actions?: Array<{ action: string; title: string }>;
 }
 
+/** Service Worker 経由で表示するときに渡すオプション(標準の NotificationOptions に本サービスで使うフィールドを追加) */
+export interface ServiceWorkerNotificationOptions extends globalThis.NotificationOptions {
+	vibrate: number[];
+	data: { type: NotificationType; timestamp: number };
+	actions?: Array<{ action: string; title: string }>;
+}
+
 export interface WritingGoal {
 	id: string;
 	projectId: string;
@@ -80,7 +87,7 @@ class NotificationService {
 		if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
 			try {
 				const registration = await navigator.serviceWorker.ready;
-				const notificationOptions: any = {
+				const notificationOptions: ServiceWorkerNotificationOptions = {
 					body,
 					icon: icon || '/icon-192.png',
 					badge: '/icon-192.png',

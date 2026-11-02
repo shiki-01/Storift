@@ -14,7 +14,7 @@
 	import { themeStore, type Theme } from '$lib/stores/theme.svelte';
 	import { parseThemeFile, serializeTheme } from '$lib/utils/themeTools';
 	import ThemeEditor from '$lib/components/ui/ThemeEditor.svelte';
-	import { exportAllProjects, exportAsJson } from '$lib/services/export.service';
+	import { exportAllProjects } from '$lib/services/export.service';
 	import { importFromJson } from '$lib/services/import.service';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
@@ -26,12 +26,13 @@
 	import { isDesktop } from '$lib/desktop/platform';
 	import type { AppSettings } from '$lib/types/settings';
 	import { isFirebaseInitialized } from '$lib/firebase/config';
-	import { setupRealtimeSync, stopAllRealtimeSync } from '$lib/firebase/sync';
+	import { stopAllRealtimeSync } from '$lib/firebase/sync';
 	import { syncStore } from '$lib/stores/sync.svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { notificationService } from '$lib/services/notification.service';
 	import { version as buildVersion } from '$app/environment';
 	import { getServiceWorkerVersion, checkForUpdate } from '$lib/utils/sw-register';
+	import { resolve } from '$app/paths';
 
 	let backupsOpen = $state(false);
 
@@ -365,7 +366,7 @@
 			}
 			toast.success('キャッシュをクリアしました');
 			showClearDataModal = false;
-		} catch (error) {
+		} catch {
 			toast.error('キャッシュのクリアに失敗しました');
 		}
 	};
@@ -378,7 +379,7 @@
 			await handleClearCache();
 			toast.success('全データを削除しました。ページをリロードします。');
 			window.location.href = '/';
-		} catch (error) {
+		} catch {
 			toast.error('データの削除に失敗しました');
 		}
 	};
@@ -406,21 +407,18 @@
 		<h1 class="settings-title">設定</h1>
 
 		{#if isDesktop()}
-			<Card class="flex flex-direction:column gap:1rem b:1px|solid|theme-border">
+			<Card class="flex flex:column gap:1rem b:1px|solid|theme-border">
 				<h2 id="claude" class="font:bold">Claude Code</h2>
 				<ClaudeSettings />
 			</Card>
 		{/if}
 
 		<!-- テーマ設定 -->
-		<Card
-			data-tour="settings-theme"
-			class="flex flex-direction:column gap:1rem b:1px|solid|theme-border"
-		>
+		<Card data-tour="settings-theme" class="flex flex:column gap:1rem b:1px|solid|theme-border">
 			<h2 class="font:bold">テーマ</h2>
 
 			<div>
-				<label class="flex align-items:center gap:.5rem cursor:pointer">
+				<label class="flex ai:center gap:.5rem cursor:pointer">
 					<input type="checkbox" checked={settings.autoTheme} onchange={handleAutoThemeToggle} />
 					<span>システム設定に従う</span>
 				</label>
@@ -511,7 +509,7 @@
 		/>
 
 		<!-- Phase 2: 通知設定 -->
-		<Card class="b:1px|solid|theme-border">
+		<Card class="b:1px|solid|theme-border flex flex:column gap:1rem">
 			<h2 class="font:bold">通知とリマインダー</h2>
 			{#if currentProjectStore.project}
 				<NotificationSettings projectId={currentProjectStore.project.id} />
@@ -521,16 +519,16 @@
 		</Card>
 
 		<!-- 書式設定 -->
-		<Card class="b:1px|solid|theme-border flex flex-direction:column gap:1rem">
+		<Card class="b:1px|solid|theme-border flex flex:column gap:1rem">
 			<h2 class="font:bold">書式設定</h2>
 			<p class="fg:theme-text-secondary font:.875rem">
 				エディタのテキスト表示形式を一括で調整できます。
 			</p>
 
-			<div class="flex flex-direction:column gap:1.5rem">
+			<div class="flex flex:column gap:1.5rem">
 				<!-- フォントサイズ -->
-				<div class="flex flex-direction:column gap:.5rem">
-					<div class="flex justify-content:space-between align-items:center">
+				<div class="flex flex:column gap:.5rem">
+					<div class="flex jc:space-between ai:center">
 						<label for="fontSize" class="font-weight:500">フォントサイズ</label>
 						<span class="fg:theme-text-secondary font:.875rem"
 							>{settings.editorFormatting.fontSize}px</span
@@ -546,15 +544,15 @@
 						step="1"
 						class="w:full"
 					/>
-					<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
+					<div class="flex jc:space-between fg:theme-text-secondary font:.75rem">
 						<span>小 (12px)</span>
 						<span>大 (24px)</span>
 					</div>
 				</div>
 
 				<!-- 行間 -->
-				<div class="flex flex-direction:column gap:.5rem">
-					<div class="flex justify-content:space-between align-items:center">
+				<div class="flex flex:column gap:.5rem">
+					<div class="flex jc:space-between ai:center">
 						<label for="lineHeight" class="font-weight:500">行間</label>
 						<span class="fg:theme-text-secondary font:.875rem"
 							>{settings.editorFormatting.lineHeight.toFixed(1)}</span
@@ -570,15 +568,15 @@
 						step="0.1"
 						class="w:full"
 					/>
-					<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
+					<div class="flex jc:space-between fg:theme-text-secondary font:.75rem">
 						<span>狭い (1.0)</span>
 						<span>広い (3.0)</span>
 					</div>
 				</div>
 
 				<!-- 字間 -->
-				<div class="flex flex-direction:column gap:.5rem">
-					<div class="flex justify-content:space-between align-items:center">
+				<div class="flex flex:column gap:.5rem">
+					<div class="flex jc:space-between ai:center">
 						<label for="letterSpacing" class="font-weight:500">字間</label>
 						<span class="fg:theme-text-secondary font:.875rem"
 							>{settings.editorFormatting.letterSpacing.toFixed(2)}em</span
@@ -594,15 +592,15 @@
 						step="0.01"
 						class="w:full"
 					/>
-					<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
+					<div class="flex jc:space-between fg:theme-text-secondary font:.75rem">
 						<span>狭い (-0.05em)</span>
 						<span>広い (0.2em)</span>
 					</div>
 				</div>
 
 				<!-- 段落間隔 -->
-				<div class="flex flex-direction:column gap:.5rem">
-					<div class="flex justify-content:space-between align-items:center">
+				<div class="flex flex:column gap:.5rem">
+					<div class="flex jc:space-between ai:center">
 						<label for="paragraphSpacing" class="font-weight:500">段落間隔</label>
 						<span class="fg:theme-text-secondary font:.875rem"
 							>{settings.editorFormatting.paragraphSpacing}px</span
@@ -618,7 +616,7 @@
 						step="4"
 						class="w:full"
 					/>
-					<div class="flex justify-content:space-between fg:theme-text-secondary font:.75rem">
+					<div class="flex jc:space-between fg:theme-text-secondary font:.75rem">
 						<span>なし (0px)</span>
 						<span>広い (48px)</span>
 					</div>
@@ -662,13 +660,10 @@
 		</Card>
 
 		<!-- 同期設定 -->
-		<Card
-			data-tour="settings-sync"
-			class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem"
-		>
+		<Card data-tour="settings-sync" class="b:1px|solid|theme-border  flex flex:column gap:1rem">
 			<h2 class="font:bold">同期</h2>
 
-			<div class="flex flex-direction:column gap:1rem">
+			<div class="flex flex:column gap:1rem">
 				<div>
 					<label class="flex ai:center gap:.5rem cursor:pointer">
 						<input type="checkbox" checked={settings.syncEnabled} onchange={handleSyncToggle} />
@@ -679,7 +674,7 @@
 					</p>
 				</div>
 
-				<div class="flex flex-direction:column gap:.5rem">
+				<div class="flex flex:column gap:.5rem">
 					<label for="conflictResolution" class="font:bold">競合解決方法</label>
 					<p class="fg:theme-text-secondary font:.875rem">
 						同じデータが複数の端末で編集された場合の処理方法を選択します。
@@ -716,7 +711,7 @@
 					</div>
 				</div>
 
-				<div class="flex flex-direction:column gap:.5rem">
+				<div class="flex flex:column gap:.5rem">
 					<span class="font:bold">同期バックアップ</span>
 					<p class="fg:theme-text-secondary font:.875rem">
 						競合や他端末の削除で上書きされた版は90日間保存され、ここから復元できます。
@@ -763,18 +758,18 @@
 					</div>
 				{:else}
 					<div
-						class="px:1rem py:1em b:1px|solid|theme-warning r:8px flex flex-direction:column gap:1rem"
+						class="px:1rem py:1em b:1px|solid|theme-warning r:8px flex flex:column gap:1rem"
 						style="background-color: color-mix(in srgb, var(--color-warning) 10%, transparent);"
 					>
 						<p class="font:bold fg:theme-warning">Firebase連携が設定されていません</p>
-						<a href="/setup" class="fg:theme-primary"> Firebase設定ページへ → </a>
+						<a href={resolve('/setup')} class="fg:theme-primary"> Firebase設定ページへ → </a>
 					</div>
 				{/if}
 			</div>
 		</Card>
 
 		<!-- エディタ(自動保存) -->
-		<Card class="b:1px|solid|theme-border flex flex-direction:column gap:1rem">
+		<Card class="b:1px|solid|theme-border flex flex:column gap:1rem">
 			<h2 class="font:bold">エディタ</h2>
 
 			<label class="flex ai:center gap:.5rem cursor:pointer">
@@ -786,7 +781,7 @@
 			</p>
 
 			{#if settings.autoSave}
-				<label class="flex flex-direction:column gap:.5rem">
+				<label class="flex flex:column gap:.5rem">
 					<span>入力し続けているときの最大の待ち時間（秒）</span>
 					<input
 						type="number"
@@ -802,14 +797,14 @@
 		</Card>
 
 		<!-- ショートカットキー -->
-		<Card class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem">
+		<Card class="b:1px|solid|theme-border  flex flex:column gap:1rem">
 			<h2 class="font:bold">ショートカットキー</h2>
 			<p class="fg:theme-text-secondary font:.875rem">
 				「変更」を押してからキーを押すと割り当てられます（Ctrl または Alt
 				と組み合わせてください）。Mac では Cmd が Ctrl として扱われます。
 			</p>
 
-			<div class="flex flex-direction:column gap:.6rem">
+			<div class="flex flex:column gap:.6rem">
 				{#each Object.entries(settings.shortcuts) as [name, key] (name)}
 					{@const action = name as ShortcutAction}
 					{@const fixed = FIXED_SHORTCUTS.includes(action)}
@@ -840,7 +835,7 @@
 		</Card>
 
 		<!-- 使い方 -->
-		<Card class="b:1px|solid|theme-border flex flex-direction:column gap:1rem">
+		<Card class="b:1px|solid|theme-border flex flex:column gap:1rem">
 			<h2 class="font:bold">使い方</h2>
 			<div>
 				<Button variant="secondary" onclick={() => tourStore.start()}
@@ -850,14 +845,11 @@
 		</Card>
 
 		<!-- データ管理 -->
-		<Card
-			data-tour="settings-backup"
-			class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem"
-		>
+		<Card data-tour="settings-backup" class="b:1px|solid|theme-border  flex flex:column gap:1rem">
 			<h2 class="font:bold">データ管理</h2>
 
-			<div class="flex flex-direction:column gap:1rem">
-				<div class="flex flex-direction:column gap:.6rem">
+			<div class="flex flex:column gap:1rem">
+				<div class="flex flex:column gap:.6rem">
 					<Button
 						onclick={() => (showExportModal = true)}
 						class="p:.5rem|1rem b:1px|solid|theme-border"
@@ -867,7 +859,7 @@
 					<p class="">すべてのプロジェクトをJSONファイルとしてバックアップします。</p>
 				</div>
 
-				<div class="flex flex-direction:column gap:.6rem">
+				<div class="flex flex:column gap:.6rem">
 					<Button
 						onclick={() => (showImportModal = true)}
 						variant="secondary"
@@ -878,7 +870,7 @@
 					<p class="">バックアップファイルからプロジェクトを復元します。</p>
 				</div>
 
-				<div class="flex flex-direction:column gap:.6rem">
+				<div class="flex flex:column gap:.6rem">
 					<Button
 						onclick={() => (showClearDataModal = true)}
 						variant="danger"
@@ -892,7 +884,7 @@
 		</Card>
 
 		<!-- バージョン情報 -->
-		<Card class="b:1px|solid|theme-border  flex flex-direction:column gap:1rem">
+		<Card class="b:1px|solid|theme-border  flex flex:column gap:1rem">
 			<h2 class="font:bold">バージョン情報</h2>
 			<div class="fg:theme-text-secondary">
 				<p>Storift v0.0.1</p>
@@ -918,7 +910,7 @@
 		onClose={() => (showExportModal = false)}
 		onConfirm={handleExport}
 	>
-		<div class="flex flex-direction:column gap:16">
+		<div class="flex flex:column gap:16">
 			<p>すべてのプロジェクトをエクスポートします。</p>
 
 			<div>
@@ -944,7 +936,7 @@
 		}}
 		onConfirm={handleImport}
 	>
-		<div class="flex flex-direction:column gap:16">
+		<div class="flex flex:column gap:16">
 			<div>
 				<label for="importFile" class="display:block mb:8 font:14 fg:theme-text-secondary"
 					>バックアップファイルを選択</label
@@ -983,7 +975,7 @@
 		confirmText="削除"
 		confirmVariant="danger"
 	>
-		<div class="flex flex-direction:column gap:16">
+		<div class="flex flex:column gap:16">
 			<p class="fg:theme-error font-semibold">
 				⚠️ すべてのプロジェクト、キャラクター、プロット、設定資料が削除されます。
 			</p>

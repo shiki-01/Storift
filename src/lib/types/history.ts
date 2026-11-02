@@ -3,7 +3,7 @@ export interface History {
 	entityType: 'scene' | 'chapter' | 'character' | 'plot' | 'worldbuilding';
 	entityId: string;
 	projectId: string;
-	snapshot: any;
+	snapshot: unknown;
 	changeType: 'create' | 'update' | 'delete' | 'conflict' | 'remote-delete';
 	createdAt: number;
 }

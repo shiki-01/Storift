@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 	import { longpress } from '$lib/utils/longpress';
-	import title from '$lib/assets/title.svg';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { projectsDB, settingsDB } from '$lib/db';
 	import { projectsStore } from '$lib/stores/projects.svelte';
 	import { tourStore } from '$lib/tutorial/tour.svelte';
@@ -11,7 +11,6 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
-	import SyncStatus from '$lib/components/ui/SyncStatus.svelte';
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
 	import { formatRelativeTime } from '$lib/utils/dateUtils';
 	import { createProjectContextMenu, type ContextMenuItem } from '$lib/utils/contextMenu';
@@ -101,7 +100,7 @@
 			// 同期キューに追加
 			await queueChange('projects', project.id, 'create');
 
-			goto(`/project/${project.id}/editor`);
+			goto(resolve('/project/[id]/editor', { id: project.id }));
 		} catch (error) {
 			console.error('Failed to create project:', error);
 		} finally {
@@ -140,7 +139,7 @@
 		e.stopPropagation();
 
 		const items = createProjectContextMenu({
-			onOpen: () => goto(`/project/${project.id}/editor`),
+			onOpen: () => goto(resolve('/project/[id]/editor', { id: project.id })),
 			onRename: () => handleRenameProject(project),
 			onDuplicate: () => handleDuplicateProject(project),
 			onExport: () => handleExportProject(project),
@@ -332,7 +331,7 @@
 	{/if}
 
 	{#if lastProject && !projectsStore.searchQuery}
-		<a class="continue" href="/project/{lastProject.id}/editor">
+		<a class="continue" href={resolve('/project/[id]/editor', { id: lastProject.id })}>
 			<span class="continue-body">
 				<span class="continue-label">続きから書く</span>
 				<span class="continue-title">{lastProject.title}</span>
@@ -374,7 +373,7 @@
 					use:longpress={{ onLongPress: (e) => handleProjectContextMenu(e, project) }}
 					oncontextmenu={(e) => handleProjectContextMenu(e, project)}
 				>
-					<a class="project-link" href="/project/{project.id}/editor">
+					<a class="project-link" href={resolve('/project/[id]/editor', { id: project.id })}>
 						<span class="cover" data-status={project.status}>
 							<span class="cover-title">{project.title}</span>
 							<span class="cover-status">{statusLabels[project.status]}</span>
@@ -421,7 +420,7 @@
 			e.preventDefault();
 			handleCreateProject();
 		}}
-		class="flex flex-direction:column gap:16"
+		class="flex flex:column gap:16"
 	>
 		<div>
 			<label class="display:block font-weight:500 m:0|0|8|0" for="title">タイトル</label>
@@ -437,7 +436,7 @@
 			></textarea>
 		</div>
 
-		<div class="flex justify-content:flex-end gap:12 mt:16">
+		<div class="flex jc:flex-end gap:12 mt:16">
 			<Button type="button" variant="secondary" onclick={() => (isCreateModalOpen = false)}>
 				キャンセル
 			</Button>
@@ -460,7 +459,7 @@
 			<label class="display:block font-weight:500 m:0|0|8|0" for="renameValue">新しい名前</label>
 			<Input bind:value={renameValue} placeholder="プロジェクト名を入力" required />
 		</div>
-		<div class="flex justify-content:flex-end gap:12">
+		<div class="flex jc:flex-end gap:12">
 			<Button type="button" variant="secondary" onclick={() => (isRenameModalOpen = false)}>
 				キャンセル
 			</Button>

@@ -30,7 +30,7 @@ export async function touchChapter(chapterId: string): Promise<void> {
 /**
  * トランザクション内で使用するプロジェクト更新の準備
  */
-export function createProjectTouchUpdates(projectId: string) {
+export function createProjectTouchUpdates() {
 	return {
 		updatedAt: Date.now()
 	};

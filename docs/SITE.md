@@ -11,6 +11,15 @@
 - アプリのコード・ビルドは変更しない。サイトは `site/` に独立した `package.json` を持つ。
 - サイトとアプリは別オリジンになる。Cookie・IndexedDB・Service Worker は共有されない（意図した分離）。
 
+## アプリの画面を載せている箇所
+
+- トップの操作デモ(`site/src/lib/demo/`)は動画ではなく、見本の部品を台本どおりに動かしている。アプリの見た目を大きく変えたら合わせて直す。
+- 実画面の画像は `site/static/shots/` にある。アプリの dev サーバーを 5181 番で起動し、リポジトリ直下で次を実行すると撮り直せる。使い捨てプロファイルの Chrome で撮るので、手元の作品には触れない。
+
+```bash
+node site/scripts/capture-shots.mjs
+```
+
 ## URL の設定
 
 サイトの URL とエディタの URL は、環境変数で 1 か所から設定する（`site/src/lib/config.ts`）。

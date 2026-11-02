@@ -227,7 +227,6 @@ service cloud.firestore {
 
 <style>
 	h2 {
-		font-family: var(--font-serif);
 		font-size: 1.25rem;
 		letter-spacing: 0.04em;
 		margin-bottom: 14px;
@@ -331,7 +330,6 @@ service cloud.firestore {
 		border: 1px solid var(--color-border);
 		border-radius: 50%;
 		background: var(--color-background);
-		font-family: var(--font-serif);
 		font-size: 14px;
 		color: var(--color-primary);
 	}

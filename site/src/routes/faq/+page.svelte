@@ -138,7 +138,6 @@
 	}
 
 	h2 {
-		font-family: var(--font-serif);
 		font-size: 1.2rem;
 		letter-spacing: 0.06em;
 	}

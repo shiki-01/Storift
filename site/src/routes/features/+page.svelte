@@ -1,11 +1,19 @@
 <script lang="ts">
 	import Seo from '$lib/Seo.svelte';
 	import Icon from '$lib/Icon.svelte';
+	import Shot from '$lib/Shot.svelte';
 	import type { IconName } from '$lib/icons';
 	import { APP_URL } from '$lib/config';
 
 	type Item = { title: string; body: string; desktop?: boolean };
-	type Group = { id: string; icon: IconName; title: string; lead: string; items: Item[] };
+	type Group = {
+		id: string;
+		icon: IconName;
+		title: string;
+		lead: string;
+		items: Item[];
+		shot?: { name: string; alt: string };
+	};
 
 	const groups: Group[] = [
 		{
@@ -13,6 +21,7 @@
 			icon: 'write',
 			title: '書く',
 			lead: '原稿を章とシーンに分けて書く画面です。',
+			shot: { name: 'editor', alt: '執筆画面。左に章とシーンの一覧、右に本文が並ぶ' },
 			items: [
 				{
 					title: '章とシーン',
@@ -49,6 +58,10 @@
 			icon: 'plot',
 			title: '整理する',
 			lead: '物語の材料を、作品ごとに原稿の隣に置いておけます。',
+			shot: {
+				name: 'relation',
+				alt: '人物の相関図。登場人物が線で結ばれ、線に関係の名前が付いている'
+			},
 			items: [
 				{
 					title: 'プロット',
@@ -77,6 +90,7 @@
 			icon: 'vertical',
 			title: '確かめる',
 			lead: '書いた原稿が、読まれるときにどう見えるかを確かめます。',
+			shot: { name: 'split', alt: '本文の隣に縦書きのプレビューを開いた執筆画面' },
 			items: [
 				{
 					title: '縦書きプレビュー',
@@ -166,14 +180,19 @@
 				<h2>{g.title}</h2>
 				<p>{g.lead}</p>
 			</header>
-			<dl>
-				{#each g.items as item (item.title)}
-					<div class="row">
-						<dt>{item.title}</dt>
-						<dd>{item.body}</dd>
-					</div>
-				{/each}
-			</dl>
+			<div class="content">
+				{#if g.shot}
+					<Shot name={g.shot.name} alt={g.shot.alt} />
+				{/if}
+				<dl>
+					{#each g.items as item (item.title)}
+						<div class="row">
+							<dt>{item.title}</dt>
+							<dd>{item.body}</dd>
+						</div>
+					{/each}
+				</dl>
+			</div>
 		</section>
 	{/each}
 
@@ -224,7 +243,7 @@
 	/* 項目を読み進める間、どの分類かが見えるように見出しを留めておく */
 	header {
 		position: sticky;
-		top: 84px;
+		top: 24px;
 		align-self: start;
 		display: flex;
 		flex-direction: column;
@@ -237,7 +256,6 @@
 	}
 
 	h2 {
-		font-family: var(--font-serif);
 		font-size: 1.4rem;
 		letter-spacing: 0.06em;
 	}
@@ -245,6 +263,13 @@
 	header p {
 		font-size: 13.5px;
 		color: var(--color-text-secondary);
+	}
+
+	.content {
+		display: flex;
+		flex-direction: column;
+		gap: 24px;
+		min-width: 0;
 	}
 
 	dl {

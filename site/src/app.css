@@ -37,13 +37,15 @@
 	--font-ui: 'Mobo', 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', system-ui, sans-serif;
 	--font-serif: 'Noto Serif JP', 'Hiragino Mincho ProN', 'Yu Mincho', serif;
 
-	--max: 1080px;
-	--gutter: 24px;
+	--max: 1120px;
+	--gutter: 32px;
+	--rail-width: 68px;
+	--bottom-nav-height: 56px;
 	color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
-	:root {
+	:root:not([data-theme]) {
 		/* 墨 */
 		--color-primary: #9db3d1;
 		--color-background: #1b1a18;
@@ -61,13 +63,90 @@
 	}
 }
 
+/* 配色を選んだとき(src/lib/theme.svelte.ts)。値はアプリのテーマと同じ */
+:root[data-theme='light'] {
+	color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+	--color-primary: #9db3d1;
+	--color-background: #1b1a18;
+	--color-surface: #24231f;
+	--color-text: #e7e3da;
+	--color-text-secondary: #9a958a;
+	--color-border: #34322d;
+	--color-accent: #d98a6e;
+	--color-success: #93b486;
+	--editor-background: #201f1c;
+	--editor-selection: #3a4558;
+	--editor-line-highlight: #2a2925;
+	--shadow-float: 0 1px 2px rgb(0 0 0 / 0.2), 0 12px 32px rgb(0 0 0 / 0.35);
+	color-scheme: dark;
+}
+
+:root[data-theme='sepia'] {
+	--color-primary: #7a4b2a;
+	--color-background: #f1e8d8;
+	--color-surface: #e7dcc6;
+	--color-text: #3b2f22;
+	--color-text-secondary: #7f6c56;
+	--color-border: #d9cab0;
+	--color-accent: #a6452f;
+	--color-success: #5d7444;
+	--editor-background: #f6efe2;
+	--editor-selection: #e3d0ad;
+	--editor-line-highlight: #efe5d2;
+	color-scheme: light;
+}
+
+:root[data-theme='night'] {
+	--color-primary: #a9bedb;
+	--color-background: #141920;
+	--color-surface: #1b2129;
+	--color-text: #d8dde3;
+	--color-text-secondary: #8a939e;
+	--color-border: #2a323c;
+	--color-accent: #d9a46e;
+	--color-success: #8fb39a;
+	--editor-background: #171c23;
+	--editor-selection: #33425a;
+	--editor-line-highlight: #1f2630;
+	--shadow-float: 0 1px 2px rgb(0 0 0 / 0.2), 0 12px 32px rgb(0 0 0 / 0.35);
+	color-scheme: dark;
+}
+
+/* 実画面の画像は明暗の二通りを持ち、配色に合う方だけを読み込む(display: none の lazy 画像は読まれない) */
+.shade-dark {
+	display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme]) .shade-light {
+		display: none;
+	}
+
+	:root:not([data-theme]) .shade-dark {
+		display: block;
+	}
+}
+
+:root[data-theme='dark'] .shade-light,
+:root[data-theme='night'] .shade-light {
+	display: none;
+}
+
+:root[data-theme='dark'] .shade-dark,
+:root[data-theme='night'] .shade-dark {
+	display: block;
+}
+
 * {
 	box-sizing: border-box;
 }
 
 html {
 	scroll-behavior: smooth;
-	scroll-padding-top: 72px;
+	scroll-padding-top: 24px;
 }
 
 body {
@@ -81,6 +160,9 @@ body {
 	font-feature-settings: 'palt' 1;
 	-webkit-font-smoothing: antialiased;
 	-webkit-text-size-adjust: 100%;
+	transition:
+		background-color 0.2s ease-in-out,
+		color 0.2s ease-in-out;
 }
 
 ::selection {
@@ -186,30 +268,72 @@ kbd {
 	font-size: 13px;
 }
 
-/* ===== 下層ページの見出し ===== */
+/* ===== 下層ページの見出し(アプリの各画面の上部と同じ、題 + 説明 + 下線) ===== */
 .page-head {
-	padding: 72px 0 40px;
+	padding: 40px 0 28px;
 	border-bottom: 1px solid var(--color-border);
-	margin-bottom: 48px;
+	margin-bottom: 40px;
 }
 
 .page-head .label {
 	font-size: 12.5px;
-	letter-spacing: 0.08em;
 	color: var(--color-text-secondary);
 }
 
 .page-head h1 {
-	margin-top: 6px;
-	font-family: var(--font-serif);
-	font-size: clamp(1.8rem, 4vw, 2.4rem);
-	letter-spacing: 0.06em;
+	margin-top: 2px;
+	font-size: clamp(1.5rem, 3vw, 1.9rem);
+	letter-spacing: 0.04em;
 }
 
 .page-head p:not(.label) {
-	margin-top: 14px;
-	max-width: 36em;
+	margin-top: 6px;
+	max-width: 40em;
+	font-size: 14px;
 	color: var(--color-text-secondary);
+}
+
+/* ===== 切り替え(アプリのボード / タイムライン切り替えと同じ形) ===== */
+.segmented {
+	display: inline-flex;
+	gap: 2px;
+	max-width: 100%;
+	padding: 3px;
+	border-radius: 10px;
+	background: var(--color-surface);
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.segmented button {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+	height: 32px;
+	padding: 0 12px;
+	border: none;
+	border-radius: 7px;
+	background: transparent;
+	color: var(--color-text-secondary);
+	font: inherit;
+	font-size: 13px;
+	line-height: 1;
+	cursor: pointer;
+	transition:
+		background-color 0.15s,
+		color 0.15s;
+}
+
+.segmented button:hover {
+	color: var(--color-text);
+}
+
+.segmented button[aria-pressed='true'],
+.segmented button[aria-selected='true'] {
+	background: var(--color-background);
+	color: var(--color-text);
+	box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
 }
 
 /* 本文の末尾に置く、次のページへの導線 */
@@ -229,14 +353,14 @@ kbd {
 	font-size: 14px;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 760px) {
 	:root {
 		--gutter: 16px;
 	}
 
 	.page-head {
-		padding: 48px 0 28px;
-		margin-bottom: 32px;
+		padding: 28px 0 22px;
+		margin-bottom: 28px;
 	}
 }
 

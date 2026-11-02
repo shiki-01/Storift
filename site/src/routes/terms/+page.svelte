@@ -110,7 +110,6 @@
 	}
 
 	h2 {
-		font-family: var(--font-serif);
 		font-size: 1.15rem;
 		letter-spacing: 0.04em;
 		margin-bottom: 12px;

@@ -22,7 +22,20 @@ export const icons = {
 	check: '<path d="M4 12.5l5 5L20 6.5"/>',
 	desktop: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
 	phone: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>',
-	arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>'
+	arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+	grid: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+	book: '<path d="M12 6.5C10.5 5 8 4.5 4 4.5v14c4 0 6.5.5 8 2 1.5-1.5 4-2 8-2v-14c-4 0-6.5.5-8 2z"/><path d="M12 6.5v14"/>',
+	help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.8 2.1c-.8.5-1.3 1-1.3 1.9"/><path d="M12 17h.01"/>',
+	play: '<path d="M7 4.5v15l12-7.5z"/>',
+	pause: '<path d="M8 5v14M16 5v14"/>',
+	replay: '<path d="M4 12a8 8 0 1 0 2.5-5.8L4 8.5"/><path d="M4 4v4.5h4.5"/>',
+	split: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 4v16"/>',
+	eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
+	panel: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9.5 4v16"/>',
+	print:
+		'<path d="M7 8V4h10v4"/><rect x="4" y="8" width="16" height="8" rx="2"/><path d="M7 14h10v6H7z"/>',
+	palette:
+		'<path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.2 0 1.9-.9 1.9-1.9 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1 .8-1.8 1.8-1.8h2.1a4.2 4.2 0 0 0 3.7-4.2c0-3.7-3.8-6.5-8.5-6.5z"/><circle cx="7.8" cy="11.5" r="1"/><circle cx="10.5" cy="7.8" r="1"/><circle cx="15" cy="8" r="1"/>'
 } as const;
 
 export type IconName = keyof typeof icons;

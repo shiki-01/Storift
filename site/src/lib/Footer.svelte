@@ -33,7 +33,7 @@
 
 <style>
 	footer {
-		margin-top: 96px;
+		margin-top: 48px;
 		border-top: 1px solid var(--color-border);
 		background: var(--color-surface);
 		padding: 48px 0 40px;

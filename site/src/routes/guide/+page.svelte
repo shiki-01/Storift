@@ -5,7 +5,7 @@
 	const steps = [
 		{
 			title: 'エディタを開く',
-			body: 'サイト右上の「エディタを開く」から、ブラウザでアプリが開きます。Chrome・Edge・Safari・Firefox の最新版で動きます。',
+			body: 'サイトの「エディタを開く」から、ブラウザでアプリが開きます。Chrome・Edge・Safari・Firefox の最新版で動きます。',
 			tip: 'スマートフォンでは、共有メニューの「ホーム画面に追加」でアプリのように起動できます。'
 		},
 		{
@@ -132,7 +132,6 @@
 		border: 1px solid var(--color-border);
 		border-radius: 50%;
 		background: var(--color-background);
-		font-family: var(--font-serif);
 		font-size: 14px;
 		color: var(--color-primary);
 	}
@@ -174,7 +173,6 @@
 	}
 
 	.desktop h2 {
-		font-family: var(--font-serif);
 		font-size: 1.2rem;
 		margin-bottom: 12px;
 	}

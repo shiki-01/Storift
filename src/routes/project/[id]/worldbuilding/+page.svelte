@@ -238,7 +238,7 @@
 					</div>
 				{:else}
 					<div
-						class="grid gap:16 md:grid-template-columns:repeat(2,minmax(0,1fr)) xl:grid-template-columns:repeat(3,minmax(0,1fr))"
+						class="grid gap:16 grid-template-columns:repeat(2,minmax(0,1fr))@md grid-template-columns:repeat(3,minmax(0,1fr))@xl"
 					>
 						{#each filteredWorldbuildings as worldbuilding (worldbuilding.id)}
 							<Card class="flex flex:column gap:16" padding="sm">

@@ -334,7 +334,9 @@
 						bind:value={characterQuery}
 					/>
 					<!-- グリッドビュー -->
-					<div class="grid cols:3 gap:20">
+					<div
+						class="grid gap:20 grid-template-columns:repeat(2,minmax(0,1fr))@md grid-template-columns:repeat(3,minmax(0,1fr))@xl"
+					>
 						{#each visibleCharacters as character (character.id)}
 							<Card
 								class="bg:theme-surface b:1px|solid|theme-border p:24 flex flex:column gap:16"
@@ -459,7 +461,7 @@
 											</div>
 										</div>
 
-										<div class="grid cols:3 gap:16">
+										<div class="grid gap:16 grid-template-columns:repeat(3,minmax(0,1fr))@md">
 											{#if character.appearance}
 												<div class="flex flex:column gap:4">
 													<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">外見</p>
@@ -518,7 +520,7 @@
 		<Input label="名前 *" bind:value={formData.name} placeholder="キャラクター名" />
 		<Input label="役割" bind:value={formData.role} placeholder="主人公、ヒロイン、悪役など" />
 
-		<div class="grid cols:2 gap:16">
+		<div class="grid grid-cols:2 gap:16">
 			<div>
 				<label for="create-age" class="block mb:8 font:14 font:semibold">年齢</label>
 				<input
@@ -583,7 +585,7 @@
 		<Input label="名前 *" bind:value={formData.name} placeholder="キャラクター名" />
 		<Input label="役割" bind:value={formData.role} placeholder="主人公、ヒロイン、悪役など" />
 
-		<div class="grid cols:2 gap:16">
+		<div class="grid grid-cols:2 gap:16">
 			<div>
 				<label for="edit-age" class="block mb:8 font:14 font:semibold">年齢</label>
 				<input

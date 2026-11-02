@@ -293,7 +293,7 @@
 					</div>
 				{:else if viewMode === 'board'}
 					<div
-						class="grid gap:16 md:grid-template-columns:repeat(2,minmax(0,1fr)) xl:grid-template-columns:repeat(4,minmax(0,1fr))"
+						class="grid gap:16 grid-template-columns:repeat(2,minmax(0,1fr))@md grid-template-columns:repeat(4,minmax(0,1fr))@xl"
 					>
 						{#each Object.entries(statusGroups) as [status, config] (status)}
 							<div class="flex flex:column gap:12">

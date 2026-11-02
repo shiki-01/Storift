@@ -306,8 +306,8 @@
 						</Card>
 					</div>
 
-					<div class="grid gap:16 lg:grid-template-columns:repeat(3,minmax(0,1fr))">
-						<div class="lg:col:span-2">
+					<div class="grid gap:16 grid-template-columns:repeat(3,minmax(0,1fr))@lg">
+						<div class="grid-col-span:2@lg">
 							<Card>
 								<div class="p:24 flex flex:column gap:20">
 									<div class="flex jc:space-between ai:center">

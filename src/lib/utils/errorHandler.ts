@@ -58,11 +58,21 @@ export function clearErrorLogs(): void {
 }
 
 /**
+ * 動作に影響しない、ブラウザからの通知かどうか。
+ * ResizeObserver の通知は監視中の要素の大きさが連続して変わると出るもので、次の描画で届き直す
+ */
+function isBenignError(message: string | undefined): boolean {
+	return /^ResizeObserver loop\b/.test(message ?? '');
+}
+
+/**
  * グローバルエラーハンドラーを初期化
  */
 export function initializeErrorHandler(): void {
 	// 未処理のエラーをキャッチ
 	window.addEventListener('error', (event) => {
+		if (isBenignError(event.message)) return;
+
 		console.error('Uncaught error:', event.error);
 
 		saveErrorLog({

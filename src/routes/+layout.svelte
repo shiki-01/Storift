@@ -25,6 +25,7 @@
 	import { themes, themeStore } from '$lib/stores/theme.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
 	import { claudeStore } from '$lib/stores/claude.svelte';
+	import { updaterStore } from '$lib/stores/updater.svelte';
 	import TitleBar from '$lib/components/desktop/TitleBar.svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import SelectionAsk from '$lib/components/desktop/SelectionAsk.svelte';
@@ -105,6 +106,9 @@
 		// ビューポート(スマホ判定・キーボード高さ)の監視を開始
 		const stopViewport = initViewport();
 
+		// デスクトップ版は、起動後に新しいバージョンを自動で確認する
+		if (desktop) updaterStore.startAutoCheck();
+
 		// グローバルエラーハンドラーを初期化
 		initializeErrorHandler();
 
@@ -169,6 +173,7 @@
 
 		// クリーンアップ
 		return () => {
+			updaterStore.stopAutoCheck();
 			stopViewport();
 			unsubscribe();
 			stopNetworkMonitoring();

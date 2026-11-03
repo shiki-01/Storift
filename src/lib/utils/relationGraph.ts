@@ -1,4 +1,4 @@
-import type { Character, RelationCurve, RelationEdgeStyle } from '$lib/types';
+import type { Character, RelationArrow, RelationCurve, RelationEdgeStyle } from '$lib/types';
 
 export const RELATION_COLORS = [
 	'#6b7280',
@@ -15,6 +15,15 @@ export const RELATION_CURVES: { id: RelationCurve; label: string }[] = [
 	{ id: 'step', label: '折れ線' },
 	{ id: 'smoothstep', label: '角丸' }
 ];
+
+export const RELATION_ARROWS: { id: RelationArrow; label: string }[] = [
+	{ id: 'single', label: '片方向' },
+	{ id: 'both', label: '双方向' },
+	{ id: 'separate', label: 'お互い別' }
+];
+
+/** お互い別の 2 本の矢印を、始点・終点ごと左右に離す幅(px) */
+export const PARALLEL_LANE_GAP = 8;
 
 /** Svelte Flow の組み込みエッジ種別へ変換 */
 export function curveToEdgeType(curve: RelationCurve | undefined): string {
@@ -78,8 +87,11 @@ export interface RelationEdgeSpec {
 	index: number;
 	color: string;
 	curve: RelationCurve;
+	arrow: RelationArrow;
 	/** 逆向き(target→source)の関係が存在するか */
 	hasReverse: boolean;
+	/** お互い別の矢印を並べるとき 1(それ以外は 0)。向きごとに反対側へずれる */
+	lane: number;
 	/** 保存済み、または既定のずれ。逆向きが無ければ {0,0} */
 	offset: Point;
 }
@@ -112,6 +124,7 @@ export function buildEdgeSpecs(
 				(hasReverse
 					? defaultEdgeOffset(character.id, at(character.id), rel.characterId, at(rel.characterId))
 					: { x: 0, y: 0 });
+			const arrow = style?.arrow ?? (hasReverse ? 'separate' : 'single');
 			specs.push({
 				id: `${character.id}:${index}`,
 				source: character.id,
@@ -120,7 +133,9 @@ export function buildEdgeSpecs(
 				index,
 				color: style?.color ?? RELATION_COLORS[0],
 				curve: style?.curve ?? 'bezier',
+				arrow,
 				hasReverse,
+				lane: arrow === 'separate' && hasReverse ? 1 : 0,
 				offset: { x: offset.x, y: offset.y }
 			});
 		});

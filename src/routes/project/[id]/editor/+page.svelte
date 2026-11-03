@@ -55,7 +55,7 @@
 	} from '$lib/types';
 	import { defaultPreviewSettings } from '$lib/types';
 	import Icon from '$lib/components/ui/Icon.svelte';
-	import ClaudePanel from '$lib/components/desktop/ClaudePanel.svelte';
+	import { getSystemFontName, systemFontToCss } from '$lib/utils/fonts';
 	import MemoPanel from '$lib/components/memo/MemoPanel.svelte';
 	import { claudeStore } from '$lib/stores/claude.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
@@ -871,7 +871,9 @@
 
 	// フォントファミリーを取得
 	function getFontFamily(font: EditorFont): string {
-		const fontMap: Record<EditorFont, string> = {
+		const systemName = getSystemFontName(font);
+		if (systemName) return systemFontToCss(systemName);
+		const fontMap: Record<string, string> = {
 			'yu-gothic': '"Yu Gothic", "游ゴシック", YuGothic, "游ゴシック体", sans-serif',
 			'gen-shin-mincho': '"源真明朝", "Gen Shin Mincho", serif',
 			'hiragino-mincho': '"Hiragino Mincho ProN", "ヒラギノ明朝 ProN", serif',
@@ -1825,9 +1827,7 @@
 					{/if}
 				</div>
 				{#if showClaude}
-					<div class="claude-slot" transition:slide={{ axis: 'x', duration: 220 }}>
-						<ClaudePanel />
-					</div>
+					<!-- Claude パネルはプロジェクト全体のレイアウト側に出す -->
 				{:else if showMemo && currentProjectStore.project}
 					<div class="claude-slot" transition:slide={{ axis: 'x', duration: 220 }}>
 						<MemoPanel

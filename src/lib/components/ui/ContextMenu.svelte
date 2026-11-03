@@ -22,28 +22,22 @@
 
 	let { items, x = 0, y = 0, visible = false, onClose }: Props = $props();
 
+	// 画面端に確保する余白(px)
+	const EDGE_MARGIN = 12;
+
 	let menuElement: HTMLDivElement | null = $state(null);
 
 	// 画面外に出ないように位置を調整
 	$effect(() => {
 		if (visible && menuElement) {
-			const rect = menuElement.getBoundingClientRect();
+			// アニメーション中の scale の影響を避けるため offset 系のサイズを使う
+			const rect = { width: menuElement.offsetWidth, height: menuElement.offsetHeight };
 			const viewportWidth = window.innerWidth;
 			const viewportHeight = window.innerHeight;
 
-			// 右端からはみ出る場合
-			if (x + rect.width > viewportWidth) {
-				x = viewportWidth - rect.width - 10;
-			}
-
-			// 下端からはみ出る場合
-			if (y + rect.height > viewportHeight) {
-				y = viewportHeight - rect.height - 10;
-			}
-
-			// 最小位置
-			if (x < 10) x = 10;
-			if (y < 10) y = 10;
+			const margin = EDGE_MARGIN;
+			x = Math.max(margin, Math.min(x, viewportWidth - rect.width - margin));
+			y = Math.max(margin, Math.min(y, viewportHeight - rect.height - margin));
 		}
 	});
 

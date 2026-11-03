@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ClaudeToggle from '$lib/components/desktop/ClaudeToggle.svelte';
 	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { plotsDB } from '$lib/db';
@@ -255,6 +256,7 @@
 					<p class="font:14 fg:theme-text-secondary mt:8">作品の構成を計画・管理します</p>
 				</div>
 				<div class="flex flex-wrap:wrap ai:center gap:12 max-w:100%">
+					<ClaudeToggle />
 					<div
 						class="flex bg:theme-surface b:1px|solid|theme-border r:10 p:6 gap:8"
 						data-tour="plot-view-toggle"

@@ -3,9 +3,21 @@
 	import { page } from '$app/state';
 	import { projectsDB, chaptersDB, scenesDB } from '$lib/db';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
+	import { slide } from 'svelte/transition';
+	import ClaudePanel from '$lib/components/desktop/ClaudePanel.svelte';
+	import { isDesktop } from '$lib/desktop/platform';
+	import { claudeStore } from '$lib/stores/claude.svelte';
+	import { editorStore } from '$lib/stores/editor.svelte';
+	import { viewport } from '$lib/stores/viewport.svelte';
 	import { startCurrentProjectSync, stopCurrentProjectSync } from '$lib/services/sync.service';
 
 	let { children } = $props();
+
+	// Claude パネルは作品の全画面(執筆・プロット・人物・設定資料・進捗)で共通に右へ出す
+	const desktop = isDesktop();
+	let showClaude = $derived(
+		desktop && claudeStore.open && !viewport.isMobile && !editorStore.focusMode
+	);
 
 	onMount(async () => {
 		const projectId = page.params.id;
@@ -49,14 +61,41 @@
 	</div>
 {:else}
 	<!-- 執筆・プロットなどの切り替え時に、内容を軽く滑り込ませる -->
-	{#key page.url.pathname}
-		<div class="section-enter w:100% h:100%">
-			{@render children()}
+	<div class="project-shell">
+		<div class="project-content">
+			{#key page.url.pathname}
+				<div class="section-enter w:100% h:100%">
+					{@render children()}
+				</div>
+			{/key}
 		</div>
-	{/key}
+		{#if showClaude}
+			<div class="claude-slot" transition:slide={{ axis: 'x', duration: 220 }}>
+				<ClaudePanel />
+			</div>
+		{/if}
+	</div>
 {/if}
 
 <style>
+	.project-shell {
+		display: flex;
+		width: 100%;
+		height: 100%;
+	}
+
+	.project-content {
+		flex: 1;
+		min-width: 0;
+		min-height: 0;
+	}
+
+	.claude-slot {
+		flex: none;
+		display: flex;
+		min-height: 0;
+	}
+
 	.section-enter {
 		animation: section-enter 0.26s cubic-bezier(0.2, 0.7, 0.2, 1);
 	}

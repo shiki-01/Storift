@@ -44,6 +44,8 @@
 
 	img {
 		width: 100%;
+		/* 読み込み中に alt の文字が一瞬見えないようにする */
+		color: transparent;
 		height: auto;
 	}
 </style>

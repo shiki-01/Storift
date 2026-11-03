@@ -7,22 +7,38 @@
 	const shizu = { x: 540, y: 200 };
 	const mashiba = { x: 360, y: 330 };
 
-	function curve(a: { x: number; y: number }, b: { x: number; y: number }, bend = 24) {
-		const mx = (a.x + b.x) / 2;
-		const my = (a.y + b.y) / 2 - bend;
-		return `M${a.x} ${a.y} Q${mx} ${my} ${b.x} ${b.y}`;
+	type P = { x: number; y: number };
+	/** 線の端を、ノードの円(半径 24)の少し外で止める */
+	const R = 28;
+	/** お互い別の 2 本を並べるときの、始点・終点のずれ */
+	const LANE = 8;
+
+	// 矢印の種類は、アプリの相関図と同じ。single=片方向 / both=双方向 / separate=お互い別(2 本)
+	function arrow(a: P, b: P, o: { bend?: number; lane?: number } = {}) {
+		const dx = b.x - a.x;
+		const dy = b.y - a.y;
+		const len = Math.hypot(dx, dy) || 1;
+		const ux = dx / len;
+		const uy = dy / len;
+		const nx = -uy;
+		const ny = ux;
+		const lane = (o.lane ?? 0) * LANE;
+		const s = { x: a.x + ux * R + nx * lane, y: a.y + uy * R + ny * lane };
+		const t = { x: b.x - ux * R + nx * lane, y: b.y - uy * R + ny * lane };
+		const bend = o.bend ?? 0;
+		const mid = { x: (s.x + t.x) / 2 + nx * bend, y: (s.y + t.y) / 2 + ny * bend };
+		const c = { x: 2 * mid.x - (s.x + t.x) / 2, y: 2 * mid.y - (s.y + t.y) / 2 };
+		return { d: `M${s.x} ${s.y} Q${c.x} ${c.y} ${t.x} ${t.y}`, x: mid.x, y: mid.y };
 	}
 
 	let edges = $derived([
-		{
-			d: curve(akari, seo),
-			label: '同級生',
-			x: (akari.x + seo.x) / 2,
-			y: (akari.y + seo.y) / 2 - 12
-		},
-		{ d: curve(akari, shizu), label: '孫', x: 440, y: 133 },
-		{ d: curve(akari, mashiba, 0), label: '常連', x: 350, y: 210 },
-		{ d: curve(shizu, mashiba, -20), label: '旧友', x: 450, y: 275 }
+		{ ...arrow(akari, seo, { bend: 10 }), label: '同級生', both: false },
+		// お互い別: 灯 → 静 と 静 → 灯 を、それぞれ相手へ向く 2 本の矢印で
+		{ ...arrow(akari, shizu, { bend: 14, lane: 1 }), label: '孫', both: false },
+		{ ...arrow(shizu, akari, { bend: 14, lane: 1 }), label: '祖母', both: false },
+		// 双方向: 1 本の線の両端に矢印
+		{ ...arrow(akari, mashiba), label: '常連', both: true },
+		{ ...arrow(shizu, mashiba, { bend: -14 }), label: '旧友', both: true }
 	]);
 
 	const nodes = [
@@ -43,8 +59,26 @@
 
 	<div class="canvas">
 		<svg viewBox="0 0 680 400" preserveAspectRatio="xMidYMid meet">
+			<defs>
+				<marker
+					id="demo-arrow"
+					viewBox="0 0 10 10"
+					refX="8"
+					refY="5"
+					markerWidth="7"
+					markerHeight="7"
+					orient="auto-start-reverse"
+				>
+					<path d="M1 1 L9 5 L1 9 z" class="head" />
+				</marker>
+			</defs>
 			{#each edges as e (e.label)}
-				<path d={e.d} class="edge" />
+				<path
+					d={e.d}
+					class="edge"
+					marker-end="url(#demo-arrow)"
+					marker-start={e.both ? 'url(#demo-arrow)' : undefined}
+				/>
 				<text x={e.x} y={e.y} class="edge-label">{e.label}</text>
 			{/each}
 			{#each nodes as n (n.name)}
@@ -140,6 +174,10 @@
 		fill: none;
 		stroke: color-mix(in srgb, var(--color-text) 40%, transparent);
 		stroke-width: 1.3;
+	}
+
+	.head {
+		fill: color-mix(in srgb, var(--color-text) 55%, transparent);
 	}
 
 	.edge-label {

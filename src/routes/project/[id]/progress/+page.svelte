@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ClaudeToggle from '$lib/components/desktop/ClaudeToggle.svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { progressLogsDB } from '$lib/db';
 	import type { ProgressLog, ProgressStats } from '$lib/types';
@@ -240,6 +241,7 @@
 					<p class="font:14 fg:theme-text-secondary mt:8">執筆の進捗を記録・可視化します</p>
 				</div>
 				<div class="flex flex-wrap:wrap ai:center gap:12 max-w:100%">
+					<ClaudeToggle />
 					<Button
 						class="px:18 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
 						onclick={() => openLogModal(new Date())}

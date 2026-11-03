@@ -134,3 +134,30 @@ describe('その他', () => {
 		expect(insideRect(101, 10, rect)).toBe(false);
 	});
 });
+
+describe('矢印の種類', () => {
+	const mk = (id: string, rels: [string, string][]): Character =>
+		({
+			id,
+			name: id,
+			relationships: rels.map(([characterId, relation]) => ({ characterId, relation }))
+		}) as unknown as Character;
+
+	it('逆向きが無ければ single、あればお互い別(separate)で並べる', () => {
+		const one = buildEdgeSpecs([mk('a', [['b', '友']]), mk('b', [])], {});
+		expect(one[0].arrow).toBe('single');
+		expect(one[0].lane).toBe(0);
+
+		const two = buildEdgeSpecs([mk('a', [['b', '友']]), mk('b', [['a', '敵']])], {});
+		expect(two.map((e) => e.arrow)).toEqual(['separate', 'separate']);
+		expect(two.map((e) => e.lane)).toEqual([1, 1]);
+	});
+
+	it('保存された矢印の種類を使う', () => {
+		const specs = buildEdgeSpecs([mk('a', [['b', '友']]), mk('b', [])], {
+			'a>b>友': { arrow: 'both' }
+		});
+		expect(specs[0].arrow).toBe('both');
+		expect(specs[0].lane).toBe(0);
+	});
+});

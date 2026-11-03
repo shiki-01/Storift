@@ -16,8 +16,9 @@
 	import { v4 as uuidv4 } from 'uuid';
 	import { charactersDB, relationMapsDB } from '$lib/db';
 	import { queueChange } from '$lib/services/sync.service';
-	import type { Character, RelationCurve, RelationMap } from '$lib/types';
+	import type { Character, RelationArrow, RelationCurve, RelationMap } from '$lib/types';
 	import {
+		RELATION_ARROWS,
 		RELATION_COLORS,
 		RELATION_CURVES,
 		buildEdgeSpecs,
@@ -62,6 +63,9 @@
 	let draftLabel = $state('');
 	let draftColor = $state<string>(RELATION_COLORS[0]);
 	let draftCurve = $state<RelationCurve>('bezier');
+	let draftArrow = $state<RelationArrow>('single');
+	/** お互い別のときの、逆向き(to → from)の関係 */
+	let draftReverse = $state('');
 	let busy = $state(false);
 
 	let nameOf = $derived((id: string) => characters.find((c) => c.id === id)?.name ?? '?');
@@ -137,6 +141,9 @@
 				label: s.label,
 				style: `stroke:${s.color};stroke-width:2;`,
 				markerEnd: { type: MarkerType.ArrowClosed, color: s.color },
+				...(s.arrow === 'both'
+					? { markerStart: { type: MarkerType.ArrowClosed, color: s.color } }
+					: {}),
 				data: {
 					from: s.source,
 					to: s.target,
@@ -145,6 +152,7 @@
 					curve: s.curve,
 					color: s.color,
 					offset: s.offset,
+					lane: s.lane,
 					onOffsetChange: (offset: { x: number; y: number } | null) =>
 						changeEdgeOffset(s.source, s.target, s.label, offset)
 				}
@@ -249,11 +257,20 @@
 	}
 
 	// --- 操作 ---
-	function openSheet(next: Editor, label: string, color: string, curve: RelationCurve) {
+	function openSheet(
+		next: Editor,
+		label: string,
+		color: string,
+		curve: RelationCurve,
+		arrow: RelationArrow = 'single',
+		reverse = ''
+	) {
 		editor = next;
 		draftLabel = label;
 		draftColor = color;
 		draftCurve = curve;
+		draftArrow = arrow;
+		draftReverse = reverse;
 		sheetOpen = true;
 	}
 
@@ -284,11 +301,16 @@
 	function openEdgeEditor(edge: Edge) {
 		const data = edge.data as { from: string; to: string; index: number; label: string };
 		const style = map?.edgeStyles[edgeStyleKey(data.from, data.to, data.label)];
+		const back = characters
+			.find((c) => c.id === data.to)
+			?.relationships.find((r) => r.characterId === data.from);
 		openSheet(
 			{ kind: 'edge', from: data.from, to: data.to, index: data.index, label: data.label },
 			data.label,
 			style?.color ?? RELATION_COLORS[0],
-			style?.curve ?? 'bezier'
+			style?.curve ?? 'bezier',
+			style?.arrow ?? (back ? 'separate' : 'single'),
+			back?.relation ?? ''
 		);
 	}
 
@@ -370,6 +392,7 @@
 				const current = editor;
 				const from = characters.find((c) => c.id === current.from);
 				if (!from) return;
+				const to = characters.find((c) => c.id === current.to);
 				const styles = { ...map.edgeStyles };
 				const rels = plainRelationships(from);
 				// 線の位置(offset)はラベル変更で付け替わらないよう引き継ぐ
@@ -386,11 +409,45 @@
 				styles[edgeStyleKey(editor.from, editor.to, label)] = {
 					color: draftColor,
 					curve: draftCurve,
+					arrow: draftArrow,
 					...(prevOffset ? { offset: prevOffset } : {})
 				};
+
+				// 逆向き(to → from)の関係を、矢印の種類に合わせて整える
+				let toRels: Character['relationships'] | null = null;
+				if (to) {
+					const own = plainRelationships(to);
+					const ri = own.findIndex((r) => r.characterId === current.from);
+					if (draftArrow === 'both') {
+						// 双方向は 1 つの関係にまとめる(逆向きの関係は持たない)
+						if (ri >= 0) {
+							for (const r of own.filter((r) => r.characterId === current.from)) {
+								delete styles[edgeStyleKey(to.id, current.from, r.relation)];
+							}
+							toRels = own.filter((r) => r.characterId !== current.from);
+						}
+					} else if (draftArrow === 'separate') {
+						const reverse = draftReverse.trim();
+						if (reverse) {
+							if (ri >= 0) {
+								delete styles[edgeStyleKey(to.id, current.from, own[ri].relation)];
+								own[ri] = { characterId: current.from, relation: reverse };
+							} else {
+								own.push({ characterId: current.from, relation: reverse });
+							}
+							styles[edgeStyleKey(to.id, current.from, reverse)] = {
+								color: draftColor,
+								curve: draftCurve,
+								arrow: 'separate'
+							};
+							toRels = own;
+						}
+					}
+				}
 				map = { ...map, edgeStyles: styles };
 				await relationMapsDB.save(map);
 				await writeRelationships(from.id, rels);
+				if (to && toRels) await writeRelationships(to.id, toRels);
 				await onChanged?.();
 			}
 			sheetOpen = false;
@@ -545,6 +602,33 @@
 
 			{#if editor.kind !== 'group'}
 				<div class="field">
+					<span>矢印</span>
+					<div class="seg" role="group" aria-label="矢印の種類">
+						{#each RELATION_ARROWS as arrow (arrow.id)}
+							<button
+								type="button"
+								class:on={draftArrow === arrow.id}
+								onclick={() => (draftArrow = arrow.id)}
+							>
+								{arrow.label}
+							</button>
+						{/each}
+					</div>
+					{#if draftArrow === 'both'}
+						<small class="note">
+							1 本の線の両端に矢印を付けます。逆向きの関係がある場合は、この関係にまとめます。
+						</small>
+					{/if}
+				</div>
+
+				{#if draftArrow === 'separate'}
+					<label class="field">
+						<span>{nameOf(editor.to)} → {nameOf(editor.from)} の関係(例: 憧れ)</span>
+						<input type="text" bind:value={draftReverse} placeholder="関係" />
+					</label>
+				{/if}
+
+				<div class="field">
 					<span>線の形</span>
 					<div class="seg" role="group" aria-label="線の形">
 						{#each RELATION_CURVES as curve (curve.id)}
@@ -672,6 +756,12 @@
 		color: var(--color-text);
 		font-size: 16px;
 		font-family: inherit;
+	}
+
+	.note {
+		font-size: 11px;
+		line-height: 1.5;
+		color: var(--color-text-secondary);
 	}
 
 	.swatches {

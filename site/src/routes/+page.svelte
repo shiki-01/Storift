@@ -1,12 +1,15 @@
 <script lang="ts">
 	import Seo from '$lib/Seo.svelte';
+	import Logo from '$lib/Logo.svelte';
 	import Icon from '$lib/Icon.svelte';
 	import AppDemo from '$lib/demo/AppDemo.svelte';
 	import TryWriting from '$lib/TryWriting.svelte';
 	import Gallery from '$lib/Gallery.svelte';
 	import ThemePicker from '$lib/ThemePicker.svelte';
 	import ClaudeDemo from '$lib/ClaudeDemo.svelte';
+	import { onMount } from 'svelte';
 	import { APP_URL, RELEASES_URL } from '$lib/config';
+	import { getAutoOpen, hasUsedEditor, setAutoOpen } from '$lib/editorLink';
 
 	const keep = [
 		{
@@ -31,15 +34,54 @@
 		}
 	] as const;
 
+	// エディタで作品を作ったことがある人だけに、次回から自動でエディタを開くか尋ねる
+	let askAutoOpen = $state(false);
+
+	onMount(() => {
+		if (!hasUsedEditor()) return;
+		// エディタ側から「サイトを見る」で来たときは移動しない
+		let fromApp = false;
+		try {
+			fromApp =
+				!!document.referrer && new URL(document.referrer).origin === new URL(APP_URL).origin;
+		} catch {
+			// 参照元が読めなければ、通常の訪問として扱う
+		}
+		if (fromApp) return;
+		const mode = getAutoOpen();
+		if (mode === 'on') location.replace(APP_URL);
+		else if (mode === null) askAutoOpen = true;
+	});
+
+	function answerAutoOpen(on: boolean) {
+		setAutoOpen(on);
+		askAutoOpen = false;
+		if (on) location.assign(APP_URL);
+	}
+
 	const covers = ['雨の日の栞', '灯台守の手紙', '最初の一行'];
 </script>
 
 <Seo />
 
+{#if askAutoOpen}
+	<div class="auto-open" role="dialog" aria-label="エディタを自動で開く">
+		<p>
+			エディタで作品を作成済みです。次回から、このサイトを開いたときに自動でエディタを開きますか？
+			<span>エディタの設定からいつでも変更できます。</span>
+		</p>
+		<div class="auto-open-actions">
+			<button class="btn primary" onclick={() => answerAutoOpen(true)}>自動で開く</button>
+			<button class="btn secondary" onclick={() => answerAutoOpen(false)}>開かない</button>
+		</div>
+	</div>
+{/if}
+
 <section class="hero">
 	<div class="wrap">
 		<div class="hero-head">
 			<div class="hero-text">
+				<div class="brand"><Logo height={40} /></div>
 				<h1>小説を書くための、<br />ひとつの場所。</h1>
 				<p class="lead">
 					原稿、プロット、人物、設定資料、進捗。ばらばらになりがちな物語の材料を、作品ごとにひとつにまとめる執筆アプリです。
@@ -169,6 +211,42 @@
 </section>
 
 <style>
+	.auto-open {
+		position: fixed;
+		left: 50%;
+		bottom: 20px;
+		z-index: 60;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px 20px;
+		width: min(640px, calc(100% - 32px));
+		padding: 14px 16px;
+		transform: translateX(-50%);
+		border: 1px solid var(--color-border);
+		border-radius: 14px;
+		background: var(--color-background);
+		box-shadow: var(--shadow-float);
+		font-size: 14px;
+		line-height: 1.6;
+	}
+
+	.auto-open p {
+		flex: 1 1 260px;
+		margin: 0;
+	}
+
+	.auto-open span {
+		display: block;
+		font-size: 12px;
+		color: var(--color-text-secondary);
+	}
+
+	.auto-open-actions {
+		display: flex;
+		gap: 8px;
+	}
 	/* ===== 冒頭 ===== */
 	.hero {
 		padding: 56px 0 72px;
@@ -186,6 +264,11 @@
 	.hero-text {
 		flex: 1 1 26rem;
 		max-width: 40rem;
+	}
+
+	.brand {
+		margin-bottom: 20px;
+		color: var(--color-primary);
 	}
 
 	h1 {

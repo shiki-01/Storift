@@ -47,6 +47,31 @@ node site/scripts/capture-shots.mjs
 - カスタムドメインに `app.storift.shiki-01.com` を追加
 - 「ビルドウォッチパス」の除外に `site/*` を追加（サイトだけの変更でアプリを再ビルドしない）
 
+## GitHub Actions で配信する
+
+`.github/workflows/deploy-app.yml`(エディタ)と `deploy-site.yml`(サイト)が、`main` への push で wrangler を使って Cloudflare Pages へ配信する。エディタはサイト以外の変更、サイトは `site/` の変更があったときだけ動く。手動実行(workflow_dispatch)もできる。
+
+### 事前準備
+
+1. Cloudflare の API トークンを作る(権限: Account → Cloudflare Pages → Edit)。
+2. GitHub の Settings → Secrets and variables → Actions に登録する。
+   - Secrets: `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`
+   - Variables(任意): `PUBLIC_SITE_URL`、`PUBLIC_APP_URL`(サイトのビルドで使う。未設定なら既定のドメイン)
+3. 配信先のプロジェクトを **ダイレクトアップロード** 形式で用意する。
+
+### Cloudflare の自動デプロイ(Git 連携)を切る
+
+Git 連携のプロジェクトは、ダイレクトアップロード形式へ変更できず、wrangler からは配信できない。そのため次のどちらかにする。
+
+- **推奨: ダイレクトアップロードのプロジェクトを作り直す**
+  1. Workers & Pages → Create → Pages → 「Upload assets」で、プロジェクトを作る(名前はワークフローの `PAGES_PROJECT`。既存と同じ名前にするには、旧プロジェクトの削除が先に必要)。
+  2. 旧プロジェクトのカスタムドメイン(`app.storift.shiki-01.com` など)を外し、新しいプロジェクトへ付け替える。
+  3. 旧プロジェクトは削除する。これで Git 連携による二重の自動デプロイが止まる。
+- **配信は Git 連携のまま、ワークフローは使わない**
+  プロジェクトの Settings → Builds → Branch control で、「Automatic production branch deployments」をオフにし、プレビューも「None」にする。ただし、その場合は配信する手段がなくなるため、ダイレクトアップロード側のプロジェクトが別に必要になる。
+
+アプリのドメイン(`app.` 側)を付け替える間は、短時間つながらなくなる。作業は影響の少ない時間に行う。
+
 ## DNS
 
 Cloudflare でドメインを管理している場合、Pages のカスタムドメイン追加で CNAME が自動作成される。手動で設定する場合:

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Seo from '$lib/Seo.svelte';
 	import { APP_URL } from '$lib/config';
+	import { accordion } from '$lib/accordion';
 
 	const groups = [
 		{
@@ -101,7 +102,7 @@
 			<h2>{g.title}</h2>
 			<div class="list">
 				{#each g.items as f (f.q)}
-					<details>
+					<details use:accordion>
 						<summary>
 							<span class="q">{f.q}</span>
 							<span class="mark" aria-hidden="true"></span>

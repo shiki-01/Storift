@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import Shot from '$lib/Shot.svelte';
 
 	const shots = [
@@ -35,6 +36,27 @@
 	];
 
 	let current = $state(0);
+
+	// 切り替えた瞬間に画像が空で出ないよう、全タブの画像(明暗とも)を裏で先読みして復号しておく
+	onMount(() => {
+		const keep: HTMLImageElement[] = [];
+		const load = () => {
+			for (const s of shots) {
+				for (const mode of ['light', 'dark']) {
+					const img = new Image();
+					img.src = `/shots/${s.name}-${mode}.webp`;
+					img.decode().catch(() => {});
+					keep.push(img);
+				}
+			}
+		};
+		const w = window as Window & {
+			requestIdleCallback?: (cb: () => void) => number;
+		};
+		if (w.requestIdleCallback) w.requestIdleCallback(load);
+		else setTimeout(load, 200);
+		return () => (keep.length = 0);
+	});
 </script>
 
 <div class="gallery">

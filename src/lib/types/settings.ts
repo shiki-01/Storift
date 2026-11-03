@@ -6,7 +6,9 @@ export type EditorFont =
 	| 'noto-serif'
 	| 'hannari-mincho'
 	| 'sawarabi-mincho'
-	| 'sawarabi-gothic';
+	| 'sawarabi-gothic'
+	/** デスクトップ版限定: インストール済みフォント名(`system:フォント名`) */
+	| `system:${string}`;
 
 export type ConflictResolutionPolicy = 'local' | 'remote' | 'manual';
 

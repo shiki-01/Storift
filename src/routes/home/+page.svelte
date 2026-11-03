@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { isDesktop } from '$lib/desktop/platform';
+	import { markEditorUsed } from '$lib/utils/siteLink';
 	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 	import { longpress } from '$lib/utils/longpress';
 	import { onMount } from 'svelte';
@@ -53,6 +55,8 @@
 		try {
 			const projects = await projectsDB.getAll();
 			projectsStore.projects = projects;
+			// Web 版では、作品を作ったことがあるとサイトに伝える(サイトの自動リダイレクト用)
+			if (projects.length > 0 && !isDesktop()) markEditorUsed();
 		} finally {
 			projectsStore.isLoading = false;
 		}

@@ -24,6 +24,7 @@
 	import NotificationSettings from '$lib/components/ui/NotificationSettings.svelte';
 	import ClaudeSettings from '$lib/components/desktop/ClaudeSettings.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
+	import { getAutoOpen, setAutoOpen } from '$lib/utils/siteLink';
 	import type { AppSettings } from '$lib/types/settings';
 	import { isFirebaseInitialized } from '$lib/firebase/config';
 	import { stopAllRealtimeSync } from '$lib/firebase/sync';
@@ -79,7 +80,10 @@
 	let exportFormat = $state<'json' | 'all'>('json');
 
 	// Phase 2: 通知システム初期化
+	let autoOpenFromSite = $state(false);
+
 	onMount(() => {
+		if (!isDesktop()) autoOpenFromSite = getAutoOpen();
 		void getServiceWorkerVersion().then((v) => (swVersion = v));
 		notificationService.initializeReminders();
 		return () => {
@@ -779,6 +783,24 @@
 			<p class="fg:theme-text-secondary font:.875rem">
 				入力が止まって約2秒後に保存します。オフにすると、Ctrl+S や「今すぐ保存」で保存します。
 			</p>
+
+			{#if !isDesktop()}
+				<label class="flex ai:center gap:.5rem cursor:pointer">
+					<input
+						type="checkbox"
+						checked={autoOpenFromSite}
+						onchange={(e) => {
+							autoOpenFromSite = e.currentTarget.checked;
+							setAutoOpen(autoOpenFromSite);
+						}}
+					/>
+					<span>サイトを開いたとき、自動でエディタを開く</span>
+				</label>
+				<p class="fg:theme-text-secondary font:.875rem">
+					Web
+					版の機能です。紹介サイトのトップを開いたときに、この画面を経由せずエディタへ移動します。
+				</p>
+			{/if}
 
 			{#if settings.autoSave}
 				<label class="flex flex:column gap:.5rem">

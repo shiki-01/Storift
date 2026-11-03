@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { accordion } from '$lib/accordion';
 	import Seo from '$lib/Seo.svelte';
 	import { APP_URL } from '$lib/config';
 
@@ -189,7 +190,7 @@ service cloud.firestore {
 		<h2>よくあるトラブル</h2>
 		<div class="list-qa">
 			{#each troubles as t (t.q)}
-				<details>
+				<details use:accordion>
 					<summary>
 						<span class="q">{t.q}</span>
 						<span class="mark" aria-hidden="true"></span>

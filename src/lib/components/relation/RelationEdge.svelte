@@ -8,10 +8,13 @@
 		offset: { x: number; y: number };
 		/** null は既定値へ戻す */
 		onOffsetChange: (offset: { x: number; y: number } | null) => void;
+		/** お互い別の矢印を並べるとき 1。始点・終点を進行方向の左側へずらす */
+		lane?: number;
 	}
 </script>
 
 <script lang="ts">
+	import { PARALLEL_LANE_GAP } from '$lib/utils/relationGraph';
 	import {
 		BaseEdge,
 		EdgeLabel,
@@ -28,14 +31,15 @@
 	const LABEL_GAP = 16;
 
 	let {
-		sourceX,
-		sourceY,
+		sourceX: rawSourceX,
+		sourceY: rawSourceY,
 		sourcePosition,
-		targetX,
-		targetY,
+		targetX: rawTargetX,
+		targetY: rawTargetY,
 		targetPosition,
 		label,
 		style,
+		markerStart,
 		markerEnd,
 		selected = false,
 		data: rawData
@@ -45,6 +49,21 @@
 	const data = $derived(rawData as unknown as RelationEdgeData);
 
 	const { screenToFlowPosition } = useSvelteFlow();
+
+	// お互い別の 2 本は、同じ点から出ないよう始点・終点を進行方向と垂直にずらす。
+	// 向きが逆だと「左」も逆になるので、2 本は自然に反対側へ分かれる
+	const shift = $derived.by(() => {
+		const lane = data.lane ?? 0;
+		const dx = rawTargetX - rawSourceX;
+		const dy = rawTargetY - rawSourceY;
+		const len = Math.hypot(dx, dy);
+		if (!lane || len === 0) return { x: 0, y: 0 };
+		return { x: (-dy / len) * lane * PARALLEL_LANE_GAP, y: (dx / len) * lane * PARALLEL_LANE_GAP };
+	});
+	const sourceX = $derived(rawSourceX + shift.x);
+	const sourceY = $derived(rawSourceY + shift.y);
+	const targetX = $derived(rawTargetX + shift.x);
+	const targetY = $derived(rawTargetY + shift.y);
 
 	let dragOffset = $state<Point | null>(null);
 	let hovered = $state(false);
@@ -119,7 +138,7 @@
 	}
 </script>
 
-<BaseEdge {path} {markerEnd} {style} interactionWidth={20} />
+<BaseEdge {path} {markerStart} {markerEnd} {style} interactionWidth={20} />
 
 {#if label}
 	<EdgeLabel x={control.x} y={control.y - LABEL_GAP} selectEdgeOnClick>

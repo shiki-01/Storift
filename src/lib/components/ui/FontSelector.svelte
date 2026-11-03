@@ -1,5 +1,12 @@
 <script lang="ts">
 	import type { EditorFont } from '$lib/types';
+	import { isDesktop } from '$lib/desktop/platform';
+	import {
+		getSystemFontName,
+		listSystemFonts,
+		systemFontToCss,
+		toSystemFontValue
+	} from '$lib/utils/fonts';
 
 	interface Props {
 		value: EditorFont;
@@ -43,19 +50,60 @@
 		}
 	];
 
+	const SYSTEM_OPTION = '__system__';
+
+	// デスクトップ版のみ、インストール済みフォントを選べる
+	const desktop = isDesktop();
+	let systemMode = $state(false);
+	let systemName = $state('');
+	let systemFonts = $state<string[]>([]);
+
+	$effect(() => {
+		const name = getSystemFontName(value);
+		if (name !== null) {
+			systemMode = true;
+			systemName = name;
+		}
+	});
+
+	async function enableSystemMode() {
+		systemMode = true;
+		if (systemFonts.length === 0) systemFonts = await listSystemFonts();
+	}
+
+	$effect(() => {
+		if (desktop && systemMode && systemFonts.length === 0) {
+			listSystemFonts().then((list) => (systemFonts = list));
+		}
+	});
+
 	function handleChange(e: Event) {
 		const target = e.target as HTMLSelectElement;
+		if (target.value === SYSTEM_OPTION) {
+			enableSystemMode();
+			return;
+		}
+		systemMode = false;
 		const newFont = target.value as EditorFont;
 		value = newFont;
 		if (onchange) {
 			onchange(newFont);
 		}
 	}
+
+	function commitSystemFont() {
+		const name = systemName.trim();
+		if (!name) return;
+		const newFont = toSystemFontValue(name);
+		if (newFont === value) return;
+		value = newFont;
+		onchange?.(newFont);
+	}
 </script>
 
 <div class="font-selector">
 	<select
-		{value}
+		value={systemMode ? SYSTEM_OPTION : value}
 		onchange={handleChange}
 		class="p:8|12 r:6 border:1|solid|theme-border cursor:pointer font:13 outline:none focus:border:theme-primary transition:all|0.2s"
 	>
@@ -64,7 +112,27 @@
 				{font.label}
 			</option>
 		{/each}
+		{#if desktop}
+			<option value={SYSTEM_OPTION}>システムフォント…</option>
+		{/if}
 	</select>
+	{#if desktop && systemMode}
+		<input
+			type="text"
+			list="system-font-list"
+			bind:value={systemName}
+			onchange={commitSystemFont}
+			onkeydown={(e) => e.key === 'Enter' && commitSystemFont()}
+			placeholder="フォント名(例: 游明朝)"
+			style="font-family: {systemFontToCss(systemName)};"
+			class="mt:6 w:full p:8|12 r:6 border:1|solid|theme-border font:13 outline:none focus:border:theme-primary"
+		/>
+		<datalist id="system-font-list">
+			{#each systemFonts as family (family)}
+				<option value={family}></option>
+			{/each}
+		</datalist>
+	{/if}
 </div>
 
 <style>

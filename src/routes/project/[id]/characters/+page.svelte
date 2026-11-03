@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ClaudeToggle from '$lib/components/desktop/ClaudeToggle.svelte';
 	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { charactersDB } from '$lib/db';
@@ -294,6 +295,7 @@
 					<p class="font:14 fg:theme-text-secondary mt:8">登場人物の情報と相関図を管理します</p>
 				</div>
 				<div class="flex flex-wrap:wrap ai:center gap:12 max-w:100%">
+					<ClaudeToggle />
 					<div class="flex bg:theme-surface b:1px|solid|theme-border r:10 p:6 gap:8">
 						<button class={viewToggleClass('grid')} onclick={() => (viewMode = 'grid')}>
 							グリッド

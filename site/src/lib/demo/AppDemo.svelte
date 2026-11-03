@@ -181,6 +181,8 @@
 			plots.pl3 = 'written';
 			plots.pl1 = 'planned';
 		}
+		// 相関図から進捗へ移る章では、動かした人物の位置を保ったままにする
+		if (index >= 3) mover = { x: -70, y: 56 };
 		view = (['editor', 'editor', 'plot', 'relation'] as const)[index];
 	}
 

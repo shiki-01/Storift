@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ClaudeToggle from '$lib/components/desktop/ClaudeToggle.svelte';
 	import { confirmDialog } from '$lib/stores/toast.svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { worldbuildingDB } from '$lib/db';
@@ -198,13 +199,16 @@
 					<h1 class="font:26 font-weight:600 m:0 fg:theme-text">設定資料管理</h1>
 					<p class="font:14 fg:theme-text-secondary mt:8">世界観や用語の設定資料を管理します</p>
 				</div>
-				<Button
-					class="px:18 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
-					onclick={openCreateModal}
-					disabled={!currentProjectStore.project}
-				>
-					+ 新規資料
-				</Button>
+				<div class="flex flex-wrap:wrap ai:center gap:12 max-w:100%">
+					<ClaudeToggle />
+					<Button
+						class="px:18 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
+						onclick={openCreateModal}
+						disabled={!currentProjectStore.project}
+					>
+						+ 新規資料
+					</Button>
+				</div>
 			</div>
 		</header>
 

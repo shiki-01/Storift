@@ -8,6 +8,9 @@ use tauri_plugin_window_state::StateFlags;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // 更新の確認・ダウンロード・再起動(署名付きの配布物だけを受け付ける)
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         // 枠(装飾)の有無は保存しない。前回の状態が復元されると、Windows で外したはずの OS のタイトルバーが戻ってしまう
         .plugin(
             tauri_plugin_window_state::Builder::default()

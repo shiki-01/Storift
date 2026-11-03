@@ -23,6 +23,7 @@
 	import { tourStore } from '$lib/tutorial/tour.svelte';
 	import NotificationSettings from '$lib/components/ui/NotificationSettings.svelte';
 	import ClaudeSettings from '$lib/components/desktop/ClaudeSettings.svelte';
+	import UpdateSettings from '$lib/components/desktop/UpdateSettings.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
 	import { getAutoOpen, setAutoOpen } from '$lib/utils/siteLink';
 	import type { AppSettings } from '$lib/types/settings';
@@ -909,16 +910,20 @@
 		<Card class="b:1px|solid|theme-border  flex flex:column gap:1rem">
 			<h2 class="font:bold">バージョン情報</h2>
 			<div class="fg:theme-text-secondary">
-				<p>Storift v0.0.1</p>
-				<p class="font:.875rem">ビルド: {buildVersion}</p>
-				<p class="font:.875rem">
-					オフライン対応: {swVersion
-						? `有効 (${swVersion})`
-						: '未有効(初回の読み込み後に有効になります)'}
-				</p>
-				<button class="link-btn" onclick={handleCheckUpdate} disabled={checkingUpdate}>
-					更新を確認
-				</button>
+				{#if isDesktop()}
+					<UpdateSettings />
+				{:else}
+					<p>Storift v0.0.1</p>
+					<p class="font:.875rem">ビルド: {buildVersion}</p>
+					<p class="font:.875rem">
+						オフライン対応: {swVersion
+							? `有効 (${swVersion})`
+							: '未有効(初回の読み込み後に有効になります)'}
+					</p>
+					<button class="link-btn" onclick={handleCheckUpdate} disabled={checkingUpdate}>
+						更新を確認
+					</button>
+				{/if}
 				<p>&copy shiki 2025</p>
 			</div>
 		</Card>

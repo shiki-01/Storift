@@ -125,6 +125,34 @@ Linux では WebKitGTK などが必要(`.github/workflows/desktop.yml` の「Ins
 - main への push と PR では、ビルドした `.dmg` / `.msi` / `.exe` / `.deb` / `.rpm` / `.AppImage` を Actions の Artifacts に置く。
 - `v` から始まるタグ(例: `v0.1.0`)を push すると、それらを添付した下書きのリリースを GitHub Releases に作る。アプリのバージョンは `package.json` の `version` を使うので、タグと合わせて更新する。
 
+### 自動アップデート
+
+デスクトップ版は `tauri-plugin-updater` で更新できる。
+
+- 起動の少し後と 6 時間ごとに、GitHub Releases の最新リリースにある `latest.json` を確認する(設定の「バージョン情報」で自動確認をオフにできる)。手動でも「更新を確認」で確認できる。
+- 新しい版があると通知が出る。「更新」を押すとダウンロードして入れる。自動では入れない。macOS / Linux は入れ終わったあと「再起動」で切り替わり、Windows は自動で再起動する。
+- 更新用ファイルには署名が付き、アプリに埋め込んだ公開鍵(`src-tauri/tauri.conf.json` の `plugins.updater.pubkey`)で検証する。
+- 下書きのリリースは配信されない。**リリースを公開(Publish)した時点で**、利用者に更新が届く。
+
+#### 初回の準備(1 度だけ)
+
+署名用の鍵を作る。**秘密鍵は公開しない・なくさない**(なくすと、既存の利用者へ更新を配れなくなる)。
+
+```bash
+bun run tauri signer generate -w ~/.tauri/storift-updater.key
+```
+
+- 公開鍵(`.key.pub` の中身)を `tauri.conf.json` の `plugins.updater.pubkey` に入れる。
+- 秘密鍵の中身を GitHub の Secrets に `TAURI_SIGNING_PRIVATE_KEY` として登録する。パスワードを付けた場合は `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` も登録する。
+
+#### リリースの手順
+
+1. `package.json` の `version` を上げ、`main` に入れる。
+2. `git tag vX.Y.Z && git push origin vX.Y.Z`(`desktop.yml` が 3 OS 分をビルドし、署名付きの下書きリリースと `latest.json` を作る)。
+3. 下書きの内容を確かめて Publish する。
+
+更新用ファイルは `src-tauri/tauri.release.conf.json`(`createUpdaterArtifacts`)をタグのビルドでだけ重ねて作る。鍵のない PR や通常のビルドでは作らないので、そのまま通る。
+
 ### 署名について
 
 Apple Developer ID による署名・公証はしていない。macOS 版はアドホック署名(`bundle.macOS.signingIdentity: "-"`)だけをしている。署名がまったく無いと、ブラウザでダウンロードした `.app` は Apple Silicon で「壊れているため開けません」と表示され、通常の手順では開けない。

@@ -1,0 +1,38 @@
+name: Release
+
+# package.json の version を上げて main に入れると、v<version> のタグを作ってデスクトップ版のビルドとリリースを始める。
+# (タグがすでにあれば何もしない。手動実行すると、いまの version でタグを作る)
+on:
+  push:
+    branches: [main]
+    paths: [package.json]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create tag and start desktop build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          tag="v${version}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "${tag} はすでにあるので、何もしません"
+            exit 0
+          fi
+          gh api "repos/${GITHUB_REPOSITORY}/git/refs" -f ref="refs/tags/${tag}" -f sha="${GITHUB_SHA}"
+          # GITHUB_TOKEN で作ったタグでは push トリガーが動かないので、ビルドは手動実行の形で始める
+          gh workflow run desktop.yml --ref "${tag}"
+          echo "${tag} を作り、デスクトップ版のビルドを始めました"

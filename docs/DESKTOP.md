@@ -148,8 +148,11 @@ bun run tauri signer generate -w ~/.tauri/storift-updater.key
 #### リリースの手順
 
 1. `package.json` の `version` を上げ、`main` に入れる。
-2. `git tag vX.Y.Z && git push origin vX.Y.Z`(`desktop.yml` が 3 OS 分をビルドし、署名付きの下書きリリースと `latest.json` を作る)。
-3. 下書きの内容を確かめて Publish する。
+2. あとは自動。`release.yml` が `v<version>` のタグを作り、`desktop.yml` が 3 OS 分をビルドして署名付きのリリースと `latest.json` を作る。3 つとも通ると、リリースを自動で公開し、利用者へ更新が配られる。
+
+- すでにあるバージョンは何もしない(`package.json` を別の理由で変えても、タグは増えない)。
+- 手動でやり直すときは、Actions の「Release」を手動実行する。手でタグを打って push しても、同じビルドが動く。
+- 公開したくないときは、`desktop.yml` の `publish` ジョブを外し、下書きを確かめてから手で Publish する。
 
 更新用ファイルは `src-tauri/tauri.release.conf.json`(`createUpdaterArtifacts`)をタグのビルドでだけ重ねて作る。鍵のない PR や通常のビルドでは作らないので、そのまま通る。
 

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
+	import { dataChange } from '$lib/stores/dataChange.svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import {
 		SvelteFlow,
@@ -73,6 +74,20 @@
 	onMount(async () => {
 		map = await relationMapsDB.get(projectId);
 		rebuild();
+	});
+
+	// 相関図が外(Claude の編集など)で書き換わったら、読み直して作り直す
+	let seenRelationRevision = dataChange.revision('relationMaps');
+	$effect(() => {
+		const revision = dataChange.revision('relationMaps');
+		if (revision === seenRelationRevision) return;
+		seenRelationRevision = revision;
+		untrack(async () => {
+			const fresh = await relationMapsDB.get(projectId);
+			if (!fresh) return;
+			map = fresh;
+			rebuild();
+		});
 	});
 
 	// キャラクターが増減・更新されたらノードと線を作り直す(位置などの map は参照のみ)

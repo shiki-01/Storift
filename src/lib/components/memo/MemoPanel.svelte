@@ -4,6 +4,7 @@
 	 * スマホの参照シートのメモタブで使う。範囲メモは本文の選択から作られ、一覧から本文の位置へ戻れる。
 	 */
 	import { tick } from 'svelte';
+	import { dataChange } from '$lib/stores/dataChange.svelte';
 	import { memosDB } from '$lib/db';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
@@ -72,6 +73,7 @@
 	// メモの変更を読み直す(自分の操作も、本文の強調表示も、同じ通知で更新される)
 	$effect(() => {
 		void editorStore.memoVersion;
+		void dataChange.revision('memos');
 		let cancelled = false;
 		memosDB
 			.getByProject(projectId)

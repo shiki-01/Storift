@@ -6,7 +6,8 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
+	import { dataChange } from '$lib/stores/dataChange.svelte';
 	import {
 		format,
 		startOfMonth,
@@ -53,6 +54,21 @@
 			isLoading = false;
 		}
 	};
+
+	const refreshProgressLogs = async () => {
+		if (!currentProjectStore.project) return;
+		progressLogs = await progressLogsDB.getByProjectId(currentProjectStore.project.id);
+		calculateStats();
+	};
+
+	// Claude など画面の外で書き換わったら、読み直す(読み込み表示は出さない)
+	let seenRevision = dataChange.revision('progressLogs');
+	$effect(() => {
+		const revision = dataChange.revision('progressLogs');
+		if (revision === seenRevision) return;
+		seenRevision = revision;
+		untrack(() => void refreshProgressLogs());
+	});
 
 	const calculateStats = () => {
 		if (progressLogs.length === 0) {

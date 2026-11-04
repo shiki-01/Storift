@@ -11,7 +11,8 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
 	import { createPlotContextMenu, type ContextMenuItem } from '$lib/utils/contextMenu';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
+	import { dataChange } from '$lib/stores/dataChange.svelte';
 
 	let plots = $state<Plot[]>([]);
 	let isLoading = $state(true);
@@ -84,6 +85,20 @@
 
 	onMount(async () => {
 		await loadPlots();
+	});
+
+	const refreshPlots = async () => {
+		if (!currentProjectStore.project) return;
+		plots = await plotsDB.getByProjectId(currentProjectStore.project.id);
+	};
+
+	// Claude など画面の外で書き換わったら、読み直す(読み込み表示は出さない)
+	let seenRevision = dataChange.revision('plots');
+	$effect(() => {
+		const revision = dataChange.revision('plots');
+		if (revision === seenRevision) return;
+		seenRevision = revision;
+		untrack(() => void refreshPlots());
 	});
 
 	const loadPlots = async () => {

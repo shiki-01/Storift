@@ -158,6 +158,11 @@
 			}
 			if (pending && message.running) items.push({ kind: 'pending-edit' });
 		}
+		// タグで書かれなかった編集案(MCP の propose_edit で届いたもの)は、回答の後ろにまとめる
+		const rest = message.edits ?? [];
+		for (; index < rest.length; index++) {
+			items.push({ kind: 'edit', edit: rest[index], index });
+		}
 		return items;
 	}
 

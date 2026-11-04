@@ -335,6 +335,23 @@ export function entityTitle<K extends EntityKind>(kind: K, entity: EntityMap[K])
 	return DEFS[kind].title(entity);
 }
 
+/** Claude が propose_edit で編集できる項目の種類(履歴は読み取り専用) */
+export const EDITABLE_KINDS = [
+	'chapters',
+	'characters',
+	'plots',
+	'worldbuilding',
+	'memos',
+	'progressLogs',
+	'relationMaps'
+] as const satisfies readonly EntityKind[];
+
+export type EditableKind = (typeof EDITABLE_KINDS)[number];
+
+export function isEditableKind(kind: string): kind is EditableKind {
+	return (EDITABLE_KINDS as readonly string[]).includes(kind);
+}
+
 /** 編集できるフィールドの見出し名 */
 export function editableFields(kind: EntityKind): string[] {
 	return DEFS[kind].fields.map((f) => f.label);

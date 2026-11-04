@@ -58,7 +58,7 @@ export interface WorkspaceData {
 	relationMaps: RelationMap[];
 }
 
-const STATUS_LABELS: Record<Project['status'], string> = {
+export const STATUS_LABELS: Record<Project['status'], string> = {
 	draft: '構想中',
 	writing: '執筆中',
 	completed: '完結'

@@ -1,8 +1,7 @@
 name: Web CI
 
+# main への push では Deploy App が check と build を実行するため、ここでは PR と手動実行のみ行う(重複を省く)
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 

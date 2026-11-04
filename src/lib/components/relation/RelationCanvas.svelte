@@ -155,8 +155,15 @@
 				type: 'relation',
 				label: s.label,
 				style: `stroke:${s.color};stroke-width:2;`,
-				markerEnd: { type: MarkerType.ArrowClosed, color: s.color },
-				...(s.arrow === 'both'
+				markerEnd: {
+					type:
+						s.arrow === 'both' && s.curve === 'straight'
+							? MarkerType.Arrow
+							: MarkerType.ArrowClosed,
+					color: s.color
+				},
+				// 双方向の直線は ⇄(平行な 2 本)で描くので、始点側の矢印は付けない
+				...(s.arrow === 'both' && s.curve !== 'straight'
 					? { markerStart: { type: MarkerType.ArrowClosed, color: s.color } }
 					: {}),
 				data: {
@@ -165,6 +172,7 @@
 					index: s.index,
 					label: s.label,
 					curve: s.curve,
+					arrow: s.arrow,
 					color: s.color,
 					offset: s.offset,
 					lane: s.lane,

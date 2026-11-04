@@ -82,6 +82,7 @@ import {
 	type EntityMap,
 	type EntityRef
 } from '$lib/desktop/entities';
+import { dataChange } from '$lib/stores/dataChange.svelte';
 import { EDIT_INSTRUCTIONS, replaceOnce, revertAt, type ReplaceResult } from '$lib/desktop/edits';
 import { scrollRangeIntoView, selectTextRange, textRange } from '$lib/utils/editorInput';
 
@@ -98,7 +99,7 @@ export interface EditState {
 	file: string;
 	old: string;
 	new: string;
-	status: 'pending' | 'applied' | 'rejected' | 'failed' | 'reverted';
+	status: 'pending' | 'applying' | 'applied' | 'reverting' | 'rejected' | 'failed' | 'reverted';
 	error?: string;
 	sceneId?: string;
 	/** 画面に出す編集対象の名前(シーン名、または「キャラクター: 名前」など) */
@@ -332,11 +333,22 @@ function isEmpty(session: ChatSession): boolean {
 	return !session.messages.length && !session.sessionId;
 }
 
+/** 途中経過の状態(反映中・取り消し中)のまま保存されていたら、もとの状態に戻す */
+function settleStatuses(scope: Scope) {
+	for (const session of scope.sessions)
+		for (const message of session.messages)
+			for (const edit of message.edits ?? []) {
+				if (edit.status === 'applying') edit.status = 'pending';
+				else if (edit.status === 'reverting') edit.status = 'applied';
+			}
+}
+
 function loadScopes(): Record<string, Scope> {
 	const raw = load<Record<string, Scope | LegacyConversation>>(CHAT_KEY, {});
 	const out: Record<string, Scope> = {};
 	for (const [key, value] of Object.entries(raw)) {
 		if ('sessions' in value) {
+			settleStatuses(value);
 			out[key] = value;
 			continue;
 		}
@@ -418,8 +430,30 @@ async function flushSync(batch: SyncBatch) {
 	if (!batch.size) return;
 	const changes = [...batch.values()];
 	batch.clear();
-	await queueChanges(changes);
+	// 同期は数秒のデバウンスを待ち、連続して呼ぶと前の呼び出しが完了しないことがある。
+	// 反映の完了を同期に結びつけないよう、待たずに任せる
+	void queueChanges(changes).catch((error) =>
+		console.error('同期キューへの登録に失敗しました', error)
+	);
 }
+
+/** 開いている画面に、DB の項目が書き換わったことを知らせる(関係線は人物と相関図の両方に出る) */
+function notifyChanged(...kinds: EntityKind[]) {
+	const all = [...kinds];
+	if (kinds.includes('characters') && !kinds.includes('relationMaps')) all.push('relationMaps');
+	dataChange.notify(...all);
+}
+
+const ALL_KINDS: EntityKind[] = [
+	'chapters',
+	'characters',
+	'plots',
+	'worldbuilding',
+	'memos',
+	'progressLogs',
+	'history',
+	'relationMaps'
+];
 
 type ChangeFn = (content: string) => ReplaceResult;
 
@@ -603,6 +637,7 @@ async function editEntity(
 	const error = await saveEntityChanges(ref.kind, loaded.entity, merged, own);
 	if (!batch) await flushSync(own);
 	if (error) return changes.map(() => ({ ok: false, reason: error }) as ReplaceResult);
+	notifyChanged(ref.kind);
 	return results;
 }
 
@@ -686,6 +721,7 @@ async function applyCreate(edit: EditState, batch: SyncBatch) {
 		record = created.record;
 	}
 	if (edit.entity?.kind === 'chapters') syncChapterStore(record as Chapter);
+	notifyChanged(...ALL_KINDS);
 	edit.status = 'applied';
 	edit.error = undefined;
 }
@@ -699,12 +735,19 @@ async function applyDelete(edit: EditState, batch: SyncBatch) {
 	queueLater(batch, removed.sync);
 	edit.snapshot = removed.snapshot;
 	edit.touched = removed.touched;
+	if (edit.entity.kind === 'chapters') syncChapterStore(null, edit.entity.id);
+	notifyChanged(...ALL_KINDS);
 	edit.status = 'applied';
 	edit.error = undefined;
 }
 
 /** 同じ対象への編集は、読み書きを 1 回にまとめて順に適用する。1 つの例外で残りを止めない */
 async function applyEdits(edits: EditState[], batch: SyncBatch) {
+	// 反映の途中であることを見せる(終わると applied か failed になる)
+	for (const edit of edits) {
+		edit.status = 'applying';
+		edit.error = undefined;
+	}
 	const units: EditState[][] = [];
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- 関数内だけで使う一時的な入れ物で、リアクティブにする必要がない
 	const byTarget = new Map<string, EditState[]>();
@@ -783,11 +826,15 @@ async function flushSyncSafely(batch: SyncBatch) {
 /** 反映した編集を元に戻す。例外は edit.error に記録し、投げない */
 async function revertEdit(edit: EditState, batch?: SyncBatch) {
 	const own = batch ?? newBatch();
+	const previous = edit.status;
+	edit.status = 'reverting';
 	try {
 		await revertCore(edit, own);
 	} catch (error) {
 		edit.error = `元に戻せません: ${String(error)}`;
 	} finally {
+		// 戻せなかったときは、もとの状態(反映済み)に戻す
+		if (edit.status === 'reverting') edit.status = previous;
 		if (!batch) await flushSyncSafely(own);
 	}
 }
@@ -823,6 +870,7 @@ async function revertCore(edit: EditState, batch: SyncBatch) {
 			}
 			queueLater(batch, restored.sync);
 		}
+		notifyChanged(...ALL_KINDS);
 		edit.status = 'reverted';
 		edit.error = undefined;
 		return;
@@ -1312,7 +1360,7 @@ export const claudeStore = {
 				await applyEdits(pending, batch);
 			} catch (error) {
 				for (const edit of pending)
-					if (edit.status === 'pending')
+					if (edit.status === 'pending' || edit.status === 'applying')
 						markFailed(edit, `反映中にエラーが起きました: ${String(error)}`);
 			} finally {
 				await flushSyncSafely(batch);

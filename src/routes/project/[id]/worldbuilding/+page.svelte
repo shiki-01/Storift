@@ -9,7 +9,8 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
+	import { dataChange } from '$lib/stores/dataChange.svelte';
 
 	let worldbuildings = $state<Worldbuilding[]>([]);
 	let isLoading = $state(true);
@@ -70,6 +71,20 @@
 
 	onMount(async () => {
 		await loadWorldbuildings();
+	});
+
+	const refreshWorldbuildings = async () => {
+		if (!currentProjectStore.project) return;
+		worldbuildings = await worldbuildingDB.getByProjectId(currentProjectStore.project.id);
+	};
+
+	// Claude など画面の外で書き換わったら、読み直す(読み込み表示は出さない)
+	let seenRevision = dataChange.revision('worldbuilding');
+	$effect(() => {
+		const revision = dataChange.revision('worldbuilding');
+		if (revision === seenRevision) return;
+		seenRevision = revision;
+		untrack(() => void refreshWorldbuildings());
 	});
 
 	const loadWorldbuildings = async () => {

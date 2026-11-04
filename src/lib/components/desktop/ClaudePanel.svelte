@@ -481,17 +481,21 @@
 						{#if message.edits?.length && !message.running}
 							{@const pending = message.edits.filter((e) => e.status === 'pending').length}
 							{@const applied = message.edits.filter((e) => e.status === 'applied').length}
+							{@const working = message.edits.filter(
+								(e) => e.status === 'applying' || e.status === 'reverting'
+							).length}
 							<div class="changes">
 								<span class="changes-label"
 									>変更 {message.edits.length} 件(反映済み {applied}{pending
 										? `・未反映 ${pending}`
-										: ''})</span
+										: ''}{working ? `・処理中 ${working}` : ''})</span
 								>
 								{#if pending}
 									<button
 										class="small primary"
 										disabled={claudeStore.busy}
-										onclick={() => claudeStore.applyAll(message)}>すべて反映</button
+										onclick={() => claudeStore.applyAll(message)}
+										>{working ? '反映中…' : 'すべて反映'}</button
 									>
 									<button
 										class="small"
@@ -503,7 +507,8 @@
 									<button
 										class="small"
 										disabled={claudeStore.busy}
-										onclick={() => claudeStore.revertAll(message)}>すべて元に戻す</button
+										onclick={() => claudeStore.revertAll(message)}
+										>{working ? '処理中…' : 'すべて元に戻す'}</button
 									>
 								{/if}
 							</div>

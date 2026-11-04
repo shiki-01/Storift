@@ -30,7 +30,9 @@
 
 	const STATUS_LABELS: Record<EditState['status'], string> = {
 		pending: '未反映',
+		applying: '反映中…',
 		applied: '反映済み',
+		reverting: '取り消し中…',
 		rejected: '却下',
 		failed: '反映できません',
 		reverted: '元に戻しました'
@@ -50,6 +52,7 @@
 	class="edit"
 	class:applied={editState?.status === 'applied'}
 	class:failed={editState?.status === 'failed'}
+	class:working={editState?.status === 'applying' || editState?.status === 'reverting'}
 >
 	<button
 		class="edit-header"
@@ -185,6 +188,18 @@
 
 	.badge.failed {
 		color: var(--color-error);
+	}
+
+	.badge.applying,
+	.badge.reverting {
+		color: var(--color-primary);
+		animation: working 1s ease-in-out infinite alternate;
+	}
+
+	@keyframes working {
+		to {
+			opacity: 0.45;
+		}
 	}
 
 	.diff {

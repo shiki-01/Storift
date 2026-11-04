@@ -620,11 +620,13 @@ mod tests {
             let allowed = value_of(&build_args(&request(None, false, mode), cfg), "--allowedTools").to_string();
             assert!(allowed.split(',').all(|t| t.starts_with("mcp__storift__")));
             assert!(allowed.contains("mcp__storift__propose_edit"));
+            assert!(allowed.contains("mcp__storift__propose_create"));
+            assert!(allowed.contains("mcp__storift__propose_delete"));
             assert!(allowed.contains("mcp__storift__get_scene"));
         }
         for mode in [Some("suggest"), None] {
             let allowed = value_of(&build_args(&request(None, false, mode), cfg), "--allowedTools").to_string();
-            assert!(!allowed.contains("propose_edit"));
+            assert!(!allowed.contains("propose_"));
             assert!(allowed.contains("mcp__storift__list_items"));
         }
     }

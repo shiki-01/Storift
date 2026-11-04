@@ -29,9 +29,9 @@ const READ_TIMEOUT: Duration = Duration::from_secs(10);
 const SUPPORTED_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
 /// 書き込みを伴うツール。`edit_mode` が suggest のときは公開しない
-const EDIT_TOOL: &str = "propose_edit";
+const EDIT_TOOLS: &[&str] = &["propose_edit", "propose_create", "propose_delete"];
 
-/// 公開するツール名(propose_edit を除く読み取り系)
+/// 公開するツール名(propose_* を除く読み取り系)
 const READ_TOOL_NAMES: &[&str] = &[
     "list_projects",
     "get_outline",
@@ -42,7 +42,7 @@ const READ_TOOL_NAMES: &[&str] = &[
     "get_history",
 ];
 
-/// 編集モードで propose_edit を公開するか(suggest・未指定・不明な値では公開しない)
+/// 編集モードで propose_* を公開するか(suggest・未指定・不明な値では公開しない)
 pub fn edit_enabled(mode: Option<&str>) -> bool {
     matches!(mode, Some("confirm") | Some("auto"))
 }
@@ -51,7 +51,7 @@ pub fn edit_enabled(mode: Option<&str>) -> bool {
 pub fn allowed_tool_names(mode: Option<&str>) -> Vec<String> {
     let mut names: Vec<&str> = READ_TOOL_NAMES.to_vec();
     if edit_enabled(mode) {
-        names.push(EDIT_TOOL);
+        names.extend_from_slice(EDIT_TOOLS);
     }
     names.into_iter().map(|n| format!("mcp__{SERVER_NAME}__{n}")).collect()
 }
@@ -135,7 +135,7 @@ fn tool_definitions(mode: Option<&str>) -> Vec<Value> {
     ];
     if edit_enabled(mode) {
         tools.push(json!({
-            "name": EDIT_TOOL,
+            "name": "propose_edit",
             "description": "シーンや項目の本文を old から new へ置換する編集を提案する(old は一意に一致すること)",
             "inputSchema": {
                 "type": "object",
@@ -149,6 +149,41 @@ fn tool_definitions(mode: Option<&str>) -> Vec<Value> {
                     "new": {"type": "string"}
                 },
                 "required": ["kind", "id", "old", "new"]
+            }
+        }));
+        tools.push(json!({
+            "name": "propose_create",
+            "description": "項目(キャラクター・プロット・設定資料・メモ・進捗・章)の新規追加を提案する。fields は項目名と値(get_item の「## 節」の名前。作成時は名前・タイトル・種類・分類も必須)",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": ["characters", "plots", "worldbuilding", "memos", "progressLogs", "chapters"]
+                    },
+                    "fields": {
+                        "type": "object",
+                        "description": "項目名 → 値。characters は 名前(必須)・役割・外見・性格・背景、plots は タイトル・種類(全体の流れ/章/シーン)(必須)・状態・内容、worldbuilding は タイトル・分類(用語/場所/年表/その他)(必須)・タグ・内容、memos は 本文(必須)・タグ、progressLogs は 日付(必須・YYYY-MM-DD)・文字数・時間(分)、chapters は タイトル(必須)・概要",
+                        "additionalProperties": {"type": ["string", "number"]}
+                    },
+                    "projectId": project
+                },
+                "required": ["kind", "fields"]
+            }
+        }));
+        tools.push(json!({
+            "name": "propose_delete",
+            "description": "項目(キャラクター・プロット・設定資料・メモ・進捗)の削除を提案する。シーン・章・履歴・相関図は削除できない",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": ["characters", "plots", "worldbuilding", "memos", "progressLogs"]
+                    },
+                    "id": {"type": "string"}
+                },
+                "required": ["kind", "id"]
             }
         }));
     }
@@ -292,7 +327,8 @@ impl McpState {
                 let Some(name) = params.get("name").and_then(Value::as_str) else {
                     return Some(rpc_err(&id, -32602, "name が必要です"));
                 };
-                let known = READ_TOOL_NAMES.contains(&name) || (name == EDIT_TOOL && edit_enabled(mode));
+                let is_edit_tool = EDIT_TOOLS.contains(&name);
+                let known = READ_TOOL_NAMES.contains(&name) || (is_edit_tool && edit_enabled(mode));
                 if !known {
                     return Some(rpc_err(&id, -32602, &format!("不明なツール: {name}")));
                 }
@@ -301,7 +337,7 @@ impl McpState {
                     return Some(rpc_err(&id, -32602, "arguments はオブジェクトで渡してください"));
                 }
                 // 履歴は編集の対象外(フロントに渡す前にここでも断る)
-                if name == EDIT_TOOL && args.get("kind").and_then(Value::as_str) == Some("history") {
+                if is_edit_tool && args.get("kind").and_then(Value::as_str) == Some("history") {
                     return Some(rpc_ok(&id, tool_result("history は編集できません", true)));
                 }
                 let res = self.relay(run_id, name, args).await;
@@ -535,13 +571,15 @@ mod tests {
         let msg = json!({"jsonrpc":"2.0","id":1,"method":"tools/list"});
         for mode in ["confirm", "auto"] {
             let names = tool_names(&rpc(&st, mode, msg.clone()).await);
-            assert_eq!(names.len(), 8);
-            assert!(names.contains(&"propose_edit".to_string()));
+            assert_eq!(names.len(), 10);
+            for tool in ["propose_edit", "propose_create", "propose_delete"] {
+                assert!(names.contains(&tool.to_string()), "{tool}");
+            }
         }
         for mode in ["suggest", "", "weird"] {
             let names = tool_names(&rpc(&st, mode, msg.clone()).await);
             assert_eq!(names.len(), 7);
-            assert!(!names.contains(&"propose_edit".to_string()));
+            assert!(names.iter().all(|n| !n.starts_with("propose_")));
         }
         // 各ツールは object の inputSchema と 1 行の説明を持つ
         let r = rpc(&st, "confirm", msg).await;
@@ -552,13 +590,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn propose_edit_rejected_in_suggest_and_history() {
+    async fn propose_tools_rejected_in_suggest_and_history() {
         let (st, seen) = state(Duration::from_secs(1));
-        let call = |kind: &str| json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"propose_edit","arguments":{"kind":kind,"id":"x","old":"a","new":"b"}}});
-        let r = rpc(&st, "suggest", call("scene")).await;
-        assert_eq!(r.body.unwrap()["error"]["code"], -32602);
-        let r = rpc(&st, "confirm", call("history")).await;
-        assert_eq!(result_of(&r)["isError"], true);
+        let call = |tool: &str, kind: &str| json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":tool,"arguments":{"kind":kind,"id":"x","old":"a","new":"b","fields":{}}}});
+        for tool in ["propose_edit", "propose_create", "propose_delete"] {
+            let r = rpc(&st, "suggest", call(tool, "scene")).await;
+            assert_eq!(r.body.unwrap()["error"]["code"], -32602, "{tool}");
+            let r = rpc(&st, "confirm", call(tool, "history")).await;
+            assert_eq!(result_of(&r)["isError"], true, "{tool}");
+        }
         assert!(seen.lock().unwrap().is_empty(), "フロントへは渡さない");
     }
 
@@ -660,11 +700,13 @@ mod tests {
     #[test]
     fn allowed_names_follow_mode() {
         let confirm = allowed_tool_names(Some("confirm"));
-        assert_eq!(confirm.len(), 8);
-        assert!(confirm.contains(&"mcp__storift__propose_edit".to_string()));
+        assert_eq!(confirm.len(), 10);
+        for tool in ["propose_edit", "propose_create", "propose_delete"] {
+            assert!(confirm.contains(&format!("mcp__storift__{tool}")), "{tool}");
+        }
         let suggest = allowed_tool_names(Some("suggest"));
         assert_eq!(suggest.len(), 7);
-        assert!(suggest.iter().all(|n| n.starts_with("mcp__storift__") && !n.ends_with("propose_edit")));
+        assert!(suggest.iter().all(|n| n.starts_with("mcp__storift__") && !n.contains("propose_")));
         assert_eq!(allowed_tool_names(None), suggest);
     }
 

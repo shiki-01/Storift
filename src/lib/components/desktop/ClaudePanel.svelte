@@ -488,16 +488,22 @@
 										: ''})</span
 								>
 								{#if pending}
-									<button class="small primary" onclick={() => claudeStore.applyAll(message)}
-										>すべて反映</button
+									<button
+										class="small primary"
+										disabled={claudeStore.busy}
+										onclick={() => claudeStore.applyAll(message)}>すべて反映</button
 									>
-									<button class="small" onclick={() => claudeStore.rejectAll(message)}
-										>すべて却下</button
+									<button
+										class="small"
+										disabled={claudeStore.busy}
+										onclick={() => claudeStore.rejectAll(message)}>すべて却下</button
 									>
 								{/if}
 								{#if applied}
-									<button class="small" onclick={() => claudeStore.revertAll(message)}
-										>すべて元に戻す</button
+									<button
+										class="small"
+										disabled={claudeStore.busy}
+										onclick={() => claudeStore.revertAll(message)}>すべて元に戻す</button
 									>
 								{/if}
 							</div>

@@ -16,6 +16,7 @@ import { editorStore } from '$lib/stores/editor.svelte';
 import {
 	chaptersDB,
 	charactersDB,
+	db,
 	memosDB,
 	plotsDB,
 	progressLogsDB,
@@ -32,7 +33,7 @@ import type {
 	RelationMap,
 	Worldbuilding
 } from '$lib/types';
-import { queueChange } from '$lib/services/sync.service';
+import { queueChanges } from '$lib/services/sync.service';
 import {
 	attachClaude,
 	cancelClaude,
@@ -51,11 +52,32 @@ import {
 	turnParts,
 	type TurnPart
 } from '$lib/desktop/stream';
-import { buildWorkspace, entityContext, loadWorkspaceData } from '$lib/desktop/workspace';
+import {
+	buildWorkspace,
+	entityContextFor,
+	entityFilePath,
+	loadEntity,
+	loadWorkspaceData,
+	sceneFilePath
+} from '$lib/desktop/workspace';
+import {
+	createEntity,
+	prepareCreate,
+	removeEntity,
+	restoreEntity,
+	type CreateSpec,
+	type EntityRecord,
+	type SyncChange,
+	type Touched
+} from '$lib/desktop/entityOps';
 import {
 	editEntityFile,
 	entityTitle,
+	isCreatableKind,
+	isDeletableKind,
 	isEditableKind,
+	renderEntity,
+	type DeletableKind,
 	type EntityKind,
 	type EntityMap,
 	type EntityRef
@@ -66,7 +88,12 @@ import { scrollRangeIntoView, selectTextRange, textRange } from '$lib/utils/edit
 /** suggest: 提案のみ / confirm: 差分を見て反映 / auto: 自動で反映し、後から確認・元に戻す */
 export type EditMode = 'suggest' | 'confirm' | 'auto';
 
+/** edit: 既存の本文・項目の置換 / create: 項目の新規追加 / delete: 項目の削除 */
+export type EditAction = 'edit' | 'create' | 'delete';
+
 export interface EditState {
+	/** 編集の種類。以前の形式で保存された編集案には無く、その場合は edit */
+	action?: EditAction;
 	/** 画面に出すファイルのパス(対象の特定には sceneId / entity を使う) */
 	file: string;
 	old: string;
@@ -81,6 +108,12 @@ export interface EditState {
 	/** 反映した位置と、その直前の文(元に戻すときに同じ場所か確かめる) */
 	appliedAt?: number;
 	contextBefore?: string;
+	/** create: 追加する内容(検証済み)。反映すると entity に追加した項目が入る */
+	create?: CreateSpec;
+	/** delete: 削除した項目の丸ごとの写し(元に戻すと同じ ID で復元する)。create の取り消し後にも残る */
+	snapshot?: EntityRecord;
+	/** delete / create の取り消しで書き換えた他の項目(キャラクターの関係・相関図)の元の状態 */
+	touched?: Touched;
 	/** 反映済みの変更を確認し終えた(エディタ上の色付けを消す)。UI 上の「保持」に当たる */
 	reviewed?: boolean;
 }
@@ -95,6 +128,19 @@ export interface EditorEdit {
 export interface ToolResult {
 	text: string;
 	isError: boolean;
+}
+
+/** propose_create の引数。fields は項目名 → 値(entities.ts の createFieldLabels) */
+export interface ProposeCreateInput {
+	kind: string;
+	fields: unknown;
+	projectId?: string;
+}
+
+/** propose_delete の引数 */
+export interface ProposeDeleteInput {
+	kind: string;
+	id: string;
 }
 
 /** propose_edit の引数(kind は 'scene' または編集できる項目の種類) */
@@ -352,30 +398,74 @@ function isEditorOpenOn(sceneId: string): boolean {
 	return editorStore.currentScene?.id === sceneId && !!page.url?.pathname.endsWith('/editor');
 }
 
-/** シーンの本文を書き換える。開いているシーンはエディタ経由(自動保存される) */
-async function updateScene(
+/** 同期キューに積む変更のまとめ(反映の最後に 1 回だけ保存する) */
+type SyncBatch = Map<string, SyncChange>;
+
+function newBatch(): SyncBatch {
+	return new Map();
+}
+
+function queueLater(batch: SyncBatch, changes: SyncChange[]) {
+	for (const change of changes) {
+		const key = `${change.type}:${change.id}`;
+		// 作成したばかりのものへの更新は、作成のまま残す
+		if (batch.get(key)?.action === 'create' && change.action === 'update') continue;
+		batch.set(key, change);
+	}
+}
+
+async function flushSync(batch: SyncBatch) {
+	if (!batch.size) return;
+	const changes = [...batch.values()];
+	batch.clear();
+	await queueChanges(changes);
+}
+
+type ChangeFn = (content: string) => ReplaceResult;
+
+/**
+ * シーンの本文に changes を順に適用する(失敗した変更は飛ばし、結果は changes と同じ順で返す)。
+ * 開いているシーンはエディタ経由(自動保存される)。保存は最後に 1 回だけ。
+ */
+async function editScene(
 	sceneId: string,
-	change: (content: string) => ReplaceResult,
-	save = true
-): Promise<ReplaceResult> {
+	changes: ChangeFn[],
+	save = true,
+	batch?: SyncBatch
+): Promise<ReplaceResult[]> {
 	const inEditor = isEditorOpenOn(sceneId);
-	const content = inEditor ? editorStore.content : (await scenesDB.getById(sceneId))?.content;
-	if (content == null) return { ok: false, reason: 'シーンが見つかりません' };
-	const result = change(content);
-	if (!result.ok) return result;
+	const original = inEditor ? editorStore.content : (await scenesDB.getById(sceneId))?.content;
+	if (original == null)
+		return changes.map(() => ({ ok: false, reason: 'シーンが見つかりません' }) as ReplaceResult);
+	let content = original;
+	const results = changes.map((change): ReplaceResult => {
+		const result = change(content);
+		if (result.ok) content = result.content;
+		return result;
+	});
 	// save が false のときは確かめるだけ(提案の時点で一致箇所を検証する)
-	if (!save) return result;
+	if (!save || content === original) return results;
 
 	if (inEditor) {
-		editorStore.content = result.content;
+		editorStore.content = content;
 	} else {
-		await scenesDB.update(sceneId, { content: result.content });
-		await queueChange('scenes', sceneId, 'update');
+		await scenesDB.update(sceneId, { content });
 		const fresh = await scenesDB.getById(sceneId);
 		const index = currentProjectStore.scenes.findIndex((s) => s.id === sceneId);
 		if (fresh && index !== -1) currentProjectStore.scenes[index] = fresh;
+		if (batch) queueLater(batch, [{ type: 'scenes', id: sceneId, action: 'update' }]);
+		else await queueChanges([{ type: 'scenes', id: sceneId, action: 'update' }]);
 	}
-	return result;
+	return results;
+}
+
+async function updateScene(
+	sceneId: string,
+	change: ChangeFn,
+	save = true,
+	batch?: SyncBatch
+): Promise<ReplaceResult> {
+	return (await editScene(sceneId, [change], save, batch))[0];
 }
 
 const KIND_LABELS: Record<EntityKind, string> = {
@@ -418,33 +508,44 @@ async function findTarget(file: string): Promise<Target | null> {
 	};
 }
 
+/** 開いている作品の章の一覧(画面の状態)を、DB の変更に合わせる */
+function syncChapterStore(chapter: Chapter | null, removedId?: string) {
+	if (removedId) {
+		currentProjectStore.chapters = currentProjectStore.chapters.filter((c) => c.id !== removedId);
+		return;
+	}
+	if (!chapter || chapter.projectId !== currentProjectStore.project?.id) return;
+	const rest = currentProjectStore.chapters.filter((c) => c.id !== chapter.id);
+	currentProjectStore.chapters = [...rest, chapter].sort((a, b) => a.order - b.order);
+}
+
 /** 変更を DB と画面の状態へ反映する。同期対象は chapters / characters / plots / worldbuilding だけ */
 async function saveEntityChanges(
 	kind: EntityKind,
 	entity: EntityMap[EntityKind],
-	changes: Partial<EntityMap[EntityKind]>
+	changes: Partial<EntityMap[EntityKind]>,
+	batch: SyncBatch
 ): Promise<string | null> {
 	const id = entity.id;
 	switch (kind) {
 		case 'chapters': {
 			await chaptersDB.update(id, changes as Partial<Chapter>);
-			await queueChange('chapters', id, 'update');
+			queueLater(batch, [{ type: 'chapters', id, action: 'update' }]);
 			const fresh = await chaptersDB.getById(id);
-			const index = currentProjectStore.chapters.findIndex((c) => c.id === id);
-			if (fresh && index !== -1) currentProjectStore.chapters[index] = fresh;
+			if (fresh && currentProjectStore.chapters.some((c) => c.id === id)) syncChapterStore(fresh);
 			return null;
 		}
 		case 'characters':
 			await charactersDB.update(id, changes as Partial<Character>);
-			await queueChange('characters', id, 'update');
+			queueLater(batch, [{ type: 'characters', id, action: 'update' }]);
 			return null;
 		case 'plots':
 			await plotsDB.update(id, changes as Partial<Plot>);
-			await queueChange('plots', id, 'update');
+			queueLater(batch, [{ type: 'plots', id, action: 'update' }]);
 			return null;
 		case 'worldbuilding':
 			await worldbuildingDB.update(id, changes as Partial<Worldbuilding>);
-			await queueChange('worldbuilding', id, 'update');
+			queueLater(batch, [{ type: 'worldbuilding', id, action: 'update' }]);
 			return null;
 		case 'memos':
 			// メモ・進捗ログ・相関図は端末内だけのデータで、同期しない
@@ -469,61 +570,282 @@ async function saveEntityChanges(
 	}
 }
 
-/** 項目ファイルに change を適用して書き戻す */
-async function updateEntity(
+/**
+ * 項目ファイルに changes を順に適用して書き戻す(失敗した変更は飛ばし、結果は changes と同じ順)。
+ * 対象 1 件だけを DB から読み、書き込みも最後に 1 回だけ行う。
+ */
+async function editEntity(
 	ref: EntityRef,
-	change: (content: string) => ReplaceResult,
-	save = true
-): Promise<ReplaceResult> {
-	const data = await loadWorkspaceData();
-	const exported = buildWorkspace(data);
-	const path = Object.entries(exported.entityFiles).find(
-		([, r]) => r.kind === ref.kind && r.id === ref.id
-	)?.[0];
-	const entity = entityOf(data, ref);
-	const content = exported.files.find((f) => f.path === path)?.content;
-	if (!entity || content == null) return { ok: false, reason: '編集対象が見つかりません' };
-
-	const result = editEntityFile(ref.kind, entity as never, entityContext(data), content, change);
-	if (!result.ok) return result;
-	if (!save) return { ok: true, content: result.content, index: result.index };
-	const error = await saveEntityChanges(ref.kind, entity, result.changes);
-	if (error) return { ok: false, reason: error };
-	return { ok: true, content: result.content, index: result.index };
+	changes: ChangeFn[],
+	save = true,
+	batch?: SyncBatch
+): Promise<ReplaceResult[]> {
+	const loaded = await loadEntity(ref);
+	if (!loaded)
+		return changes.map(() => ({ ok: false, reason: '編集対象が見つかりません' }) as ReplaceResult);
+	const { ctx } = loaded;
+	let entity = loaded.entity;
+	let content = renderEntity(ref.kind, entity, ctx);
+	const merged: Partial<EntityMap[EntityKind]> = {};
+	let any = false;
+	const results = changes.map((change): ReplaceResult => {
+		const result = editEntityFile(ref.kind, entity as never, ctx, content, change);
+		if (!result.ok) return result;
+		any = true;
+		Object.assign(merged, result.changes);
+		// 次の変更は、この変更を反映した項目から組み立てたファイルに対して行う
+		entity = { ...entity, ...result.changes } as typeof entity;
+		content = renderEntity(ref.kind, entity, ctx);
+		return { ok: true, content: result.content, index: result.index };
+	});
+	if (!save || !any) return results;
+	const own = batch ?? newBatch();
+	const error = await saveEntityChanges(ref.kind, loaded.entity, merged, own);
+	if (!batch) await flushSync(own);
+	if (error) return changes.map(() => ({ ok: false, reason: error }) as ReplaceResult);
+	return results;
 }
 
-/** 編集案を反映する。対象(sceneId / entity)が決まっていればそのまま使い、無ければファイルから探す */
-async function applyEdit(edit: EditState) {
-	const change = (content: string) => replaceOnce(content, edit.old, edit.new);
-	let result: ReplaceResult;
-	if (edit.sceneId) {
-		result = await updateScene(edit.sceneId, change);
-	} else if (edit.entity) {
-		result = await updateEntity(edit.entity, change);
+const markApplied = (edit: EditState, result: { content: string; index: number }) => {
+	edit.status = 'applied';
+	edit.error = undefined;
+	edit.appliedAt = result.index;
+	edit.contextBefore = result.content.slice(Math.max(0, result.index - 20), result.index);
+};
+
+const markFailed = (edit: EditState, reason: string) => {
+	edit.status = 'failed';
+	edit.error = reason;
+};
+
+const actionOf = (edit: EditState): EditAction => edit.action ?? 'edit';
+
+function sameTarget(a: EditState, b: EditState): boolean {
+	if (a.sceneId || b.sceneId) return a.sceneId === b.sceneId;
+	return !!a.entity && a.entity.kind === b.entity?.kind && a.entity.id === b.entity?.id;
+}
+
+function allEdits(): EditState[] {
+	return Object.values(scopes).flatMap((scope) =>
+		scope.sessions.flatMap((session) => session.messages.flatMap((m) => m.edits ?? []))
+	);
+}
+
+/** 同じ対象で、まだ反映していない編集案(出てきた順)。提案の検証は、これらを反映した状態に対して行う */
+function pendingOn(target: { sceneId?: string; entity?: EntityRef }): EditState[] {
+	const probe = { ...target } as EditState;
+	return allEdits().filter(
+		(e) => actionOf(e) === 'edit' && e.status === 'pending' && sameTarget(e, probe)
+	);
+}
+
+/** 反映できなかった理由に、同じ対象の別の編集と重なった可能性を添える */
+function withConflictNote(edit: EditState, reason: string): string {
+	if (!reason.startsWith('該当箇所')) return reason;
+	const others = allEdits().filter(
+		(e) => e !== edit && actionOf(e) === 'edit' && e.status === 'applied' && sameTarget(e, edit)
+	);
+	return others.length
+		? `${reason}。同じ対象に反映済みの別の編集(${others.length} 件)と重なって、先に書き換わった可能性があります`
+		: reason;
+}
+
+/** 対象(sceneId / entity)が決まっていなければ、ファイルから探して決める */
+async function resolveTarget(edit: EditState): Promise<boolean> {
+	if (edit.sceneId || edit.entity) return true;
+	const target = await findTarget(edit.file);
+	if (!target) {
+		markFailed(edit, '編集できるファイルではないため反映できません');
+		return false;
+	}
+	edit.sceneTitle = target.title;
+	if (target.type === 'scene') edit.sceneId = target.id;
+	else edit.entity = target.ref;
+	return true;
+}
+
+async function applyCreate(edit: EditState, batch: SyncBatch) {
+	let record: EntityRecord;
+	if (edit.snapshot && edit.entity) {
+		// 一度取り消したあとの再反映は、同じ ID で復元する
+		const restored = await restoreEntity(edit.entity.kind, edit.snapshot, edit.touched);
+		if (!restored.ok) return markFailed(edit, restored.reason);
+		queueLater(batch, restored.sync);
+		record = edit.snapshot;
 	} else {
-		const target = await findTarget(edit.file);
-		if (!target) {
-			edit.status = 'failed';
-			edit.error = '編集できるファイルではないため反映できません';
-			return;
+		if (!edit.create) return markFailed(edit, '追加する内容が記録されていません');
+		const spec = edit.create;
+		if (
+			spec.kind === 'progressLogs' &&
+			(await progressLogsDB.getByDate(spec.projectId, spec.init.date as string))
+		)
+			return markFailed(edit, `${spec.init.date} の進捗は既にあります`);
+		const created = await createEntity(plainSpec(spec));
+		queueLater(batch, created.sync);
+		edit.entity = { kind: spec.kind, id: created.record.id };
+		record = created.record;
+	}
+	if (edit.entity?.kind === 'chapters') syncChapterStore(record as Chapter);
+	edit.status = 'applied';
+	edit.error = undefined;
+}
+
+const plainSpec = (spec: CreateSpec): CreateSpec => JSON.parse(JSON.stringify(spec));
+
+async function applyDelete(edit: EditState, batch: SyncBatch) {
+	if (!edit.entity) return markFailed(edit, '削除する項目が記録されていません');
+	const removed = await removeEntity(edit.entity.kind as DeletableKind, edit.entity.id);
+	if (!removed.ok) return markFailed(edit, removed.reason);
+	queueLater(batch, removed.sync);
+	edit.snapshot = removed.snapshot;
+	edit.touched = removed.touched;
+	edit.status = 'applied';
+	edit.error = undefined;
+}
+
+/** 同じ対象への編集は、読み書きを 1 回にまとめて順に適用する。1 つの例外で残りを止めない */
+async function applyEdits(edits: EditState[], batch: SyncBatch) {
+	const units: EditState[][] = [];
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- 関数内だけで使う一時的な入れ物で、リアクティブにする必要がない
+	const byTarget = new Map<string, EditState[]>();
+	for (const edit of edits) {
+		if (actionOf(edit) !== 'edit') {
+			units.push([edit]);
+			continue;
 		}
-		edit.sceneTitle = target.title;
-		if (target.type === 'scene') {
-			edit.sceneId = target.id;
-			result = await updateScene(target.id, change);
-		} else {
-			edit.entity = target.ref;
-			result = await updateEntity(target.ref, change);
+		try {
+			if (!(await resolveTarget(edit))) continue;
+		} catch (error) {
+			markFailed(edit, `反映中にエラーが起きました: ${String(error)}`);
+			continue;
+		}
+		const key = edit.sceneId ? `scene:${edit.sceneId}` : `${edit.entity!.kind}:${edit.entity!.id}`;
+		const unit = byTarget.get(key);
+		if (unit) unit.push(edit);
+		else {
+			const fresh = [edit];
+			byTarget.set(key, fresh);
+			units.push(fresh);
 		}
 	}
-	if (result.ok) {
-		edit.status = 'applied';
+
+	for (const unit of units) {
+		try {
+			const first = unit[0];
+			if (actionOf(first) === 'create') {
+				await applyCreate(first, batch);
+			} else if (actionOf(first) === 'delete') {
+				await applyDelete(first, batch);
+			} else {
+				const changes = unit.map(
+					(e): ChangeFn =>
+						(content) =>
+							replaceOnce(content, e.old, e.new)
+				);
+				const results = first.sceneId
+					? await editScene(first.sceneId, changes, true, batch)
+					: await editEntity(first.entity!, changes, true, batch);
+				unit.forEach((edit, i) => {
+					const result = results[i];
+					if (result.ok) markApplied(edit, result);
+					else markFailed(edit, result.reason);
+				});
+				for (const edit of unit)
+					if (edit.status === 'failed') edit.error = withConflictNote(edit, edit.error ?? '');
+			}
+		} catch (error) {
+			for (const edit of unit)
+				if (edit.status !== 'applied')
+					markFailed(edit, `反映中にエラーが起きました: ${String(error)}`);
+		}
+	}
+}
+
+/** 編集案を 1 件反映する(同期キューへの登録まで行う) */
+async function applyEdit(edit: EditState) {
+	const batch = newBatch();
+	try {
+		await applyEdits([edit], batch);
+	} finally {
+		await flushSyncSafely(batch);
+	}
+}
+
+/** 同期キューへの登録に失敗しても、反映そのものは成功として扱う */
+async function flushSyncSafely(batch: SyncBatch) {
+	try {
+		await flushSync(batch);
+	} catch (error) {
+		console.error('同期キューへの登録に失敗しました', error);
+	}
+}
+
+/** 反映した編集を元に戻す。例外は edit.error に記録し、投げない */
+async function revertEdit(edit: EditState, batch?: SyncBatch) {
+	const own = batch ?? newBatch();
+	try {
+		await revertCore(edit, own);
+	} catch (error) {
+		edit.error = `元に戻せません: ${String(error)}`;
+	} finally {
+		if (!batch) await flushSyncSafely(own);
+	}
+}
+
+async function revertCore(edit: EditState, batch: SyncBatch) {
+	const action = actionOf(edit);
+	if (action === 'create' || action === 'delete') {
+		const ref = edit.entity;
+		if (!ref) {
+			edit.error = '元に戻せません: 対象が記録されていません';
+			return;
+		}
+		if (action === 'create') {
+			// 追加の取り消しは削除。あとで再度反映できるよう、そのときの状態を残す
+			const removed = await removeEntity(ref.kind as DeletableKind | 'chapters', ref.id);
+			if (!removed.ok) {
+				edit.error = `元に戻せません: ${removed.reason}`;
+				return;
+			}
+			queueLater(batch, removed.sync);
+			edit.snapshot = removed.snapshot;
+			edit.touched = removed.touched;
+			if (ref.kind === 'chapters') syncChapterStore(null, ref.id);
+		} else {
+			if (!edit.snapshot) {
+				edit.error = '元に戻せません: 削除前の内容が記録されていません';
+				return;
+			}
+			const restored = await restoreEntity(ref.kind, edit.snapshot, edit.touched);
+			if (!restored.ok) {
+				edit.error = `元に戻せません: ${restored.reason}`;
+				return;
+			}
+			queueLater(batch, restored.sync);
+		}
+		edit.status = 'reverted';
 		edit.error = undefined;
-		edit.appliedAt = result.index;
-		edit.contextBefore = result.content.slice(Math.max(0, result.index - 20), result.index);
+		return;
+	}
+
+	const change: ChangeFn = (content) =>
+		revertAt(content, edit.appliedAt, edit.contextBefore, edit.new, edit.old);
+	let result: ReplaceResult;
+	if (edit.entity) {
+		result = (await editEntity(edit.entity, [change], true, batch))[0];
 	} else {
-		edit.status = 'failed';
-		edit.error = result.reason;
+		const target = edit.sceneId ? null : await findTarget(edit.file);
+		const sceneId = edit.sceneId ?? (target?.type === 'scene' ? target.id : undefined);
+		result = sceneId
+			? await updateScene(sceneId, change, true, batch)
+			: { ok: false, reason: 'シーンが見つかりません' };
+	}
+	if (result.ok) {
+		edit.status = 'reverted';
+		edit.error = undefined;
+		edit.appliedAt = undefined;
+	} else {
+		edit.error = `元に戻せません: ${result.reason}`;
 	}
 }
 
@@ -567,6 +889,59 @@ function buildPrompt(text: string, mode: EditMode, attached: Quote | null): stri
 		body += `<quote sceneId="${attached.sceneId}" sceneTitle="${attached.sceneTitle}">\n${attached.text}\n</quote>\n\n`;
 	}
 	return body + text;
+}
+
+/** 新規・削除の見出しに使う種類の名前 */
+const ACTION_KIND_LABELS: Record<EntityKind, string> = { ...KIND_LABELS, chapters: '章' };
+
+const replacer =
+	(edit: EditState): ChangeFn =>
+	(content) =>
+		replaceOnce(content, edit.old, edit.new);
+
+/** 提案(propose_*)を受けられる状態か確かめる。だめなら MCP の失敗結果を返す */
+function beginProposal(runId: string): { message: ChatMessage; mode: EditMode } | ToolResult {
+	const message = runningAssistant(runId);
+	if (!message) return toolError('この操作は Claude の回答中にだけ使えます');
+	const mode = message.editMode ?? 'suggest';
+	if (mode === 'suggest') return toolError('提案のみの設定では本文や項目を変更できません');
+	return { message, mode };
+}
+
+/** 検証を通った提案を回答に記録する。confirm は承認待ち、auto はその場で反映して結果を返す */
+async function recordProposal(
+	message: ChatMessage,
+	mode: EditMode,
+	draft: Omit<EditState, 'status'>,
+	label: string
+): Promise<ToolResult> {
+	if (!message.edits) message.edits = [];
+	message.edits.push({ ...draft, status: 'pending' });
+	const edit = message.edits[message.edits.length - 1];
+	persistChats();
+	if (mode === 'confirm') {
+		return toolOk(`提案を記録しました(承認待ち): ${label}。ユーザーが差分を確認して反映します。`);
+	}
+	await applyEdit(edit);
+	persistChats();
+	return edit.status === 'applied'
+		? toolOk(`反映しました: ${label}`)
+		: toolError(`反映できませんでした: ${edit.error ?? '理由が不明です'}`);
+}
+
+/** 一括操作の実行中か(二重に実行しないための印) */
+let busy = $state(false);
+
+/** 一括操作を 1 つずつだけ実行する。実行中に呼ばれたら何もしない */
+async function exclusive(task: () => Promise<void>) {
+	if (busy) return;
+	busy = true;
+	try {
+		await task();
+	} finally {
+		busy = false;
+		persistChats();
+	}
 }
 
 export const claudeStore = {
@@ -649,24 +1024,23 @@ export const claudeStore = {
 	/**
 	 * Claude の propose_edit(MCP)を処理する。対象と一致箇所を先に確かめ、通ったものだけ編集案として回答に記録する。
 	 * confirm は承認待ちとして残し、auto はその場で反映して結果を返す。
+	 * 同じ対象にまだ反映していない編集案があるときは、それらを反映した状態に対して確かめる。
 	 */
 	async proposeEdit(runId: string, input: ProposeInput): Promise<ToolResult> {
-		const message = runningAssistant(runId);
-		if (!message) return toolError('この操作は Claude の回答中にだけ使えます');
-		const mode = message.editMode ?? 'suggest';
-		if (mode === 'suggest') return toolError('提案のみの設定では本文や項目を変更できません');
-
-		const change = (content: string) => replaceOnce(content, input.old, input.new);
-		const data = await loadWorkspaceData();
-		const exported = buildWorkspace(data);
+		const begun = beginProposal(runId);
+		if ('isError' in begun) return begun;
+		const change: ChangeFn = (content) => replaceOnce(content, input.old, input.new);
 		let draft: Omit<EditState, 'status'>;
 		let check: ReplaceResult;
 		if (input.kind === 'scene') {
-			const scene = data.scenes.find((s) => s.id === input.id);
+			const scene = await scenesDB.getById(input.id);
 			if (!scene) return toolError(`シーンが見つかりません: ${input.id}`);
-			check = await updateScene(scene.id, change, false);
+			const earlier = pendingOn({ sceneId: scene.id });
+			const results = await editScene(scene.id, [...earlier.map(replacer), change], false);
+			check = results[results.length - 1];
 			draft = {
-				file: exported.sceneFiles[scene.id] ?? '',
+				action: 'edit',
+				file: await sceneFilePath(scene.id),
 				old: input.old,
 				new: input.new,
 				sceneId: scene.id,
@@ -674,19 +1048,19 @@ export const claudeStore = {
 			};
 		} else if (isEditableKind(input.kind)) {
 			const kind = input.kind;
-			const item = (data[kind] as unknown as { id: string }[]).find((x) => x.id === input.id);
-			if (!item) return toolError(`項目が見つかりません: ${kind} ${input.id}`);
 			const ref: EntityRef = { kind, id: input.id };
-			check = await updateEntity(ref, change, false);
-			const path = Object.entries(exported.entityFiles).find(
-				([, r]) => r.kind === kind && r.id === input.id
-			)?.[0];
+			const loaded = await loadEntity(ref);
+			if (!loaded) return toolError(`項目が見つかりません: ${kind} ${input.id}`);
+			const earlier = pendingOn({ entity: ref });
+			const results = await editEntity(ref, [...earlier.map(replacer), change], false);
+			check = results[results.length - 1];
 			draft = {
-				file: path ?? '',
+				action: 'edit',
+				file: await entityFilePath(kind, loaded.entity),
 				old: input.old,
 				new: input.new,
 				entity: ref,
-				sceneTitle: `${KIND_LABELS[kind]}: ${entityTitle(kind, item as never)}`
+				sceneTitle: `${KIND_LABELS[kind]}: ${entityTitle(kind, loaded.entity as never)}`
 			};
 		} else {
 			return toolError(
@@ -696,21 +1070,81 @@ export const claudeStore = {
 			);
 		}
 		if (!check.ok) return toolError(check.reason);
+		return recordProposal(begun.message, begun.mode, draft, draft.file || draft.sceneTitle || '');
+	},
 
-		if (!message.edits) message.edits = [];
-		message.edits.push({ ...draft, status: 'pending' });
-		const edit = message.edits[message.edits.length - 1];
-		persistChats();
-		if (mode === 'confirm') {
-			return toolOk(
-				`提案を記録しました(承認待ち): ${edit.file}。ユーザーが差分を確認して反映します。`
+	/** Claude の propose_create(MCP)を処理する。項目の新規追加を提案として記録する(反映の扱いは propose_edit と同じ) */
+	async proposeCreate(runId: string, input: ProposeCreateInput): Promise<ToolResult> {
+		const begun = beginProposal(runId);
+		if ('isError' in begun) return begun;
+		if (!isCreatableKind(input.kind)) {
+			return toolError(
+				input.kind === 'scene'
+					? 'シーンの新規作成には対応していません'
+					: input.kind === 'history'
+						? '履歴は読み取り専用のため変更できません'
+						: `新規追加できない種類です: ${input.kind}`
 			);
 		}
-		await applyEdit(edit);
-		persistChats();
-		return edit.status === 'applied'
-			? toolOk(`反映しました: ${edit.file}`)
-			: toolError(`反映できませんでした: ${edit.error ?? '理由が不明です'}`);
+		const projectId = input.projectId || page.params?.id;
+		if (!projectId)
+			return toolError(
+				'作品が開かれていません。projectId を指定してください(list_projects で確認できます)'
+			);
+		if (!(await db.projects.get(projectId))) return toolError(`作品が見つかりません: ${projectId}`);
+		const prepared = await prepareCreate(input.kind, projectId, input.fields);
+		if (!prepared.ok) return toolError(prepared.reason);
+
+		const kind = input.kind;
+		const ctx = await entityContextFor(kind, prepared.draft as never);
+		const title = entityTitle(kind, prepared.draft as never);
+		const draft: Omit<EditState, 'status'> = {
+			action: 'create',
+			file: '',
+			old: '',
+			new: renderEntity(kind, prepared.draft as never, ctx),
+			create: prepared.spec,
+			sceneTitle: `新規: ${ACTION_KIND_LABELS[kind]} ${title}`
+		};
+		return recordProposal(begun.message, begun.mode, draft, draft.sceneTitle!);
+	},
+
+	/** Claude の propose_delete(MCP)を処理する。項目の削除を提案として記録する(反映の扱いは propose_edit と同じ) */
+	async proposeDelete(runId: string, input: ProposeDeleteInput): Promise<ToolResult> {
+		const begun = beginProposal(runId);
+		if ('isError' in begun) return begun;
+		if (!isDeletableKind(input.kind)) {
+			return toolError(
+				input.kind === 'history'
+					? '履歴は読み取り専用のため削除できません'
+					: input.kind === 'scene' || input.kind === 'chapters'
+						? 'シーンと章の削除には対応していません'
+						: `削除できない種類です: ${input.kind}`
+			);
+		}
+		const kind = input.kind;
+		const ref: EntityRef = { kind, id: input.id };
+		const loaded = await loadEntity(ref);
+		if (!loaded) return toolError(`項目が見つかりません: ${kind} ${input.id}`);
+		if (
+			allEdits().some(
+				(e) =>
+					actionOf(e) === 'delete' &&
+					e.status === 'pending' &&
+					e.entity?.kind === kind &&
+					e.entity.id === input.id
+			)
+		)
+			return toolError('この項目の削除は既に提案済みです');
+		const draft: Omit<EditState, 'status'> = {
+			action: 'delete',
+			file: await entityFilePath(kind, loaded.entity),
+			old: renderEntity(kind, loaded.entity as never, loaded.ctx),
+			new: '',
+			entity: ref,
+			sceneTitle: `削除: ${ACTION_KIND_LABELS[kind]} ${entityTitle(kind, loaded.entity as never)}`
+		};
+		return recordProposal(begun.message, begun.mode, draft, draft.sceneTitle!);
 	},
 
 	/** エディタで選んだ文章を引用して、パネルの入力欄へ */
@@ -851,8 +1285,7 @@ export const claudeStore = {
 
 	/** 編集案を反映する(確認モードの「反映」) */
 	async applyEdit(edit: EditState) {
-		await applyEdit(edit);
-		persistChats();
+		await exclusive(() => applyEdit(edit));
 	},
 
 	rejectEdit(edit: EditState) {
@@ -862,28 +1295,48 @@ export const claudeStore = {
 
 	/** 反映した編集を元に戻す */
 	async revertEdit(edit: EditState) {
-		await revertEdit(edit);
-		persistChats();
+		await exclusive(() => revertEdit(edit));
 	},
 
-	/** 回答に含まれる未反映の編集案をすべて反映する */
+	/** 一括操作の実行中か */
+	get busy() {
+		return busy;
+	},
+
+	/** 回答に含まれる未反映の編集案をすべて反映する(1 件の失敗で残りを止めない) */
 	async applyAll(message: ChatMessage) {
-		for (const edit of message.edits ?? []) {
-			if (edit.status === 'pending') await applyEdit(edit);
-		}
-		persistChats();
+		await exclusive(async () => {
+			const batch = newBatch();
+			const pending = (message.edits ?? []).filter((e) => e.status === 'pending');
+			try {
+				await applyEdits(pending, batch);
+			} catch (error) {
+				for (const edit of pending)
+					if (edit.status === 'pending')
+						markFailed(edit, `反映中にエラーが起きました: ${String(error)}`);
+			} finally {
+				await flushSyncSafely(batch);
+			}
+		});
 	},
 
 	/** 回答で反映した編集をすべて元に戻す(後から反映したものから順に) */
 	async revertAll(message: ChatMessage) {
-		for (const edit of [...(message.edits ?? [])].reverse()) {
-			if (edit.status === 'applied') await revertEdit(edit);
-		}
-		persistChats();
+		await exclusive(async () => {
+			const batch = newBatch();
+			try {
+				for (const edit of [...(message.edits ?? [])].reverse()) {
+					if (edit.status === 'applied') await revertEdit(edit, batch);
+				}
+			} finally {
+				await flushSyncSafely(batch);
+			}
+		});
 	},
 
 	/** 未反映の編集案をすべて却下する */
 	rejectAll(message: ChatMessage) {
+		if (busy) return;
 		for (const edit of message.edits ?? []) {
 			if (edit.status === 'pending') edit.status = 'rejected';
 		}
@@ -921,14 +1374,20 @@ export const claudeStore = {
 
 	/** エディタ上の変更をまとめて操作する */
 	async forEditorEdits(action: 'keep' | 'revert' | 'apply' | 'reject') {
-		// 後ろの変更から処理し、前の変更の位置がずれないようにする
-		for (const { edit } of [...this.editorEdits].reverse()) {
-			if (action === 'keep' && edit.status === 'applied') edit.reviewed = true;
-			else if (action === 'revert' && edit.status === 'applied') await revertEdit(edit);
-			else if (action === 'apply' && edit.status === 'pending') await applyEdit(edit);
-			else if (action === 'reject' && edit.status === 'pending') edit.status = 'rejected';
-		}
-		persistChats();
+		await exclusive(async () => {
+			const batch = newBatch();
+			try {
+				// 後ろの変更から処理し、前の変更の位置がずれないようにする
+				for (const { edit } of [...this.editorEdits].reverse()) {
+					if (action === 'keep' && edit.status === 'applied') edit.reviewed = true;
+					else if (action === 'revert' && edit.status === 'applied') await revertEdit(edit, batch);
+					else if (action === 'apply' && edit.status === 'pending') await applyEdits([edit], batch);
+					else if (action === 'reject' && edit.status === 'pending') edit.status = 'rejected';
+				}
+			} finally {
+				await flushSyncSafely(batch);
+			}
+		});
 	},
 
 	/** その編集のシーンをエディタで開いているか(「本文で表示」を出すか) */
@@ -1040,26 +1499,4 @@ if (typeof window !== 'undefined' && isDesktop()) {
 	queueMicrotask(resumeRuns);
 	// デスクトップ専用の MCP 処理は、必要になるまで読み込まない
 	queueMicrotask(() => void import('$lib/desktop/mcp').then((m) => m.startMcpBridge()));
-}
-
-async function revertEdit(edit: EditState) {
-	const change = (content: string) =>
-		revertAt(content, edit.appliedAt, edit.contextBefore, edit.new, edit.old);
-	let result: ReplaceResult;
-	if (edit.entity) {
-		result = await updateEntity(edit.entity, change);
-	} else {
-		const target = edit.sceneId ? null : await findTarget(edit.file);
-		const sceneId = edit.sceneId ?? (target?.type === 'scene' ? target.id : undefined);
-		result = sceneId
-			? await updateScene(sceneId, change)
-			: { ok: false, reason: 'シーンが見つかりません' };
-	}
-	if (result.ok) {
-		edit.status = 'reverted';
-		edit.error = undefined;
-		edit.appliedAt = undefined;
-	} else {
-		edit.error = `元に戻せません: ${result.reason}`;
-	}
 }

@@ -9,6 +9,7 @@ const env = vi.hoisted(() => ({
 		params: { id: 'p1' } as Record<string, string>,
 		url: new URL('http://localhost/project/p1')
 	},
+	queued: [] as { type: string; id: string; action: string }[][],
 	sent: [] as {
 		req: SendRequest;
 		onLine: (line: string) => void;
@@ -19,7 +20,11 @@ const env = vi.hoisted(() => ({
 vi.mock('$app/state', () => ({ page: env.page }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: async () => null }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
-vi.mock('$lib/services/sync.service', () => ({ queueChange: async () => {} }));
+vi.mock('$lib/services/sync.service', () => ({
+	queueChanges: async (changes: { type: string; id: string; action: string }[]) => {
+		env.queued.push(changes);
+	}
+}));
 vi.mock('$lib/desktop/claude', () => ({
 	sendToClaude: (req: SendRequest, onLine: (line: string) => void) =>
 		new Promise<ExitEvent>((resolve) => env.sent.push({ req, onLine, resolve })),
@@ -31,7 +36,7 @@ vi.mock('$lib/desktop/claude', () => ({
 	syncWorkspace: async () => ({ files: [], projectDirs: {}, sceneFiles: {}, entityFiles: {} })
 }));
 
-const { db, scenesDB } = await import('$lib/db');
+const { db, scenesDB, charactersDB } = await import('$lib/db');
 const { callTool } = await import('./mcp');
 const { claudeStore } = await import('$lib/stores/claude.svelte');
 const { editorStore } = await import('$lib/stores/editor.svelte');
@@ -402,5 +407,486 @@ describe('propose_edit', () => {
 		claudeStore.newChat();
 		claudeStore.openSession(first.id);
 		expect(claudeStore.sessions.find((s) => s.id === first.id)?.sessionId).toBeUndefined();
+	});
+});
+
+/** 提案系のテストの共通の準備 */
+async function prepareProposals() {
+	await seed();
+	env.sent.length = 0;
+	env.queued.length = 0;
+	env.page.params = { id: 'p1' };
+	env.page.url = new URL('http://localhost/project/p1');
+	editorStore.currentScene = null;
+	currentProjectStore.project = project();
+	currentProjectStore.chapters = [chapter()];
+	claudeStore.newChat();
+}
+
+const queuedFlat = () => env.queued.flat();
+
+describe('propose_create', () => {
+	beforeEach(prepareProposals);
+
+	it('確認モードは承認待ちで記録し、反映すると追加され、取り消すと削除される', async () => {
+		claudeStore.updateSettings({ editMode: 'confirm' });
+		const { run, done } = startRun('キャラを足して');
+		expect(run.req.appendSystemPrompt).toContain('propose_create');
+		const result = await callTool(
+			'propose_create',
+			{ kind: 'characters', fields: { 名前: 'タロウ', 役割: '友人', 外見: '茶髪' } },
+			run.req.requestId
+		);
+		expect(result).toMatchObject({ isError: false });
+		expect(result.text).toContain('承認待ち');
+		expect(await db.characters.count()).toBe(3);
+
+		const edit = assistantOf(run.req.requestId)!.edits![0];
+		expect(edit).toMatchObject({ action: 'create', status: 'pending', old: '' });
+		expect(edit.sceneTitle).toBe('新規: キャラクター タロウ');
+		expect(edit.new).toContain('茶髪');
+		await finishRun(run, done);
+
+		await claudeStore.applyEdit(edit);
+		expect(edit.status).toBe('applied');
+		const created = await db.characters.get(edit.entity!.id);
+		expect(created).toMatchObject({
+			name: 'タロウ',
+			role: '友人',
+			appearance: '茶髪',
+			projectId: 'p1'
+		});
+		expect(queuedFlat()).toContainEqual({ type: 'characters', id: created!.id, action: 'create' });
+
+		await claudeStore.revertEdit(edit);
+		expect(edit.status).toBe('reverted');
+		expect(await db.characters.get(created!.id)).toBeUndefined();
+		expect(queuedFlat().at(-1)).toEqual({ type: 'characters', id: created!.id, action: 'delete' });
+
+		// 取り消したあとの再反映は同じ ID で復元される
+		await claudeStore.applyEdit(edit);
+		expect(edit.status).toBe('applied');
+		expect((await db.characters.get(created!.id))?.name).toBe('タロウ');
+	});
+
+	it('自動モードは種類ごとにその場で追加する(章は画面の状態も更新)', async () => {
+		claudeStore.updateSettings({ editMode: 'auto' });
+		const { run, done } = startRun('足して');
+		const id = run.req.requestId;
+		const call = (kind: string, fields: Record<string, unknown>) =>
+			callTool('propose_create', { kind, fields }, id);
+
+		expect(
+			await call('plots', { タイトル: '起', 種類: '章', 状態: '予定', 内容: '導入' })
+		).toMatchObject({ isError: false });
+		expect(await db.plots.toArray()).toMatchObject([
+			{ title: '起', type: 'chapter', status: 'planned', content: '導入' }
+		]);
+
+		expect(
+			await call('worldbuilding', {
+				タイトル: '王国',
+				分類: '場所',
+				タグ: ['国', '北'],
+				内容: '寒い'
+			})
+		).toMatchObject({ isError: false });
+		expect(await db.worldbuilding.toArray()).toMatchObject([
+			{ title: '王国', category: 'location', tags: ['国', '北'], content: '寒い' }
+		]);
+
+		expect(await call('memos', { 本文: '伏線を回収する', タグ: '要確認' })).toMatchObject({
+			isError: false
+		});
+		expect(await db.memos.toArray()).toMatchObject([
+			{ text: '伏線を回収する', tags: ['要確認'], projectId: 'p1' }
+		]);
+
+		expect(
+			await call('progressLogs', { 日付: '2026-01-02', 文字数: 1200, '時間(分)': 30 })
+		).toMatchObject({ isError: false });
+		expect(await db.progressLogs.toArray()).toMatchObject([
+			{ date: '2026-01-02', charactersWritten: 1200, timeSpent: 30 }
+		]);
+
+		expect(await call('chapters', { タイトル: '二章', 概要: '旅立ち' })).toMatchObject({
+			isError: false
+		});
+		const chapter2 = (await db.chapters.toArray()).find((c) => c.title === '二章');
+		expect(chapter2).toMatchObject({ synopsis: '旅立ち', order: 1 });
+		expect(currentProjectStore.chapters.map((c) => c.title)).toEqual(['一章', '二章']);
+		expect(queuedFlat()).toContainEqual({ type: 'chapters', id: chapter2!.id, action: 'create' });
+		// 端末内だけのデータは同期しない
+		expect(
+			queuedFlat().filter(
+				(c) => c.type !== 'chapters' && c.type !== 'plots' && c.type !== 'worldbuilding'
+			)
+		).toEqual([]);
+
+		const chapterEdit = assistantOf(id)!.edits!.at(-1)!;
+		await claudeStore.revertEdit(chapterEdit);
+		expect(await db.chapters.get(chapter2!.id)).toBeUndefined();
+		expect(currentProjectStore.chapters.map((c) => c.title)).toEqual(['一章']);
+		await finishRun(run, done);
+	});
+
+	it('章にシーンが追加されていたら取り消せない', async () => {
+		claudeStore.updateSettings({ editMode: 'auto' });
+		const { run, done } = startRun('足して');
+		await callTool(
+			'propose_create',
+			{ kind: 'chapters', fields: { タイトル: '三章' } },
+			run.req.requestId
+		);
+		const edit = assistantOf(run.req.requestId)!.edits![0];
+		await db.scenes.put({ ...scene('sx', '新', 0, 'x'), chapterId: edit.entity!.id });
+		await claudeStore.revertEdit(edit);
+		expect(edit.status).toBe('applied');
+		expect(edit.error).toContain('シーンがある');
+		await finishRun(run, done);
+	});
+
+	it('不正な入力は理由を返し、編集案を残さない', async () => {
+		claudeStore.updateSettings({ editMode: 'confirm' });
+		const { run, done } = startRun('足して');
+		const id = run.req.requestId;
+		await db.progressLogs.put({
+			id: 'l1',
+			projectId: 'p1',
+			date: '2026-02-01',
+			charactersWritten: 0,
+			timeSpent: 0,
+			sceneIds: [],
+			createdAt: 0
+		});
+		const cases: [Record<string, unknown>, string][] = [
+			[{ kind: 'characters', fields: { 役割: '友人' } }, '「名前」は必須'],
+			[{ kind: 'characters', fields: { 名前: 'A', 年齢: '3' } }, '未対応の項目名'],
+			[{ kind: 'characters', fields: 'x' }, 'オブジェクト'],
+			[{ kind: 'plots', fields: { タイトル: 'A', 種類: '謎' } }, '「種類」'],
+			[{ kind: 'plots', fields: { タイトル: 'A', 種類: '章', 状態: '謎' } }, '「状態」の値が不正'],
+			[{ kind: 'worldbuilding', fields: { タイトル: 'A', 分類: '謎' } }, '「分類」'],
+			[{ kind: 'memos', fields: { タグ: 'a' } }, '「本文」は必須'],
+			[{ kind: 'progressLogs', fields: { 日付: '2026-13-40' } }, '「日付」の値が不正'],
+			[{ kind: 'progressLogs', fields: { 日付: '2026-02-01' } }, '既にあります'],
+			[
+				{ kind: 'progressLogs', fields: { 日付: '2026-03-01', 文字数: 'abc' } },
+				'「文字数」の値が不正'
+			],
+			[{ kind: 'scene', fields: { タイトル: 'A' } }, 'シーンの新規作成'],
+			[{ kind: 'relationMaps', fields: {} }, '新規追加できない種類'],
+			[{ kind: 'characters', fields: { 名前: 'A' }, projectId: 'nope' }, '作品が見つかりません']
+		];
+		for (const [args, message] of cases) {
+			const result = await callTool('propose_create', args, id);
+			expect(result.isError, JSON.stringify(args)).toBe(true);
+			expect(result.text, JSON.stringify(args)).toContain(message);
+		}
+		const noFields = await callTool('propose_create', { kind: 'characters' }, id);
+		expect(noFields.isError).toBe(true);
+		expect(assistantOf(id)?.edits ?? []).toHaveLength(0);
+		await finishRun(run, done);
+	});
+
+	it('提案のみの設定では使えない', async () => {
+		claudeStore.updateSettings({ editMode: 'suggest' });
+		const { run, done } = startRun('足して');
+		const result = await callTool(
+			'propose_create',
+			{ kind: 'characters', fields: { 名前: 'A' } },
+			run.req.requestId
+		);
+		expect(result).toMatchObject({ isError: true });
+		expect(result.text).toContain('提案のみ');
+		await finishRun(run, done);
+	});
+});
+
+describe('propose_delete', () => {
+	beforeEach(async () => {
+		await prepareProposals();
+		await charactersDB.update('ch1', { relationships: [{ characterId: 'ch2', relation: '友人' }] });
+		await charactersDB.update('ch2', {
+			relationships: [
+				{ characterId: 'ch1', relation: '友人' },
+				{ characterId: 'ch3', relation: '宿敵' }
+			]
+		});
+		await db.relationMaps.put({
+			id: 'p1',
+			projectId: 'p1',
+			positions: { ch1: { x: 1, y: 2 }, ch2: { x: 3, y: 4 }, ch3: { x: 5, y: 6 } },
+			groups: [],
+			edgeStyles: { 'ch1>ch2>友人': { color: 'red' }, 'ch2>ch1>友人': {}, 'ch2>ch3>宿敵': {} },
+			updatedAt: 0
+		});
+		env.queued.length = 0;
+	});
+
+	it('確認モードは承認待ちで、反映するとキャラクターと参照が消え、取り消すと丸ごと戻る', async () => {
+		claudeStore.updateSettings({ editMode: 'confirm' });
+		const { run, done } = startRun('消して');
+		const before = (await db.characters.get('ch1'))!;
+		const result = await callTool(
+			'propose_delete',
+			{ kind: 'characters', id: 'ch1' },
+			run.req.requestId
+		);
+		expect(result).toMatchObject({ isError: false });
+		expect(result.text).toContain('承認待ち');
+		expect(await db.characters.get('ch1')).toBeDefined();
+		const edit = assistantOf(run.req.requestId)!.edits![0];
+		expect(edit).toMatchObject({ action: 'delete', status: 'pending', new: '' });
+		expect(edit.sceneTitle).toBe('削除: キャラクター アキ');
+		expect(edit.old).toContain('黒髪の少年');
+		// 同じ削除の二重提案は断る
+		const again = await callTool(
+			'propose_delete',
+			{ kind: 'characters', id: 'ch1' },
+			run.req.requestId
+		);
+		expect(again.isError).toBe(true);
+		await finishRun(run, done);
+
+		await claudeStore.applyEdit(edit);
+		expect(edit.status).toBe('applied');
+		expect(await db.characters.get('ch1')).toBeUndefined();
+		expect((await db.characters.get('ch2'))?.relationships).toEqual([
+			{ characterId: 'ch3', relation: '宿敵' }
+		]);
+		const map = (await db.relationMaps.get('p1'))!;
+		expect(Object.keys(map.positions).sort()).toEqual(['ch2', 'ch3']);
+		expect(Object.keys(map.edgeStyles)).toEqual(['ch2>ch3>宿敵']);
+		expect(queuedFlat()).toContainEqual({ type: 'characters', id: 'ch1', action: 'delete' });
+		expect(queuedFlat()).toContainEqual({ type: 'characters', id: 'ch2', action: 'update' });
+
+		await claudeStore.revertEdit(edit);
+		expect(edit.status).toBe('reverted');
+		const restored = (await db.characters.get('ch1'))!;
+		expect(restored).toEqual(before);
+		expect((await db.characters.get('ch2'))?.relationships).toHaveLength(2);
+		const restoredMap = (await db.relationMaps.get('p1'))!;
+		expect(restoredMap.positions.ch1).toEqual({ x: 1, y: 2 });
+		expect(Object.keys(restoredMap.edgeStyles).sort()).toEqual([
+			'ch1>ch2>友人',
+			'ch2>ch1>友人',
+			'ch2>ch3>宿敵'
+		]);
+	});
+
+	it('自動モードは種類ごとにその場で削除する', async () => {
+		claudeStore.updateSettings({ editMode: 'auto' });
+		await db.plots.put({
+			id: 'pl1',
+			projectId: 'p1',
+			title: '起',
+			type: 'arc',
+			status: 'idea',
+			content: '',
+			position: { x: 0, y: 0 },
+			color: '#000',
+			order: 0,
+			createdAt: 0,
+			updatedAt: 0,
+			_version: 1
+		});
+		await db.worldbuilding.put({
+			id: 'w1',
+			projectId: 'p1',
+			category: 'term',
+			title: '語',
+			content: '',
+			tags: [],
+			attachments: [],
+			createdAt: 0,
+			updatedAt: 0,
+			_version: 1
+		});
+		await db.memos.put({
+			id: 'm1',
+			projectId: 'p1',
+			text: 'メモ',
+			tags: [],
+			done: false,
+			createdAt: 0,
+			updatedAt: 0
+		});
+		await db.progressLogs.put({
+			id: 'l1',
+			projectId: 'p1',
+			date: '2026-02-01',
+			charactersWritten: 0,
+			timeSpent: 0,
+			sceneIds: [],
+			createdAt: 0
+		});
+		const { run, done } = startRun('消して');
+		const id = run.req.requestId;
+		for (const [kind, target] of [
+			['plots', 'pl1'],
+			['worldbuilding', 'w1'],
+			['memos', 'm1'],
+			['progressLogs', 'l1']
+		]) {
+			expect(await callTool('propose_delete', { kind, id: target }, id)).toMatchObject({
+				isError: false
+			});
+		}
+		expect(await db.plots.count()).toBe(0);
+		expect(await db.worldbuilding.count()).toBe(0);
+		expect(await db.memos.count()).toBe(0);
+		expect(await db.progressLogs.count()).toBe(0);
+		// 取り消しで丸ごと戻る
+		const edits = assistantOf(id)!.edits!;
+		for (const edit of edits) await claudeStore.revertEdit(edit);
+		expect((await db.memos.get('m1'))?.text).toBe('メモ');
+		expect((await db.progressLogs.get('l1'))?.date).toBe('2026-02-01');
+		expect((await db.plots.get('pl1'))?.title).toBe('起');
+		expect((await db.worldbuilding.get('w1'))?.title).toBe('語');
+		await finishRun(run, done);
+	});
+
+	it('削除できない種類・存在しない項目は理由を返す', async () => {
+		claudeStore.updateSettings({ editMode: 'auto' });
+		const { run, done } = startRun('消して');
+		const id = run.req.requestId;
+		for (const [kind, target, message] of [
+			['chapters', 'c1', '章の削除'],
+			['scene', 's1', 'シーン'],
+			['history', 'h', '読み取り専用'],
+			['relationMaps', 'p1', '削除できない種類'],
+			['characters', 'nope', '見つかりません']
+		]) {
+			const result = await callTool('propose_delete', { kind, id: target }, id);
+			expect(result.isError, kind).toBe(true);
+			expect(result.text, kind).toContain(message);
+		}
+		expect(await db.chapters.count()).toBe(1);
+		expect(assistantOf(id)?.edits ?? []).toHaveLength(0);
+		await finishRun(run, done);
+	});
+});
+
+describe('まとめて反映', () => {
+	beforeEach(prepareProposals);
+
+	it('1 件が例外になっても残りを反映し、失敗した編集に理由を残す', async () => {
+		claudeStore.updateSettings({ editMode: 'confirm' });
+		const { run, done } = startRun('直して');
+		const id = run.req.requestId;
+		await callTool('propose_edit', { kind: 'characters', id: 'ch1', old: '黒髪', new: '銀髪' }, id);
+		await callTool('propose_edit', { kind: 'characters', id: 'ch2', old: '赤い', new: '青い' }, id);
+		await callTool('propose_edit', { kind: 'scene', id: 's2', old: '別の', new: '同じ' }, id);
+		await finishRun(run, done);
+		const message = assistantOf(id)!;
+
+		const spy = vi.spyOn(charactersDB, 'update').mockRejectedValueOnce(new Error('disk full'));
+		await claudeStore.applyAll(message);
+		spy.mockRestore();
+
+		const [first, second, third] = message.edits!;
+		expect(first.status).toBe('failed');
+		expect(first.error).toContain('disk full');
+		expect(second.status).toBe('applied');
+		expect(third.status).toBe('applied');
+		expect((await db.characters.get('ch2'))?.appearance).toBe('青い外套');
+		expect((await scenesDB.getById('s2'))?.content).toBe('同じ場面');
+		expect(claudeStore.busy).toBe(false);
+		// 同期キューへの登録は 1 回にまとまる
+		expect(env.queued).toHaveLength(1);
+		expect(env.queued[0]).toEqual(
+			expect.arrayContaining([
+				{ type: 'characters', id: 'ch2', action: 'update' },
+				{ type: 'scenes', id: 's2', action: 'update' }
+			])
+		);
+
+		// 元に戻すときも 1 件の例外で止まらない
+		const revertSpy = vi.spyOn(scenesDB, 'update').mockRejectedValueOnce(new Error('locked'));
+		await claudeStore.revertAll(message);
+		revertSpy.mockRestore();
+		expect(third.status).toBe('applied');
+		expect(third.error).toContain('locked');
+		expect(second.status).toBe('reverted');
+	});
+
+	it('実行中の二重実行を防ぎ、同じ対象への編集は 1 回の書き込みにまとめる', async () => {
+		claudeStore.updateSettings({ editMode: 'confirm' });
+		const { run, done } = startRun('直して');
+		const id = run.req.requestId;
+		await callTool('propose_edit', { kind: 'scene', id: 's1', old: '夜明け', new: '朝焼け' }, id);
+		await callTool('propose_edit', { kind: 'scene', id: 's1', old: '少年', new: '少女' }, id);
+		await finishRun(run, done);
+		const message = assistantOf(id)!;
+
+		const spy = vi.spyOn(scenesDB, 'update');
+		const first = claudeStore.applyAll(message);
+		expect(claudeStore.busy).toBe(true);
+		const second = claudeStore.applyAll(message);
+		await Promise.all([first, second]);
+		expect(spy).toHaveBeenCalledTimes(1);
+		spy.mockRestore();
+		expect(claudeStore.busy).toBe(false);
+		expect(message.edits!.map((e) => e.status)).toEqual(['applied', 'applied']);
+		const content = (await scenesDB.getById('s1'))!.content;
+		expect(content).toContain('朝焼けの街');
+		expect(content).toContain('少女は駅');
+
+		await claudeStore.revertAll(message);
+		expect((await scenesDB.getById('s1'))?.content).toBe(SCENE_TEXT);
+	});
+
+	it('同じ対象の未反映の編集を踏まえて検証し、重なる提案は提案時に断る', async () => {
+		claudeStore.updateSettings({ editMode: 'confirm' });
+		const { run, done } = startRun('直して');
+		const id = run.req.requestId;
+		const ok = await callTool(
+			'propose_edit',
+			{ kind: 'scene', id: 's1', old: '夜明けの街', new: '朝の街' },
+			id
+		);
+		expect(ok.isError).toBe(false);
+		// 先行の提案で消える文は、もう指定できない
+		const overlap = await callTool(
+			'propose_edit',
+			{ kind: 'scene', id: 's1', old: '夜明け', new: '日暮れ' },
+			id
+		);
+		expect(overlap.isError).toBe(true);
+		expect(overlap.text).toContain('該当箇所が見つかりません');
+		// 先行の提案が入れる文には依存できる
+		const depends = await callTool(
+			'propose_edit',
+			{ kind: 'scene', id: 's1', old: '朝の街は', new: '朝の村は' },
+			id
+		);
+		expect(depends.isError).toBe(false);
+		await finishRun(run, done);
+
+		const [first, second] = assistantOf(id)!.edits!;
+		// 順番を逆にすると、依存した編集は反映できない
+		await claudeStore.applyEdit(second);
+		expect(second.status).toBe('failed');
+		await claudeStore.applyEdit(first);
+		await claudeStore.applyEdit(second);
+		expect(second.status).toBe('applied');
+		expect((await scenesDB.getById('s1'))?.content).toContain('朝の村は静かだった');
+	});
+
+	it('反映済みの別の編集と重なって失敗したときは、そのことを添える', async () => {
+		claudeStore.updateSettings({ editMode: 'confirm' });
+		const { run, done } = startRun('直して');
+		const id = run.req.requestId;
+		await callTool('propose_edit', { kind: 'scene', id: 's1', old: '夜明け', new: '朝焼け' }, id);
+		await callTool('propose_edit', { kind: 'scene', id: 's1', old: '少年', new: '少女' }, id);
+		await finishRun(run, done);
+		const [first, second] = assistantOf(id)!.edits!;
+		await claudeStore.applyEdit(first);
+		// 間に本文が書き換わった
+		await scenesDB.update('s1', { content: '全く別の本文' });
+		await claudeStore.applyEdit(second);
+		expect(second.status).toBe('failed');
+		expect(second.error).toContain('該当箇所が見つかりません');
+		expect(second.error).toContain('反映済みの別の編集');
 	});
 });

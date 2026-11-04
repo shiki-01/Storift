@@ -10,7 +10,9 @@
 	}
 
 	let { edit, editState, mode }: Props = $props();
-	let busy = $state(false);
+	let running = $state(false);
+	/** 自分の操作中か、パネル全体の一括操作中 */
+	let busy = $derived(running || claudeStore.busy);
 
 	let ops = $derived(diffChars(edit.old, edit.new));
 	let added = $derived(ops.reduce((n, op) => n + (op.kind === 'add' ? op.text.length : 0), 0));
@@ -35,11 +37,11 @@
 	};
 
 	async function run(action: () => Promise<void> | void) {
-		busy = true;
+		running = true;
 		try {
 			await action();
 		} finally {
-			busy = false;
+			running = false;
 		}
 	}
 </script>
@@ -89,7 +91,9 @@
 			{/if}
 			{#if editState.status === 'applied'}
 				{#if !editState.reviewed}
-					<button class="primary" onclick={() => claudeStore.keepEdit(editState)}>保持</button>
+					<button class="primary" disabled={busy} onclick={() => claudeStore.keepEdit(editState)}
+						>保持</button
+					>
 				{/if}
 				<button disabled={busy} onclick={() => run(() => claudeStore.revertEdit(editState))}
 					>元に戻す</button

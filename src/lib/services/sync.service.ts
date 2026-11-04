@@ -114,14 +114,14 @@ function findPending(type: EntityType, id: string): PendingChange | undefined {
 	);
 }
 
-function enqueue(change: PendingChange): void {
+function enqueue(change: PendingChange, save = true): void {
 	const existing = pendingChanges.find((c) => c.type === change.type && c.id === change.id);
 	if (existing) {
 		existing.action = change.action;
 	} else {
 		pendingChanges.push(change);
 	}
-	savePendingChanges(pendingChanges);
+	if (save) savePendingChanges(pendingChanges);
 }
 
 /**
@@ -496,9 +496,21 @@ export async function queueChange(
 	id: string,
 	action: 'create' | 'update' | 'delete'
 ): Promise<void> {
-	console.log(`📝 Queueing change: ${type}/${id} (${action})`);
+	await queueChanges([{ type, id, action }]);
+}
 
-	enqueue({ type, id, action });
+/**
+ * 複数の変更をまとめて同期キューに追加する(保存と同期の予約は 1 回だけ)
+ */
+export async function queueChanges(
+	changes: { type: EntityType; id: string; action: 'create' | 'update' | 'delete' }[]
+): Promise<void> {
+	if (!changes.length) return;
+	for (const change of changes) {
+		console.log(`📝 Queueing change: ${change.type}/${change.id} (${change.action})`);
+		enqueue({ ...change }, false);
+	}
+	savePendingChanges(pendingChanges);
 
 	// Firebaseが初期化されていて、かつオンラインなら即座に同期
 	const { isFirebaseInitialized } = await import('$lib/firebase');

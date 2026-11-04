@@ -379,6 +379,21 @@ const HANDLERS: Record<string, Handler> = {
 		if (typeof args.new !== 'string')
 			throw new ToolError('new は文字列で指定してください(削除するときは空文字)');
 		return claudeStore.proposeEdit(runId, { kind, id, old, new: args.new });
+	},
+
+	async propose_create(args, runId) {
+		const kind = str(args, 'kind');
+		if (args.fields === undefined || args.fields === null)
+			throw new ToolError('fields を指定してください(項目名と値のオブジェクト)');
+		return claudeStore.proposeCreate(runId, {
+			kind,
+			fields: args.fields,
+			projectId: optStr(args, 'projectId')
+		});
+	},
+
+	async propose_delete(args, runId) {
+		return claudeStore.proposeDelete(runId, { kind: str(args, 'kind'), id: str(args, 'id') });
 	}
 };
 

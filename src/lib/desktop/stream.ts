@@ -81,6 +81,10 @@ function summarizeStoriftTool(name: string, input: any): string {
 			const old = String(input.old ?? '').replace(/\s+/g, ' ');
 			return `${input.kind ?? ''}: 「${old.length > 20 ? old.slice(0, 20) + '…' : old}」`;
 		}
+		case 'propose_create':
+			return `新規 ${input.kind ?? ''}`;
+		case 'propose_delete':
+			return `削除 ${input.kind ?? ''}`;
 		default:
 			return '';
 	}

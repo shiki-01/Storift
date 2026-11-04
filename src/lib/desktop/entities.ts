@@ -131,7 +131,10 @@ function lines(rows: string[]): string {
 
 function isDate(v: string): boolean {
 	const t = v.trim();
-	return /^\d{4}-\d{2}-\d{2}$/.test(t) && new Date(t + 'T00:00:00Z').toISOString().startsWith(t);
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return false;
+	const date = new Date(t + 'T00:00:00Z');
+	// 13 月などは Invalid Date になり、toISOString は例外を投げる
+	return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(t);
 }
 
 function intField<T>(label: string, key: keyof T & string): FieldDef<T> {
@@ -455,4 +458,71 @@ export function editEntityFile<K extends EntityKind>(
 		Object.assign(changes, parsed);
 	}
 	return { ok: true, content: result.content, index: result.index, changes };
+}
+
+/** propose_create で新規追加できる項目の種類(シーンの本文・履歴・相関図は対象外) */
+export const CREATABLE_KINDS = [
+	'characters',
+	'plots',
+	'worldbuilding',
+	'memos',
+	'progressLogs',
+	'chapters'
+] as const satisfies readonly EntityKind[];
+
+/** propose_delete で削除できる項目の種類(章・履歴・相関図は対象外) */
+export const DELETABLE_KINDS = [
+	'characters',
+	'plots',
+	'worldbuilding',
+	'memos',
+	'progressLogs'
+] as const satisfies readonly EntityKind[];
+
+export type CreatableKind = (typeof CREATABLE_KINDS)[number];
+export type DeletableKind = (typeof DELETABLE_KINDS)[number];
+
+export function isCreatableKind(kind: string): kind is CreatableKind {
+	return (CREATABLE_KINDS as readonly string[]).includes(kind);
+}
+
+export function isDeletableKind(kind: string): kind is DeletableKind {
+	return (DELETABLE_KINDS as readonly string[]).includes(kind);
+}
+
+/**
+ * 新規追加のときだけ指定する項目(編集では変えられない名前・種類など)。
+ * ここにある項目はすべて省略できない。
+ */
+export const CREATE_ONLY_FIELDS: Partial<Record<EntityKind, string[]>> = {
+	chapters: ['タイトル'],
+	characters: ['名前'],
+	plots: ['タイトル', '種類'],
+	worldbuilding: ['タイトル', '分類']
+};
+
+/** 新規追加で受け付ける項目名(作成時のみの項目 + 編集できる項目) */
+export function createFieldLabels(kind: EntityKind): string[] {
+	return [...(CREATE_ONLY_FIELDS[kind] ?? []), ...editableFields(kind)];
+}
+
+/**
+ * 項目名 → 値(文字列)を、編集できるフィールドの変更に変換する(項目ファイルの「## 節」と同じ書式・検証)。
+ * 項目名が違う・値が不正なら理由を返す。
+ */
+export function parseEditableValues<K extends EntityKind>(
+	kind: K,
+	entity: EntityMap[K],
+	values: Record<string, string>
+): { ok: true; changes: Partial<EntityMap[K]> } | { ok: false; reason: string } {
+	const def = DEFS[kind] as EntityDef<EntityMap[K]>;
+	const changes: Partial<EntityMap[K]> = {};
+	for (const [label, value] of Object.entries(values)) {
+		const field = def.fields.find((f) => f.label === label);
+		if (!field) return { ok: false, reason: `未対応の項目名です: ${label}` };
+		const parsed = field.parse(value.trim(), entity);
+		if (!parsed) return { ok: false, reason: `「${label}」の値が不正です` };
+		Object.assign(changes, parsed);
+	}
+	return { ok: true, changes };
 }

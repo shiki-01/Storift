@@ -6,7 +6,29 @@
  * ファイルはアプリ → ディスクの一方向で、ディスク側の変更はアプリに戻らない。
  */
 import { db, memosDB } from '$lib/db';
-import type { Chapter, Character, Memo, Plot, Project, Scene, Worldbuilding } from '$lib/types';
+import type {
+	Chapter,
+	Character,
+	History,
+	Memo,
+	Plot,
+	ProgressLog,
+	Project,
+	RelationMap,
+	Scene,
+	Worldbuilding
+} from '$lib/types';
+import {
+	PLOT_STATUS_LABELS,
+	PLOT_TYPE_LABELS,
+	WORLD_LABELS,
+	entityTitle,
+	renderEntity,
+	type EntityContext,
+	type EntityKind,
+	type EntityMap,
+	type EntityRef
+} from './entities';
 
 export interface WorkspaceFile {
 	path: string;
@@ -19,6 +41,8 @@ export interface WorkspaceExport {
 	projectDirs: Record<string, string>;
 	/** シーン ID → ファイル(ワークスペースからの相対パス) */
 	sceneFiles: Record<string, string>;
+	/** 項目ファイル(キャラクター・設定資料・プロット・メモ・章の概要・進捗・履歴・相関図) → 種別と ID。編集できるのはこれらだけ(履歴は読み取り専用) */
+	entityFiles: Record<string, EntityRef>;
 }
 
 export interface WorkspaceData {
@@ -29,6 +53,9 @@ export interface WorkspaceData {
 	plots: Plot[];
 	worldbuilding: Worldbuilding[];
 	memos: Memo[];
+	progressLogs: ProgressLog[];
+	history: History[];
+	relationMaps: RelationMap[];
 }
 
 const STATUS_LABELS: Record<Project['status'], string> = {
@@ -37,25 +64,8 @@ const STATUS_LABELS: Record<Project['status'], string> = {
 	completed: '完結'
 };
 
-const WORLD_LABELS: Record<Worldbuilding['category'], string> = {
-	term: '用語',
-	location: '場所',
-	timeline: '年表',
-	other: 'その他'
-};
-
-const PLOT_TYPE_LABELS: Record<Plot['type'], string> = {
-	arc: '全体の流れ',
-	chapter: '章',
-	scene: 'シーン'
-};
-
-const PLOT_STATUS_LABELS: Record<Plot['status'], string> = {
-	idea: 'アイデア',
-	planned: '予定',
-	written: '執筆済み',
-	revised: '推敲済み'
-};
+/** 作品ごとに履歴ファイルとして書き出す最大件数(新しい順) */
+const MAX_HISTORY_FILES = 100;
 
 /** ファイル名に使えない文字を除き、長すぎる名前を切り詰める */
 export function safeName(name: string, fallback = '無題'): string {
@@ -161,6 +171,14 @@ function plotMarkdown(project: Project, plots: Plot[]): string {
 	return lines.join('\n');
 }
 
+/** 項目ファイルの組み立て・解析に必要な、他の項目の情報 */
+export function entityContext(data: WorkspaceData): EntityContext {
+	return {
+		characterNames: new Map(data.characters.map((c) => [c.id, c.name])),
+		sceneTitles: new Map(data.scenes.map((s) => [s.id, s.title]))
+	};
+}
+
 /**
  * IndexedDB の内容から、ワークスペースに置くファイル一式を作る。
  * overrides はシーン ID → 本文で、エディタの未保存の本文を反映するのに使う
@@ -173,6 +191,21 @@ export function buildWorkspace(
 	const files: WorkspaceFile[] = [];
 	const projectDirs: Record<string, string> = {};
 	const sceneFiles: Record<string, string> = {};
+	const entityFiles: Record<string, EntityRef> = {};
+	const ctx = entityContext(data);
+
+	/** 項目 1 つ 1 ファイルで書き出す(同名は ID を添えて分ける) */
+	const addEntityFiles = <K extends EntityKind>(dir: string, kind: K, items: EntityMap[K][]) => {
+		const used = new Set<string>();
+		for (const item of items) {
+			let name = safeName(entityTitle(kind, item));
+			if (used.has(name)) name = `${name}-${item.id.slice(0, 6)}`;
+			used.add(name);
+			const path = `${dir}/${name}.md`;
+			entityFiles[path] = { kind, id: item.id };
+			files.push({ path, content: renderEntity(kind, item, ctx) });
+		}
+	};
 
 	const chaptersByProject = groupBy(data.chapters, (c) => c.projectId);
 	const scenesByChapter = groupBy(data.scenes, (s) => s.chapterId);
@@ -180,6 +213,9 @@ export function buildWorkspace(
 	const plotsByProject = groupBy(data.plots, (p) => p.projectId);
 	const worldByProject = groupBy(data.worldbuilding, (w) => w.projectId);
 	const memosByProject = groupBy(data.memos, (m) => m.projectId);
+	const logsByProject = groupBy(data.progressLogs, (l) => l.projectId);
+	const historyByProject = groupBy(data.history, (h) => h.projectId);
+	const mapsByProject = groupBy(data.relationMaps, (m) => m.projectId);
 	const sceneTitles = new Map(data.scenes.map((s) => [s.id, s.title]));
 
 	// 同名のプロジェクトがあってもフォルダが衝突しないよう、2 つ目以降は ID を添える
@@ -202,12 +238,10 @@ export function buildWorkspace(
 			const chapterDir = `${dir}/本文/${pad(ci)}_${safeName(chapter.title)}`;
 			const scenes = byOrder(scenesByChapter.get(chapter.id) ?? []);
 			toc.push(`- 第${ci + 1}章 ${chapter.title}`);
-			if (chapter.synopsis?.trim()) {
-				files.push({
-					path: `${chapterDir}/00_章の概要.md`,
-					content: `# ${chapter.title}(概要)\n\n${chapter.synopsis.trim()}\n`
-				});
-			}
+			// 概要が空でも書き出し、Claude が書き足せるようにする
+			const synopsisPath = `${chapterDir}/00_章の概要.md`;
+			entityFiles[synopsisPath] = { kind: 'chapters', id: chapter.id };
+			files.push({ path: synopsisPath, content: renderEntity('chapters', chapter, ctx) });
 			scenes.forEach((scene, si) => {
 				const path = `${chapterDir}/${pad(si)}_${safeName(scene.title)}.md`;
 				sceneFiles[scene.id] = path;
@@ -237,6 +271,28 @@ export function buildWorkspace(
 				path: `${dir}/メモ.md`,
 				content: memosMarkdown(project, memos, sceneTitles)
 			});
+		addEntityFiles(`${dir}/キャラクター`, 'characters', characters);
+		addEntityFiles(`${dir}/設定資料`, 'worldbuilding', world);
+		addEntityFiles(`${dir}/プロット`, 'plots', byOrder(plots));
+		addEntityFiles(
+			`${dir}/メモ`,
+			'memos',
+			[...memos].sort((a, b) => a.createdAt - b.createdAt)
+		);
+		addEntityFiles(
+			`${dir}/進捗`,
+			'progressLogs',
+			[...(logsByProject.get(project.id) ?? [])].sort((a, b) => a.date.localeCompare(b.date))
+		);
+		addEntityFiles(`${dir}/相関図`, 'relationMaps', mapsByProject.get(project.id) ?? []);
+		// 履歴は件数が増え続けるため、新しい順に上限までにする
+		addEntityFiles(
+			`${dir}/履歴`,
+			'history',
+			[...(historyByProject.get(project.id) ?? [])]
+				.sort((a, b) => b.createdAt - a.createdAt)
+				.slice(0, MAX_HISTORY_FILES)
+		);
 
 		files.push({
 			path: `${dir}/概要.md`,
@@ -255,7 +311,7 @@ export function buildWorkspace(
 	}
 
 	files.push({ path: 'CLAUDE.md', content: claudeMd(index) });
-	return { files, projectDirs, sceneFiles };
+	return { files, projectDirs, sceneFiles, entityFiles };
 }
 
 function claudeMd(index: string[]): string {
@@ -268,7 +324,10 @@ function claudeMd(index: string[]): string {
 
 - \`projects/<作品名>/概要.md\`: 作品の説明・目次・文字数
 - \`projects/<作品名>/本文/<章番号>_<章名>/<シーン番号>_<シーン名>.md\`: 本文(1 シーン 1 ファイル)
-- \`projects/<作品名>/キャラクター.md\` / \`設定資料.md\` / \`プロット.md\` / \`メモ.md\`(タグ・完了状態・引用付き)
+- \`projects/<作品名>/キャラクター.md\` / \`設定資料.md\` / \`プロット.md\` / \`メモ.md\`(タグ・完了状態・引用付き): 一覧。読む用で、編集の対象にはならない
+- \`projects/<作品名>/キャラクター/<名前>.md\` / \`設定資料/\` / \`プロット/\` / \`メモ/\`: 1 項目 1 ファイル。「## フィールド名」の節が編集できる部分
+- \`projects/<作品名>/本文/<章>/00_章の概要.md\`: 章の概要
+- \`projects/<作品名>/進捗/\` / \`相関図/\`: 進捗ログ(日付・文字数・時間)と相関図の配置(座標)。\`履歴/\` は読み取り専用
 
 ## 注意
 
@@ -289,14 +348,39 @@ ${index.length ? index.join('\n') : '(まだ作品がありません)'}
 
 /** IndexedDB から全プロジェクトを読み込む */
 export async function loadWorkspaceData(): Promise<WorkspaceData> {
-	const [projects, chapters, scenes, characters, plots, worldbuilding, memos] = await Promise.all([
+	const [
+		projects,
+		chapters,
+		scenes,
+		characters,
+		plots,
+		worldbuilding,
+		memos,
+		progressLogs,
+		history,
+		relationMaps
+	] = await Promise.all([
 		db.projects.toArray(),
 		db.chapters.toArray(),
 		db.scenes.toArray(),
 		db.characters.toArray(),
 		db.plots.toArray(),
 		db.worldbuilding.toArray(),
-		memosDB.getAll()
+		memosDB.getAll(),
+		db.progressLogs.toArray(),
+		db.history.toArray(),
+		db.relationMaps.toArray()
 	]);
-	return { projects, chapters, scenes, characters, plots, worldbuilding, memos };
+	return {
+		projects,
+		chapters,
+		scenes,
+		characters,
+		plots,
+		worldbuilding,
+		memos,
+		progressLogs,
+		history,
+		relationMaps
+	};
 }

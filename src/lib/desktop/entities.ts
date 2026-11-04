@@ -8,6 +8,12 @@
  * 変わっていないことを確かめてから、変わったフィールドだけを返す。
  */
 import type { ReplaceResult } from './edits';
+import {
+	RELATION_ARROWS,
+	RELATION_CURVES,
+	buildEdgeSpecs,
+	edgeStyleKey
+} from '$lib/utils/relationGraph';
 import type {
 	Chapter,
 	Character,
@@ -15,6 +21,7 @@ import type {
 	Memo,
 	Plot,
 	ProgressLog,
+	RelationEdgeStyle,
 	RelationMap,
 	Worldbuilding
 } from '$lib/types';
@@ -55,6 +62,8 @@ export interface EntityContext {
 	characterNames: Map<string, string>;
 	/** シーン ID → タイトル(メモの表示用) */
 	sceneTitles: Map<string, string>;
+	/** 同じ作品のキャラクター(線の見た目のファイル用。無ければ線は無いものとして扱う) */
+	characters?: Character[];
 }
 
 export const WORLD_LABELS: Record<Worldbuilding['category'], string> = {
@@ -81,8 +90,8 @@ interface FieldDef<T> {
 	label: string;
 	/** ファイルに書く文字列 */
 	get: (entity: T, ctx: EntityContext) => string;
-	/** ファイルの文字列から、項目に書き戻す変更を作る。値が不正なら null */
-	parse: (value: string, entity: T) => Partial<T> | null;
+	/** ファイルの文字列から、項目に書き戻す変更を作る。値が不正なら null(理由があれば文字列) */
+	parse: (value: string, entity: T, ctx: EntityContext) => Partial<T> | string | null;
 }
 
 interface EntityDef<T> {
@@ -164,6 +173,128 @@ function sameIds(a: string[], b: string[]): boolean {
 	return a.length === b.length && new Set(a).size === a.length && b.every((id) => a.includes(id));
 }
 
+/**
+ * 「- 相手の名前 [相手の id]: 関係」の行から Character.relationships を作る。
+ * 相手は [id] で決まり、名前は読みやすさのために添えるだけなので、一致していなければ断る。
+ * 相関図に出ない関係(削除済みのキャラクターへのもの)は、そのまま残す。
+ */
+function parseRelationships(
+	value: string,
+	c: Character,
+	ctx: EntityContext
+): Partial<Character> | string {
+	const known = (id: string) => ctx.characterNames.has(id);
+	const kept = (c.relationships ?? []).filter((r) => !known(r.characterId));
+	const out: Character['relationships'] = [];
+	if (value.trim() !== '(なし)' && value.trim()) {
+		for (const line of value.split('\n')) {
+			if (!line.trim()) continue;
+			const m = /^-\s*(.*?)\s*\[([^[\]]+)\]:\s*(.+?)\s*$/.exec(line);
+			if (!m) return `「- 相手の名前 [相手の id]: 関係」の形式で書いてください: ${line.trim()}`;
+			const [, name, id, relation] = m;
+			if (!known(id))
+				return `相手が見つかりません(id: ${id})。同じ作品のキャラクターの id を指定してください`;
+			if (id === c.id) return '自分自身への関係は作れません';
+			if (name !== oneLine(ctx.characterNames.get(id) ?? ''))
+				return `名前が id と合っていません: ${name} [${id}](正しくは ${ctx.characterNames.get(id)})`;
+			if (out.some((r) => r.characterId === id && r.relation === relation))
+				return `同じ関係が重複しています: ${name}: ${relation}`;
+			out.push({ characterId: id, relation });
+		}
+	}
+	return { relationships: [...out, ...kept] };
+}
+
+/** 色は #RRGGBB(相関図の色の選択肢以外も受ける) */
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+/** 作品の関係の線(関係ごとの実効の見た目と、保存を除いた既定の見た目) */
+function edgeSpecsOf(m: RelationMap, ctx: EntityContext) {
+	const characters = (ctx.characters ?? []).filter((c) => c.projectId === m.projectId);
+	return {
+		characters,
+		specs: buildEdgeSpecs(characters, m.edgeStyles ?? {}, m.positions ?? {}),
+		defaults: buildEdgeSpecs(characters, {}, m.positions ?? {})
+	};
+}
+
+type EdgeSpec = ReturnType<typeof buildEdgeSpecs>[number];
+
+/**
+ * 「- 名前 → 名前「関係」 [元 id|先 id]: 色, 曲線, 矢印, ずれ x, ずれ y」の行。
+ * 線は関係(キャラクターのファイルの「関係」)ごとに 1 本で、行の増減はできない。
+ */
+function edgeRow(s: EdgeSpec, names: Map<string, string>): string {
+	const curve = RELATION_CURVES.find((x) => x.id === s.curve)?.label ?? s.curve;
+	const arrow = RELATION_ARROWS.find((x) => x.id === s.arrow)?.label ?? s.arrow;
+	const name = (id: string) => oneLine(names.get(id) ?? '不明');
+	return `- ${name(s.source)} → ${name(s.target)}「${oneLine(s.label)}」 [${s.source}|${s.target}]: ${s.color}, ${curve}, ${arrow}, ${s.offset.x}, ${s.offset.y}`;
+}
+
+function parseEdgeStyles(
+	value: string,
+	m: RelationMap,
+	ctx: EntityContext
+): Partial<RelationMap> | string {
+	const { characters, specs, defaults } = edgeSpecsOf(m, ctx);
+	const names = new Map(characters.map((c) => [c.id, c.name]));
+	const keyOf = (s: EdgeSpec) => edgeStyleKey(s.source, s.target, s.label);
+	const current = new Map(specs.map((s) => [keyOf(s), s]));
+	const defaultOffset = new Map(defaults.map((s) => [keyOf(s), s.offset]));
+	const hasReverse = (from: string, to: string) =>
+		specs.some((s) => s.source === to && s.target === from);
+
+	const seen = new Set<string>();
+	const edgeStyles: Record<string, RelationEdgeStyle> = { ...m.edgeStyles };
+	if (value.trim() !== '(なし)' && value.trim()) {
+		for (const line of value.split('\n')) {
+			if (!line.trim()) continue;
+			const row = /^-\s.*「(.*)」 \[([^[\]|]+)\|([^[\]|]+)\]:\s*(.+?)\s*$/.exec(line);
+			if (!row)
+				return `「- 名前 → 名前「関係」 [元 id|先 id]: 色, 曲線, 矢印, ずれ x, ずれ y」の形式で書いてください: ${line.trim()}`;
+			const [, label, from, to, rest] = row;
+			const key = edgeStyleKey(from, to, label);
+			const spec = current.get(key);
+			if (!spec)
+				return `その線はありません: ${line.trim()}(線の増減は、キャラクターの「関係」で行います)`;
+			if (seen.has(key)) return `同じ線が重複しています: ${line.trim()}`;
+			seen.add(key);
+			if (line.trim() === edgeRow(spec, names)) continue; // 変更なし
+
+			const parts = rest.split(',').map((x) => x.trim());
+			if (parts.length !== 5)
+				return `「色, 曲線, 矢印, ずれ x, ずれ y」の 5 つをカンマで区切って書いてください: ${line.trim()}`;
+			const [color, curveText, arrowText, dx, dy] = parts;
+			if (!HEX_COLOR.test(color)) return `色は #RRGGBB で指定してください: ${color}`;
+			const curve = RELATION_CURVES.find((x) => x.label === curveText);
+			if (!curve)
+				return `曲線は ${RELATION_CURVES.map((x) => x.label).join('・')} のいずれかです: ${curveText}`;
+			const arrow = RELATION_ARROWS.find((x) => x.label === arrowText);
+			if (!arrow)
+				return `矢印は ${RELATION_ARROWS.map((x) => x.label).join('・')} のいずれかです: ${arrowText}`;
+			if (!/^-?\d+$/.test(dx) || !/^-?\d+$/.test(dy))
+				return `ずれは整数で指定してください: ${dx}, ${dy}`;
+			if (arrow.id === 'both' && hasReverse(from, to))
+				return '逆向きの関係もあるため「双方向」にできません。逆向きの関係を消して 1 つにまとめるか、「お互い別」にしてください';
+
+			const next: RelationEdgeStyle = {
+				...edgeStyles[key],
+				color,
+				curve: curve.id,
+				arrow: arrow.id
+			};
+			const offset = { x: Number(dx), y: Number(dy) };
+			const base = defaultOffset.get(key) ?? { x: 0, y: 0 };
+			if (offset.x === base.x && offset.y === base.y) delete next.offset;
+			else next.offset = offset;
+			edgeStyles[key] = next;
+		}
+	}
+	if (seen.size !== current.size)
+		return '線の行が足りません。すべての線の行を残してください(線の増減はできません)';
+	return { edgeStyles };
+}
+
 const DEFS: { [K in EntityKind]: EntityDef<EntityMap[K]> } = {
 	chapters: {
 		title: (c) => c.title,
@@ -186,15 +317,22 @@ const DEFS: { [K in EntityKind]: EntityDef<EntityMap[K]> } = {
 			textField('役割', 'role'),
 			textField('外見', 'appearance'),
 			textField('性格', 'personality'),
-			textField('背景', 'background')
+			textField('背景', 'background'),
+			{
+				label: '関係',
+				get: (c, ctx) =>
+					lines(
+						(c.relationships ?? [])
+							.filter((r) => ctx.characterNames.has(r.characterId))
+							.map(
+								(r) =>
+									`- ${oneLine(ctx.characterNames.get(r.characterId) ?? '')} [${r.characterId}]: ${oneLine(r.relation)}`
+							)
+					),
+				parse: (v, c, ctx) => parseRelationships(v, c, ctx)
+			}
 		],
-		tail: (c, ctx) => {
-			const relations = (c.relationships ?? [])
-				.filter((r) => ctx.characterNames.has(r.characterId))
-				.map((r) => `- ${ctx.characterNames.get(r.characterId)}: ${r.relation}`);
-			return [`## 関係(編集不可)\n`, relations.length ? relations.join('\n') : '(なし)', ''];
-		},
-		readonly: '名前・年齢・性別・関係'
+		readonly: '名前・年齢・性別'
 	},
 	plots: {
 		title: (p) => p.title,
@@ -274,7 +412,8 @@ const DEFS: { [K in EntityKind]: EntityDef<EntityMap[K]> } = {
 		title: () => '相関図の配置',
 		head: () => [
 			'# 相関図の配置\n',
-			'キャラクター同士の関係そのものは各キャラクターのファイルが正で、ここでは変えられません。変えられるのは座標と大きさの数値だけです。\n'
+			'キャラクター同士の関係そのもの(誰が誰にどんな関係か)は各キャラクターのファイルの「関係」が正で、ここでは変えられません。ここで変えられるのは、座標・グループの大きさ・線の見た目です。\n',
+			'線の見た目は「色(#RRGGBB), 曲線(曲線・直線・折れ線・角丸), 矢印(片方向・双方向・お互い別), ずれ x, ずれ y」の順に書きます。ずれは線の中点から制御点までの距離(px)で、直線の双方向では使いません。「双方向」は関係が一方向にしかないときだけ選べます。\n'
 		],
 		fields: [
 			{
@@ -300,6 +439,15 @@ const DEFS: { [K in EntityKind]: EntityDef<EntityMap[K]> } = {
 						positions: Object.fromEntries(rows.map((r) => [r.id, { x: r.nums[0], y: r.nums[1] }]))
 					};
 				}
+			},
+			{
+				label: '線の見た目',
+				get: (m, ctx) => {
+					const { characters, specs } = edgeSpecsOf(m, ctx);
+					const names = new Map(characters.map((c) => [c.id, c.name]));
+					return lines(specs.map((s) => edgeRow(s, names)));
+				},
+				parse: (v, m, ctx) => parseEdgeStyles(v, m, ctx)
 			},
 			{
 				label: 'グループ(x, y, 幅, 高さ)',
@@ -330,7 +478,7 @@ const DEFS: { [K in EntityKind]: EntityDef<EntityMap[K]> } = {
 				}
 			}
 		],
-		readonly: '関係・ノードやグループの増減・名前・色・線の見た目'
+		readonly: '関係・ノードや線やグループの増減・名前・グループの色'
 	}
 };
 
@@ -453,8 +601,12 @@ export function editEntityFile<K extends EntityKind>(
 	for (const f of def.fields) {
 		const value = after.fields.get(f.label)!;
 		if (value === before.fields.get(f.label)) continue;
-		const parsed = f.parse(value, entity);
-		if (!parsed) return { ok: false, reason: `「${f.label}」の値が不正です` };
+		const parsed = f.parse(value, entity, ctx);
+		if (!parsed || typeof parsed === 'string')
+			return {
+				ok: false,
+				reason: `「${f.label}」の値が不正です${typeof parsed === 'string' ? `: ${parsed}` : ''}`
+			};
 		Object.assign(changes, parsed);
 	}
 	return { ok: true, content: result.content, index: result.index, changes };
@@ -513,15 +665,20 @@ export function createFieldLabels(kind: EntityKind): string[] {
 export function parseEditableValues<K extends EntityKind>(
 	kind: K,
 	entity: EntityMap[K],
-	values: Record<string, string>
+	values: Record<string, string>,
+	ctx: EntityContext = { characterNames: new Map(), sceneTitles: new Map() }
 ): { ok: true; changes: Partial<EntityMap[K]> } | { ok: false; reason: string } {
 	const def = DEFS[kind] as EntityDef<EntityMap[K]>;
 	const changes: Partial<EntityMap[K]> = {};
 	for (const [label, value] of Object.entries(values)) {
 		const field = def.fields.find((f) => f.label === label);
 		if (!field) return { ok: false, reason: `未対応の項目名です: ${label}` };
-		const parsed = field.parse(value.trim(), entity);
-		if (!parsed) return { ok: false, reason: `「${label}」の値が不正です` };
+		const parsed = field.parse(value.trim(), entity, ctx);
+		if (!parsed || typeof parsed === 'string')
+			return {
+				ok: false,
+				reason: `「${label}」の値が不正です${typeof parsed === 'string' ? `: ${parsed}` : ''}`
+			};
 		Object.assign(changes, parsed);
 	}
 	return { ok: true, changes };

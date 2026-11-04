@@ -35,6 +35,7 @@ import {
 	parseEditableValues,
 	type CreatableKind,
 	type DeletableKind,
+	type EntityContext,
 	type EntityKind,
 	type EntityMap
 } from './entities';
@@ -203,7 +204,12 @@ export async function prepareCreate(
 		}
 	}
 
-	const parsed = parseEditableValues(kind, draft as never, editable);
+	// キャラクターの「関係」は、同じ作品のキャラクターを相手にする
+	const ctx: EntityContext = { characterNames: new Map(), sceneTitles: new Map() };
+	if (kind === 'characters')
+		for (const c of await db.characters.where('projectId').equals(projectId).toArray())
+			ctx.characterNames.set(c.id, c.name);
+	const parsed = parseEditableValues(kind, draft as never, editable, ctx);
 	if (!parsed.ok) return parsed;
 	const changes: Record<string, unknown> = { ...parsed.changes };
 	draft = { ...draft, ...changes } as EntityRecord;

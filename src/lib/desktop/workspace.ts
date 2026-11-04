@@ -246,7 +246,8 @@ function plotMarkdown(project: Project, plots: Plot[]): string {
 export function entityContext(data: WorkspaceData): EntityContext {
 	return {
 		characterNames: new Map(data.characters.map((c) => [c.id, c.name])),
-		sceneTitles: new Map(data.scenes.map((s) => [s.id, s.title]))
+		sceneTitles: new Map(data.scenes.map((s) => [s.id, s.title])),
+		characters: data.characters
 	};
 }
 
@@ -391,7 +392,7 @@ function claudeMd(index: string[]): string {
 - \`projects/<作品名>/キャラクター.md\` / \`設定資料.md\` / \`プロット.md\` / \`メモ.md\`(タグ・完了状態・引用付き): 一覧。読む用で、編集の対象にはならない
 - \`projects/<作品名>/キャラクター/<名前>.md\` / \`設定資料/\` / \`プロット/\` / \`メモ/\`: 1 項目 1 ファイル。「## フィールド名」の節が編集できる部分
 - \`projects/<作品名>/本文/<章>/00_章の概要.md\`: 章の概要
-- \`projects/<作品名>/進捗/\` / \`相関図/\`: 進捗ログ(日付・文字数・時間)と相関図の配置(座標)。\`履歴/\` は読み取り専用
+- \`projects/<作品名>/進捗/\` / \`相関図/\`: 進捗ログ(日付・文字数・時間)と相関図の配置(座標・線の見た目)。\`履歴/\` は読み取り専用
 
 ## 注意
 
@@ -433,20 +434,19 @@ export async function entityContextFor<K extends EntityKind>(
 	kind: K,
 	entity: EntityMap[K]
 ): Promise<EntityContext> {
-	const characterIds: string[] = [];
 	const sceneIds: string[] = [];
-	if (kind === 'characters')
-		characterIds.push(...(entity as Character).relationships.map((r) => r.characterId));
-	if (kind === 'relationMaps') characterIds.push(...Object.keys((entity as RelationMap).positions));
+	// 関係・線の見た目のファイルは、同じ作品のキャラクター全員を相手にできる
+	const projectCharacters =
+		kind === 'characters' || kind === 'relationMaps'
+			? await db.characters.where('projectId').equals(entity.projectId).toArray()
+			: [];
 	if (kind === 'memos' && (entity as Memo).sceneId) sceneIds.push((entity as Memo).sceneId!);
 	if (kind === 'progressLogs') sceneIds.push(...((entity as ProgressLog).sceneIds ?? []));
-	const [characters, scenes] = await Promise.all([
-		characterIds.length ? db.characters.bulkGet(characterIds) : [],
-		sceneIds.length ? db.scenes.bulkGet(sceneIds) : []
-	]);
+	const scenes = sceneIds.length ? await db.scenes.bulkGet(sceneIds) : [];
 	return {
-		characterNames: new Map(characters.filter((c) => !!c).map((c) => [c!.id, c!.name])),
-		sceneTitles: new Map(scenes.filter((s) => !!s).map((s) => [s!.id, s!.title]))
+		characterNames: new Map(projectCharacters.map((c) => [c.id, c.name])),
+		sceneTitles: new Map(scenes.filter((s) => !!s).map((s) => [s!.id, s!.title])),
+		characters: projectCharacters
 	};
 }
 

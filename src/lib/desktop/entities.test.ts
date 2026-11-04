@@ -255,3 +255,143 @@ describe('相関図の配置', () => {
 		expect(editEntityFile('relationMaps', map, ctx, file, edit('100, 80', '0, 80')).ok).toBe(false);
 	});
 });
+
+describe('キャラクターの関係', () => {
+	const hanako: Character = { ...character, id: 'c2', name: '花子', relationships: [] };
+	const rctx: EntityContext = {
+		...ctx,
+		characters: [character, hanako]
+	};
+
+	it('関係の行を [id] ごとに読み書きし、ほかの項目は変えない', () => {
+		const file = renderEntity('characters', character, rctx);
+		expect(file).toContain('- 花子 [c2]: 幼なじみ');
+		const r = editEntityFile('characters', character, rctx, file, edit('幼なじみ', '恋人'));
+		expect(r).toMatchObject({
+			ok: true,
+			changes: { relationships: [{ characterId: 'c2', relation: '恋人' }] }
+		});
+	});
+
+	it('関係を追加・削除できる', () => {
+		const file = renderEntity('characters', character, rctx);
+		const added = editEntityFile(
+			'characters',
+			character,
+			rctx,
+			file,
+			edit('- 花子 [c2]: 幼なじみ', '- 花子 [c2]: 幼なじみ\n- 花子 [c2]: 憧れ')
+		);
+		expect(added).toMatchObject({
+			ok: true,
+			changes: {
+				relationships: [
+					{ characterId: 'c2', relation: '幼なじみ' },
+					{ characterId: 'c2', relation: '憧れ' }
+				]
+			}
+		});
+		const removed = editEntityFile(
+			'characters',
+			character,
+			rctx,
+			file,
+			edit('- 花子 [c2]: 幼なじみ', '(なし)')
+		);
+		expect(removed).toMatchObject({ ok: true, changes: { relationships: [] } });
+	});
+
+	it('存在しない相手・自分自身・名前の食い違い・重複は失敗する', () => {
+		const file = renderEntity('characters', character, rctx);
+		const bad = (to: string) =>
+			editEntityFile('characters', character, rctx, file, edit('- 花子 [c2]: 幼なじみ', to)).ok;
+		expect(bad('- 花子 [c9]: 友')).toBe(false);
+		expect(bad('- 太郎 [c1]: 自分')).toBe(false);
+		expect(bad('- 次郎 [c2]: 友')).toBe(false);
+		expect(bad('- 花子 [c2]: 友\n- 花子 [c2]: 友')).toBe(false);
+	});
+
+	it('削除済みのキャラクターへの関係は触らずに残す', () => {
+		const withGhost = {
+			...character,
+			relationships: [...character.relationships, { characterId: 'gone', relation: '旧友' }]
+		};
+		const file = renderEntity('characters', withGhost, rctx);
+		const r = editEntityFile('characters', withGhost, rctx, file, edit('幼なじみ', '恋人'));
+		expect(r).toMatchObject({
+			ok: true,
+			changes: {
+				relationships: [
+					{ characterId: 'c2', relation: '恋人' },
+					{ characterId: 'gone', relation: '旧友' }
+				]
+			}
+		});
+	});
+});
+
+describe('相関図の線の見た目', () => {
+	const hanako: Character = {
+		...character,
+		id: 'c2',
+		name: '花子',
+		relationships: []
+	};
+	const map: RelationMap = {
+		id: 'p',
+		projectId: 'p',
+		positions: { c1: { x: 0, y: 0 }, c2: { x: 200, y: 0 } },
+		groups: [],
+		edgeStyles: {},
+		updatedAt: 0
+	};
+	const mctx: EntityContext = { ...ctx, characters: [character, hanako] };
+	const file = renderEntity('relationMaps', map, mctx);
+	const row = '- 太郎 → 花子「幼なじみ」 [c1|c2]: #6b7280, 曲線, 片方向, 0, 0';
+
+	it('関係ごとに 1 行で、既定の見た目を出す', () => {
+		expect(file).toContain(row);
+	});
+
+	it('色・曲線・矢印・ずれを書き戻す', () => {
+		const r = editEntityFile(
+			'relationMaps',
+			map,
+			mctx,
+			file,
+			edit(row, '- 太郎 → 花子「幼なじみ」 [c1|c2]: #ef4444, 直線, 双方向, 12, -8')
+		);
+		expect(r).toMatchObject({
+			ok: true,
+			changes: {
+				edgeStyles: {
+					'c1>c2>幼なじみ': {
+						color: '#ef4444',
+						curve: 'straight',
+						arrow: 'both',
+						offset: { x: 12, y: -8 }
+					}
+				}
+			}
+		});
+	});
+
+	it('不正な値・存在しない線・行の削除は失敗する', () => {
+		const bad = (to: string) => editEntityFile('relationMaps', map, mctx, file, edit(row, to)).ok;
+		expect(bad('- 太郎 → 花子「幼なじみ」 [c1|c2]: 赤, 曲線, 片方向, 0, 0')).toBe(false);
+		expect(bad('- 太郎 → 花子「幼なじみ」 [c1|c2]: #ef4444, 波線, 片方向, 0, 0')).toBe(false);
+		expect(bad('- 太郎 → 花子「幼なじみ」 [c1|c2]: #ef4444, 曲線, 両方, 0, 0')).toBe(false);
+		expect(bad('- 太郎 → 花子「友達」 [c1|c2]: #ef4444, 曲線, 片方向, 0, 0')).toBe(false);
+		expect(bad('(なし)')).toBe(false);
+	});
+
+	it('逆向きの関係があると「双方向」にできない', () => {
+		const both = { ...hanako, relationships: [{ characterId: 'c1', relation: '憧れ' }] };
+		const bctx: EntityContext = { ...ctx, characters: [character, both] };
+		const f = renderEntity('relationMaps', map, bctx);
+		const r = editEntityFile('relationMaps', map, bctx, f, (c) =>
+			replaceOnce(c, '#6b7280, 曲線, お互い別, 0, 0', '#6b7280, 曲線, 双方向, 0, 0')
+		);
+		expect(r.ok).toBe(false);
+	});
+});

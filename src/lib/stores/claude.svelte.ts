@@ -91,6 +91,7 @@ import {
 	type ReplaceResult
 } from '$lib/desktop/edits';
 import { scrollRangeIntoView, selectTextRange, textRange } from '$lib/utils/editorInput';
+import { remapEdgeStyles } from '$lib/utils/relationGraph';
 
 /** suggest: 提案のみ / confirm: 差分を見て反映 / auto: 自動で反映し、後から確認・元に戻す */
 export type EditMode = 'suggest' | 'confirm' | 'auto';
@@ -575,10 +576,20 @@ async function saveEntityChanges(
 			if (fresh && currentProjectStore.chapters.some((c) => c.id === id)) syncChapterStore(fresh);
 			return null;
 		}
-		case 'characters':
+		case 'characters': {
+			const rels = (changes as Partial<Character>).relationships;
 			await charactersDB.update(id, changes as Partial<Character>);
 			queueLater(batch, [{ type: 'characters', id, action: 'update' }]);
+			if (rels) {
+				// 関係の名前を変えたときは、線の見た目(色・形・矢印)を新しい関係へ引き継ぐ
+				const character = entity as Character;
+				const map = await relationMapsDB.get(character.projectId);
+				const edgeStyles = remapEdgeStyles(map.edgeStyles, id, character.relationships ?? [], rels);
+				if (JSON.stringify(edgeStyles) !== JSON.stringify(map.edgeStyles))
+					await relationMapsDB.save({ ...map, edgeStyles });
+			}
 			return null;
+		}
 		case 'plots':
 			await plotsDB.update(id, changes as Partial<Plot>);
 			queueLater(batch, [{ type: 'plots', id, action: 'update' }]);

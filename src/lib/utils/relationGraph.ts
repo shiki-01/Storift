@@ -170,3 +170,33 @@ export function insideRect(
 ): boolean {
 	return cx >= rect.x && cx <= rect.x + rect.width && cy >= rect.y && cy <= rect.y + rect.height;
 }
+
+/**
+ * キャラクターの関係が変わったとき、線の見た目を新しい関係へ引き継ぐ。
+ * 消えた関係の見た目は、同じ相手への新しい関係(ラベルを変えたもの)があればそちらへ移し、なければ捨てる。
+ */
+export function remapEdgeStyles(
+	edgeStyles: Record<string, RelationEdgeStyle>,
+	from: string,
+	before: { characterId: string; relation: string }[],
+	after: { characterId: string; relation: string }[]
+): Record<string, RelationEdgeStyle> {
+	const keyOf = (r: { characterId: string; relation: string }) =>
+		edgeStyleKey(from, r.characterId, r.relation);
+	const afterKeys = new Set(after.map(keyOf));
+	const beforeKeys = new Set(before.map(keyOf));
+	const added = after.filter((r) => !beforeKeys.has(keyOf(r)));
+	const result = { ...edgeStyles };
+	for (const rel of before) {
+		const key = keyOf(rel);
+		if (afterKeys.has(key)) continue;
+		const style = result[key];
+		delete result[key];
+		if (!style) continue;
+		const index = added.findIndex((a) => a.characterId === rel.characterId);
+		if (index < 0) continue;
+		const [target] = added.splice(index, 1);
+		result[keyOf(target)] = style;
+	}
+	return result;
+}

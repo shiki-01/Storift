@@ -83,7 +83,13 @@ import {
 	type EntityRef
 } from '$lib/desktop/entities';
 import { dataChange } from '$lib/stores/dataChange.svelte';
-import { EDIT_INSTRUCTIONS, replaceOnce, revertAt, type ReplaceResult } from '$lib/desktop/edits';
+import {
+	EDIT_INSTRUCTIONS,
+	introducesRepeat,
+	replaceOnce,
+	revertAt,
+	type ReplaceResult
+} from '$lib/desktop/edits';
 import { scrollRangeIntoView, selectTextRange, textRange } from '$lib/utils/editorInput';
 
 /** suggest: 提案のみ / confirm: 差分を見て反映 / auto: 自動で反映し、後から確認・元に戻す */
@@ -674,6 +680,12 @@ function pendingOn(target: { sceneId?: string; entity?: EntityRef }): EditState[
 	);
 }
 
+/** 提案を断る理由に、未反映の提案を踏まえて検証していることを添える(読み取りで見える本文とは食い違う) */
+function withPendingNote(reason: string, pendingCount: number): string {
+	if (!pendingCount || !reason.startsWith('該当箇所')) return reason;
+	return `${reason}。同じ対象に未反映の提案が ${pendingCount} 件あり、それらを反映した後の本文に対して検証しています(読み取りで見える本文は反映前です)。old が先行の提案で書き換わる箇所と重なっていないか確認してください。重なる場合は、ユーザーが先行の提案を反映または却下してからやり直すか、先行の提案を含めた形で 1 つの提案にまとめてください`;
+}
+
 /** 反映できなかった理由に、同じ対象の別の編集と重なった可能性を添える */
 function withConflictNote(edit: EditState, reason: string): string {
 	if (!reason.startsWith('該当箇所')) return reason;
@@ -1080,10 +1092,12 @@ export const claudeStore = {
 		const change: ChangeFn = (content) => replaceOnce(content, input.old, input.new);
 		let draft: Omit<EditState, 'status'>;
 		let check: ReplaceResult;
+		let pendingCount = 0;
 		if (input.kind === 'scene') {
 			const scene = await scenesDB.getById(input.id);
 			if (!scene) return toolError(`シーンが見つかりません: ${input.id}`);
 			const earlier = pendingOn({ sceneId: scene.id });
+			pendingCount = earlier.length;
 			const results = await editScene(scene.id, [...earlier.map(replacer), change], false);
 			check = results[results.length - 1];
 			draft = {
@@ -1100,6 +1114,7 @@ export const claudeStore = {
 			const loaded = await loadEntity(ref);
 			if (!loaded) return toolError(`項目が見つかりません: ${kind} ${input.id}`);
 			const earlier = pendingOn({ entity: ref });
+			pendingCount = earlier.length;
 			const results = await editEntity(ref, [...earlier.map(replacer), change], false);
 			check = results[results.length - 1];
 			draft = {
@@ -1117,8 +1132,17 @@ export const claudeStore = {
 					: `編集できない種類です: ${input.kind}`
 			);
 		}
-		if (!check.ok) return toolError(check.reason);
-		return recordProposal(begun.message, begun.mode, draft, draft.file || draft.sceneTitle || '');
+		if (!check.ok) return toolError(withPendingNote(check.reason, pendingCount));
+		const recorded = await recordProposal(
+			begun.message,
+			begun.mode,
+			draft,
+			draft.file || draft.sceneTitle || ''
+		);
+		if (!recorded.isError && introducesRepeat(check.content, check.index, input.old, input.new))
+			recorded.text +=
+				'\n注意: 反映すると同じ文が続けて 2 回並びます。old に含めなかった元の文を new にも入れていないか確認し、重複していれば propose_edit で直してください。';
+		return recorded;
 	},
 
 	/** Claude の propose_create(MCP)を処理する。項目の新規追加を提案として記録する(反映の扱いは propose_edit と同じ) */

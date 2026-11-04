@@ -3,16 +3,28 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { syncStore } from '$lib/stores/sync.svelte';
+	import { railContext } from '$lib/stores/railContext.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
 	import { formatRelativeTime } from '$lib/utils/dateUtils';
 	import { projectNavItems, navIcons } from './nav';
 
 	let pathname = $derived(page.url.pathname);
-	let projectId = $derived(page.params.id || '');
-	let isProjectPage = $derived(pathname.startsWith('/project/'));
+	let onProjectRoute = $derived(pathname.startsWith('/project/'));
+
+	// 作品から設定へ移動したときも作品のタブを残し、そこから作品へ戻れるようにする。
+	// ホームへ戻ったら忘れる
+	$effect(() => {
+		if (onProjectRoute) railContext.projectId = page.params.id || '';
+		else if (pathname === '/home') railContext.projectId = '';
+	});
+
+	let projectId = $derived(onProjectRoute ? page.params.id || '' : railContext.projectId);
+	let isProjectPage = $derived(
+		onProjectRoute || (railContext.projectId !== '' && pathname === '/settings')
+	);
 
 	function isActive(path: string): boolean {
-		return pathname.includes(`/project/${projectId}/${path}`);
+		return onProjectRoute && pathname.includes(`/project/${projectId}/${path}`);
 	}
 
 	// 選択中の項目を指す三角は 1 つだけ置き、項目間を滑らせて移動させる

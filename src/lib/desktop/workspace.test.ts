@@ -51,7 +51,10 @@ const empty: Omit<WorkspaceData, 'projects' | 'chapters' | 'scenes'> = {
 	characters: [],
 	plots: [],
 	worldbuilding: [],
-	memos: []
+	memos: [],
+	progressLogs: [],
+	history: [],
+	relationMaps: []
 };
 
 describe('safeName', () => {
@@ -145,5 +148,64 @@ describe('buildWorkspace の未保存の本文', () => {
 		expect(result.files.find((f) => f.path === result.sceneFiles.s1)?.content).toBe(
 			'# 場面\n\n未保存\n'
 		);
+	});
+});
+
+describe('buildWorkspace の項目ファイル', () => {
+	it('項目ごとのファイルを書き出し、パスから種別と ID を引ける', () => {
+		const result = buildWorkspace({
+			...empty,
+			projects: [project('p1', '作品')],
+			chapters: [chapter('c1', 'p1', '序章', 0)],
+			scenes: [],
+			characters: [
+				{
+					id: 'ch1',
+					projectId: 'p1',
+					name: '太郎',
+					role: '',
+					appearance: '',
+					personality: '',
+					background: '',
+					relationships: [],
+					createdAt: 0,
+					updatedAt: 0,
+					_version: 1
+				}
+			],
+			progressLogs: [
+				{
+					id: 'l1',
+					projectId: 'p1',
+					date: '2026-01-02',
+					charactersWritten: 5,
+					timeSpent: 1,
+					sceneIds: [],
+					createdAt: 0
+				}
+			],
+			history: [
+				{
+					id: 'h1',
+					entityType: 'character',
+					entityId: 'ch1',
+					projectId: 'p1',
+					snapshot: {},
+					changeType: 'update',
+					createdAt: 0
+				}
+			]
+		});
+		const byKind = (kind: string) =>
+			Object.entries(result.entityFiles).filter(([, r]) => r.kind === kind);
+		expect(result.entityFiles['projects/作品/キャラクター/太郎.md']).toEqual({
+			kind: 'characters',
+			id: 'ch1'
+		});
+		expect(byKind('chapters')).toHaveLength(1);
+		expect(byKind('progressLogs')[0][0]).toBe('projects/作品/進捗/2026-01-02.md');
+		expect(byKind('history')).toHaveLength(1);
+		for (const path of Object.keys(result.entityFiles))
+			expect(result.files.some((f) => f.path === path)).toBe(true);
 	});
 });

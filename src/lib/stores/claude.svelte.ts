@@ -7,12 +7,30 @@
  * - 質問は送った時点で保存する。回答中に画面を再読み込みしても Claude Code は止まらず、
  *   戻ってきたらネイティブ側に溜まった出力を受け取り直して続きを表示する。
  * - 本文はプロンプトに毎回添付せず、ワークスペースのファイル(未保存の本文も反映)を Claude が必要なときに読む。
- * - 本文の編集は設定(editMode)に応じて、提案のみ / 差分を確認して反映 / 自動で反映 を切り替える。
+ * - 本文と、キャラクター・プロット・設定資料・メモ・章の概要・進捗ログ・相関図の配置の編集は設定(editMode)に応じて、提案のみ / 差分を確認して反映 / 自動で反映 を切り替える。
  */
 import { page } from '$app/state';
 import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 import { editorStore } from '$lib/stores/editor.svelte';
-import { scenesDB } from '$lib/db';
+import {
+	chaptersDB,
+	charactersDB,
+	memosDB,
+	plotsDB,
+	progressLogsDB,
+	relationMapsDB,
+	scenesDB,
+	worldbuildingDB
+} from '$lib/db';
+import type {
+	Chapter,
+	Character,
+	Memo,
+	Plot,
+	ProgressLog,
+	RelationMap,
+	Worldbuilding
+} from '$lib/types';
 import { queueChange } from '$lib/services/sync.service';
 import {
 	attachClaude,
@@ -33,7 +51,14 @@ import {
 	turnParts,
 	type TurnPart
 } from '$lib/desktop/stream';
-import { buildWorkspace, loadWorkspaceData } from '$lib/desktop/workspace';
+import { buildWorkspace, entityContext, loadWorkspaceData } from '$lib/desktop/workspace';
+import {
+	editEntityFile,
+	entityTitle,
+	type EntityKind,
+	type EntityMap,
+	type EntityRef
+} from '$lib/desktop/entities';
 import {
 	EDIT_INSTRUCTIONS,
 	parseEdits,
@@ -53,7 +78,10 @@ export interface EditState {
 	status: 'pending' | 'applied' | 'rejected' | 'failed' | 'reverted';
 	error?: string;
 	sceneId?: string;
+	/** 画面に出す編集対象の名前(シーン名、または「キャラクター: 名前」など) */
 	sceneTitle?: string;
+	/** シーン以外(キャラクター・プロットなど)の項目ファイルを編集するときの対象 */
+	entity?: EntityRef;
 	/** 反映した位置と、その直前の文(元に戻すときに同じ場所か確かめる) */
 	appliedAt?: number;
 	contextBefore?: string;
@@ -335,25 +363,135 @@ async function updateScene(
 	return result;
 }
 
-/** ワークスペースのファイル → シーン(反映のたびに最新の対応を作る) */
-async function findScene(file: string): Promise<{ id: string; title: string } | null> {
+const KIND_LABELS: Record<EntityKind, string> = {
+	chapters: '章の概要',
+	characters: 'キャラクター',
+	plots: 'プロット',
+	worldbuilding: '設定資料',
+	memos: 'メモ',
+	progressLogs: '進捗',
+	history: '履歴',
+	relationMaps: '相関図'
+};
+
+type Target =
+	| { type: 'scene'; id: string; title: string }
+	| { type: 'entity'; ref: EntityRef; title: string };
+
+function entityOf<K extends EntityKind>(
+	data: Awaited<ReturnType<typeof loadWorkspaceData>>,
+	ref: { kind: K; id: string }
+): EntityMap[K] | undefined {
+	const list = data[ref.kind] as { id: string }[];
+	return list.find((x) => x.id === ref.id) as EntityMap[K] | undefined;
+}
+
+/** ワークスペースのファイル → 編集対象(反映のたびに最新の対応を作る) */
+async function findTarget(file: string): Promise<Target | null> {
 	const data = await loadWorkspaceData();
 	const exported = buildWorkspace(data);
-	const id = Object.entries(exported.sceneFiles).find(([, path]) => path === file)?.[0];
-	const scene = id ? data.scenes.find((s) => s.id === id) : undefined;
-	return scene ? { id: scene.id, title: scene.title } : null;
+	const sceneId = Object.entries(exported.sceneFiles).find(([, path]) => path === file)?.[0];
+	const scene = sceneId ? data.scenes.find((s) => s.id === sceneId) : undefined;
+	if (scene) return { type: 'scene', id: scene.id, title: scene.title };
+	const ref = exported.entityFiles[file];
+	const entity = ref && entityOf(data, ref);
+	if (!ref || !entity) return null;
+	return {
+		type: 'entity',
+		ref,
+		title: `${KIND_LABELS[ref.kind]}: ${entityTitle(ref.kind, entity as never)}`
+	};
+}
+
+/** 変更を DB と画面の状態へ反映する。同期対象は chapters / characters / plots / worldbuilding だけ */
+async function saveEntityChanges(
+	kind: EntityKind,
+	entity: EntityMap[EntityKind],
+	changes: Partial<EntityMap[EntityKind]>
+): Promise<string | null> {
+	const id = entity.id;
+	switch (kind) {
+		case 'chapters': {
+			await chaptersDB.update(id, changes as Partial<Chapter>);
+			await queueChange('chapters', id, 'update');
+			const fresh = await chaptersDB.getById(id);
+			const index = currentProjectStore.chapters.findIndex((c) => c.id === id);
+			if (fresh && index !== -1) currentProjectStore.chapters[index] = fresh;
+			return null;
+		}
+		case 'characters':
+			await charactersDB.update(id, changes as Partial<Character>);
+			await queueChange('characters', id, 'update');
+			return null;
+		case 'plots':
+			await plotsDB.update(id, changes as Partial<Plot>);
+			await queueChange('plots', id, 'update');
+			return null;
+		case 'worldbuilding':
+			await worldbuildingDB.update(id, changes as Partial<Worldbuilding>);
+			await queueChange('worldbuilding', id, 'update');
+			return null;
+		case 'memos':
+			// メモ・進捗ログ・相関図は端末内だけのデータで、同期しない
+			await memosDB.update(id, changes as Partial<Memo>);
+			return null;
+		case 'progressLogs': {
+			const log = entity as ProgressLog;
+			const date = (changes as Partial<ProgressLog>).date;
+			if (date && date !== log.date && (await progressLogsDB.getByDate(log.projectId, date)))
+				return `${date} の進捗は既にあります`;
+			await progressLogsDB.update(id, changes as Partial<ProgressLog>);
+			return null;
+		}
+		case 'relationMaps':
+			await relationMapsDB.save({
+				...(entity as RelationMap),
+				...(changes as Partial<RelationMap>)
+			});
+			return null;
+		default:
+			return '読み取り専用のため変更できません';
+	}
+}
+
+/** 項目ファイルに change を適用して書き戻す */
+async function updateEntity(
+	ref: EntityRef,
+	change: (content: string) => ReplaceResult
+): Promise<ReplaceResult> {
+	const data = await loadWorkspaceData();
+	const exported = buildWorkspace(data);
+	const path = Object.entries(exported.entityFiles).find(
+		([, r]) => r.kind === ref.kind && r.id === ref.id
+	)?.[0];
+	const entity = entityOf(data, ref);
+	const content = exported.files.find((f) => f.path === path)?.content;
+	if (!entity || content == null) return { ok: false, reason: '編集対象が見つかりません' };
+
+	const result = editEntityFile(ref.kind, entity as never, entityContext(data), content, change);
+	if (!result.ok) return result;
+	const error = await saveEntityChanges(ref.kind, entity, result.changes);
+	if (error) return { ok: false, reason: error };
+	return { ok: true, content: result.content, index: result.index };
 }
 
 async function applyEdit(edit: EditState) {
-	const scene = await findScene(edit.file);
-	if (!scene) {
+	const target = await findTarget(edit.file);
+	if (!target) {
 		edit.status = 'failed';
-		edit.error = '本文のシーンファイルではないため反映できません';
+		edit.error = '編集できるファイルではないため反映できません';
 		return;
 	}
-	edit.sceneId = scene.id;
-	edit.sceneTitle = scene.title;
-	const result = await updateScene(scene.id, (content) => replaceOnce(content, edit.old, edit.new));
+	edit.sceneTitle = target.title;
+	const change = (content: string) => replaceOnce(content, edit.old, edit.new);
+	let result: ReplaceResult;
+	if (target.type === 'scene') {
+		edit.sceneId = target.id;
+		result = await updateScene(target.id, change);
+	} else {
+		edit.entity = target.ref;
+		result = await updateEntity(target.ref, change);
+	}
 	if (result.ok) {
 		edit.status = 'applied';
 		edit.error = undefined;
@@ -793,12 +931,18 @@ function resumeRuns() {
 if (typeof window !== 'undefined' && isDesktop()) queueMicrotask(resumeRuns);
 
 async function revertEdit(edit: EditState) {
-	const sceneId = edit.sceneId ?? (await findScene(edit.file))?.id;
-	const result: ReplaceResult = sceneId
-		? await updateScene(sceneId, (content) =>
-				revertAt(content, edit.appliedAt, edit.contextBefore, edit.new, edit.old)
-			)
-		: { ok: false, reason: 'シーンが見つかりません' };
+	const change = (content: string) =>
+		revertAt(content, edit.appliedAt, edit.contextBefore, edit.new, edit.old);
+	let result: ReplaceResult;
+	if (edit.entity) {
+		result = await updateEntity(edit.entity, change);
+	} else {
+		const target = edit.sceneId ? null : await findTarget(edit.file);
+		const sceneId = edit.sceneId ?? (target?.type === 'scene' ? target.id : undefined);
+		result = sceneId
+			? await updateScene(sceneId, change)
+			: { ok: false, reason: 'シーンが見つかりません' };
+	}
 	if (result.ok) {
 		edit.status = 'reverted';
 		edit.error = undefined;

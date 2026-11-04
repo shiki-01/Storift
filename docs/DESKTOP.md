@@ -18,6 +18,14 @@ Storift を macOS / Windows / Linux のデスクトップアプリとして動�
 
 フロントエンドは Web 版と同じ SvelteKit のコードで、Tauri から起動したときだけ `adapter-static` で静的ファイルとして書き出してアプリに同梱する(`svelte.config.js` が `TAURI_ENV_PLATFORM` を見て切り替える)。Service Worker はデスクトップ版では登録しない。
 
+## Ollama(ローカル LLM)
+
+設定の「AI」で Ollama を選ぶと、Claude Code の代わりにローカルの Ollama で動く。`src-tauri/src/ollama.rs` が `/api/chat`(ツール定義つき)を呼び、返ってきたツール呼び出しを MCP と同じ経路でフロントへ中継して、結果を渡して続きを書かせる。出力は Claude Code と同じ `stream-json` の形に直して流すので、画面側は共通。
+
+- 接続は `http://` のみ(既定 `http://localhost:11434`)。ツール呼び出しに対応したモデルが必要。
+- 会話の履歴はメモリ上で持つ(アプリを再起動すると新しい会話になる)。Web 検索は使えない。
+- 文脈の長さは `num_ctx` 16384 を指定している。
+
 ## Claude Code パネル
 
 ヘッダーの「Claude」ボタンか `Ctrl(Cmd)+Shift+L` で開閉する。

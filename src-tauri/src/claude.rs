@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use crate::mcp::{self, McpState};
+use crate::ollama::{self, OllamaState};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -35,6 +36,18 @@ pub struct ClaudeState {
     running: Mutex<HashMap<String, oneshot::Sender<()>>>,
     /// 実行ごとの出力(再読み込み後に受け取り直すため)
     runs: Mutex<HashMap<String, Arc<Mutex<RunLog>>>>,
+}
+
+/// 実行の出力を溜めてフロントエンドへ流す(受け取り直しと購読が重なっても index で重複を除ける)
+fn push_line(app: &AppHandle, log: &Mutex<RunLog>, request_id: &str, line: &str) {
+    let index = match log.lock() {
+        Ok(mut l) => {
+            l.lines.push(line.to_string());
+            l.lines.len() - 1
+        }
+        Err(_) => return,
+    };
+    let _ = app.emit("claude://line", LineEvent { request_id, index, line });
 }
 
 #[derive(Default)]
@@ -72,6 +85,10 @@ pub struct SendRequest {
     /// 編集モード: suggest / confirm / auto。suggest(未指定を含む)では propose_edit を使わせない
     #[serde(alias = "edit_mode")]
     edit_mode: Option<String>,
+    /// "ollama" なら Claude Code ではなく Ollama で動かす(未指定は claude)
+    provider: Option<String>,
+    /// Ollama の接続先(空なら http://localhost:11434)
+    ollama_url: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -406,8 +423,12 @@ pub async fn claude_send(
     app: AppHandle,
     state: State<'_, ClaudeState>,
     mcp_state: State<'_, Arc<McpState>>,
+    ollama_state: State<'_, Arc<OllamaState>>,
     request: SendRequest,
 ) -> Result<(), String> {
+    if request.provider.as_deref() == Some("ollama") {
+        return send_ollama(app, state, mcp_state.inner().clone(), ollama_state.inner().clone(), request);
+    }
     let program = find_claude(request.claude_path.as_deref()).ok_or_else(|| {
         "claude コマンドが見つかりません。Claude Code をインストールするか、設定で実行ファイルを指定してください。"
             .to_string()
@@ -489,18 +510,7 @@ pub async fn claude_send(
             if line.trim().is_empty() {
                 continue;
             }
-            // 溜めてから送る。受け取り直しと購読が重なっても index で重複を除ける
-            let index = match log_for_lines.lock() {
-                Ok(mut l) => {
-                    l.lines.push(line.clone());
-                    l.lines.len() - 1
-                }
-                Err(_) => continue,
-            };
-            let _ = app_for_lines.emit(
-                "claude://line",
-                LineEvent { request_id: &id_for_lines, index, line: &line },
-            );
+            push_line(&app_for_lines, &log_for_lines, &id_for_lines, &line);
         }
     });
 
@@ -530,6 +540,60 @@ pub async fn claude_send(
         let _ = app.emit("claude://exit", exit);
     });
 
+    Ok(())
+}
+
+/// Ollama での実行。claude の起動と同じく、出力を溜めて流し、終了を知らせる
+fn send_ollama(
+    app: AppHandle,
+    state: State<'_, ClaudeState>,
+    mcp_state: Arc<McpState>,
+    ollama_state: Arc<OllamaState>,
+    request: SendRequest,
+) -> Result<(), String> {
+    let (cancel_tx, cancel_rx) = oneshot::channel();
+    let request_id = request.request_id.clone();
+    state.running.lock().map_err(|e| e.to_string())?.insert(request_id.clone(), cancel_tx);
+    state.prune();
+    let log = Arc::new(Mutex::new(RunLog::default()));
+    state.runs.lock().map_err(|e| e.to_string())?.insert(request_id.clone(), log.clone());
+
+    let params = ollama::Params {
+        run_id: request_id.clone(),
+        prompt: request.prompt,
+        session_id: request.session_id,
+        model: request.model,
+        url: request.ollama_url,
+        edit_mode: request.edit_mode,
+        append_system_prompt: request.append_system_prompt,
+    };
+    tauri::async_runtime::spawn(async move {
+        let emit_app = app.clone();
+        let emit_log = log.clone();
+        let emit_id = request_id.clone();
+        let emit = move |event: serde_json::Value| push_line(&emit_app, &emit_log, &emit_id, &event.to_string());
+        let mut cancelled = false;
+        let result = tokio::select! {
+            r = ollama::run(&mcp_state, &ollama_state, params, &emit) => Some(r),
+            _ = cancel_rx => { cancelled = true; None }
+        };
+        let (code, stderr) = match result {
+            Some(Ok(())) => (Some(0), String::new()),
+            Some(Err(message)) => (Some(1), message),
+            None => (None, String::new()),
+        };
+        if let Some(state) = app.try_state::<ClaudeState>() {
+            if let Ok(mut running) = state.running.lock() {
+                running.remove(&request_id);
+            }
+        }
+        let exit = ExitEvent { request_id, code, cancelled, stderr };
+        if let Ok(mut l) = log.lock() {
+            l.exit = Some(exit.clone());
+            l.finished_at = Some(Instant::now());
+        }
+        let _ = app.emit("claude://exit", exit);
+    });
     Ok(())
 }
 
@@ -585,6 +649,8 @@ mod tests {
             claude_path: None,
             append_system_prompt: None,
             edit_mode: mode.map(Into::into),
+            provider: None,
+            ollama_url: None,
         }
     }
 

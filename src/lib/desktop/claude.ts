@@ -26,6 +26,16 @@ export interface SendRequest {
 	appendSystemPrompt?: string;
 	/** 編集モード。propose_edit の扱い(提案のみでは使わせない)をネイティブ側が決める */
 	editMode: 'suggest' | 'confirm' | 'auto';
+	/** 省略時は claude。ollama ならローカルの Ollama で動かす(model は Ollama のモデル名) */
+	provider?: 'claude' | 'ollama';
+	ollamaUrl?: string;
+}
+
+export interface OllamaStatus {
+	found: boolean;
+	version?: string;
+	models: string[];
+	error?: string;
 }
 
 export interface ExitEvent {
@@ -49,6 +59,10 @@ interface AttachResult {
 
 export function getClaudeStatus(claudePath?: string): Promise<ClaudeStatus> {
 	return invoke('claude_status', { claudePath: claudePath || null });
+}
+
+export function getOllamaStatus(url?: string): Promise<OllamaStatus> {
+	return invoke('ollama_status', { url: url || null });
 }
 
 /** ターミナルを開いて `claude auth login` を実行する */

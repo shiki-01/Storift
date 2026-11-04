@@ -1,7 +1,14 @@
 <script lang="ts">
 	// 設定画面の「Claude Code」の項目(デスクトップ版のみ)
 	import { onMount } from 'svelte';
-	import { claudeStore, EDIT_MODE_LABELS, type EditMode } from '$lib/stores/claude.svelte';
+	import {
+		claudeStore,
+		DEFAULT_OLLAMA_URL,
+		EDIT_MODE_LABELS,
+		PROVIDER_LABELS,
+		type AiProvider,
+		type EditMode
+	} from '$lib/stores/claude.svelte';
 	import { getWorkspacePath, openWorkspace } from '$lib/desktop/claude';
 
 	const MODELS = [
@@ -10,6 +17,11 @@
 		{ value: 'opus', label: 'Opus' },
 		{ value: 'haiku', label: 'Haiku' }
 	];
+
+	const PROVIDER_HINTS: Record<AiProvider, string> = {
+		claude: 'Claude Code(claude コマンド)を使います。ログインが必要です。',
+		ollama: 'ローカルで動かす Ollama を使います。Web 検索は使えません。'
+	};
 
 	const EDIT_MODE_HINTS: Record<EditMode, string> = {
 		suggest: '修正案を文章で示すだけで、本文は書き換えません。',
@@ -38,65 +50,145 @@
 </script>
 
 <div class="claude-settings">
-	<div class="status">
-		<span
-			class="dot"
-			class:ok={claudeStore.status?.found && claudeStore.status.loggedIn !== false}
-			class:ng={claudeStore.status !== null &&
-				(!claudeStore.status.found || claudeStore.status.loggedIn === false)}
-		></span>
-		<div class="status-body">
-			{#if claudeStore.status?.found}
-				<span class="status-main">
-					{claudeStore.status.version}
-					・ログイン{claudeStore.status.loggedIn === true
-						? '済み'
-						: claudeStore.status.loggedIn === false
-							? 'していません'
-							: '状態は不明'}
-				</span>
-				<code>{claudeStore.status.path}</code>
-			{:else if claudeStore.status}
-				<span class="status-main">Claude Code が見つかりません</span>
-				<span class="hint">{claudeStore.status.error}</span>
-			{:else}
-				<span class="status-main">確認中…</span>
-			{/if}
-		</div>
-		<div class="status-actions">
-			<button class="ghost" onclick={() => claudeStore.checkStatus()}>再確認</button>
-			<button class="ghost" onclick={openLogin}>ログイン</button>
-		</div>
-	</div>
-	{#if loginError}<p class="hint error">{loginError}</p>{/if}
-
 	<div class="field">
-		<label for="claude-model">モデル</label>
+		<span class="field-label">AI</span>
 		<div class="field-body">
-			<select
-				id="claude-model"
-				value={isPreset ? claudeStore.settings.model : '__custom'}
-				onchange={(e) => {
-					const v = e.currentTarget.value;
-					if (v !== '__custom') claudeStore.updateSettings({ model: v });
-				}}
-			>
-				{#each MODELS as m (m.value)}
-					<option value={m.value}>{m.label}</option>
+			<div class="modes" role="radiogroup" aria-label="AI">
+				{#each Object.entries(PROVIDER_LABELS) as [value, label] (value)}
+					<label class="mode" class:on={claudeStore.settings.provider === value}>
+						<input
+							type="radio"
+							name="ai-provider"
+							{value}
+							checked={claudeStore.settings.provider === value}
+							onchange={() => claudeStore.updateSettings({ provider: value as AiProvider })}
+						/>
+						<span class="mode-label">{label}</span>
+						<span class="mode-hint">{PROVIDER_HINTS[value as AiProvider]}</span>
+					</label>
 				{/each}
-				<option value="__custom">その他(モデル名を入力)</option>
-			</select>
-			{#if !isPreset}
-				<input
-					type="text"
-					aria-label="モデル名"
-					placeholder="例: claude-sonnet-5-5"
-					value={claudeStore.settings.model}
-					onchange={(e) => claudeStore.updateSettings({ model: e.currentTarget.value.trim() })}
-				/>
-			{/if}
+			</div>
 		</div>
 	</div>
+
+	{#if claudeStore.settings.provider === 'ollama'}
+		<div class="status">
+			<span
+				class="dot"
+				class:ok={claudeStore.status?.found}
+				class:ng={claudeStore.status !== null && !claudeStore.status.found}
+			></span>
+			<div class="status-body">
+				{#if claudeStore.status?.found}
+					<span class="status-main">{claudeStore.status.version} に接続しました</span>
+				{:else if claudeStore.status}
+					<span class="status-main">Ollama に接続できません</span>
+					<span class="hint">{claudeStore.status.error}</span>
+				{:else}
+					<span class="status-main">確認中…</span>
+				{/if}
+			</div>
+			<div class="status-actions">
+				<button class="ghost" onclick={() => claudeStore.checkStatus()}>再確認</button>
+			</div>
+		</div>
+
+		<div class="field">
+			<label for="ollama-url">接続先</label>
+			<div class="field-body">
+				<input
+					id="ollama-url"
+					type="text"
+					placeholder={DEFAULT_OLLAMA_URL}
+					value={claudeStore.settings.ollamaUrl}
+					onchange={(e) => claudeStore.updateSettings({ ollamaUrl: e.currentTarget.value.trim() })}
+				/>
+			</div>
+		</div>
+
+		<div class="field">
+			<label for="ollama-model">モデル</label>
+			<div class="field-body">
+				<input
+					id="ollama-model"
+					type="text"
+					list="ollama-models"
+					placeholder="例: qwen3:8b"
+					value={claudeStore.settings.ollamaModel}
+					onchange={(e) =>
+						claudeStore.updateSettings({ ollamaModel: e.currentTarget.value.trim() })}
+				/>
+				<datalist id="ollama-models">
+					{#each claudeStore.ollamaModels as name (name)}
+						<option value={name}></option>
+					{/each}
+				</datalist>
+				<p class="hint">
+					ツール呼び出しに対応したモデルを選んでください。対応していないモデルでは、原稿を読めません。
+				</p>
+			</div>
+		</div>
+	{:else}
+		<div class="status">
+			<span
+				class="dot"
+				class:ok={claudeStore.status?.found && claudeStore.status.loggedIn !== false}
+				class:ng={claudeStore.status !== null &&
+					(!claudeStore.status.found || claudeStore.status.loggedIn === false)}
+			></span>
+			<div class="status-body">
+				{#if claudeStore.status?.found}
+					<span class="status-main">
+						{claudeStore.status.version}
+						・ログイン{claudeStore.status.loggedIn === true
+							? '済み'
+							: claudeStore.status.loggedIn === false
+								? 'していません'
+								: '状態は不明'}
+					</span>
+					<code>{claudeStore.status.path}</code>
+				{:else if claudeStore.status}
+					<span class="status-main">Claude Code が見つかりません</span>
+					<span class="hint">{claudeStore.status.error}</span>
+				{:else}
+					<span class="status-main">確認中…</span>
+				{/if}
+			</div>
+			<div class="status-actions">
+				<button class="ghost" onclick={() => claudeStore.checkStatus()}>再確認</button>
+				<button class="ghost" onclick={openLogin}>ログイン</button>
+			</div>
+		</div>
+		{#if loginError}<p class="hint error">{loginError}</p>{/if}
+
+		<div class="field">
+			<label for="claude-model">モデル</label>
+			<div class="field-body">
+				<select
+					id="claude-model"
+					value={isPreset ? claudeStore.settings.model : '__custom'}
+					onchange={(e) => {
+						const v = e.currentTarget.value;
+						if (v !== '__custom') claudeStore.updateSettings({ model: v });
+					}}
+				>
+					{#each MODELS as m (m.value)}
+						<option value={m.value}>{m.label}</option>
+					{/each}
+					<option value="__custom">その他(モデル名を入力)</option>
+				</select>
+				{#if !isPreset}
+					<input
+						type="text"
+						aria-label="モデル名"
+						placeholder="例: claude-sonnet-5-5"
+						value={claudeStore.settings.model}
+						onchange={(e) => claudeStore.updateSettings({ model: e.currentTarget.value.trim() })}
+					/>
+				{/if}
+			</div>
+		</div>
+	{/if}
 
 	<div class="field">
 		<span class="field-label">本文の編集</span>
@@ -119,32 +211,34 @@
 		</div>
 	</div>
 
-	<div class="field">
-		<label for="claude-path">claude の場所</label>
-		<div class="field-body">
-			<input
-				id="claude-path"
-				type="text"
-				placeholder="空なら自動で探します"
-				value={claudeStore.settings.claudePath}
-				onchange={(e) => claudeStore.updateSettings({ claudePath: e.currentTarget.value.trim() })}
-			/>
+	{#if claudeStore.settings.provider === 'claude'}
+		<div class="field">
+			<label for="claude-path">claude の場所</label>
+			<div class="field-body">
+				<input
+					id="claude-path"
+					type="text"
+					placeholder="空なら自動で探します"
+					value={claudeStore.settings.claudePath}
+					onchange={(e) => claudeStore.updateSettings({ claudePath: e.currentTarget.value.trim() })}
+				/>
+			</div>
 		</div>
-	</div>
 
-	<label class="check">
-		<input
-			type="checkbox"
-			checked={claudeStore.settings.allowWeb}
-			onchange={(e) => claudeStore.updateSettings({ allowWeb: e.currentTarget.checked })}
-		/>
-		Web 検索を許可する
-	</label>
+		<label class="check">
+			<input
+				type="checkbox"
+				checked={claudeStore.settings.allowWeb}
+				onchange={(e) => claudeStore.updateSettings({ allowWeb: e.currentTarget.checked })}
+			/>
+			Web 検索を許可する
+		</label>
+	{/if}
 
 	<div class="workspace">
 		<p class="hint">
-			原稿は送信のたびに <code>{workspacePath || 'workspace'}</code> へ Markdown で書き出され(未保存の本文も含む)、Claude
-			Code はそこを読み取り専用で参照します。本文の書き換えは「本文の編集」の設定に従い、アプリが行います。
+			原稿は送信のたびに <code>{workspacePath || 'workspace'}</code> へ Markdown で書き出され(未保存の本文も含む)、AI
+			はそこを読み取り専用で参照します(Ollama ではアプリのツール経由で読みます)。本文の書き換えは「本文の編集」の設定に従い、アプリが行います。
 		</p>
 		<button class="ghost" onclick={() => openWorkspace()}>ワークスペースを開く</button>
 	</div>

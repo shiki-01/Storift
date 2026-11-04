@@ -323,7 +323,14 @@
 		</section>
 	{/if}
 
-	{#if notFound}
+	{#if notFound && claudeStore.settings.provider === 'ollama'}
+		<section class="setup">
+			<p><strong>Ollama に接続できません。</strong></p>
+			<p>Ollama を起動してください。接続先やモデルは設定画面で指定できます。</p>
+			{#if claudeStore.status?.error}<p class="hint">{claudeStore.status.error}</p>{/if}
+			<button class="small" onclick={() => claudeStore.checkStatus()}>再確認</button>
+		</section>
+	{:else if notFound}
 		<section class="setup">
 			<p><strong>Claude Code が見つかりません。</strong></p>
 			<p>ターミナルでインストールし、一度 <code>claude</code> を起動してログインしてください。</p>

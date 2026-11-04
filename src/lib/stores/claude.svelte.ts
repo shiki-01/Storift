@@ -38,6 +38,7 @@ import {
 	attachClaude,
 	cancelClaude,
 	getClaudeStatus,
+	getOllamaStatus,
 	openClaudeLogin,
 	releaseClaude,
 	sendToClaude,
@@ -211,7 +212,22 @@ export interface Quote {
 	sceneTitle: string;
 }
 
+export type AiProvider = 'claude' | 'ollama';
+
+export const PROVIDER_LABELS: Record<AiProvider, string> = {
+	claude: 'Claude Code',
+	ollama: 'Ollama'
+};
+
+export const DEFAULT_OLLAMA_URL = 'http://localhost:11434';
+
 export interface ClaudeSettings {
+	/** どの AI で動かすか */
+	provider: AiProvider;
+	/** Ollama の接続先(空なら既定) */
+	ollamaUrl: string;
+	/** Ollama のモデル名 */
+	ollamaModel: string;
 	/** 空なら Claude Code の既定 */
 	model: string;
 	/** 空なら自動で探す */
@@ -275,6 +291,9 @@ const MAX_SAVED_MESSAGES = 100;
 const MAX_SAVED_SESSIONS = 30;
 
 const DEFAULT_SETTINGS: ClaudeSettings = {
+	provider: 'claude',
+	ollamaUrl: '',
+	ollamaModel: '',
 	model: '',
 	claudePath: '',
 	allowWeb: false,
@@ -306,6 +325,7 @@ let settings = $state<ClaudeSettings>(load(SETTINGS_KEY, DEFAULT_SETTINGS));
 const scopes = $state<Record<string, Scope>>(loadScopes());
 let runningId = $state<string | null>(null);
 let status = $state<ClaudeStatus | null>(null);
+let ollamaModels = $state<string[]>([]);
 let quote = $state<Quote | null>(null);
 /** シーン ID → ワークスペースのファイル(未反映の編集案がどのシーン向けかの判定に使う) */
 let sceneFiles = $state<Record<string, string>>({});
@@ -1039,7 +1059,9 @@ export const claudeStore = {
 	},
 	updateSettings(changes: Partial<ClaudeSettings>) {
 		const pathChanged =
-			changes.claudePath !== undefined && changes.claudePath !== settings.claudePath;
+			(changes.claudePath !== undefined && changes.claudePath !== settings.claudePath) ||
+			(changes.provider !== undefined && changes.provider !== settings.provider) ||
+			(changes.ollamaUrl !== undefined && changes.ollamaUrl !== settings.ollamaUrl);
 		settings = { ...settings, ...changes };
 		save(SETTINGS_KEY, settings);
 		if (pathChanged) void this.checkStatus();
@@ -1066,6 +1088,10 @@ export const claudeStore = {
 	},
 	get status() {
 		return status;
+	},
+	/** Ollama に入っているモデル(接続を確かめたときの一覧) */
+	get ollamaModels() {
+		return ollamaModels;
 	},
 	get quote() {
 		return quote;
@@ -1245,6 +1271,12 @@ export const claudeStore = {
 
 	async checkStatus() {
 		try {
+			if (settings.provider === 'ollama') {
+				const r = await getOllamaStatus(settings.ollamaUrl);
+				ollamaModels = r.models;
+				status = { found: r.found, version: r.version, error: r.error };
+				return;
+			}
 			status = await getClaudeStatus(settings.claudePath);
 		} catch (error) {
 			status = { found: false, error: String(error) };
@@ -1336,8 +1368,15 @@ export const claudeStore = {
 				{
 					requestId,
 					prompt: buildPrompt(body, mode, attached),
-					sessionId: conv.sessionId,
-					model: settings.model || undefined,
+					// 会話の ID は AI ごとに別物なので、切り替えたあとは引き継がない
+					sessionId:
+						conv.sessionId?.startsWith('ollama-') === (settings.provider === 'ollama')
+							? conv.sessionId
+							: undefined,
+					provider: settings.provider,
+					ollamaUrl: settings.ollamaUrl || undefined,
+					model:
+						(settings.provider === 'ollama' ? settings.ollamaModel : settings.model) || undefined,
 					allowWeb: settings.allowWeb,
 					claudePath: settings.claudePath || undefined,
 					editMode: mode,

@@ -56,7 +56,7 @@ pub fn allowed_tool_names(mode: Option<&str>) -> Vec<String> {
     names.into_iter().map(|n| format!("mcp__{SERVER_NAME}__{n}")).collect()
 }
 
-fn tool_definitions(mode: Option<&str>) -> Vec<Value> {
+pub fn tool_definitions(mode: Option<&str>) -> Vec<Value> {
     let project = json!({"type": "string", "description": "省略時は開いている作品"});
     let kind_list = json!({
         "type": "string",
@@ -327,24 +327,38 @@ impl McpState {
                 let Some(name) = params.get("name").and_then(Value::as_str) else {
                     return Some(rpc_err(&id, -32602, "name が必要です"));
                 };
-                let is_edit_tool = EDIT_TOOLS.contains(&name);
-                let known = READ_TOOL_NAMES.contains(&name) || (is_edit_tool && edit_enabled(mode));
-                if !known {
-                    return Some(rpc_err(&id, -32602, &format!("不明なツール: {name}")));
-                }
                 let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
-                if !args.is_object() {
-                    return Some(rpc_err(&id, -32602, "arguments はオブジェクトで渡してください"));
+                match self.call_tool(run_id, name, args, mode).await {
+                    Ok(res) => rpc_ok(&id, tool_result(&res.text, res.is_error)),
+                    Err((code, message)) => rpc_err(&id, code, &message),
                 }
-                // 履歴は編集の対象外(フロントに渡す前にここでも断る)
-                if is_edit_tool && args.get("kind").and_then(Value::as_str) == Some("history") {
-                    return Some(rpc_ok(&id, tool_result("history は編集できません", true)));
-                }
-                let res = self.relay(run_id, name, args).await;
-                rpc_ok(&id, tool_result(&res.text, res.is_error))
             }
             _ => rpc_err(&id, -32601, "Method not found"),
         })
+    }
+
+    /// ツール呼び出し 1 件の検証と中継。JSON-RPC 経由(claude)と、アプリ内の呼び出し(Ollama)で共通。
+    /// 呼び出しの形が不正なときは (JSON-RPC のエラーコード, 理由)
+    pub async fn call_tool(
+        &self,
+        run_id: &str,
+        name: &str,
+        args: Value,
+        mode: Option<&str>,
+    ) -> Result<McpResult, (i64, String)> {
+        let is_edit_tool = EDIT_TOOLS.contains(&name);
+        let known = READ_TOOL_NAMES.contains(&name) || (is_edit_tool && edit_enabled(mode));
+        if !known {
+            return Err((-32602, format!("不明なツール: {name}")));
+        }
+        if !args.is_object() {
+            return Err((-32602, "arguments はオブジェクトで渡してください".into()));
+        }
+        // 履歴は編集の対象外(フロントに渡す前にここでも断る)
+        if is_edit_tool && args.get("kind").and_then(Value::as_str) == Some("history") {
+            return Ok(McpResult { text: "history は編集できません".into(), is_error: true });
+        }
+        Ok(self.relay(run_id, name, args).await)
     }
 
     /// フロントへ中継して結果を待つ

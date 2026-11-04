@@ -1,5 +1,6 @@
 mod claude;
 mod mcp;
+mod ollama;
 mod shell_env;
 mod workspace;
 
@@ -19,6 +20,7 @@ pub fn run() {
                 .build(),
         )
         .manage(claude::ClaudeState::default())
+        .manage(std::sync::Arc::new(ollama::OllamaState::default()))
         .setup(|app| {
             // GUI から起動すると PATH がログインシェルと異なるため、先に読み込んでおく
             std::thread::spawn(shell_env::load);
@@ -44,6 +46,7 @@ pub fn run() {
             claude::claude_attach,
             claude::claude_release,
             claude::claude_open_login,
+            ollama::ollama_status,
             mcp::mcp_respond,
             workspace::workspace_sync,
             workspace::workspace_info,

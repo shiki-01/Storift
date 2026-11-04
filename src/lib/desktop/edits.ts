@@ -75,6 +75,34 @@ export function replaceOnce(content: string, from: string, to: string): ReplaceR
 	return { ok: true, content: content.slice(0, i) + to + content.slice(i + from.length), index: i };
 }
 
+const REPEAT_MIN = 15;
+
+/** text の中に、REPEAT_MIN 文字以上のまとまりが隙間なく 2 回続く箇所があるか */
+export function hasAdjacentRepeat(text: string): boolean {
+	for (let i = 0; i + REPEAT_MIN * 2 <= text.length; i++) {
+		const head = text.slice(i, i + REPEAT_MIN);
+		for (let j = text.indexOf(head, i + REPEAT_MIN); j !== -1; j = text.indexOf(head, j + 1)) {
+			const len = j - i;
+			if (text.startsWith(text.slice(i, j), j) && len >= REPEAT_MIN) return true;
+			if (len > 2000) break;
+		}
+	}
+	return false;
+}
+
+/**
+ * 置き換えの結果、同じ文が続けて 2 回並んでしまっていないか(元の文を残したまま全文を new に入れたときなど)。
+ * after は置き換え後の本文、index は new が始まる位置。置き換え前に無かった重複だけを見つける。
+ */
+export function introducesRepeat(after: string, index: number, from: string, to: string): boolean {
+	const margin = 400;
+	const start = Math.max(0, index - margin);
+	const end = Math.min(after.length, index + to.length + margin);
+	const windowAfter = after.slice(start, end);
+	const windowBefore = after.slice(start, index) + from + after.slice(index + to.length, end);
+	return hasAdjacentRepeat(windowAfter) && !hasAdjacentRepeat(windowBefore);
+}
+
 /**
  * 反映した編集を元に戻す。反映した位置(at)に置き換え後の文がまだあり、直前の文も変わっていなければ
  * その場所を戻す(削除だけの編集もこれで戻せる)。位置がずれていれば、置き換え後の文を探して戻す。

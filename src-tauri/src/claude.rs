@@ -2,8 +2,9 @@
 //!
 //! メッセージ 1 件ごとに `claude -p` をヘッドレスで起動し、`stream-json` の出力を
 //! 1 行ずつフロントエンドへイベントで流す。会話の継続は Claude Code の
-//! セッション ID(`--resume`)で行う。作業ディレクトリは原稿を書き出した
-//! ワークスペースで、使えるツールは読み取り系に限る(原稿の正本はアプリ側)。
+//! セッション ID(`--resume`)で行う。原稿の読み書きはアプリ内の MCP サーバー(`mcp.rs`)の
+//! ツールだけで行い、Claude Code 組み込みのファイル系ツールは使わせない(原稿の正本はアプリ側)。
+//! 作業ディレクトリは何も置かない空のディレクトリ。
 //!
 //! 出力は実行ごとにネイティブ側でも溜めておく。画面を再読み込みしてもプロセスは止めず、
 //! 戻ってきたフロントエンドが `claude_attach` でそこまでの出力を受け取り、続きを購読できる。
@@ -13,14 +14,13 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
+use crate::mcp::{self, McpState};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::oneshot;
 
-/// 読み取り専用のツール。原稿の書き換えはアプリ側で人が行う
-const READ_TOOLS: &[&str] = &["Read", "Glob", "Grep"];
 const WEB_TOOLS: &[&str] = &["WebSearch", "WebFetch"];
 const DENIED_TOOLS: &[&str] = &["Bash", "Edit", "MultiEdit", "Write", "NotebookEdit"];
 
@@ -69,6 +69,9 @@ pub struct SendRequest {
     /// 設定で指定された claude の実行ファイル(空なら自動で探す)
     claude_path: Option<String>,
     append_system_prompt: Option<String>,
+    /// 編集モード: suggest / confirm / auto。suggest(未指定を含む)では propose_edit を使わせない
+    #[serde(alias = "edit_mode")]
+    edit_mode: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -302,11 +305,63 @@ fn open_login_terminal(program: &str, _dir: &Path) -> Result<(), String> {
     Err("ターミナルを開けませんでした。端末で `claude auth login` を実行してください。".into())
 }
 
-fn build_args(req: &SendRequest) -> Vec<String> {
-    let mut allowed: Vec<&str> = READ_TOOLS.to_vec();
-    if req.allow_web {
-        allowed.extend_from_slice(WEB_TOOLS);
+/// 実行ごとに作る MCP 設定ファイルの名前(app_data_dir 直下)
+const MCP_CONFIG_PREFIX: &str = "mcp-";
+
+fn mcp_config_path(dir: &Path, request_id: &str) -> PathBuf {
+    dir.join(format!("{MCP_CONFIG_PREFIX}{request_id}.json"))
+}
+
+/// `--mcp-config` に渡す設定。トークンと実行 ID・編集モードをヘッダーで運ぶ
+fn mcp_config_json(url: &str, token: &str, request_id: &str, edit_mode: Option<&str>) -> String {
+    serde_json::json!({
+        "mcpServers": {
+            mcp::SERVER_NAME: {
+                "type": "http",
+                "url": url,
+                "headers": {
+                    "Authorization": format!("Bearer {token}"),
+                    "X-Storift-Run": request_id,
+                    "X-Storift-Mode": edit_mode.unwrap_or("suggest"),
+                }
+            }
+        }
+    })
+    .to_string()
+}
+
+/// トークンを含むので所有者だけが読める権限(0600)で書く
+fn write_private(path: &Path, body: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
     }
+    opts.open(path)?.write_all(body.as_bytes())
+}
+
+/// 前回の異常終了などで残った設定ファイルを消す(起動時)
+pub fn remove_stale_mcp_configs(app: &AppHandle) {
+    let Ok(dir) = crate::app_data_dir(app) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with(MCP_CONFIG_PREFIX) && name.ends_with(".json") {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+fn build_args(req: &SendRequest, mcp_config: &Path) -> Vec<String> {
+    let mcp_tools = mcp::allowed_tool_names(req.edit_mode.as_deref());
+    // 組み込みのツールは Web 系だけ。ファイルの読み書きは MCP のツールで行う
+    let builtin: Vec<&str> = if req.allow_web { WEB_TOOLS.to_vec() } else { Vec::new() };
+    let mut allowed: Vec<String> = mcp_tools;
+    allowed.extend(builtin.iter().map(|s| s.to_string()));
     let mut args: Vec<String> = [
         "-p",
         "--output-format",
@@ -319,11 +374,13 @@ fn build_args(req: &SendRequest) -> Vec<String> {
     .iter()
     .map(|s| s.to_string())
     .collect();
-    // 使えるツールそのものを絞る。ツール定義・MCP・スキルの説明は毎回のプロンプトに載るので、
+    // 使えるツールそのものを絞る。ツール定義・スキルの説明は毎回のプロンプトに載るので、
     // 執筆の相談に要らないものを外すと 1 回あたりのトークンが大きく減る
     args.push("--tools".into());
-    args.push(allowed.join(","));
+    args.push(builtin.join(","));
     args.push("--strict-mcp-config".into());
+    args.push("--mcp-config".into());
+    args.push(mcp_config.to_string_lossy().into_owned());
     args.push("--disable-slash-commands".into());
     args.push("--allowedTools".into());
     args.push(allowed.join(","));
@@ -348,24 +405,44 @@ fn build_args(req: &SendRequest) -> Vec<String> {
 pub async fn claude_send(
     app: AppHandle,
     state: State<'_, ClaudeState>,
+    mcp_state: State<'_, Arc<McpState>>,
     request: SendRequest,
 ) -> Result<(), String> {
     let program = find_claude(request.claude_path.as_deref()).ok_or_else(|| {
         "claude コマンドが見つかりません。Claude Code をインストールするか、設定で実行ファイルを指定してください。"
             .to_string()
     })?;
-    let cwd = crate::workspace::workspace_dir(&app)?;
+    // 設定ファイル名に使うので、パスとして危険な文字を含む ID は受け付けない
+    if request.request_id.is_empty()
+        || !request.request_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err("requestId に使えない文字が含まれています".into());
+    }
+    let data_dir = crate::app_data_dir(&app)?;
+    let cwd = data_dir.join("claude-cwd");
     std::fs::create_dir_all(&cwd).map_err(|e| e.to_string())?;
+    let config_path = mcp_config_path(&data_dir, &request.request_id);
+    write_private(
+        &config_path,
+        &mcp_config_json(&mcp_state.url(), mcp_state.token(), &request.request_id, request.edit_mode.as_deref()),
+    )
+    .map_err(|e| format!("MCP 設定ファイルを書けません: {e}"))?;
 
-    let mut child = command_for(&program)
-        .args(build_args(&request))
+    let spawned = command_for(&program)
+        .args(build_args(&request, &config_path))
         .current_dir(&cwd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| format!("claude を起動できません: {e}"))?;
+        .spawn();
+    let mut child = match spawned {
+        Ok(child) => child,
+        Err(e) => {
+            let _ = std::fs::remove_file(&config_path);
+            return Err(format!("claude を起動できません: {e}"));
+        }
+    };
 
     // プロンプトは長くなり、Windows ではコマンドラインの引用も厄介なので標準入力で渡す
     let mut stdin = child.stdin.take().ok_or("標準入力を開けません")?;
@@ -439,6 +516,7 @@ pub async fn claude_send(
         };
         let _ = stdout_task.await;
         let stderr = stderr_task.await.unwrap_or_default();
+        let _ = std::fs::remove_file(&config_path);
         if let Some(state) = app.try_state::<ClaudeState>() {
             if let Ok(mut running) = state.running.lock() {
                 running.remove(&request_id);
@@ -497,7 +575,7 @@ pub fn claude_release(state: State<'_, ClaudeState>, request_id: String) {
 mod tests {
     use super::*;
 
-    fn request(session: Option<&str>, web: bool) -> SendRequest {
+    fn request(session: Option<&str>, web: bool, mode: Option<&str>) -> SendRequest {
         SendRequest {
             request_id: "r".into(),
             prompt: "p".into(),
@@ -506,23 +584,82 @@ mod tests {
             allow_web: web,
             claude_path: None,
             append_system_prompt: None,
+            edit_mode: mode.map(Into::into),
         }
+    }
+
+    fn value_of<'a>(args: &'a [String], flag: &str) -> &'a str {
+        &args[args.iter().position(|a| a == flag).unwrap() + 1]
     }
 
     #[test]
     fn args_limit_tools_and_resume() {
-        let args = build_args(&request(Some("abc"), false));
-        let allowed = &args[args.iter().position(|a| a == "--allowedTools").unwrap() + 1];
-        let tools = &args[args.iter().position(|a| a == "--tools").unwrap() + 1];
-        assert_eq!(allowed, tools);
+        let cfg = Path::new("/tmp/mcp-r.json");
+        let args = build_args(&request(Some("abc"), false, Some("confirm")), cfg);
+        let allowed = value_of(&args, "--allowedTools");
+        assert_eq!(value_of(&args, "--tools"), "", "組み込みツールは出さない");
         assert!(args.iter().any(|a| a == "--strict-mcp-config"));
+        assert_eq!(value_of(&args, "--mcp-config"), "/tmp/mcp-r.json");
         assert!(!allowed.contains("WebSearch"));
-        assert!(!allowed.contains("Edit"));
+        for tool in ["Read", "Glob", "Grep", "Edit", "Write", "Bash"] {
+            assert!(!allowed.split(',').any(|t| t == tool), "{tool} は許可しない");
+        }
         let resume = args.iter().position(|a| a == "--resume").unwrap();
         assert_eq!(args[resume + 1], "abc");
 
-        let args = build_args(&request(None, true));
-        assert!(args.iter().any(|a| a.contains("WebSearch")));
+        let args = build_args(&request(None, true, Some("confirm")), cfg);
+        assert_eq!(value_of(&args, "--tools"), "WebSearch,WebFetch");
+        assert!(value_of(&args, "--allowedTools").contains("WebSearch"));
         assert!(!args.iter().any(|a| a == "--resume"));
+    }
+
+    #[test]
+    fn args_list_storift_tools_by_edit_mode() {
+        let cfg = Path::new("/tmp/mcp-r.json");
+        for mode in [Some("confirm"), Some("auto")] {
+            let allowed = value_of(&build_args(&request(None, false, mode), cfg), "--allowedTools").to_string();
+            assert!(allowed.split(',').all(|t| t.starts_with("mcp__storift__")));
+            assert!(allowed.contains("mcp__storift__propose_edit"));
+            assert!(allowed.contains("mcp__storift__get_scene"));
+        }
+        for mode in [Some("suggest"), None] {
+            let allowed = value_of(&build_args(&request(None, false, mode), cfg), "--allowedTools").to_string();
+            assert!(!allowed.contains("propose_edit"));
+            assert!(allowed.contains("mcp__storift__list_items"));
+        }
+    }
+
+    #[test]
+    fn args_deny_file_and_shell_tools() {
+        let args = build_args(&request(None, true, Some("auto")), Path::new("c.json"));
+        let denied: Vec<&str> = value_of(&args, "--disallowedTools").split(',').collect();
+        for tool in ["Bash", "Edit", "MultiEdit", "Write", "NotebookEdit"] {
+            assert!(denied.contains(&tool));
+        }
+    }
+
+    #[test]
+    fn mcp_config_carries_token_and_run_headers() {
+        let json: serde_json::Value =
+            serde_json::from_str(&mcp_config_json("http://127.0.0.1:1/mcp", "tok", "run-1", Some("auto"))).unwrap();
+        let server = &json["mcpServers"]["storift"];
+        assert_eq!(server["type"], "http");
+        assert_eq!(server["url"], "http://127.0.0.1:1/mcp");
+        assert_eq!(server["headers"]["Authorization"], "Bearer tok");
+        assert_eq!(server["headers"]["X-Storift-Run"], "run-1");
+        assert_eq!(server["headers"]["X-Storift-Mode"], "auto");
+        let json: serde_json::Value = serde_json::from_str(&mcp_config_json("u", "t", "r", None)).unwrap();
+        assert_eq!(json["mcpServers"]["storift"]["headers"]["X-Storift-Mode"], "suggest");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn config_file_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = std::env::temp_dir().join(format!("storift-test-mcp-{}.json", std::process::id()));
+        write_private(&path, "{}").unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(mode, 0o600);
     }
 }

@@ -6,8 +6,9 @@
  * - 作品ごとに複数の会話(セッション)を履歴として残し、パネルを開くと前回の会話を開く。
  * - 質問は送った時点で保存する。回答中に画面を再読み込みしても Claude Code は止まらず、
  *   戻ってきたらネイティブ側に溜まった出力を受け取り直して続きを表示する。
- * - 本文はプロンプトに毎回添付せず、ワークスペースのファイル(未保存の本文も反映)を Claude が必要なときに読む。
- * - 本文と、キャラクター・プロット・設定資料・メモ・章の概要・進捗ログ・相関図の配置の編集は設定(editMode)に応じて、提案のみ / 差分を確認して反映 / 自動で反映 を切り替える。
+ * - 本文やデータはプロンプトに添付せず、Claude が MCP ツール(storift)で必要なときに読む。プロンプトには ID だけを付ける。
+ * - 編集は MCP の propose_edit で届き、設定(editMode)に応じて、提案のみ / 差分を確認して反映 / 自動で反映 を切り替える。
+ *   過去の回答に書かれた <storift-edit> タグは履歴の表示にだけ使い、新しい実行では解析しない。
  */
 import { page } from '$app/state';
 import { currentProjectStore } from '$lib/stores/currentProject.svelte';
@@ -39,7 +40,6 @@ import {
 	openClaudeLogin,
 	releaseClaude,
 	sendToClaude,
-	syncWorkspace,
 	type ClaudeStatus,
 	type ExitEvent
 } from '$lib/desktop/claude';
@@ -55,23 +55,19 @@ import { buildWorkspace, entityContext, loadWorkspaceData } from '$lib/desktop/w
 import {
 	editEntityFile,
 	entityTitle,
+	isEditableKind,
 	type EntityKind,
 	type EntityMap,
 	type EntityRef
 } from '$lib/desktop/entities';
-import {
-	EDIT_INSTRUCTIONS,
-	parseEdits,
-	replaceOnce,
-	revertAt,
-	type ReplaceResult
-} from '$lib/desktop/edits';
+import { EDIT_INSTRUCTIONS, replaceOnce, revertAt, type ReplaceResult } from '$lib/desktop/edits';
 import { scrollRangeIntoView, selectTextRange, textRange } from '$lib/utils/editorInput';
 
 /** suggest: 提案のみ / confirm: 差分を見て反映 / auto: 自動で反映し、後から確認・元に戻す */
 export type EditMode = 'suggest' | 'confirm' | 'auto';
 
 export interface EditState {
+	/** 画面に出すファイルのパス(対象の特定には sceneId / entity を使う) */
 	file: string;
 	old: string;
 	new: string;
@@ -95,6 +91,20 @@ export interface EditorEdit {
 	message: ChatMessage;
 }
 
+/** MCP の結果(Claude に返す本文と、失敗かどうか) */
+export interface ToolResult {
+	text: string;
+	isError: boolean;
+}
+
+/** propose_edit の引数(kind は 'scene' または編集できる項目の種類) */
+export interface ProposeInput {
+	kind: string;
+	id: string;
+	old: string;
+	new: string;
+}
+
 export interface ChatMessage {
 	id: string;
 	role: 'user' | 'assistant' | 'error';
@@ -106,7 +116,7 @@ export interface ChatMessage {
 	quoteRef?: Quote;
 	/** assistant: 本文とツール呼び出し */
 	parts?: TurnPart[];
-	/** assistant: 回答中の編集案(出てきた順)。回答が終わってから入る */
+	/** assistant: 編集案(出てきた順)。propose_edit の呼び出しごとに入る */
 	edits?: EditState[];
 	/** assistant: この回答のときの編集モード */
 	editMode?: EditMode;
@@ -121,6 +131,8 @@ export interface ChatSession {
 	id: string;
 	/** Claude Code のセッション ID(--resume に渡す) */
 	sessionId?: string;
+	/** MCP 版(現在の方式)で始めた会話か。false・未設定の会話は古い --resume を続けない */
+	mcp?: boolean;
 	title: string;
 	createdAt: number;
 	updatedAt: number;
@@ -343,13 +355,16 @@ function isEditorOpenOn(sceneId: string): boolean {
 /** シーンの本文を書き換える。開いているシーンはエディタ経由(自動保存される) */
 async function updateScene(
 	sceneId: string,
-	change: (content: string) => ReplaceResult
+	change: (content: string) => ReplaceResult,
+	save = true
 ): Promise<ReplaceResult> {
 	const inEditor = isEditorOpenOn(sceneId);
 	const content = inEditor ? editorStore.content : (await scenesDB.getById(sceneId))?.content;
 	if (content == null) return { ok: false, reason: 'シーンが見つかりません' };
 	const result = change(content);
 	if (!result.ok) return result;
+	// save が false のときは確かめるだけ(提案の時点で一致箇所を検証する)
+	if (!save) return result;
 
 	if (inEditor) {
 		editorStore.content = result.content;
@@ -457,7 +472,8 @@ async function saveEntityChanges(
 /** 項目ファイルに change を適用して書き戻す */
 async function updateEntity(
 	ref: EntityRef,
-	change: (content: string) => ReplaceResult
+	change: (content: string) => ReplaceResult,
+	save = true
 ): Promise<ReplaceResult> {
 	const data = await loadWorkspaceData();
 	const exported = buildWorkspace(data);
@@ -470,27 +486,35 @@ async function updateEntity(
 
 	const result = editEntityFile(ref.kind, entity as never, entityContext(data), content, change);
 	if (!result.ok) return result;
+	if (!save) return { ok: true, content: result.content, index: result.index };
 	const error = await saveEntityChanges(ref.kind, entity, result.changes);
 	if (error) return { ok: false, reason: error };
 	return { ok: true, content: result.content, index: result.index };
 }
 
+/** 編集案を反映する。対象(sceneId / entity)が決まっていればそのまま使い、無ければファイルから探す */
 async function applyEdit(edit: EditState) {
-	const target = await findTarget(edit.file);
-	if (!target) {
-		edit.status = 'failed';
-		edit.error = '編集できるファイルではないため反映できません';
-		return;
-	}
-	edit.sceneTitle = target.title;
 	const change = (content: string) => replaceOnce(content, edit.old, edit.new);
 	let result: ReplaceResult;
-	if (target.type === 'scene') {
-		edit.sceneId = target.id;
-		result = await updateScene(target.id, change);
+	if (edit.sceneId) {
+		result = await updateScene(edit.sceneId, change);
+	} else if (edit.entity) {
+		result = await updateEntity(edit.entity, change);
 	} else {
-		edit.entity = target.ref;
-		result = await updateEntity(target.ref, change);
+		const target = await findTarget(edit.file);
+		if (!target) {
+			edit.status = 'failed';
+			edit.error = '編集できるファイルではないため反映できません';
+			return;
+		}
+		edit.sceneTitle = target.title;
+		if (target.type === 'scene') {
+			edit.sceneId = target.id;
+			result = await updateScene(target.id, change);
+		} else {
+			edit.entity = target.ref;
+			result = await updateEntity(target.ref, change);
+		}
 	}
 	if (result.ok) {
 		edit.status = 'applied';
@@ -503,32 +527,44 @@ async function applyEdit(edit: EditState) {
 	}
 }
 
+/** 実行中の回答(MCP 呼び出しの持ち主)を探す。実行 ID は回答のメッセージ ID */
+function runningAssistant(runId: string): ChatMessage | null {
+	for (const scope of Object.values(scopes))
+		for (const session of scope.sessions)
+			for (const message of session.messages)
+				if (message.id === runId && message.role === 'assistant' && message.running) return message;
+	return null;
+}
+
+const toolOk = (text: string): ToolResult => ({ text, isError: false });
+const toolError = (text: string): ToolResult => ({ text, isError: true });
+
+/** MCP 版より前に始めた会話の Claude Code セッションは、今のツール構成と食い違うので続けない */
+function detachLegacy(session: ChatSession) {
+	if (!session.mcp) session.sessionId = undefined;
+}
+
 function targetLabel(): string {
 	return quote ? '引用した部分' : '開いているシーン';
 }
 
-/** プロンプトの前に付ける、今アプリで開いているものの情報と引用 */
-function buildPrompt(
-	text: string,
-	exported: Awaited<ReturnType<typeof syncWorkspace>>,
-	attached: Quote | null
-): string {
+/** プロンプトの前に付ける、今アプリで開いているものの ID と引用。本文や項目は Claude が MCP で読む */
+function buildPrompt(text: string, mode: EditMode, attached: Quote | null): string {
 	const project = currentProjectStore.project;
 	const scene = editorStore.currentScene;
 	const context: string[] = [];
 
 	if (project && page.params?.id === project.id) {
-		context.push(`開いている作品: ${project.title}(${exported.projectDirs[project.id]}/)`);
+		context.push(`開いている作品: ${project.title}(projectId: ${project.id})`);
 		if (scene && isEditorOpenOn(scene.id)) {
-			context.push(`開いているシーン: ${scene.title}(${exported.sceneFiles[scene.id]})`);
+			context.push(`開いているシーン: ${scene.title}(sceneId: ${scene.id})`);
 		}
 	}
-	context.push(`本文の編集: ${EDIT_MODE_LABELS[settings.editMode]}`);
+	context.push(`本文の編集: ${EDIT_MODE_LABELS[mode]}`);
 
 	let body = `<storift_context>\n${context.join('\n')}\n</storift_context>\n\n`;
 	if (attached) {
-		const file = exported.sceneFiles[attached.sceneId] ?? '';
-		body += `<quote file="${file}">\n${attached.text}\n</quote>\n\n`;
+		body += `<quote sceneId="${attached.sceneId}" sceneTitle="${attached.sceneTitle}">\n${attached.text}\n</quote>\n\n`;
 	}
 	return body + text;
 }
@@ -599,6 +635,84 @@ export const claudeStore = {
 		return !!page.params?.id;
 	},
 
+	/** 開いている作品の ID(作品のページを開いていないときは null) */
+	get openProjectId(): string | null {
+		return page.params?.id ?? null;
+	},
+
+	/** エディタで本文を開いているシーンの ID(開いていなければ null) */
+	get openSceneId(): string | null {
+		const scene = editorStore.currentScene;
+		return scene && isEditorOpenOn(scene.id) ? scene.id : null;
+	},
+
+	/**
+	 * Claude の propose_edit(MCP)を処理する。対象と一致箇所を先に確かめ、通ったものだけ編集案として回答に記録する。
+	 * confirm は承認待ちとして残し、auto はその場で反映して結果を返す。
+	 */
+	async proposeEdit(runId: string, input: ProposeInput): Promise<ToolResult> {
+		const message = runningAssistant(runId);
+		if (!message) return toolError('この操作は Claude の回答中にだけ使えます');
+		const mode = message.editMode ?? 'suggest';
+		if (mode === 'suggest') return toolError('提案のみの設定では本文や項目を変更できません');
+
+		const change = (content: string) => replaceOnce(content, input.old, input.new);
+		const data = await loadWorkspaceData();
+		const exported = buildWorkspace(data);
+		let draft: Omit<EditState, 'status'>;
+		let check: ReplaceResult;
+		if (input.kind === 'scene') {
+			const scene = data.scenes.find((s) => s.id === input.id);
+			if (!scene) return toolError(`シーンが見つかりません: ${input.id}`);
+			check = await updateScene(scene.id, change, false);
+			draft = {
+				file: exported.sceneFiles[scene.id] ?? '',
+				old: input.old,
+				new: input.new,
+				sceneId: scene.id,
+				sceneTitle: scene.title
+			};
+		} else if (isEditableKind(input.kind)) {
+			const kind = input.kind;
+			const item = (data[kind] as unknown as { id: string }[]).find((x) => x.id === input.id);
+			if (!item) return toolError(`項目が見つかりません: ${kind} ${input.id}`);
+			const ref: EntityRef = { kind, id: input.id };
+			check = await updateEntity(ref, change, false);
+			const path = Object.entries(exported.entityFiles).find(
+				([, r]) => r.kind === kind && r.id === input.id
+			)?.[0];
+			draft = {
+				file: path ?? '',
+				old: input.old,
+				new: input.new,
+				entity: ref,
+				sceneTitle: `${KIND_LABELS[kind]}: ${entityTitle(kind, item as never)}`
+			};
+		} else {
+			return toolError(
+				input.kind === 'history'
+					? '履歴は読み取り専用のため変更できません'
+					: `編集できない種類です: ${input.kind}`
+			);
+		}
+		if (!check.ok) return toolError(check.reason);
+
+		if (!message.edits) message.edits = [];
+		message.edits.push({ ...draft, status: 'pending' });
+		const edit = message.edits[message.edits.length - 1];
+		persistChats();
+		if (mode === 'confirm') {
+			return toolOk(
+				`提案を記録しました(承認待ち): ${edit.file}。ユーザーが差分を確認して反映します。`
+			);
+		}
+		await applyEdit(edit);
+		persistChats();
+		return edit.status === 'applied'
+			? toolOk(`反映しました: ${edit.file}`)
+			: toolError(`反映できませんでした: ${edit.error ?? '理由が不明です'}`);
+	},
+
 	/** エディタで選んだ文章を引用して、パネルの入力欄へ */
 	setQuote(value: Quote | null) {
 		quote = value;
@@ -636,10 +750,12 @@ export const claudeStore = {
 	openSession(id: string) {
 		if (runningId) return;
 		const scope = scopeOf();
-		if (!scope.sessions.some((s) => s.id === id)) return;
+		const target = scope.sessions.find((s) => s.id === id);
+		if (!target) return;
 		// 開いていた空の会話は残さない
 		scope.sessions = scope.sessions.filter((s) => s.id === id || !isEmpty(s));
 		scope.currentId = id;
+		detachLegacy(target);
 		persistChats();
 	},
 
@@ -670,6 +786,10 @@ export const claudeStore = {
 
 		// 実行中に作品を移っても、送った会話に書き込む
 		const conv = conversation();
+		if (!conv.mcp) {
+			detachLegacy(conv);
+			conv.mcp = true;
+		}
 		const attached = options.quote !== undefined ? options.quote : quote;
 		if (options.quote === undefined) quote = null;
 		const mode = settings.editMode;
@@ -694,26 +814,21 @@ export const claudeStore = {
 		// 送った時点で保存し、再読み込みしても質問と回答中の状態が残るようにする
 		persistChats();
 
-		await follow(conv, assistant, async (onLine) => {
-			// エディタの未保存の本文もファイルに反映してから送る
-			const scene = editorStore.currentScene;
-			const overrides =
-				scene && isEditorOpenOn(scene.id) ? { [scene.id]: editorStore.content } : {};
-			const exported = await syncWorkspace(overrides);
-			sceneFiles = exported.sceneFiles;
-			return sendToClaude(
+		await follow(conv, assistant, (onLine) =>
+			sendToClaude(
 				{
 					requestId,
-					prompt: buildPrompt(body, exported, attached),
+					prompt: buildPrompt(body, mode, attached),
 					sessionId: conv.sessionId,
 					model: settings.model || undefined,
 					allowWeb: settings.allowWeb,
 					claudePath: settings.claudePath || undefined,
+					editMode: mode,
 					appendSystemPrompt: mode === 'suggest' ? undefined : EDIT_INSTRUCTIONS
 				},
 				onLine
-			);
-		});
+			)
+		);
 	},
 
 	/** 最後の質問か(再生成・編集で送り直せるのは最後の質問だけ) */
@@ -790,7 +905,9 @@ export const claudeStore = {
 		for (const message of currentSession()?.messages ?? []) {
 			for (const edit of message.edits ?? []) {
 				const applied = edit.status === 'applied' && !edit.reviewed && edit.sceneId === scene.id;
-				const pending = edit.status === 'pending' && !!file && edit.file === file;
+				const pending =
+					edit.status === 'pending' &&
+					(edit.sceneId ? edit.sceneId === scene.id : !!file && edit.file === file);
 				if (applied || pending) out.push({ edit, message });
 			}
 		}
@@ -852,7 +969,6 @@ async function follow(
 	run: (onLine: (line: string) => void) => Promise<ExitEvent | null>
 ) {
 	const requestId = assistant.id;
-	const mode = assistant.editMode ?? 'suggest';
 	const turn = createTurnState();
 	let frame = 0;
 	const render = () => {
@@ -890,14 +1006,6 @@ async function follow(
 			if (auth && status) status = { ...status, loggedIn: false };
 			conv.messages.push({ id: newId(), role: 'error', text: detail, auth });
 		}
-
-		if (mode !== 'suggest' && !exit.cancelled) {
-			const text = (assistant.parts ?? []).map((p) => (p.kind === 'text' ? p.text : '')).join('\n');
-			assistant.edits = parseEdits(text).map((e) => ({ ...e, status: 'pending' }));
-			if (mode === 'auto') {
-				for (const edit of assistant.edits) await applyEdit(edit);
-			}
-		}
 	} catch (error) {
 		conv.messages.push({ id: newId(), role: 'error', text: String(error) });
 	} finally {
@@ -928,7 +1036,11 @@ function resumeRuns() {
 	}
 }
 
-if (typeof window !== 'undefined' && isDesktop()) queueMicrotask(resumeRuns);
+if (typeof window !== 'undefined' && isDesktop()) {
+	queueMicrotask(resumeRuns);
+	// デスクトップ専用の MCP 処理は、必要になるまで読み込まない
+	queueMicrotask(() => void import('$lib/desktop/mcp').then((m) => m.startMcpBridge()));
+}
 
 async function revertEdit(edit: EditState) {
 	const change = (content: string) =>

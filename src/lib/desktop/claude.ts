@@ -16,6 +16,7 @@ export interface ClaudeStatus {
 }
 
 export interface SendRequest {
+	/** 実行の ID。MCP の呼び出しはこれで回答(assistant メッセージ)を特定する */
 	requestId: string;
 	prompt: string;
 	sessionId?: string;
@@ -23,6 +24,8 @@ export interface SendRequest {
 	allowWeb: boolean;
 	claudePath?: string;
 	appendSystemPrompt?: string;
+	/** 編集モード。propose_edit の扱い(提案のみでは使わせない)をネイティブ側が決める */
+	editMode: 'suggest' | 'confirm' | 'auto';
 }
 
 export interface ExitEvent {

@@ -22,7 +22,8 @@
 	let text = $state('');
 	let password = $state('');
 	let message = $state('');
-	let prepared = $state<Extract<PreparedJoin, { ok: true }> | null>(null);
+	// IndexedDB へ渡す値(招待の設定)を含むので、Proxy にならない $state.raw で持つ
+	let prepared = $state.raw<Extract<PreparedJoin, { ok: true }> | null>(null);
 	let joinedProjectId = $state('');
 	let joinedTitle = $state('');
 	let joinedRole = $state<'viewer' | 'editor'>('viewer');

@@ -23,6 +23,7 @@ const FIREBASE_CONFIG = {
 	appId: '1:1:web:e2e'
 };
 const EDITOR = '[role="textbox"][aria-label="エディタ"]';
+const PASSWORD = 'e2e-pass-1234';
 const INITIAL = '吾輩は猫である。\n名前はまだ無い。\nどこで生れたかとんと見当がつかぬ。';
 
 // ---------- 小道具 ----------
@@ -113,9 +114,8 @@ function assert(condition, message) {
 const editorText = (page) => page.locator(EDITOR).evaluate((el) => el.innerText);
 const editorEditable = (page) => page.locator(EDITOR).getAttribute('contenteditable');
 
-async function newClient(browser, label) {
-	const context = await browser.newContext({ serviceWorkers: 'block', locale: 'ja-JP' });
-	const page = await context.newPage();
+/** ページのエラーログを出す(新しく開いたページにも付ける) */
+async function watchPage(page, label) {
 	await page.addInitScript(() => {
 		Error.stackTraceLimit = 60;
 	});
@@ -134,6 +134,12 @@ async function newClient(browser, label) {
 		);
 		console.log(`  [${label}] console.error: ${parts.join(' ').slice(0, 3000)}`);
 	});
+}
+
+async function newClient(browser, label) {
+	const context = await browser.newContext({ serviceWorkers: 'block', locale: 'ja-JP' });
+	const page = await context.newPage();
+	await watchPage(page, label);
 	return { context, page, label };
 }
 
@@ -156,26 +162,56 @@ async function seedSettings(page, base, withFirebase) {
 	);
 }
 
-/**
- * 招待リンクで参加する。参加のサービス(prepareJoin / executeJoin)を直接呼ぶ。
- * /join 画面は経由しない: 現状の /join 画面には、(1) リンクを直接読み込むと onMount の replaceState が
- * 「router is initialized の前」に呼ばれて失敗する、(2) JoinPanel が招待を $state(Proxy)で持つため、
- * 接続の保存(IndexedDB の put)が DataCloneError になる、という問題がある(報告のみで未修正)。
- */
-async function joinWith(client, base, link, pid) {
+/** 履歴(ナビゲーション履歴)の URL 一覧 */
+async function historyUrls(client, page) {
+	const cdp = await client.context.newCDPSession(page);
+	const { entries } = await cdp.send('Page.getNavigationHistory');
+	await cdp.detach();
+	return entries.map((e) => e.url);
+}
+
+/** 新しいタブで招待リンクを直接開く(/join#...)。フラグメントが URL と履歴から消えることも検証する */
+async function openInviteLink(client, base, link) {
 	await seedSettings(client.page, base, false);
-	const outcome = await run(
-		client.page,
-		async (text) => {
-			const { prepareJoin, executeJoin } = await import('/src/lib/services/join.service.ts');
-			const prepared = await prepareJoin(text);
-			if (!prepared.ok) return { ok: false, message: prepared.message };
-			return await executeJoin(prepared);
-		},
-		link
+	const page = await client.context.newPage();
+	await watchPage(page, client.label);
+	const payload = link.slice(link.indexOf('#') + 1);
+	await page.goto(`${base}/join#${payload}`);
+	return { page, payload };
+}
+
+async function assertFragmentGone(client, page, payload) {
+	await waitFor('URL からフラグメントが消える', () => !page.url().includes('#'), 15_000);
+	const urls = await historyUrls(client, page);
+	assert(
+		urls.every((u) => !u.includes('#') && !u.includes(payload)),
+		`履歴にフラグメントが残らない: ${urls.join(' , ')}`
 	);
-	assert(outcome.ok, `参加に失敗: ${outcome.message}`);
-	assert(outcome.projectId === pid, '参加したプロジェクトが一致する');
+}
+
+/**
+ * 招待リンクで参加する(実フロー): 新しいタブで /join#... を直接開き、画面操作で参加し、
+ * 「プロジェクトを開く」を押す。パスワード方式なら入力する。
+ * 終わったら client.page を、参加後のタブに差し替える。
+ */
+async function joinWith(client, base, link, pid, { password } = {}) {
+	const { page, payload } = await openInviteLink(client, base, link);
+	if (password !== undefined) {
+		const input = page.getByLabel('パスワード');
+		await input.waitFor({ timeout: 30_000 });
+		await input.fill(password);
+		await page.getByRole('button', { name: '参加', exact: true }).click();
+	}
+	await page
+		.getByText('参加しました')
+		.or(page.getByText('再参加しました'))
+		.waitFor({ timeout: 60_000 });
+	await assertFragmentGone(client, page, payload);
+	await page.getByRole('button', { name: 'プロジェクトを開く' }).click();
+	await page.waitForURL(new RegExp(`/project/${pid}/editor`), { timeout: 30_000 });
+	const old = client.page;
+	client.page = page;
+	await old.close();
 }
 
 async function openEditor(client, base, pid, expectedText) {
@@ -300,6 +336,53 @@ async function main() {
 				[state.pid, base]
 			);
 			state.links = links;
+		});
+
+		await step('オーナー: パスワード方式の共有プロジェクトを作り、リンクを発行する', async () => {
+			const result = await run(
+				owner.page,
+				async ([origin, password]) => {
+					const { projectsDB, chaptersDB, scenesDB, settingsDB } = await import(
+						'/src/lib/db/index.ts'
+					);
+					const { startSharing } = await import('/src/lib/services/sharing.service.ts');
+					const { buildInviteLink } = await import('/src/lib/firebase/invite.ts');
+					const project = await projectsDB.create({ title: 'E2E パスワード共有' });
+					const chapter = await chaptersDB.create({
+						projectId: project.id,
+						title: '章',
+						synopsis: ''
+					});
+					await scenesDB.create({
+						chapterId: chapter.id,
+						projectId: project.id,
+						title: '場面',
+						content: 'パスワードの本文'
+					});
+					await startSharing(project.id, {
+						visibility: 'private',
+						viewerSecret: { type: 'password', value: password }
+					});
+					const config = await settingsDB.getFirebaseConfig();
+					return {
+						pid: project.id,
+						link: buildInviteLink(origin, { config, pid: project.id, role: 'viewer' })
+					};
+				},
+				[base, PASSWORD]
+			);
+			state.pwdPid = result.pid;
+			state.pwdLink = result.link;
+			await waitFor('パスワード共有が active', () =>
+				run(
+					owner.page,
+					async (id) => {
+						const { projectsDB } = await import('/src/lib/db/index.ts');
+						return (await projectsDB.getById(id))?.sharing?.status === 'active';
+					},
+					state.pwdPid
+				)
+			);
 		});
 
 		await step('オーナー: エディタを開く(共同編集に接続し、本文が表示される)', async () => {
@@ -428,6 +511,62 @@ async function main() {
 			assert(!a.includes('ま迷') && !a.includes('まよ'), `変換中の文字が残らない: ${a}`);
 			state.synced = a;
 			await cdp.detach();
+		});
+
+		const pwGuest = await newClient(browser, 'E(パスワードゲスト)');
+		await step(
+			'ゲスト E: パスワード方式のリンクを直接開き、誤り→正しいパスワードで参加する',
+			async () => {
+				const { page, payload } = await openInviteLink(pwGuest, base, state.pwdLink);
+				const input = page.getByLabel('パスワード');
+				await input.waitFor({ timeout: 30_000 });
+				await assertFragmentGone(pwGuest, page, payload);
+				await input.fill('wrong-password');
+				await page.getByRole('button', { name: '参加', exact: true }).click();
+				await page.locator('[role="alert"]').waitFor({ timeout: 30_000 });
+				// 失敗してもパスワード入力に戻り、入力し直せる
+				await input.fill(PASSWORD);
+				await page.getByRole('button', { name: '参加', exact: true }).click();
+				await page.getByText('参加しました').waitFor({ timeout: 60_000 });
+				// リロードしても秘密(フラグメント)は URL に無く、入力画面に戻る
+				await page.reload();
+				await page.getByLabel('招待リンク').waitFor({ timeout: 30_000 });
+				assert(!page.url().includes('#'), 'リロード後も URL にフラグメントが無い');
+				await page.goto(`${base}/project/${state.pwdPid}/editor`);
+				await waitFor(
+					'E: パスワード共有の本文',
+					async () => (await editorText(page)) === 'パスワードの本文',
+					60_000
+				);
+				assert((await editorEditable(page)) === 'false', 'E は閲覧専用');
+			}
+		);
+
+		const dialogGuest = await newClient(browser, 'D(ダイアログゲスト)');
+		await step('ゲスト D: ホームの「共有リンクから参加」に貼り付けて参加する', async () => {
+			await seedSettings(dialogGuest.page, base, false);
+			const page = dialogGuest.page;
+			await page.reload();
+			await page.getByRole('button', { name: '共有リンクから参加' }).click();
+			await page.getByLabel('招待リンク').fill(state.links.viewer);
+			await page.getByRole('button', { name: '次へ' }).click();
+			await page.getByText('参加しました').waitFor({ timeout: 60_000 });
+			await page.getByRole('button', { name: 'ホームへ' }).click();
+			await page.getByText('E2E 共同編集').first().waitFor({ timeout: 30_000 });
+		});
+
+		await step('不正なリンクは日本語のエラーになり、フラグメントも消える', async () => {
+			const bad = await newClient(browser, 'X(不正リンク)');
+			await seedSettings(bad.page, base, false);
+			const page = await bad.context.newPage();
+			await watchPage(page, bad.label);
+			await page.goto(`${base}/join#not-a-valid-payload`);
+			const alert = page.locator('[role="alert"]');
+			await alert.waitFor({ timeout: 30_000 });
+			const text = await alert.textContent();
+			assert(/招待リンク/.test(text ?? ''), `日本語のエラー表示: ${text}`);
+			await assertFragmentGone(bad, page, 'not-a-valid-payload');
+			await bad.context.close();
 		});
 
 		const viewer = await newClient(browser, 'C(閲覧ゲスト)');

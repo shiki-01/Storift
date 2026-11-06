@@ -17,6 +17,7 @@
 - **エクスポート**: TXT / Markdown / DOCX / PDF / EPUB / JSON。シーン単位では、投稿サイト向けのルビ記法への変換にも対応しています。
 - **オフライン対応(PWA)**: 一度開けば通信なしで起動し、原稿は端末内(IndexedDB)に保存されます。
 - **複数端末の同期**: 利用者自身の Firebase プロジェクトを設定して同期します。データの保管先を自分で管理できます。
+- **共有と共同編集**: 作品ごとに招待リンクを発行して共有します(閲覧／編集の権限、パスワード任意)。共有した作品の本文は、複数人で同時に編集できます。サーバーは利用者自身の Firebase のままで、権限は Firestore のセキュリティルールで制御します。
 - **Claude Code 連携(デスクトップ版)**: 原稿を Markdown としてワークスペースに書き出し、`claude -p` で校正・矛盾チェック・質問・書き換えを行います。本文の変更は差分で確認してから反映できます。
 
 ## データの扱い
@@ -27,7 +28,7 @@
 
 ## 使い方
 
-Web 版は <https://app.storift.shiki-01.com> を開くだけで使えます。初回に Firebase の設定を案内されますが、「設定せずに始める」で省略できます(設定画面から後でも設定できます)。同期を使う場合の Firebase 側の設定とセキュリティルールは [docs/FIRESTORE_SETUP.md](docs/FIRESTORE_SETUP.md) を参照してください。
+Web 版は <https://app.storift.shiki-01.com> を開くだけで使えます。初回に Firebase の設定を案内されますが、「設定せずに始める」で省略できます(設定画面から後でも設定できます)。同期を使う場合の Firebase 側の設定とセキュリティルールは [docs/FIRESTORE_SETUP.md](docs/FIRESTORE_SETUP.md) を参照してください。共有・共同編集を使うには新しいセキュリティルールの適用が必要です(適用しなくても、従来どおりの同期はそのまま使えます)。ルールの仕様は [docs/SHARING_RULES.md](docs/SHARING_RULES.md) にあります。
 
 デスクトップ版は GitHub Releases から配布する予定です。未署名のため、初回起動時に OS の警告が出ます。手順は [docs/DESKTOP.md](docs/DESKTOP.md) にあります。
 

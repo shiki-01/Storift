@@ -54,3 +54,71 @@ export function mockFetch(
 	};
 	return { fetch, requests };
 }
+
+/** Anthropic のストリーム応答の 1 イベント(`event:` と `data:` の組) */
+export function anthropicEvent(type: string, data: Record<string, unknown> = {}): string {
+	return `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`;
+}
+
+/** Anthropic のテキストブロック 1 つぶん(開始・差分・終了) */
+export function anthropicText(index: number, ...deltas: string[]): string[] {
+	return [
+		anthropicEvent('content_block_start', {
+			index,
+			content_block: { type: 'text', text: '' }
+		}),
+		...deltas.map((text) =>
+			anthropicEvent('content_block_delta', { index, delta: { type: 'text_delta', text } })
+		),
+		anthropicEvent('content_block_stop', { index })
+	];
+}
+
+/** Anthropic の tool_use ブロック 1 つぶん(引数は断片のまま渡す) */
+export function anthropicToolUse(
+	index: number,
+	id: string,
+	name: string,
+	...jsonFragments: string[]
+): string[] {
+	return [
+		anthropicEvent('content_block_start', {
+			index,
+			content_block: { type: 'tool_use', id, name, input: {} }
+		}),
+		...jsonFragments.map((partial_json) =>
+			anthropicEvent('content_block_delta', {
+				index,
+				delta: { type: 'input_json_delta', partial_json }
+			})
+		),
+		anthropicEvent('content_block_stop', { index })
+	];
+}
+
+/** Anthropic の 1 メッセージぶんのストリーム(blocks は上の関数の結果をつなげたもの) */
+export function anthropicMessage(blocks: string[], stopReason = 'end_turn'): string[] {
+	return [
+		anthropicEvent('message_start', { message: { id: 'msg_1', role: 'assistant', content: [] } }),
+		anthropicEvent('ping'),
+		...blocks,
+		anthropicEvent('message_delta', {
+			delta: { stop_reason: stopReason },
+			usage: { output_tokens: 1 }
+		}),
+		anthropicEvent('message_stop')
+	];
+}
+
+/** Gemini のストリーム応答の 1 チャンク(candidates[0] の parts と finishReason) */
+export function geminiChunk(parts: Record<string, unknown>[], finishReason?: string): string {
+	return sse({
+		candidates: [
+			{
+				content: { role: 'model', parts },
+				...(finishReason ? { finishReason } : {}),
+				index: 0
+			}
+		]
+	});
+}

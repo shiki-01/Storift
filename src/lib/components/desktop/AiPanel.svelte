@@ -17,6 +17,7 @@
 	} from '$lib/stores/ai.svelte';
 	import { splitEdits, type EditProposal } from '$lib/desktop/edits';
 	import EditCard from './EditCard.svelte';
+	import { describeActiveModel } from '$lib/ai/registry';
 
 	let input = $state('');
 	let showHistory = $state(false);
@@ -604,6 +605,9 @@
 					</select>
 				</label>
 				<span class="spacer"></span>
+				<span class="provider-tag" data-ai-provider-tag title="使っているプロバイダとモデル">
+					{describeActiveModel(aiStore.provider, aiStore.settings)}
+				</span>
 				{#if aiStore.isRunning}
 					<button class="send stop" onclick={() => aiStore.cancel()} title="停止" aria-label="停止">
 						<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"
@@ -1287,6 +1291,15 @@
 		align-items: center;
 		gap: 6px;
 		padding: 4px 6px 6px 10px;
+	}
+
+	.provider-tag {
+		min-width: 0;
+		overflow: hidden;
+		font-size: 11px;
+		color: var(--color-text-secondary);
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.mode-select {

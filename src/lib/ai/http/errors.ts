@@ -72,6 +72,15 @@ export function extractServerMessage(body: string): string {
 	return text;
 }
 
+/** エラー応答の本文から、画面に出す理由(キーを伏せ、空白を畳み、長ければ短縮したもの)を作る */
+export function summarizeServerMessage(
+	body: string,
+	secrets: readonly (string | undefined)[] = []
+): string {
+	const detail = redact(extractServerMessage(body), secrets).replace(/\s+/g, ' ').trim();
+	return detail.length > BODY_LIMIT ? detail.slice(0, BODY_LIMIT) + '…' : detail;
+}
+
 /**
  * HTTP のエラー応答を分類する。
  * @param label 画面に出すサービス名(例: OpenAI 互換 API)
@@ -83,8 +92,7 @@ export function classifyHttpError(
 	label: string,
 	secrets: readonly (string | undefined)[] = []
 ): AiHttpError {
-	let detail = redact(extractServerMessage(body), secrets).replace(/\s+/g, ' ').trim();
-	if (detail.length > BODY_LIMIT) detail = detail.slice(0, BODY_LIMIT) + '…';
+	const detail = summarizeServerMessage(body, secrets);
 	const tail = detail ? `(${detail})` : '';
 
 	if (status === 401 || status === 403)

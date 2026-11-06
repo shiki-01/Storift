@@ -1,5 +1,5 @@
 /** プロバイダの登録と検索 */
-import type { AiProvider, AiProviderId } from './types';
+import type { AiProvider, AiProviderId, AiSettings } from './types';
 
 /** 登録がないときや、保存された ID が今は無いときに使うプロバイダ */
 export const FALLBACK_PROVIDER_ID: AiProviderId = 'claude-code';
@@ -47,3 +47,12 @@ export class ProviderRegistry {
 
 /** アプリで使う登録簿。組み込みのプロバイダは providers/index.ts が登録する */
 export const registry = new ProviderRegistry();
+
+/**
+ * パネルに出す「プロバイダ名・モデル名」。モデルが未選択(Claude Code の既定など)ならプロバイダ名だけ。
+ * どのプロバイダの設定にも `model` があるので、settingsKey で引く。
+ */
+export function describeActiveModel(provider: AiProvider, settings: AiSettings): string {
+	const model = (settings[provider.settingsKey] as { model?: string }).model?.trim();
+	return model ? `${provider.label}・${model}` : provider.label;
+}

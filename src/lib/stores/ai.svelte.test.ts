@@ -59,6 +59,35 @@ describe('設定の読み込みと移行', () => {
 		expect(localStorage.getItem('storift:claude-settings')).toBeNull();
 	});
 
+	it('Anthropic / Gemini の設定を保存し、読み直しても保たれる。キーは含まれない', async () => {
+		let store = await loadStore();
+		store.updateSettings({ provider: 'anthropic' });
+		store.updateProviderSettings('anthropic', { model: 'claude-sonnet-5-5', maxTokens: 2000 });
+		store.updateProviderSettings('gemini', { model: 'gemini-2.5-pro', maxOutputTokens: 512 });
+		expect(store.provider.id).toBe('anthropic');
+		const saved = localStorage.getItem('storift:ai-settings') ?? '';
+		expect(JSON.parse(saved)).toMatchObject({
+			provider: 'anthropic',
+			anthropic: { model: 'claude-sonnet-5-5', maxTokens: 2000 },
+			gemini: { model: 'gemini-2.5-pro', maxOutputTokens: 512 }
+		});
+		expect(saved).not.toMatch(/api-?key|secret/i);
+		store = await loadStore();
+		expect(store.provider.id).toBe('anthropic');
+		expect(store.settings.gemini.maxOutputTokens).toBe(512);
+	});
+
+	it('プロバイダを切り替えても、他のプロバイダの設定は変わらない', async () => {
+		const store = await loadStore();
+		store.updateProviderSettings('anthropic', { model: 'a' });
+		store.updateProviderSettings('gemini', { model: 'g' });
+		store.updateSettings({ provider: 'gemini' });
+		store.updateSettings({ provider: 'anthropic' });
+		expect(store.settings.anthropic.model).toBe('a');
+		expect(store.settings.gemini.model).toBe('g');
+		expect(store.provider.id).toBe('anthropic');
+	});
+
 	it('保存された ID のプロバイダが無ければ Claude Code を使う', async () => {
 		localStorage.setItem('storift:ai-settings', JSON.stringify({ provider: 'future-ai' }));
 		const store = await loadStore();

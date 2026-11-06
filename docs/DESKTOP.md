@@ -1,6 +1,6 @@
 # デスクトップ版(Tauri)
 
-Storift を macOS / Windows / Linux のデスクトップアプリとして動かし、AI(Claude Code・Ollama・OpenAI 互換 API など)をサイドパネルで使えるようにしたもの。
+Storift を macOS / Windows / Linux のデスクトップアプリとして動かし、AI(Claude Code・OpenAI 互換 API・Anthropic API・Gemini・Ollama)をサイドパネルで使えるようにしたもの。
 
 ## 構成
 
@@ -25,26 +25,34 @@ Storift を macOS / Windows / Linux のデスクトップアプリとして動�
 
 設定の「AI」の先頭でプロバイダを選ぶ(カードに、必要なものと送信先が出る)。**選んだプロバイダに、質問と原稿の一部(AI がツールで読んだ範囲)が送られる。**
 
-| プロバイダ      | 実行する場所                                           | Web 検索 | 必要なもの                                   | 送信先                       |
-| --------------- | ------------------------------------------------------ | -------- | -------------------------------------------- | ---------------------------- |
-| Claude Code     | Rust(`claude.rs`、`claude -p` を起動)                  | 使える   | Claude Code のインストールとログイン         | Anthropic(Claude Code 経由)  |
-| Ollama          | Rust(`ollama.rs`、`/api/chat`)                         | 使えない | Ollama とツール呼び出しに対応したモデル      | この端末                     |
-| OpenAI 互換 API | TypeScript(`src/lib/ai/providers/openaiCompatible.ts`) | 使えない | API キー(ローカルのサーバーでは不要)とモデル | 設定した Base URL のサービス |
+設定カードの並び順は、Claude Code・OpenAI 互換 API・Anthropic API・Gemini・Ollama(`providers/index.ts` の登録順)。
+
+### 対応プロバイダ
+
+| プロバイダ      | 必要なもの                                   | 送信先                                                               | ツール使用 | Web 検索 | キーの保存場所                                         |
+| --------------- | -------------------------------------------- | -------------------------------------------------------------------- | ---------- | -------- | ------------------------------------------------------ |
+| Claude Code     | Claude Code のインストールとログイン         | Anthropic(Claude Code 経由)                                          | 使える     | 使える   | なし(Claude Code のログインを使う)                     |
+| OpenAI 互換 API | API キー(ローカルのサーバーでは不要)とモデル | 設定した Base URL のサービス                                         | 使える     | 使えない | OS のキーチェーン(`openai-compatible:<プリセット ID>`) |
+| Anthropic API   | Anthropic の API キーとモデル名              | `api.anthropic.com`(Base URL を変えたら設定中の URL)                 | 使える     | 使えない | OS のキーチェーン(`anthropic:api-key`)                 |
+| Gemini          | Google AI Studio の API キーとモデル名       | `generativelanguage.googleapis.com`(Base URL を変えたら設定中の URL) | 使える     | 使えない | OS のキーチェーン(`gemini:api-key`)                    |
+| Ollama          | Ollama とツール呼び出しに対応したモデル      | この端末(設定した接続先)                                             | 使える     | 使えない | なし                                                   |
+
+キーチェーンを使えない環境(Linux など)では、キーは端末内の localStorage に平文で保存される(後述)。Claude Code と Ollama は Rust(`claude.rs` / `ollama.rs`)で、OpenAI 互換 API・Anthropic API・Gemini は TypeScript(`src/lib/ai/providers/`)で実行する。
 
 ### 構成(`src/lib/ai/`)
 
 - `types.ts`: `AiProvider`(id・表示名・説明・必要なもの・送信先・設定スキーマ・`capabilities { webSearch, resume, tools }`・`run(request, emit, signal)`・`status()`・`listModels?()`・`testConnection?()`)と `AiSettings`。
-- `registry.ts`: プロバイダの登録簿。`providers/index.ts` が組み込みの 3 つを登録する。新しいプロバイダは、実装を `providers/` に足し、`providers/index.ts` に登録し、設定フォームを `components/settings/ai/` に足す。
+- `registry.ts`: プロバイダの登録簿。`providers/index.ts` が組み込みの 5 つを上の並び順で登録する。新しいプロバイダは、実装を `providers/` に足し、`providers/index.ts` に登録し、設定フォームを `components/settings/ai/` に足す。
 - `settings.ts`: 設定の既定値・読み込み・旧形式からの移行(後述)。
 - `secrets.ts`: API キーの保管(後述)。
 - `http/`: HTTP 系プロバイダの共通基盤。`agent.ts`(エージェントのループ)・`sse.ts`(SSE パーサー)・`errors.ts`(エラーの分類)・`url.ts`(接続先の検証)・`abort.ts`(中断とタイムアウト)・`fetch.ts`(`tauri-plugin-http` の fetch)。
-- `providers/`: `claudeCode.ts` と `ollama.ts` は Rust を呼ぶ既存の経路を包むアダプタ(挙動は変えない)。`openaiCompatible.ts` / `openaiChat.ts` / `openaiPresets.ts` が OpenAI 互換 API。
+- `providers/`: `claudeCode.ts` と `ollama.ts` は Rust を呼ぶ既存の経路を包むアダプタ(挙動は変えない)。`openaiCompatible.ts` / `openaiChat.ts` / `openaiPresets.ts` が OpenAI 互換 API、`anthropic.ts` / `anthropicChat.ts` が Anthropic API、`gemini.ts` / `geminiChat.ts` / `geminiSchema.ts` が Gemini。
 
 画面(ストアとパネル)は、プロバイダの違いを意識せず `provider.run` を呼ぶ。出力は Claude Code の `stream-json` と同じ形の行(`system/init`・`stream_event`・`assistant`・`result`)で、`applyStreamLine` がそのまま畳み込む。ツール名は `mcp__storift__<名前>` に揃える。
 
 ### 設定と移行
 
-設定は localStorage の `storift:ai-settings`(パネルは `storift:ai-panel`、会話は `storift:ai-chats`)。形は `{ provider, editMode, claudeCode: { model, claudePath, allowWeb }, ollama: { url, model }, openaiCompatible: { baseUrl, model, presetId } }`。API キーは含めない。
+設定は localStorage の `storift:ai-settings`(パネルは `storift:ai-panel`、会話は `storift:ai-chats`)。形は `{ provider, editMode, claudeCode: { model, claudePath, allowWeb }, ollama: { url, model }, openaiCompatible: { baseUrl, model, presetId }, anthropic: { baseUrl, model, maxTokens }, gemini: { baseUrl, model, maxOutputTokens? } }`。`maxTokens` の既定は 8192、`maxOutputTokens` は未設定ならリクエストに含めない。モデルは既定値を持たず、未選択なら送信前にエラーで選択を促す。API キーは含めない。
 
 以前の `storift:claude-*` キーと、旧形式の設定(`provider: 'claude'` とフラットな項目)は、読み込み時に新キー・新形式へ移す(新キーが無いときだけ。旧キーは消さずに残す)。
 
@@ -59,15 +67,32 @@ Storift を macOS / Windows / Linux のデスクトップアプリとして動�
 - プリセット: OpenAI / OpenRouter / LM Studio(ローカル) / Groq / DeepSeek / Mistral / カスタム。Base URL とモデル名の例が入る。モデルは `GET {baseUrl}/models` の一覧から選ぶか、直接入力する。「接続テスト」で一覧の取得を試し、成功・失敗の理由を日本語で見せる。
 - 画面を再読み込みすると、実行中の HTTP 系の回答は途中で止まる(Claude Code と Ollama はネイティブ側で動くため、再読み込み後も受け取り直せる)。
 
+### Anthropic API
+
+- `POST {baseUrl}/v1/messages`(既定 `https://api.anthropic.com`、`stream: true`)。ヘッダーは `x-api-key`・`anthropic-version: 2023-06-01`・`content-type: application/json`。`max_tokens`(必須)は設定、`system` はトップレベルの文字列、`tools` は `{name, description, input_schema}`。
+- SSE の `content_block_start`(`text` / `tool_use`)・`content_block_delta`(`text_delta`、`input_json_delta` の `partial_json` を結合)・`message_delta`(`stop_reason`)・`message_stop`・`ping`・`error` を処理する。`stop_reason` が `max_tokens` のときは、最大トークン数を増やすよう案内するエラーにする。
+- assistant の `content` ブロック(`text` と `tool_use`)はそのまま履歴に残し、ツールの結果は次の user メッセージの `tool_result` ブロック(`tool_use_id`・`content`・失敗時は `is_error`)に 1 つにまとめて返す。システムプロンプトは履歴に入れず、リクエストごとに `system` で送る。
+- モデル一覧は `GET {baseUrl}/v1/models?limit=100`(`has_more` なら `after_id` で続きを取る)。取得できなければモデル名を手入力する。`claude-sonnet-5-5` などは入力欄の候補としてだけ使い、既定値にはしない。
+- エラー: 401/403 は認証、404 はモデル、400 は `invalid_request_error` の理由を短縮して添える、429 は `retry-after` があれば待ち時間、529 は過負荷、その他の 5xx は障害。
+
+### Gemini
+
+- `POST {baseUrl}/v1beta/models/{model}:streamGenerateContent?alt=sse`(既定 `https://generativelanguage.googleapis.com`)。API キーはヘッダー `x-goog-api-key` だけで送り、URL には付けない。ボディは `systemInstruction`・`contents`・`tools: [{functionDeclarations}]`・`toolConfig: {functionCallingConfig: {mode: 'AUTO'}}`、設定があれば `generationConfig.maxOutputTokens`。
+- ツールのスキーマは `geminiSchema.ts`(純粋関数)で OpenAPI のサブセットに変換する。許可する項目(`type`・`description`・`enum`・`items`・`properties`・`required`・`minimum` など)だけを残し、`additionalProperties`・`default`・`examples` などを再帰的に除く。`type` の配列と `anyOf` / `oneOf` は先頭の候補に単純化する。引数のないツールは `parameters` を省き、`properties` を持たない object(`propose_create` の `fields`)は JSON 文字列を受ける string にして、返ってきた引数を実行前に `restoreGeminiArgs` でオブジェクトに戻す。
+- SSE の各 `data:` の `candidates[0].content.parts` を順に処理する。`text` は差分として流し(`thought: true` は表示しない)、`functionCall` はオブジェクト引数のままツール呼び出しにする。`finishReason`(`MAX_TOKENS`・`SAFETY`・`MALFORMED_FUNCTION_CALL` など)と `promptFeedback.blockReason` は日本語のエラーにする。
+- 応答の `parts` は `thoughtSignature` などの未知の項目も含めて、受け取ったまま `role: 'model'` として履歴に残す。ツールの結果は `role: 'user'` の `parts: [{functionResponse: {name, response: {result: "<text>"}}}]`(複数のツールは 1 メッセージの複数 parts)で返す。API が `functionCall.id` を返したときは、同じ `id` を `functionResponse` にも付ける。
+- モデル一覧は `GET {baseUrl}/v1beta/models?pageSize=100`(`nextPageToken` があれば続きを取る)のうち、`supportedGenerationMethods` に `generateContent` を含むものだけ(`models/` 接頭辞は除く)。
+- エラー: 400 は `INVALID_ARGUMENT`、ただし `API_KEY_INVALID` は認証として扱う。403 は認証、404 はモデル、429 は `RESOURCE_EXHAUSTED`(利用上限)、5xx は障害。
+
 ### 通信の制限
 
 HTTP 通信は `tauri-plugin-http`(Rust 側から送るので CORS の影響を受けない)。`src-tauri/capabilities/default.json` の `http:default` のスコープで、送れる先を `https://**` と `http://localhost:*/**`・`http://127.0.0.1:*/**`・`http://[::1]:*/**` に限る。TS 側(`http/url.ts`)でも、https か localhost 系の http 以外の Base URL を拒否する。リダイレクトは追わない(キーを別のホストへ送らないため)。
 
 ### API キーの保管
 
-- macOS / Windows: Rust の `secret_set` / `secret_get` / `secret_delete`(`keyring` crate)で OS のキーチェーンに保存する。項目名は「プロバイダ ID:識別子」(OpenAI 互換ではプリセット ID)。
+- macOS / Windows: Rust の `secret_set` / `secret_get` / `secret_delete`(`keyring` crate)で OS のキーチェーンに保存する。項目名は「プロバイダ ID:識別子」(OpenAI 互換ではプリセット ID、Anthropic と Gemini では `api-key`)。
 - Linux など: キーチェーンの依存(libdbus 等)を避けるため使わず、Rust は `"unsupported"` を返す。TS 側は localStorage(`storift:ai-secret:…`)に**平文で**保存し、設定画面にその旨を表示する。
-- キーは設定した Base URL にだけ送る。ログに出さない。エクスポート・バックアップ・Firestore 同期の対象にしない(これらは IndexedDB のデータだけを扱う)。設定画面では伏せ字で入力し、表示の切り替えと削除ができる。保存済みのキーは画面に読み戻さない。
+- キーは常に「そのプロバイダの識別子」で取り出し、そのプロバイダの Base URL にだけ送る(プロバイダを切り替えても、他のプロバイダのキーは送られない)。ログに出さない。エクスポート・バックアップ・Firestore 同期の対象にしない(これらは IndexedDB のデータだけを扱う)。設定画面では伏せ字で入力し、表示の切り替えと削除ができる。保存済みのキーは画面に読み戻さない。
 
 ## Ollama(ローカル LLM)
 
@@ -79,7 +104,7 @@ HTTP 通信は `tauri-plugin-http`(Rust 側から送るので CORS の影響を�
 
 ## AI パネル
 
-ヘッダーの「AI」ボタンか `Ctrl(Cmd)+Shift+L` で開閉する。ヘッダーの高さは、執筆のツールバーと共通の CSS 変数 `--editor-header-height`(`src/app.css`)で揃えている。以下は Claude Code を選んだときの仕組みを中心に書く(本文の編集・エディタ上の差分表示は、どのプロバイダでも共通)。
+ヘッダーの「AI」ボタンか `Ctrl(Cmd)+Shift+L` で開閉する。ヘッダーの高さは、執筆のツールバーと共通の CSS 変数 `--editor-header-height`(`src/app.css`)で揃えている。入力欄の下(編集モードの隣)に、使っているプロバイダとモデル(例: `Anthropic API・claude-sonnet-5-5`。モデル未選択なら名前だけ)を小さく出す(`describeActiveModel`)。以下は Claude Code を選んだときの仕組みを中心に書く(本文の編集・エディタ上の差分表示は、どのプロバイダでも共通)。
 
 ### Claude Code の仕組み
 
@@ -267,4 +292,4 @@ Apple Developer ID による署名・公証はしていない。macOS 版はア�
 
 - MCP 方式より前に始めた会話は、開き直すと Claude Code 側の続きを引き継がない。表示される過去の回答はそのまま残り、次の送信から新しいセッションで始まる。
 - データ(IndexedDB)は Web 版とは別に、アプリ内に保存される。端末間・Web 版との共有は既存の Firebase 同期を使う。デスクトップ版のオリジン(`tauri://localhost` / `http://tauri.localhost`)で Firebase 認証が通らない場合は、Firebase コンソールの承認済みドメインに `tauri.localhost` を追加する。
-- Claude Code の利用料金・使用量は、ログインしている Claude のアカウントに計上される。OpenAI 互換 API の料金は、設定した API キーのアカウントに計上される。
+- Claude Code の利用料金・使用量は、ログインしている Claude のアカウントに計上される。OpenAI 互換 API・Anthropic API・Gemini の料金は、設定した API キーのアカウントに計上される。

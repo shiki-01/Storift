@@ -9,14 +9,14 @@ export type UrlCheck = { ok: true; url: string } | { ok: false; error: string };
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 /** 接続先を検証し、末尾のスラッシュを除いた形にして返す */
-export function validateBaseUrl(input: string): UrlCheck {
+export function validateBaseUrl(input: string, example = 'https://api.openai.com/v1'): UrlCheck {
 	const text = input.trim();
 	if (!text) return { ok: false, error: 'Base URL が空です' };
 	let url: URL;
 	try {
 		url = new URL(text);
 	} catch {
-		return { ok: false, error: 'Base URL の形式が正しくありません(例: https://api.openai.com/v1)' };
+		return { ok: false, error: `Base URL の形式が正しくありません(例: ${example})` };
 	}
 	if (url.username || url.password)
 		return { ok: false, error: 'Base URL にユーザー名やパスワードを含めないでください' };

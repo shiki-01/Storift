@@ -70,7 +70,7 @@
 				},
 				{
 					q: 'AI のパネルを使うには何が必要ですか。',
-					a: '設定の「AI」でプロバイダを選びます。Claude Code は、インストールとご自身の Claude アカウントでのログインが必要です。Ollama は端末内で動かす Ollama とモデルが、OpenAI 互換 API(OpenAI・OpenRouter・LM Studio など)は API キーとモデルが必要です。使用量と料金は、選んだサービスのご自身のアカウントに計上されます。'
+					a: '設定の「AI」でプロバイダを選びます。Claude Code は、インストールとご自身の Claude アカウントでのログインが必要です。Ollama は端末内で動かす Ollama とモデルが、OpenAI 互換 API(OpenAI・OpenRouter・LM Studio など)・Anthropic API・Gemini は API キーとモデルが必要です。使用量と料金は、選んだサービスのご自身のアカウントに計上されます。'
 				},
 				{
 					q: 'AI が勝手に原稿を書き換えることはありますか。',
@@ -78,7 +78,7 @@
 				},
 				{
 					q: '原稿はどこかへ送られますか。',
-					a: 'パネルで送信したとき、AI が必要に応じて原稿を読み、質問と読んだ内容が、選んだプロバイダ(Claude Code なら Anthropic、OpenAI 互換 API なら設定したサービス、Ollama なら端末内)に送られます。パネルで送信しない限り、原稿が AI に渡ることはありません。'
+					a: 'パネルで送信したとき、AI が必要に応じて原稿を読み、質問と読んだ内容が、選んだプロバイダ(Claude Code・Anthropic API なら Anthropic、Gemini なら Google、OpenAI 互換 API なら設定したサービス、Ollama なら端末内)に送られます。パネルで送信しない限り、原稿が AI に渡ることはありません。'
 				}
 			]
 		}

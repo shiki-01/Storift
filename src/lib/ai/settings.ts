@@ -19,13 +19,18 @@ export const LEGACY_KEYS: Readonly<Record<string, string>> = {
 };
 
 export const DEFAULT_OLLAMA_URL = 'http://localhost:11434';
+export const DEFAULT_ANTHROPIC_URL = 'https://api.anthropic.com';
+export const DEFAULT_ANTHROPIC_MAX_TOKENS = 8192;
+export const DEFAULT_GEMINI_URL = 'https://generativelanguage.googleapis.com';
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
 	provider: 'claude-code',
 	editMode: 'suggest',
 	claudeCode: { model: '', claudePath: '', allowWeb: false },
 	ollama: { url: '', model: '' },
-	openaiCompatible: { baseUrl: 'https://api.openai.com/v1', model: '', presetId: 'openai' }
+	openaiCompatible: { baseUrl: 'https://api.openai.com/v1', model: '', presetId: 'openai' },
+	anthropic: { baseUrl: DEFAULT_ANTHROPIC_URL, model: '', maxTokens: DEFAULT_ANTHROPIC_MAX_TOKENS },
+	gemini: { baseUrl: DEFAULT_GEMINI_URL, model: '' }
 };
 
 const EDIT_MODES: readonly EditMode[] = ['suggest', 'confirm', 'auto'];
@@ -36,6 +41,32 @@ const isRecord = (v: unknown): v is Rec => !!v && typeof v === 'object' && !Arra
 
 function strOr(value: unknown, fallback: string): string {
 	return typeof value === 'string' ? value : fallback;
+}
+
+/** 正の整数ならそれを、そうでなければ undefined */
+function positiveInt(value: unknown): number | undefined {
+	return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function anthropicFrom(raw: unknown): AiSettings['anthropic'] {
+	const d = DEFAULT_AI_SETTINGS.anthropic;
+	const a = isRecord(raw) ? raw : {};
+	return {
+		baseUrl: strOr(a.baseUrl, d.baseUrl),
+		model: strOr(a.model, d.model),
+		maxTokens: positiveInt(a.maxTokens) ?? d.maxTokens
+	};
+}
+
+function geminiFrom(raw: unknown): AiSettings['gemini'] {
+	const d = DEFAULT_AI_SETTINGS.gemini;
+	const g = isRecord(raw) ? raw : {};
+	const maxOutputTokens = positiveInt(g.maxOutputTokens);
+	return {
+		baseUrl: strOr(g.baseUrl, d.baseUrl),
+		model: strOr(g.model, d.model),
+		...(maxOutputTokens ? { maxOutputTokens } : {})
+	};
 }
 
 /** 旧形式の provider 名('claude')を今の ID にそろえる */
@@ -57,7 +88,12 @@ export function migrateSettings(raw: unknown): AiSettings {
 		: d.editMode;
 	const provider = normalizeProviderId(raw.provider);
 
-	const isNew = isRecord(raw.claudeCode) || isRecord(raw.ollama) || isRecord(raw.openaiCompatible);
+	const isNew =
+		isRecord(raw.claudeCode) ||
+		isRecord(raw.ollama) ||
+		isRecord(raw.openaiCompatible) ||
+		isRecord(raw.anthropic) ||
+		isRecord(raw.gemini);
 	if (!isNew) {
 		// 旧形式: フラットな項目を、プロバイダ別の入れ物へ移す
 		return {
@@ -72,7 +108,9 @@ export function migrateSettings(raw: unknown): AiSettings {
 				url: strOr(raw.ollamaUrl, d.ollama.url),
 				model: strOr(raw.ollamaModel, d.ollama.model)
 			},
-			openaiCompatible: { ...d.openaiCompatible }
+			openaiCompatible: { ...d.openaiCompatible },
+			anthropic: { ...d.anthropic },
+			gemini: { ...d.gemini }
 		};
 	}
 
@@ -92,7 +130,9 @@ export function migrateSettings(raw: unknown): AiSettings {
 			baseUrl: strOr(oa.baseUrl, d.openaiCompatible.baseUrl),
 			model: strOr(oa.model, d.openaiCompatible.model),
 			presetId: strOr(oa.presetId, d.openaiCompatible.presetId)
-		}
+		},
+		anthropic: anthropicFrom(raw.anthropic),
+		gemini: geminiFrom(raw.gemini)
 	};
 }
 

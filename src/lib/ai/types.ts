@@ -11,7 +11,13 @@ import type { ExitEvent } from '$lib/desktop/ai';
 export type EditMode = 'suggest' | 'confirm' | 'auto';
 
 /** 組み込みのプロバイダの ID。後続で追加するプロバイダは文字列で増える */
-export type AiProviderId = 'claude-code' | 'ollama' | 'openai-compatible' | (string & {});
+export type AiProviderId =
+	| 'claude-code'
+	| 'ollama'
+	| 'openai-compatible'
+	| 'anthropic'
+	| 'gemini'
+	| (string & {});
 
 export interface ClaudeCodeSettings {
 	/** 空なら Claude Code の既定 */
@@ -35,6 +41,20 @@ export interface OpenAiCompatibleSettings {
 	presetId: string;
 }
 
+export interface AnthropicSettings {
+	baseUrl: string;
+	model: string;
+	/** 1 回の応答の最大トークン数(Anthropic API では必須) */
+	maxTokens: number;
+}
+
+export interface GeminiSettings {
+	baseUrl: string;
+	model: string;
+	/** 1 回の応答の最大トークン数。未設定ならリクエストに含めない */
+	maxOutputTokens?: number;
+}
+
 /** AI 連携の設定。API キーは含めない(OS のキーチェーンに別に保管する) */
 export interface AiSettings {
 	provider: AiProviderId;
@@ -43,10 +63,17 @@ export interface AiSettings {
 	claudeCode: ClaudeCodeSettings;
 	ollama: OllamaSettings;
 	openaiCompatible: OpenAiCompatibleSettings;
+	anthropic: AnthropicSettings;
+	gemini: GeminiSettings;
 }
 
 /** プロバイダ別の設定の入れ物(AiSettings のうち、オブジェクトのキー) */
-export type ProviderSettingsKey = 'claudeCode' | 'ollama' | 'openaiCompatible';
+export type ProviderSettingsKey =
+	| 'claudeCode'
+	| 'ollama'
+	| 'openaiCompatible'
+	| 'anthropic'
+	| 'gemini';
 
 /** 設定画面に出す項目の定義(単純な入力欄は、これで描画できる) */
 export interface SettingField {
@@ -110,6 +137,8 @@ export interface AiProvider {
 	requires: string;
 	/** 質問と原稿の一部が送られる先 */
 	destination: string;
+	/** 設定によって送信先が変わるとき(Base URL の変更など)の、今の送信先。無ければ destination */
+	currentDestination?(settings: AiSettings): string;
 	/** AiSettings の中の、このプロバイダの設定の置き場 */
 	settingsKey: ProviderSettingsKey;
 	/** 設定画面の単純な入力欄の定義 */

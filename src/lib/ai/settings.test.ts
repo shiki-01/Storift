@@ -37,7 +37,9 @@ describe('migrateSettings', () => {
 			editMode: 'confirm',
 			claudeCode: { model: 'opus', claudePath: '/bin/claude', allowWeb: true },
 			ollama: { url: 'http://x:1', model: 'qwen' },
-			openaiCompatible: DEFAULT_AI_SETTINGS.openaiCompatible
+			openaiCompatible: DEFAULT_AI_SETTINGS.openaiCompatible,
+			anthropic: DEFAULT_AI_SETTINGS.anthropic,
+			gemini: DEFAULT_AI_SETTINGS.gemini
 		});
 	});
 
@@ -66,6 +68,61 @@ describe('migrateSettings', () => {
 			presetId: 'openrouter'
 		});
 		expect(migrated.claudeCode).toEqual(DEFAULT_AI_SETTINGS.claudeCode);
+	});
+
+	it('Anthropic / Gemini の設定を読み、足りない項目は既定値で補う', () => {
+		const migrated = migrateSettings({
+			provider: 'gemini',
+			anthropic: { model: 'claude-sonnet-5-5', maxTokens: 4096 },
+			gemini: {
+				baseUrl: 'https://proxy.example.com',
+				model: 'gemini-2.5-pro',
+				maxOutputTokens: 2048
+			}
+		});
+		expect(migrated.provider).toBe('gemini');
+		expect(migrated.anthropic).toEqual({
+			baseUrl: 'https://api.anthropic.com',
+			model: 'claude-sonnet-5-5',
+			maxTokens: 4096
+		});
+		expect(migrated.gemini).toEqual({
+			baseUrl: 'https://proxy.example.com',
+			model: 'gemini-2.5-pro',
+			maxOutputTokens: 2048
+		});
+	});
+
+	it('最大トークン数が不正なら、Anthropic は既定値に、Gemini は未設定に戻す', () => {
+		for (const bad of [0, -5, 1.5, '100', null, NaN]) {
+			const migrated = migrateSettings({
+				anthropic: { maxTokens: bad },
+				gemini: { maxOutputTokens: bad }
+			});
+			expect(migrated.anthropic.maxTokens).toBe(8192);
+			expect(migrated.gemini).not.toHaveProperty('maxOutputTokens');
+		}
+	});
+
+	it('Anthropic / Gemini の設定が無い保存データ(以前の版)でも、既定値で補う', () => {
+		const migrated = migrateSettings({
+			provider: 'openai-compatible',
+			claudeCode: {},
+			openaiCompatible: { model: 'm' }
+		});
+		expect(migrated.anthropic).toEqual(DEFAULT_AI_SETTINGS.anthropic);
+		expect(migrated.gemini).toEqual(DEFAULT_AI_SETTINGS.gemini);
+		expect(migrated.anthropic).not.toBe(DEFAULT_AI_SETTINGS.anthropic);
+	});
+
+	it('設定は保存して読み直しても変わらず、API キーを含まない', () => {
+		const settings = migrateSettings({
+			anthropic: { model: 'a', maxTokens: 100 },
+			gemini: { model: 'g', maxOutputTokens: 50 }
+		});
+		const storage = memoryStorage({ [SETTINGS_KEY]: JSON.stringify(settings) });
+		expect(loadSettings(storage)).toEqual(settings);
+		expect(JSON.stringify(settings)).not.toMatch(/apiKey|api-key|secret/i);
 	});
 
 	it('不正な値は既定値に戻す', () => {

@@ -23,7 +23,9 @@
 			<span class="mode-label">{p.label}</span>
 			<span class="mode-hint">{p.description}</span>
 			<span class="mode-meta"><b>必要なもの</b>{p.requires}</span>
-			<span class="mode-meta"><b>送信先</b>{p.destination}</span>
+			<span class="mode-meta"
+				><b>送信先</b>{p.currentDestination?.(aiStore.settings) ?? p.destination}</span
+			>
 		</label>
 	{/each}
 </div>

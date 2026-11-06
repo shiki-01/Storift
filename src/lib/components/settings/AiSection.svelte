@@ -7,6 +7,8 @@
 	import ClaudeCodeForm from './ai/ClaudeCodeForm.svelte';
 	import OllamaForm from './ai/OllamaForm.svelte';
 	import OpenAiCompatibleForm from './ai/OpenAiCompatibleForm.svelte';
+	import AnthropicForm from './ai/AnthropicForm.svelte';
+	import GeminiForm from './ai/GeminiForm.svelte';
 	import EditModeForm from './ai/EditModeForm.svelte';
 </script>
 
@@ -24,6 +26,10 @@
 				<OllamaForm />
 			{:else if aiStore.provider.id === 'openai-compatible'}
 				<OpenAiCompatibleForm />
+			{:else if aiStore.provider.id === 'anthropic'}
+				<AnthropicForm />
+			{:else if aiStore.provider.id === 'gemini'}
+				<GeminiForm />
 			{:else}
 				<ClaudeCodeForm />
 			{/if}

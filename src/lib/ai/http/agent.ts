@@ -37,6 +37,11 @@ export interface ToolCall {
 export interface StepResult {
 	text: string;
 	toolCalls: ToolCall[];
+	/**
+	 * アダプタが履歴にそのまま戻したい、応答の原形(Anthropic の content ブロック、Gemini の parts など)。
+	 * 共通のループは中身を見ず、`assistantMessage` へ渡すだけ
+	 */
+	raw?: unknown;
 }
 
 export interface ToolOutcome {

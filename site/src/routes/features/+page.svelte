@@ -142,7 +142,7 @@
 			items: [
 				{
 					title: 'AI のパネル',
-					body: '執筆画面の横で AI に相談できます。Claude Code・Ollama・OpenAI 互換 API から選べます。作品ごとに会話が分かれ、全作品を横断した確認もできます。',
+					body: '執筆画面の横で AI に相談できます。Claude Code・OpenAI 互換 API・Anthropic API・Gemini・Ollama から選べます。作品ごとに会話が分かれ、全作品を横断した確認もできます。',
 					desktop: true
 				},
 				{

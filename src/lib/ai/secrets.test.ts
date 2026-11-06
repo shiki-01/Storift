@@ -100,4 +100,21 @@ describe('キーチェーンを使えない環境(unsupported)', () => {
 		expect(await getSecret('openai-compatible', 'openai')).toBe('a');
 		expect(await getSecret('openai-compatible', 'openrouter')).toBe('b');
 	});
+
+	it('Anthropic / Gemini のキーも、識別子ごとに別々に保存・削除する', async () => {
+		await setSecret('anthropic', 'api-key', 'ant');
+		await setSecret('gemini', 'api-key', 'gem');
+		expect(await getSecret('anthropic', 'api-key')).toBe('ant');
+		expect(await getSecret('gemini', 'api-key')).toBe('gem');
+		await deleteSecret('anthropic', 'api-key');
+		expect(await getSecret('anthropic', 'api-key')).toBeNull();
+		expect(await getSecret('gemini', 'api-key')).toBe('gem');
+	});
+
+	it('キーは設定(storift:ai-settings)や同期の保存先には書かれない', async () => {
+		await setSecret('gemini', 'api-key', 'gem');
+		expect(localStorage.getItem('storift:ai-settings')).toBeNull();
+		const keys = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i));
+		expect(keys).toEqual(['storift:ai-secret:gemini:api-key']);
+	});
 });

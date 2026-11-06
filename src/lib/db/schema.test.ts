@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { StoriftDB } from './schema';
 
-// IndexedDB の無い環境でも検証できる範囲(スキーマ定義)。実際の v3→v4 の移行は、
+// IndexedDB の無い環境でも検証できる範囲(スキーマ定義)。実際の v3→v5 の移行は、
 // 既存のテーブルの定義を変えず、テーブルを足すだけであることで担保する。
-describe('Dexie スキーマ v4', () => {
+describe('Dexie スキーマ v5', () => {
 	const db = new StoriftDB();
 
-	it('バージョンは 4', () => {
-		expect(db.verno).toBe(4);
+	it('バージョンは 5', () => {
+		expect(db.verno).toBe(5);
 	});
 
 	it('v3 までのテーブルと索引は変わらない', () => {
@@ -37,6 +37,12 @@ describe('Dexie スキーマ v4', () => {
 		expect(table.schema.indexes.map((i) => i.name).sort()).toEqual(['pid', 'status']);
 	});
 
+	it('crdtDocs テーブルが追加されている(sceneId が主キー、targetKey・updatedAt の索引)', () => {
+		const table = db.table('crdtDocs');
+		expect(table.schema.primKey.name).toBe('sceneId');
+		expect(table.schema.indexes.map((i) => i.name).sort()).toEqual(['targetKey', 'updatedAt']);
+	});
+
 	it('既存のテーブルがすべて残っている', () => {
 		const names = db.tables.map((t) => t.name).sort();
 		expect(names).toEqual(
@@ -44,6 +50,7 @@ describe('Dexie スキーマ v4', () => {
 				'chapters',
 				'characters',
 				'connections',
+				'crdtDocs',
 				'history',
 				'memos',
 				'plots',

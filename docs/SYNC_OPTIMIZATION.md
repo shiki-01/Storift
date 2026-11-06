@@ -108,7 +108,30 @@ stopCurrentProjectSync();
 
 実装箇所: `firebase/syncTarget.ts`(純粋なロジック)、`firebase/sync.ts`(Firestore 呼び出しが target を受ける)、`firebase/syncMeta.ts`、`firebase/sharingAdopt.ts`、`services/sync.service.ts`、`services/sharing.service.ts`。
 
-**未実施・制約**: 実 Firestore・複数端末での確認、ゲスト接続の同期(2b-3)、共有側の更新ログ(updates / crdt)の同期。
+**未実施・制約**: 実 Firestore・複数端末での確認。ゲスト接続の同期は 2b-3、共有側の更新ログ(updates / crdt)は 2e。
+
+---
+
+### ✅ 2e. 共有プロジェクトの本文のリアルタイム共同編集(CRDT、段階3a)
+
+共有プロジェクトのシーン本文だけを Yjs(`Y.Text`)で扱う。それ以外(章・題名・人物など)は従来の同期。Firestore 配置・初期化・圧縮の詳細は [SHARING_RULES.md](./SHARING_RULES.md) の「シーン本文の CRDT」。
+
+- **経路**: ローカルの変更 → Y 文書 → 2.5 秒ごとにまとめて `updates` に 1 文書で送信(失敗・オフラインは `pending` に残してバックオフ再送、オンライン復帰でも再送)。受信は開いている間 `updates`(`createdAt > lastSeen - 5分`)と `crdt/snapshot` を購読。
+- **ローカル永続化**: Dexie v5 の `crdtDocs`(`sceneId, targetKey, state, pending, lastSeen, updatedAt` + `appliedIds, snapshotRev`)。500ms デバウンスで保存、pagehide / 非表示で即時保存。起動後にオフラインでも保存済みの状態から編集でき、未送信の更新は `Y.mergeUpdates` で 1 つにまとめて蓄積する。
+- **content ミラー**: Y の文字列を 1.5 秒デバウンスで `scenesDB.update`(文字数・履歴・更新日時は既存の処理)に反映し、編集者は共有側の `scenes` 文書にも従来の同期(`queueChange`)で送る。reconcile は CRDT 化したシーンの `content` / `characterCount` を比較しない(`reconcile.ts`)。
+- **窓口**: `services/sceneText.service.ts`(`isCrdtScene` / `getSceneText` / `applySceneText` / `openSceneDoc` / `resumePendingSends`)。マネージャは `crdt/doc.ts`、Firestore 操作は `crdt/transport.ts`、純粋な判断は `crdt/policy.ts`、差分は `crdt/diff.ts`。
+
+#### 無料枠(Spark: 読み取り 50,000/日・書き込み 20,000/日)の見積り
+
+設計値からの机上の見積り(実測ではない)。**1 人が連続で入力し続けた 1 時間**あたり(実際は入力と休止を繰り返すので、これより小さくなる):
+
+| 項目                            | 回数/時間 | 内訳                                                                                                          |
+| ------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------- |
+| 書き込み                        | 約 4,100  | updates 1,440(2.5 秒ごと)+ 圧縮での削除 1,440 + snapshot 約 30 + 共有側 scenes 文書のミラー約 1,200(3 秒ごと) |
+| 読み取り(他に 1 人が開いている) | 約 7,900  | updates 1,440 + ミラー文書 1,200 + ルールの `get()`/`exists()` 約 5,300(書き込み 1 回につき約 2)              |
+| 読み取り(他に 4 人が開いている) | 約 15,900 | 上の updates・ミラーが 4 倍(5,760 + 4,800)+ ルール約 5,300                                                    |
+
+連続入力で換算すると、書き込みは 1 日約 4.9 時間分、読み取りは他に 4 人がいると約 3.1 時間分で無料枠に達する。ほかに、シーンを開くたびに snapshot 1 件 + 残りの updates(通常は 10 件未満)+ 圧縮の通知を読む。圧縮は updates の滞留を抑えて、新規参加者・再接続時の読み取りを減らすためのもの。使用量が問題になる場合の調整点は、送信間隔(`SEND_DELAY`)、ミラーの送信(共有側 scenes 文書の `content` は CRDT 上は冗長)、圧縮の閾値(`policy.ts`)。
 
 ---
 

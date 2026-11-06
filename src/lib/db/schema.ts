@@ -11,7 +11,8 @@ import type {
 	AppSettings,
 	RelationMap,
 	Memo,
-	Connection
+	Connection,
+	CrdtDocRow
 } from '$lib/types';
 
 export class StoriftDB extends Dexie {
@@ -27,6 +28,7 @@ export class StoriftDB extends Dexie {
 	relationMaps!: Table<RelationMap>;
 	memos!: Table<Memo>;
 	connections!: Table<Connection>;
+	crdtDocs!: Table<CrdtDocRow, string>;
 
 	constructor() {
 		super('StoriftDB');
@@ -56,6 +58,11 @@ export class StoriftDB extends Dexie {
 		// v4: ゲスト接続(招待された共有プロジェクトの、ホスト側 Firebase への接続情報)。テーブルの追加だけで、既存データは変更しない
 		this.version(4).stores({
 			connections: 'id, pid, status'
+		});
+
+		// v5: 共有プロジェクトのシーン本文(Yjs)のローカル永続化。テーブルの追加だけで、既存データは変更しない
+		this.version(5).stores({
+			crdtDocs: 'sceneId, targetKey, updatedAt'
 		});
 	}
 }

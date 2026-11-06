@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { reconcile, reconcileReadOnly } from './reconcile';
+import { adoptOwnedFields, reconcile, reconcileOwned, reconcileReadOnly } from './reconcile';
 
 const at = (updatedAt: number) => ({ updatedAt });
 
@@ -49,5 +49,32 @@ describe('reconcileReadOnly(閲覧専用: リモートが常に勝つ)', () => {
 	it('リモートが新しければ採用する', () => {
 		expect(reconcileReadOnly(at(5), at(10), false)).toBe('apply-remote');
 		expect(reconcileReadOnly(at(5), at(10), true)).toBe('apply-remote');
+	});
+});
+
+describe('CRDT 化したシーンの突き合わせ', () => {
+	it('adoptOwnedFields: content と characterCount はローカルの値を保つ', () => {
+		const local = { id: 's', title: 'a', content: 'L', characterCount: 1, updatedAt: 1 };
+		const remote = { id: 's', title: 'b', content: 'R', characterCount: 9, updatedAt: 2 };
+		expect(adoptOwnedFields(local, remote)).toEqual({
+			id: 's',
+			title: 'b',
+			content: 'L',
+			characterCount: 1,
+			updatedAt: 2
+		});
+		expect(remote.content).toBe('R');
+	});
+
+	it('本文以外に差が無ければ、双方が base 以降に変更していても競合にしない', () => {
+		expect(reconcileOwned({ updatedAt: 150 }, { updatedAt: 200 }, 100, false)).toBe('skip');
+		expect(reconcileOwned({ updatedAt: 300 }, { updatedAt: 200 }, 100, false)).toBe('push-local');
+		expect(reconcileOwned({ updatedAt: 200 }, { updatedAt: 200 }, 100, false)).toBe('skip');
+	});
+
+	it('本文以外に差があれば通常の 3 者比較', () => {
+		expect(reconcileOwned({ updatedAt: 150 }, { updatedAt: 200 }, 100, true)).toBe('conflict');
+		expect(reconcileOwned({ updatedAt: 100 }, { updatedAt: 200 }, 100, true)).toBe('apply-remote');
+		expect(reconcileOwned({ updatedAt: 150 }, { updatedAt: 100 }, 100, true)).toBe('push-local');
 	});
 });

@@ -23,7 +23,14 @@ import {
 	type SyncableEntity
 } from '$lib/firebase/sync';
 import { prepareConflictData, type ConflictData } from '$lib/firebase/conflict';
-import { reconcile, reconcileReadOnly, type ReconcileAction } from '$lib/firebase/reconcile';
+import {
+	adoptOwnedFields,
+	reconcile,
+	reconcileOwned,
+	reconcileReadOnly,
+	type ReconcileAction
+} from '$lib/firebase/reconcile';
+import { crdtSceneIdsIn } from '$lib/crdt/persistence';
 import { isFirebaseInitialized } from '$lib/firebase/config';
 import {
 	awaitConnectionReady,
@@ -378,18 +385,20 @@ export function contentDiffers(a: SyncableEntity, b: SyncableEntity): boolean {
 
 /**
  * 競合を処理する。
- * プロジェクトは更新日時が頻繁に変わるメタ情報なので常に新しい方を採用する。
+ * プロジェクトは更新日時が頻繁に変わるメタ情報なので常に新しい方を採用する(newestWins で CRDT 化したシーンも同様)。
  */
 async function handleConflict(
 	type: EntityType,
 	local: SyncableEntity,
 	remote: SyncableEntity,
 	policy: ConflictResolutionPolicy,
-	target: string = PRIMARY_KEY
+	target: string = PRIMARY_KEY,
+	newestWins = false
 ): Promise<Exclude<ReconcileAction, 'skip'>> {
 	console.log(`⚠️ Conflict detected for ${type}: ${local.id} (policy: ${policy})`);
 
-	if (type === 'projects') {
+	// CRDT 化したシーンは、本文を比べないので残る差(題名・並び順など)は軽微。ダイアログを出さず新しい方を採用する
+	if (type === 'projects' || newestWins) {
 		return remote.updatedAt > local.updatedAt ? 'apply-remote' : 'push-local';
 	}
 
@@ -486,12 +495,18 @@ async function decideRemote(
 	local: SyncableEntity | undefined,
 	policy: ConflictResolutionPolicy,
 	target: string,
-	readOnly = false
+	readOnly = false,
+	crdt = false
 ): Promise<RemoteDecision> {
 	// 読み取り専用(閲覧権限・失効)は、競合ポリシーに関わらずリモートが勝つ。混入したローカルの変更は退避して上書きする
 	if (readOnly) {
 		if (!local) return 'write';
 		const differs = contentDiffers(local, remote);
+		// CRDT 化したシーンは、本文のミラーで updatedAt がずれるだけなら何もしない(remote は本文をローカルの値に揃えてある)
+		if (crdt && !differs) {
+			setBase(type, remote.id, remote.updatedAt, target);
+			return 'none';
+		}
 		if (reconcileReadOnly(local, remote, !differs) === 'skip') {
 			setBase(type, remote.id, remote.updatedAt, target);
 			return 'none';
@@ -507,9 +522,11 @@ async function decideRemote(
 	}
 
 	const base = getBase(type, remote.id, target);
-	let action = reconcile(local, remote, base);
+	let action = crdt
+		? reconcileOwned(local, remote, base, contentDiffers(local, remote))
+		: reconcile(local, remote, base);
 	if (action === 'conflict') {
-		action = await handleConflict(type, local, remote, policy, target);
+		action = await handleConflict(type, local, remote, policy, target, crdt);
 	}
 
 	switch (action) {
@@ -552,12 +569,22 @@ async function reconcileBatch(
 	const table = tableOf(type);
 	const locals = await table.bulkGet(remotes.map((r) => r.id));
 	const readOnly = await isReadOnlyTarget(target);
+	// CRDT 化したシーンは本文(content)を比較せず、リモートの content でローカル(= Y のミラー)を上書きしない
+	const crdtIds =
+		type === 'scenes'
+			? await crdtSceneIdsIn(
+					remotes.map((r) => r.id),
+					target
+				)
+			: new Set<string>();
 
 	const writes: { remote: SyncableEntity; seen: SyncableEntity | undefined }[] = [];
 	const pushes: PendingChange[] = [];
-	const results = await mapLimit(remotes, RECONCILE_CONCURRENCY, async (remote, i) => {
+	const results = await mapLimit(remotes, RECONCILE_CONCURRENCY, async (original, i) => {
 		const local = locals[i];
-		const decision = await decideRemote(type, remote, local, policy, target, readOnly);
+		const crdt = !!local && crdtIds.has(original.id);
+		const remote = crdt ? adoptOwnedFields(local, original) : original;
+		const decision = await decideRemote(type, remote, local, policy, target, readOnly, crdt);
 		if (decision === 'write') writes.push({ remote, seen: local });
 		else if (decision === 'push') pushes.push({ type, id: remote.id, action: 'update', target });
 	});
@@ -1397,21 +1424,32 @@ async function prepareUpload(
 	// リモートデータを取得して競合チェック
 	const remote = await syncFromFirestore(type, id, target);
 	if (remote) {
-		let result = reconcile(local, remote, getBase(type, id, target.key));
+		// CRDT 化したシーンは本文を比較しない(リモートの content で上書きせず、ミラー更新を競合にしない)
+		const crdt = type === 'scenes' && (await crdtSceneIdsIn([id], target.key)).has(id);
+		const effective = crdt ? adoptOwnedFields(local, remote) : remote;
+		const base = getBase(type, id, target.key);
+		let result = crdt
+			? reconcileOwned(local, effective, base, contentDiffers(local, effective))
+			: reconcile(local, remote, base);
 		if (result === 'conflict') {
-			result = await handleConflict(type, local, remote, policy, target.key);
+			result = await handleConflict(type, local, effective, policy, target.key, crdt);
 		}
 
 		if (result === 'apply-remote') {
-			if (contentDiffers(local, remote)) await backupEntity(type, local, 'conflict');
-			await tableOf(type).put(remote);
+			if (contentDiffers(local, effective)) await backupEntity(type, local, 'conflict');
+			await tableOf(type).put(effective);
 			setBase(type, id, remote.updatedAt, target.key);
 			refreshTypes.add(type);
 			return null;
 		}
 		if (result === 'conflict') return null; // 手動解決待ち(アップロードしない)
 		if (result === 'skip') {
-			setBase(type, id, local.updatedAt, target.key);
+			setBase(
+				type,
+				id,
+				crdt ? Math.max(local.updatedAt, remote.updatedAt) : local.updatedAt,
+				target.key
+			);
 			return null;
 		}
 	}

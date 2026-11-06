@@ -1,6 +1,6 @@
 # 共有機能の Firestore ルール設計メモ(段階 2a)
 
-データ配置のクライアント実装(段階 2b-2)は「データ配置の実装(ポインタ方式)」、招待リンク・ゲスト接続・権限の反映(段階 2b-3)は末尾の「招待リンク・ゲスト接続(段階 2b-3)」を参照。
+データ配置のクライアント実装(段階 2b-2)は「データ配置の実装(ポインタ方式)」、招待リンク・ゲスト接続・権限の反映(段階 2b-3)は「招待リンク・ゲスト接続(段階 2b-3)」、シーン本文のリアルタイム共同編集の Firestore 配置(段階 3a)は末尾の「シーン本文の CRDT(段階 3a)」を参照。
 
 `firestore.rules` は、従来の「認証済みなら全開放」から request.auth.uid ベースの厳格モードに置き換わった(破壊的変更)。
 認証は匿名認証のまま。ルールテストは `bun run test:rules`(Firebase Emulator 使用、`tests/rules/`)。
@@ -177,3 +177,47 @@ JSON のバックアップ/エクスポート(`backup.service.ts`、`export.serv
 
 - 実 Firestore・実機(複数端末、デスクトップ版)での動作。ホスト Firebase の承認済みドメイン・匿名認証の有効化が必要(FIRESTORE_SETUP.md)。
 - ブラウザでの UI(閲覧専用の網羅性は、本文・章/シーン・人物・プロット・世界観・検索置換の主要な入口のみ。バージョン履歴の復元や Claude パネルからの編集などは UI では止めておらず、同期層の安全網で共有側とは食い違わない)。
+
+---
+
+## シーン本文の CRDT(段階 3a)
+
+共有プロジェクト(`sharing.status === 'active'`)のシーン本文(`Scene.content`)だけが対象。Yjs の `Y.Text`(名前 `content`、インデックスは UTF-16 コードユニット)として扱う。非共有プロジェクトは従来どおり。エディタ UI との結合(contenteditable・IME・undo・在席表示)は段階 3b。
+
+### データ配置(ルールは変更していない)
+
+```
+shared/{pid}/scenes/{sceneId}/crdt/snapshot     { state: Bytes, updatedAt: number, rev: number }
+shared/{pid}/scenes/{sceneId}/updates/{autoId}  { update: Bytes, by: uid, clientId: number, createdAt: number(クライアント時刻 ms), n: number }
+```
+
+- `snapshot.state` は Y 文書の全状態(`encodeStateAsUpdate`)。`rev` は圧縮のたびに +1(初期は 0)。950,000 バイトを超える状態は書かない。
+- `updates` は 1 文書 = 1 回の送信(連続した更新を `Y.mergeUpdates` でまとめたもの)。ペイロードは 500KB 以下になるよう文書を分ける(更新は個別にしか分けられない。単独で 950,000 バイトを超える更新は送らずエラー)。`n` は含まれる更新の件数メモ。
+- 既存ルールの `shared/{pid}/{col}/{id}/{sub}/{rest=**}` で足りる: editor/owner は read・write(create / update / delete)、viewer・link 公開は read のみ。非メンバーは不可。Emulator(`tests/rules/crdt-client.test.ts`)で確認済み。
+- 接続先の Firestore は SyncTarget のキー(`shared/{pid}`、ゲスト接続は `{connectionId}:shared/{pid}`)から解決する。
+
+### 初期化の競合対策
+
+最初に CRDT 化する端末は `runTransaction` で `crdt/snapshot` の有無を確認し、無ければ現在のローカル `content` から作った状態を書く。既にあれば作らず、それを読み込む(複数端末が同じ文字列から別々に初期化して本文が二重になるのを防ぐ)。トランザクションに負けた側のローカル `content` が CRDT の本文と違えば、上書きの前に `historyDB`(changeType `conflict`)へ退避してから CRDT の本文を採用する。閲覧者は snapshot を作れないので、snapshot がまだ無いシーンは従来の `content` のまま(開こうとすると理由 `no-snapshot` で失敗する)。
+
+### 圧縮(コンパクション)
+
+更新は冪等。取得済み(自分が適用済み)の updates 文書が動作中に 50 件以上、またはシーンを閉じる時に 10 件以上のとき、書き込み権限のある端末が自分の Y 文書の全状態を snapshot に書き(`rev + 1`)、**自分が適用済みの updates 文書だけ**を削除する。トランザクションで現在の `rev` が自分の知っている `rev` と一致することを確認し、一致しなければ書かない(古い圧縮が新しい snapshot を上書きしない)。削除は最初の 400 件を snapshot と同じトランザクションで、残りは snapshot の書き込み後にバッチで行う。
+
+圧縮で消された updates を取りこぼしていた端末が追いつけるよう、開いている間は `crdt/snapshot` 文書も購読し、`rev` が進んだら適用する。
+
+### 購読・時計のずれ
+
+開いている間、`updates` を `createdAt > lastSeen - 5分` で購読する(added のみ処理)。端末間の時計のずれで取りこぼさないための余裕で、重複して届いても更新は冪等。`createdAt` は送信時刻(オフラインで溜めた更新は再送した時刻)で、1 文書ごとに +1 して順序を保つ。
+
+### reconcile との関係
+
+`crdtDocs`(Dexie v5)に行があるシーンでは、reconcile(3 者比較)で `content` と `characterCount` を比較せず、リモートの値でローカルを上書きしない(`reconcile.ts: CRDT_OWNED_KEYS / adoptOwnedFields / reconcileOwned`)。本文のミラー更新だけの差は競合にせず、ローカルの版が新しければ共有側の `scenes` 文書へ送る。題名・並び順などにも差があって競合になった場合は、ダイアログを出さず新しい方を採用する(ローカルが上書きされるときは履歴へ退避)。行の `targetKey` が今の行き先と違うとき(共有の停止・付け替え後)は CRDT として扱わない。
+
+### 権限エラー
+
+書き込み・圧縮・購読で permission-denied を受けたら再試行せず、そのシーンを読み取り専用にして `syncStore.error` で通知する。ゲストのプロジェクトでは 2b-3 の `revokeGuestAccess` も呼ぶ(アクセス失効として扱う)。未送信の更新はローカルに残す。
+
+### 未検証
+
+実 Firestore・複数端末・実機での動作、エディタ UI との結合(3b)。オフラインで書き込みが宙に浮いた場合の挙動(送信は 20 秒で打ち切り、バックオフして再送する。SDK のキューに残った書き込みと再送が重なると同じ更新の文書が重複するが、更新は冪等で、圧縮で片付く)。

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
-	import { beforeNavigate } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
@@ -10,6 +11,7 @@
 	import { dataChange } from '$lib/stores/dataChange.svelte';
 	import { chaptersDB, scenesDB, settingsDB, progressLogsDB, projectsDB, memosDB } from '$lib/db';
 	import { getDateKey } from '$lib/utils/dateUtils';
+	import { computeHeaderVisibility } from '$lib/utils/headerVisibility';
 	import { queueChange } from '$lib/services/sync.service';
 	import { filterReadOnlyMenu, isReadOnlyProject } from '$lib/utils/readOnly';
 	import { AutoSave, enableUnsavedWarning, enableVisibilityAutoSave } from '$lib/utils/autoSave';
@@ -45,7 +47,9 @@
 	import { EditorBinding, type TextSelection } from '$lib/crdt/editorBinding';
 	import { createDomAdapter, type DomEditorAdapter } from '$lib/crdt/domAdapter';
 	import { trackLocalGrowth, type LocalGrowthTracker } from '$lib/crdt/progress';
-	import { presenceLabel } from '$lib/crdt/presencePolicy';
+	import { cursorsOnScene, presenceLabel } from '$lib/crdt/presencePolicy';
+	import { CURSOR_BLUR_DELAY_MS, encodeCursor } from '$lib/crdt/remoteCursor';
+	import RemoteCursors from '$lib/components/editor/RemoteCursors.svelte';
 	import { getSceneText, openSceneDoc } from '$lib/services/sceneText.service';
 	import { startPresence, type PresenceSession } from '$lib/services/presence.service';
 	import { presenceStore } from '$lib/stores/presence.svelte';
@@ -473,7 +477,7 @@
 		if (!editorDiv) return;
 		editorDiv.focus({ preventScroll: true });
 		if (selectTextRange(editorDiv, start, end) && editorScrollContainer) {
-			typewriterScroll(editorScrollContainer, 0.35);
+			typewriterScroll(editorScrollContainer, 0.35, barInset());
 		}
 	}
 
@@ -505,6 +509,13 @@
 	);
 
 	let session: CollabSession | null = null;
+	// 他者のカーソルの描画に使う、今の共同編集セッションの参照(session は非リアクティブなので別に持つ)
+	let remoteView = $state.raw<{
+		sceneId: string;
+		ydoc: SceneDocHandle['ydoc'];
+		ytext: SceneDocHandle['ytext'];
+		binding: EditorBinding;
+	} | null>(null);
 	let collabTarget: string | null = null;
 	let collabToken = 0;
 	let progressTimer: ReturnType<typeof setTimeout> | null = null;
@@ -575,6 +586,7 @@
 			]
 		};
 		session = next;
+		remoteView = { sceneId, ydoc: handle.ydoc, ytext: handle.ytext, binding };
 		collabReadOnly = handle.readOnly;
 		editorStore.crdtSceneId = sceneId;
 		editorStore.setContentFromSource(handle.ytext.toString());
@@ -589,6 +601,7 @@
 	function detachSession(): CollabSession | null {
 		const current = session;
 		session = null;
+		remoteView = null;
 		editorStore.crdtSceneId = null;
 		editorStore.externalTextSink = null;
 		setHistoryHandler(null);
@@ -804,7 +817,79 @@
 		presenceSession?.setScene(editorStore.currentScene?.id ?? null);
 	});
 
+	// ===== 他者のカーソル/選択範囲(共同編集中のシーンのみ) =====
+	// 設定がオフの間は、描画も自分の位置の送信もしない
+	const showRemoteCursors = $derived(settingsStore.settings.showRemoteCursors !== false);
+	let cursorFrame = 0;
+	let blurTimer: ReturnType<typeof setTimeout> | null = null;
+	let cursorRetry: ReturnType<typeof setTimeout> | null = null;
+
+	/** 今の選択範囲を presence に渡す(書き込みは presence 側で 3 秒以上あけて間引かれる) */
+	function reportCursor() {
+		cursorFrame = 0;
+		const current = session;
+		if (!current || !presenceSession || !editorDiv) return;
+		if (document.activeElement !== editorDiv) return;
+		// 変換中や、リモートの変更が DOM に入る前は DOM と Y の座標がずれているので、少し待つ
+		if (current.binding.isComposing) return;
+		if (current.binding.hasPendingRemote) {
+			if (!cursorRetry) {
+				cursorRetry = setTimeout(() => {
+					cursorRetry = null;
+					reportCursor();
+				}, 60);
+			}
+			return;
+		}
+		const selection = current.adapter.getSelection();
+		if (!selection) return;
+		presenceSession.setCursor(encodeCursor(current.handle.ytext, selection));
+	}
+
+	function scheduleCursorReport() {
+		if (cursorFrame) return;
+		cursorFrame = requestAnimationFrame(reportCursor);
+	}
+
+	function handleEditorFocus() {
+		if (blurTimer) clearTimeout(blurTimer);
+		blurTimer = null;
+		if (session) scheduleCursorReport();
+	}
+
+	// フォーカスを失ったら、少し待ってから位置を消す(ボタン操作などの一瞬の外れでは消さない)
+	function handleEditorBlur() {
+		if (blurTimer) clearTimeout(blurTimer);
+		blurTimer = setTimeout(() => {
+			blurTimer = null;
+			if (document.activeElement !== editorDiv) presenceSession?.setCursor(null);
+		}, CURSOR_BLUR_DELAY_MS);
+	}
+
+	$effect(() => {
+		if (collab !== 'on') return;
+		const onSelectionChange = () => {
+			if (document.activeElement === editorDiv) scheduleCursorReport();
+		};
+		document.addEventListener('selectionchange', onSelectionChange);
+		return () => {
+			document.removeEventListener('selectionchange', onSelectionChange);
+			if (cursorFrame) cancelAnimationFrame(cursorFrame);
+			cursorFrame = 0;
+			if (blurTimer) clearTimeout(blurTimer);
+			blurTimer = null;
+			if (cursorRetry) clearTimeout(cursorRetry);
+			cursorRetry = null;
+			presenceSession?.setCursor(null);
+		};
+	});
+
 	const otherMembers = $derived(presenceStore.others);
+	const remoteCursorList = $derived(
+		showRemoteCursors && remoteView && remoteView.sceneId === editorStore.currentScene?.id
+			? cursorsOnScene(otherMembers, remoteView.sceneId)
+			: []
+	);
 	const presenceText = $derived(presenceLabel(otherMembers, 5));
 	const membersOnScene = (sceneId: string) => otherMembers.filter((m) => m.sceneId === sceneId);
 
@@ -1488,6 +1573,18 @@
 	let showDisplaySheet = $state(false);
 	let showActionSheet = $state(false);
 	let chromeHidden = $state(false);
+	let mBarEl = $state<HTMLElement | null>(null);
+
+	/**
+	 * 本文の上端に重なっている上部バーの高さ(px)。バーが隠れている間・無い間は 0。
+	 * キャレットの補正(ensureCaretVisible / typewriterScroll)が、バーの裏を避けるために使う。
+	 */
+	function barInset(): number {
+		if (!mBarEl || chromeHidden || !editorScrollContainer) return 0;
+		const bar = mBarEl.getBoundingClientRect();
+		const box = editorScrollContainer.getBoundingClientRect();
+		return Math.max(0, bar.bottom - box.top);
+	}
 
 	let sceneFilter = $state('');
 	let collapsedChapters = new SvelteSet<string>();
@@ -1565,6 +1662,18 @@
 			: (localFormatting.fontSize ?? 16)
 	);
 
+	// 他者のカーソルの位置は、これらが変わると計算し直す
+	const cursorLayoutKey = $derived(
+		[
+			settingsStore.editorFont,
+			effectiveFontSize,
+			localFormatting.lineHeight,
+			localFormatting.letterSpacing,
+			settingsStore.settings.theme,
+			viewport.isMobile
+		].join('|')
+	);
+
 	// --- 自動保存(入力が止まって約2秒後。入力し続けても最大待ち時間ごとに保存) ---
 	let maxWaitTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -1616,6 +1725,11 @@
 			.catch((error) => console.error('Failed to load progress:', error));
 	});
 
+	// 作品全体を通して読む画面へ(未保存の変更は beforeNavigate で保存される)
+	function openManuscriptPreview() {
+		void goto(resolve('/project/[id]/preview', { id: currentProjectStore.project?.id ?? '' }));
+	}
+
 	// --- 前回のシーンを自動で開く ---
 	const lastSceneKey = (projectId: string) => `storift:last-scene:${projectId}`;
 
@@ -1657,8 +1771,8 @@
 		if (viewport.isMobile && viewport.isKeyboardOpen) chromeHidden = true;
 		requestAnimationFrame(() => {
 			if (!editorScrollContainer) return;
-			if (editorStore.typewriter) typewriterScroll(editorScrollContainer);
-			else ensureCaretVisible(editorScrollContainer);
+			if (editorStore.typewriter) typewriterScroll(editorScrollContainer, 0.4, barInset());
+			else ensureCaretVisible(editorScrollContainer, 28, barInset());
 		});
 	}
 
@@ -1672,7 +1786,7 @@
 		void viewport.height;
 		if (!viewport.isMobile || !viewport.isKeyboardOpen) return;
 		requestAnimationFrame(() => {
-			if (editorScrollContainer) ensureCaretVisible(editorScrollContainer);
+			if (editorScrollContainer) ensureCaretVisible(editorScrollContainer, 28, barInset());
 		});
 	});
 
@@ -1682,7 +1796,7 @@
 			if (!editorDiv || document.activeElement !== editorDiv) return;
 			const selection = window.getSelection();
 			if (editorStore.typewriter && editorScrollContainer && selection?.isCollapsed) {
-				typewriterScroll(editorScrollContainer);
+				typewriterScroll(editorScrollContainer, 0.4, barInset());
 			}
 			if (editorStore.dimOthers) updateDimHighlight(editorDiv, true);
 		};
@@ -1703,15 +1817,38 @@
 		lastTouchAt = Date.now();
 	}
 
+	// ソフトキーボードの出入りによる viewport のリサイズ直後は、スクロールの揺れを無視する
+	const RESIZE_SETTLE_MS = 500;
+	let lastResizeAt = 0;
+	let headerTravel = 0;
+
+	$effect(() => {
+		void viewport.height;
+		void viewport.keyboardHeight;
+		lastResizeAt = Date.now();
+		headerTravel = 0;
+	});
+
 	function onEditorScroll(e: Event) {
 		const el = e.currentTarget as HTMLElement;
-		const delta = el.scrollTop - lastScrollTop;
+		const prevY = lastScrollTop;
 		lastScrollTop = el.scrollTop;
 		// 先頭まで戻ったら、操作の種類にかかわらずバーを出す
-		if (el.scrollTop <= 0) chromeHidden = false;
-		if (!viewport.isMobile || Date.now() - lastTouchAt > 400) return;
-		if (delta < -8) chromeHidden = false;
-		else if (delta > 8) chromeHidden = true;
+		if (el.scrollTop <= 0) {
+			chromeHidden = false;
+			headerTravel = 0;
+			return;
+		}
+		const now = Date.now();
+		if (!viewport.isMobile || now - lastTouchAt > 400 || now - lastResizeAt < RESIZE_SETTLE_MS) {
+			return;
+		}
+		const next = computeHeaderVisibility(prevY, el.scrollTop, {
+			visible: !chromeHidden,
+			travel: headerTravel
+		});
+		headerTravel = next.travel;
+		chromeHidden = !next.visible;
 	}
 
 	function dismissKeyboard() {
@@ -1972,7 +2109,13 @@
 	<div class="editor-main flex flex:column w:100% h:100% overflow-y:auto">
 		<!-- スマホ: 1 本だけの上部バー -->
 		{#if viewport.isMobile && !editorStore.focusMode}
-			<div class="m-bar-wrap" class:hidden={chromeHidden}>
+			<div
+				bind:this={mBarEl}
+				class="m-bar-wrap"
+				class:m-bar-off={chromeHidden}
+				inert={chromeHidden}
+				aria-hidden={chromeHidden ? 'true' : undefined}
+			>
 				<div class="m-bar">
 					<button class="m-btn" aria-label="章・シーン一覧" onclick={() => (showSceneSheet = true)}>
 						<Icon name="list" class="w:22px" />
@@ -2202,6 +2345,15 @@
 							</button>
 							<button
 								class="tool"
+								onclick={openManuscriptPreview}
+								aria-label="作品全体を通して読む"
+								title="作品全体を通して読む"
+								data-testid="open-manuscript-preview"
+							>
+								<Icon name="book-2" class="w:20px" />
+							</button>
+							<button
+								class="tool"
 								onclick={() => (showPrintPreview = true)}
 								aria-label="印刷プレビュー"
 								title="印刷プレビュー"
@@ -2294,7 +2446,11 @@
 								? 'w:50%'
 								: 'w:100%'} transition:width|0.3s"
 						>
-							<div class="editor-page" class:typewriter={editorStore.typewriter}>
+							<div
+								class="editor-page"
+								class:typewriter={editorStore.typewriter}
+								class:with-m-bar={viewport.isMobile && !editorStore.focusMode}
+							>
 								<!-- contentEditable div -->
 								<div
 									bind:this={editorDiv}
@@ -2310,6 +2466,8 @@
 									oncompositionstart={handleCompositionStart}
 									oncompositionend={handleCompositionEnd}
 									onkeydown={handleEditorKeydown}
+									onfocus={handleEditorFocus}
+									onblur={handleEditorBlur}
 									ondragstart={handleDragStart}
 									ondragend={() => (dragSelection = null)}
 									ondrop={handleDrop}
@@ -2326,6 +2484,17 @@
 								>
 									{editorStore.content}
 								</div>
+
+								{#if remoteView && editorDiv && remoteCursorList.length > 0}
+									<RemoteCursors
+										root={editorDiv}
+										ydoc={remoteView.ydoc}
+										ytext={remoteView.ytext}
+										binding={remoteView.binding}
+										cursors={remoteCursorList}
+										layoutKey={cursorLayoutKey}
+									/>
+								{/if}
 
 								{#if viewport.isMobile}
 									<div class="scene-nav">
@@ -2580,6 +2749,7 @@
 			>執筆支援(字下げ・ルビ)</button
 		>
 		<button onclick={() => runAction(() => (showExportModal = true))}>エクスポート</button>
+		<button onclick={() => runAction(openManuscriptPreview)}>作品全体を通して読む</button>
 		<button onclick={() => runAction(() => (showPrintPreview = true))}>印刷プレビュー</button>
 		<button disabled={readOnly} onclick={() => runAction(() => (showVersionManager = true))}
 			>バージョン履歴</button
@@ -3108,6 +3278,7 @@
 
 	/* ===== 原稿 ===== */
 	.editor-page {
+		position: relative;
 		max-width: 46rem;
 		min-height: 100%;
 		margin: 0 auto;
@@ -3532,26 +3703,41 @@
 	}
 
 	/* ===== スマホ: 上部バー ===== */
+	/*
+	 * 本文のレイアウトに影響しないよう、バーは本文の上に重ねる(absolute)。
+	 * 出入りは transform/opacity だけで行い、高さや余白は変えない。
+	 */
 	.m-bar-wrap {
-		flex: none;
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		z-index: 4;
 		padding-top: var(--safe-top);
 		padding-left: var(--safe-left);
 		padding-right: var(--safe-right);
-		background: var(--color-background);
+		background: color-mix(in srgb, var(--color-background) 90%, transparent);
+		-webkit-backdrop-filter: blur(10px);
+		backdrop-filter: blur(10px);
 		border-bottom: 1px solid var(--color-border);
-		overflow: hidden;
-		max-height: calc(var(--safe-top) + var(--bar-height) + 1px);
+		transform: translateY(0);
+		opacity: 1;
 		transition:
-			max-height 0.2s ease,
-			opacity 0.2s ease,
-			padding-top 0.2s ease;
+			transform 0.2s ease-out,
+			opacity 0.2s ease-out;
+		will-change: transform;
 	}
 
-	.m-bar-wrap.hidden {
-		max-height: 0;
-		padding-top: 0;
+	.m-bar-wrap.m-bar-off {
+		transform: translateY(-100%);
 		opacity: 0;
-		border-bottom-color: transparent;
+		pointer-events: none;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.m-bar-wrap {
+			transition: none;
+		}
 	}
 
 	.m-bar {
@@ -3984,6 +4170,11 @@
 			padding: 16px 16px 24px !important;
 			max-width: 100%;
 			border-radius: 0 !important;
+		}
+
+		/* 上部バーは本文に重なるので、その分の余白を常に確保する(出入りで変わらない) */
+		.editor-page.with-m-bar {
+			padding-top: calc(var(--safe-top) + var(--bar-height) + 1px + 16px) !important;
 		}
 
 		/* タイプライタースクロール時は最終行も画面の途中まで持ち上げられるよう余白を足す */

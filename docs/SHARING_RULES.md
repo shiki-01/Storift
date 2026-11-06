@@ -17,7 +17,7 @@ _config/ownerKey                {key}              オーナー鍵(クライア�
 shared/{pid}                    {visibility: 'private'|'link', name, ...}
 shared/{pid}/secrets/{role}     {value}            role = viewer | editor
 shared/{pid}/members/{uid}      {role, secret, joinedAt?, name?}
-shared/{pid}/presence/{uid}     {name, color, sceneId, updatedAt}   在席情報(段階 3b)
+shared/{pid}/presence/{uid}     {name, color, sceneId, cursor?, updatedAt}   在席情報(段階 3b)・カーソル(段階 4)
 shared/{pid}/{type}/{id}[/{sub}/...]   type = projects, chapters, scenes, characters, plots, worldbuilding
 ```
 
@@ -70,7 +70,7 @@ shared/{pid}/{type}/{id}[/{sub}/...]   type = projects, chapters, scenes, charac
 - members の `secret` フィールドは文書に残るため、オーナーと本人は参加に使った秘密を読める。秘密をローテーションしても既存メンバーは失効しない(オーナーが members を delete する)。
 - link 公開ではメタの列挙と全データの read が誰にでも可能(URL を知らなくても、PJ ID が分かれば読める)。
 - ネスト(updates/crdt)文書にはスキーマ検証(projectId 等)をしていない。
-- presence の内容(フィールド)は検証していない。
+- presence の内容(フィールド。段階 4 の `cursor` を含む)は検証していない。他のメンバーが任意の `cursor` を書いても、読む側が形を検証して無視する(表示に使う色も `hsl(…)` の形のものだけ)。
 - presence の delete は、段階 2b-3 でオーナーも可にした(共有の停止・メンバー削除のあとに他人の在席情報を片付けるため)。create / update は従来どおり本人のみ。
 
 ## データ配置の実装(ポインタ方式、段階 2b-2)
@@ -228,13 +228,22 @@ shared/{pid}/scenes/{sceneId}/updates/{autoId}  { update: Bytes, by: uid, client
 
 ### 在席情報(presence)
 
-`shared/{pid}/presence/{uid}` に `{ name, color, sceneId, updatedAt }` を書く(`firebase/presence.ts`、送受信は `services/presence.service.ts`、判断は `crdt/presencePolicy.ts`)。ルールは 2a のまま(読み取り: メンバー/オーナー、作成・更新: 本人のみ、削除: 本人またはオーナー)で、フィールドの内容は検証しない。
+`shared/{pid}/presence/{uid}` に `{ name, color, sceneId, cursor, updatedAt }` を書く(`firebase/presence.ts`、送受信は `services/presence.service.ts`、判断は `crdt/presencePolicy.ts`)。ルールは 2a のまま(読み取り: メンバー/オーナー、作成・更新: 本人のみ、削除: 本人またはオーナー)で、フィールドの内容は検証しない。
 
 - **書く**: 共有プロジェクトのエディタを開いたとき・開いているシーンが変わったとき・30 秒ごと(タブが見えている間。非表示から戻ったときもすぐ)。離脱時(`pagehide`・エディタを閉じたとき)は削除する(ベストエフォート。取りこぼしても 90 秒で表示から消える)。`updatedAt` は端末の時刻(`Date.now()`)。
 - **読む**: エディタを開いている間だけ `presence` コレクション全体を購読する。`updatedAt` が 90 秒以内の他者だけを表示する(自分は除く)。ゲスト接続(`connectionId`)のときは、その接続の Firestore とサインイン中の uid を使う。権限エラー・通信エラーは黙って止める。
-- **表示**: エディタのヘッダーに「他 N 人が閲覧中: 名前, …」(同じシーンを開いている人は強調)、シーン一覧の各シーンに相手の色の小さな点。他者のカーソル/選択範囲の表示は段階 4。
+- **表示**: エディタのヘッダーに「他 N 人が閲覧中: 名前, …」(同じシーンを開いている人は強調)、シーン一覧の各シーンに相手の色の小さな点。他者のカーソル/選択範囲の表示は下の「他者のカーソル(段階 4)」。
 - **表示名**: 設定画面「共有時の表示名」(`AppSettings.displayName`)。未設定ならオーナーは「オーナー」、ゲストは「ゲスト-<uid の先頭 4 文字>」。色は uid から決まる(同じ uid は常に同じ色)。参加時の `members/{uid}.name` にも同じ規則を使う(指定があればそれ、無ければ設定の表示名、無ければ既定)。
 - **読み取り課金**: 在席の購読は、メンバー数×書き込み(30 秒ごと)の分だけ読み取りが増える(5 人で約 600 回/時間)。ルールの `isMember` 判定の `get()` も書き込みごとに 1 回かかる。
+
+### 他者のカーソル(段階 4)
+
+**ルールの変更は無い**(presence のフィールドは元々検証しておらず、`cursor` を足してもルールテストの結果は変わらない)。`cursor` は既存の presence 文書のフィールドとして書く。
+
+- **形**: `cursor: { anchor, head } | null`。`anchor` / `head` は `Y.RelativePosition` を JSON にしたもの(`{ tname: 'content', item: { client, clock }, assoc }`。末尾は `item` 無し)。クラスのインスタンスを含まない素のオブジェクトにしてから書く(Firestore は ID クラスのインスタンスを受け付けない)。選択の向きは持たず、`anchor` = 選択の始点・`head` = 終点(キャレットは `head` に描く)。`null` はフォーカスが無い・送らない設定・シーンを開いていない。
+- **書く**(`services/presence.service.ts`、間引きは `crdt/remoteCursor.ts` の `createCursorThrottle`): 選択の変化(`selectionchange`。入力・クリック・矢印キーを含む)を rAF でまとめ、**3 秒以上あけて**書く。間隔内の変化は最後の位置だけを trailing で送り、同じ位置は書かない。エディタがフォーカスを失って 0.6 秒たったら `null` を送る(これも間引きの対象)。30 秒ごとの在席の書き込み・シーン切り替えの書き込みにも最新の `cursor` を載せる(シーン切り替えでは `null`)。IME の変換中と、リモートの更新が DOM に入る前は座標がずれるので、送るのを待つ。
+- **読む・描く**(`components/editor/RemoteCursors.svelte`): 既存の購読の結果から、自分を除き・90 秒以内で・同じシーンを開いていて・`cursor` を持つ人だけ描く(viewer も見える)。`Y.createAbsolutePositionFromRelativePosition` で今の絶対インデックスに直し(間に入った編集には追従する)、`locateTextOffset`(`textOffsetAt` と同じ数え方)で DOM 位置にして `Range.getClientRects` で矩形を取る。本文のレイアウトに影響しない `position:absolute` / `pointer-events:none` / `aria-hidden` のオーバーレイで、本文と一緒にスクロールする。キャレットは 2px の線、名前ラベルは位置が変わってから約 2 秒だけ濃く、その後は淡くする。再計算は rAF でまとめ、リモート更新・本文の DOM の変化・リサイズ・フォント/テーマ変更で行う。エディタが縦書き(`writing-mode` が `horizontal-tb` 以外)のときは描かない(現在のエディタ本文に縦書きは無く、プレビューのみ)。
+- **設定**: 設定画面「共同編集のカーソル表示」の「他の人のカーソルを表示」(`AppSettings.showRemoteCursors`。既定オン、端末内の IndexedDB にだけ保存)。**オフの間は描画せず、自分のカーソルも送らない**(通信量の節約。相手からはカーソルが見えなくなるが、在席チップ・シーン一覧の点は変わらない)。エディタを開き直したときに反映される。
 
 ### crdtDocs の後始末
 

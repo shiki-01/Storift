@@ -61,3 +61,13 @@ Test Text Orientation: Check how numbers/English text behave with the new settin
 Change font size and verify layout updates.
 Enable Manuscript Paper mode and check alignment.
 Verify Ruby and Bouten rendering with sample text.
+
+## 通読プレビュー（作品全体）
+
+`/project/[id]/preview`。章の順・各章内のシーンの順（order）で全シーンを連続表示する読み取り専用の画面。
+
+- 並べ替え・目次・文字数の累計・進捗は `src/lib/utils/manuscript.ts`（純粋関数、テストあり）。章に属さないシーンは末尾の擬似章にまとめる。
+- 表示は `src/lib/components/preview/ManuscriptReader.svelte`。本文は IntersectionObserver で画面の近くに来たシーンだけ描画し、未描画のシーンは行数からの見積りの大きさで場所を確保する。ジャンプ・復元は、描画による大きさの変化を数フレーム追いかけて補正する。原稿用紙モードは対象外。
+- 読んだ位置（シーン + シーン内の割合）は `storift:manuscript-pos:<projectId>`、縦横・文字サイズは `storift:manuscript-prefs` に端末内保存。
+- 共有プロジェクトは Dexie の `content`（CRDT のミラー）を表示する。
+- E2E: `bun run test:e2e:preview`（Firebase 不要）。

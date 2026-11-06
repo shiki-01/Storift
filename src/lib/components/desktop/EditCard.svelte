@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { diffChars, type EditProposal } from '$lib/desktop/edits';
-	import { claudeStore, type EditMode, type EditState } from '$lib/stores/claude.svelte';
+	import { aiStore, type EditMode, type EditState } from '$lib/stores/ai.svelte';
 
 	interface Props {
 		/** 回答が終わる前は提案だけ(状態なし) */
@@ -12,7 +12,7 @@
 	let { edit, editState, mode }: Props = $props();
 	let running = $state(false);
 	/** 自分の操作中か、パネル全体の一括操作中 */
-	let busy = $derived(running || claudeStore.busy);
+	let busy = $derived(running || aiStore.busy);
 
 	let ops = $derived(diffChars(edit.old, edit.new));
 	let added = $derived(ops.reduce((n, op) => n + (op.kind === 'add' ? op.text.length : 0), 0));
@@ -85,24 +85,24 @@
 				<button
 					class="primary"
 					disabled={busy}
-					onclick={() => run(() => claudeStore.applyEdit(editState))}
+					onclick={() => run(() => aiStore.applyEdit(editState))}
 					>{editState.status === 'pending' ? '反映' : '再度反映'}</button
 				>
 			{/if}
 			{#if editState.status === 'pending'}
-				<button disabled={busy} onclick={() => claudeStore.rejectEdit(editState)}>却下</button>
+				<button disabled={busy} onclick={() => aiStore.rejectEdit(editState)}>却下</button>
 			{/if}
 			{#if editState.status === 'applied'}
 				{#if !editState.reviewed}
-					<button class="primary" disabled={busy} onclick={() => claudeStore.keepEdit(editState)}
+					<button class="primary" disabled={busy} onclick={() => aiStore.keepEdit(editState)}
 						>保持</button
 					>
 				{/if}
-				<button disabled={busy} onclick={() => run(() => claudeStore.revertEdit(editState))}
+				<button disabled={busy} onclick={() => run(() => aiStore.revertEdit(editState))}
 					>元に戻す</button
 				>
-				{#if claudeStore.canReveal(editState)}
-					<button onclick={() => claudeStore.revealEdit(editState)}>本文で表示</button>
+				{#if aiStore.canReveal(editState)}
+					<button onclick={() => aiStore.revealEdit(editState)}>本文で表示</button>
 				{/if}
 			{/if}
 		</div>

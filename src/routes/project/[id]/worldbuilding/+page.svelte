@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ClaudeToggle from '$lib/components/desktop/ClaudeToggle.svelte';
+	import AiToggle from '$lib/components/desktop/AiToggle.svelte';
 	import { confirmDialog } from '$lib/stores/toast.svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { worldbuildingDB } from '$lib/db';
@@ -82,7 +82,7 @@
 		worldbuildings = await worldbuildingDB.getByProjectId(currentProjectStore.project.id);
 	};
 
-	// Claude など画面の外で書き換わったら、読み直す(読み込み表示は出さない)
+	// AI など画面の外で書き換わったら、読み直す(読み込み表示は出さない)
 	let seenRevision = dataChange.revision('worldbuilding');
 	$effect(() => {
 		const revision = dataChange.revision('worldbuilding');
@@ -223,7 +223,7 @@
 					<p class="font:14 fg:theme-text-secondary mt:8">世界観や用語の設定資料を管理します</p>
 				</div>
 				<div class="flex flex-wrap:wrap ai:center gap:12 max-w:100%">
-					<ClaudeToggle />
+					<AiToggle />
 					<Button
 						class="px:18 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
 						onclick={openCreateModal}

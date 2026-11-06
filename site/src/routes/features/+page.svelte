@@ -136,13 +136,13 @@
 		},
 		{
 			id: 'desktop',
-			icon: 'claude',
+			icon: 'ai',
 			title: 'デスクトップ版',
 			lead: 'Windows・macOS・Linux 向けのアプリです。Web 版の機能に加えて、次のものが使えます。',
 			items: [
 				{
-					title: 'Claude Code のパネル',
-					body: '執筆画面の横で Claude Code に相談できます。作品ごとに会話が分かれ、全作品を横断した確認もできます。',
+					title: 'AI のパネル',
+					body: '執筆画面の横で AI に相談できます。Claude Code・Ollama・OpenAI 互換 API から選べます。作品ごとに会話が分かれ、全作品を横断した確認もできます。',
 					desktop: true
 				},
 				{

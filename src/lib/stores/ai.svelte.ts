@@ -1,12 +1,15 @@
 /**
- * デスクトップ版の Claude Code サイドパネルの状態。
+ * デスクトップ版の AI サイドパネルの状態。
  *
- * - 会話は作品ごと(作品を開いていないときは「全体」)に分け、Claude Code のセッション(--resume)で続ける。
+ * - AI の実行は、設定で選んだプロバイダ(src/lib/ai/。Claude Code・Ollama・OpenAI 互換 API など)が行う。
+ *   このストアはプロバイダの違いを意識せず、`provider.run` に質問を渡して出力の行を受け取る。
+ * - 会話は作品ごと(作品を開いていないときは「全体」)に分け、プロバイダのセッション(Claude Code は --resume)で続ける。
  *   作品をまたいで履歴が混ざらないので、1 回あたりに読み直す会話が短く済む。
  * - 作品ごとに複数の会話(セッション)を履歴として残し、パネルを開くと前回の会話を開く。
- * - 質問は送った時点で保存する。回答中に画面を再読み込みしても Claude Code は止まらず、
- *   戻ってきたらネイティブ側に溜まった出力を受け取り直して続きを表示する。
- * - 本文やデータはプロンプトに添付せず、Claude が MCP ツール(storift)で必要なときに読む。プロンプトには ID だけを付ける。
+ * - 質問は送った時点で保存する。Claude Code と Ollama はネイティブ側で動くので、回答中に画面を再読み込みしても止まらず、
+ *   戻ってきたらネイティブ側に溜まった出力を受け取り直して続きを表示する。HTTP 系のプロバイダは画面の中で動くので、
+ *   再読み込みすると途中で止まる。
+ * - 本文やデータはプロンプトに添付せず、AI が MCP ツール(storift)で必要なときに読む。プロンプトには ID だけを付ける。
  * - 編集は MCP の propose_edit で届き、設定(editMode)に応じて、提案のみ / 差分を確認して反映 / 自動で反映 を切り替える。
  *   過去の回答に書かれた <storift-edit> タグは履歴の表示にだけ使い、新しい実行では解析しない。
  */
@@ -36,16 +39,31 @@ import type {
 import { queueChanges } from '$lib/services/sync.service';
 import { applySceneText, getSceneText, isCrdtScene } from '$lib/services/sceneText.service';
 import {
-	attachClaude,
-	cancelClaude,
-	getClaudeStatus,
-	getOllamaStatus,
+	attachNativeRun,
+	cancelNativeRun,
 	openClaudeLogin,
-	releaseClaude,
-	sendToClaude,
-	type ClaudeStatus,
+	releaseNativeRun,
 	type ExitEvent
-} from '$lib/desktop/claude';
+} from '$lib/desktop/ai';
+import { registerBuiltinProviders } from '$lib/ai/providers';
+import { registry } from '$lib/ai/registry';
+import {
+	CHAT_KEY,
+	DEFAULT_AI_SETTINGS,
+	loadSettings,
+	migrateStorageKeys,
+	PANEL_KEY,
+	SETTINGS_KEY
+} from '$lib/ai/settings';
+import { EDIT_INSTRUCTIONS } from '$lib/ai/prompts';
+import type {
+	AiProvider,
+	AiProviderId,
+	AiSettings,
+	AiStatus,
+	EditMode,
+	ProviderSettingsKey
+} from '$lib/ai/types';
 import { isDesktop } from '$lib/desktop/platform';
 import {
 	applyStreamLine,
@@ -85,18 +103,11 @@ import {
 	type EntityRef
 } from '$lib/desktop/entities';
 import { dataChange } from '$lib/stores/dataChange.svelte';
-import {
-	EDIT_INSTRUCTIONS,
-	introducesRepeat,
-	replaceOnce,
-	revertAt,
-	type ReplaceResult
-} from '$lib/desktop/edits';
+import { introducesRepeat, replaceOnce, revertAt, type ReplaceResult } from '$lib/desktop/edits';
 import { scrollRangeIntoView, selectTextRange, textRange } from '$lib/utils/editorInput';
 import { remapEdgeStyles } from '$lib/utils/relationGraph';
 
-/** suggest: 提案のみ / confirm: 差分を見て反映 / auto: 自動で反映し、後から確認・元に戻す */
-export type EditMode = 'suggest' | 'confirm' | 'auto';
+export type { EditMode } from '$lib/ai/types';
 
 /** edit: 既存の本文・項目の置換 / create: 項目の新規追加 / delete: 項目の削除 */
 export type EditAction = 'edit' | 'create' | 'delete';
@@ -134,7 +145,7 @@ export interface EditorEdit {
 	message: ChatMessage;
 }
 
-/** MCP の結果(Claude に返す本文と、失敗かどうか) */
+/** MCP の結果(AI に返す本文と、失敗かどうか) */
 export interface ToolResult {
 	text: string;
 	isError: boolean;
@@ -178,14 +189,16 @@ export interface ChatMessage {
 	editMode?: EditMode;
 	running?: boolean;
 	costUsd?: number;
-	/** error: ログインが切れている・未ログインのエラー */
+	/** error: ログインが切れている・未ログイン、または API キーの誤りなど、認証のエラー */
 	auth?: boolean;
+	/** error: 認証のエラーを起こしたプロバイダ(対処の案内を出し分ける) */
+	provider?: AiProviderId;
 }
 
-/** 1 つの会話。Claude Code のセッション 1 つに当たる */
+/** 1 つの会話。プロバイダのセッション 1 つに当たる */
 export interface ChatSession {
 	id: string;
-	/** Claude Code のセッション ID(--resume に渡す) */
+	/** プロバイダのセッション ID(Claude Code は --resume に渡す) */
 	sessionId?: string;
 	/** MCP 版(現在の方式)で始めた会話か。false・未設定の会話は古い --resume を続けない */
 	mcp?: boolean;
@@ -211,31 +224,6 @@ export interface Quote {
 	text: string;
 	sceneId: string;
 	sceneTitle: string;
-}
-
-export type AiProvider = 'claude' | 'ollama';
-
-export const PROVIDER_LABELS: Record<AiProvider, string> = {
-	claude: 'Claude Code',
-	ollama: 'Ollama'
-};
-
-export const DEFAULT_OLLAMA_URL = 'http://localhost:11434';
-
-export interface ClaudeSettings {
-	/** どの AI で動かすか */
-	provider: AiProvider;
-	/** Ollama の接続先(空なら既定) */
-	ollamaUrl: string;
-	/** Ollama のモデル名 */
-	ollamaModel: string;
-	/** 空なら Claude Code の既定 */
-	model: string;
-	/** 空なら自動で探す */
-	claudePath: string;
-	/** WebSearch / WebFetch を許可する */
-	allowWeb: boolean;
-	editMode: EditMode;
 }
 
 export interface QuickAction {
@@ -284,22 +272,9 @@ export const EDIT_MODE_LABELS: Record<EditMode, string> = {
 	auto: '自動で反映(後から確認)'
 };
 
-const SETTINGS_KEY = 'storift:claude-settings';
-const PANEL_KEY = 'storift:claude-panel';
-const CHAT_KEY = 'storift:claude-chats';
 const GLOBAL_KEY = '__global__';
 const MAX_SAVED_MESSAGES = 100;
 const MAX_SAVED_SESSIONS = 30;
-
-const DEFAULT_SETTINGS: ClaudeSettings = {
-	provider: 'claude',
-	ollamaUrl: '',
-	ollamaModel: '',
-	model: '',
-	claudePath: '',
-	allowWeb: false,
-	editMode: 'suggest'
-};
 
 function load<T>(key: string, fallback: T): T {
 	try {
@@ -318,15 +293,26 @@ function save(key: string, value: unknown) {
 	}
 }
 
+registerBuiltinProviders();
+
+// 旧キー(storift:claude-*)の内容を新キーへ移す。localStorage が使えない環境では何もしない
+if (typeof localStorage !== 'undefined') migrateStorageKeys(localStorage);
+
 const panel = load(PANEL_KEY, { open: false, width: 420 });
 
 let open = $state(panel.open);
 let width = $state(panel.width);
-let settings = $state<ClaudeSettings>(load(SETTINGS_KEY, DEFAULT_SETTINGS));
+let settings = $state<AiSettings>(
+	typeof localStorage !== 'undefined'
+		? loadSettings(localStorage)
+		: structuredClone(DEFAULT_AI_SETTINGS)
+);
 const scopes = $state<Record<string, Scope>>(loadScopes());
 let runningId = $state<string | null>(null);
-let status = $state<ClaudeStatus | null>(null);
-let ollamaModels = $state<string[]>([]);
+let status = $state<AiStatus | null>(null);
+/** 実行中の送信の中断用(ネイティブ側から受け取り直した実行には無い) */
+// eslint-disable-next-line svelte/prefer-svelte-reactivity -- 画面に出さない内部の記録で、リアクティブにする必要がない
+const controllers = new Map<string, AbortController>();
 let quote = $state<Quote | null>(null);
 /** シーン ID → ワークスペースのファイル(未反映の編集案がどのシーン向けかの判定に使う) */
 let sceneFiles = $state<Record<string, string>>({});
@@ -396,7 +382,10 @@ function loadScopes(): Record<string, Scope> {
 }
 
 function scopeOf(key = currentKey()): Scope {
-	return (scopes[key] ??= { currentId: null, sessions: [] });
+	// `??=` の戻り値は代入した素のオブジェクトで、$state のプロキシではない。
+	// 素のオブジェクトを書き換えると画面に伝わらないので、代入してから読み直す
+	if (!scopes[key]) scopes[key] = { currentId: null, sessions: [] };
+	return scopes[key];
 }
 
 /** 開いている会話(読むだけ。無ければ null) */
@@ -976,7 +965,7 @@ function targetLabel(): string {
 	return quote ? '引用した部分' : '開いているシーン';
 }
 
-/** プロンプトの前に付ける、今アプリで開いているものの ID と引用。本文や項目は Claude が MCP で読む */
+/** プロンプトの前に付ける、今アプリで開いているものの ID と引用。本文や項目は AI が MCP で読む */
 function buildPrompt(text: string, mode: EditMode, attached: Quote | null): string {
 	const project = currentProjectStore.project;
 	const scene = editorStore.currentScene;
@@ -1008,7 +997,7 @@ const replacer =
 /** 提案(propose_*)を受けられる状態か確かめる。だめなら MCP の失敗結果を返す */
 function beginProposal(runId: string): { message: ChatMessage; mode: EditMode } | ToolResult {
 	const message = runningAssistant(runId);
-	if (!message) return toolError('この操作は Claude の回答中にだけ使えます');
+	if (!message) return toolError('この操作は AI の回答中にだけ使えます');
 	const mode = message.editMode ?? 'suggest';
 	if (mode === 'suggest') return toolError('提案のみの設定では本文や項目を変更できません');
 	return { message, mode };
@@ -1050,7 +1039,7 @@ async function exclusive(task: () => Promise<void>) {
 	}
 }
 
-export const claudeStore = {
+export const aiStore = {
 	get open() {
 		return open;
 	},
@@ -1072,14 +1061,32 @@ export const claudeStore = {
 	get settings() {
 		return settings;
 	},
-	updateSettings(changes: Partial<ClaudeSettings>) {
-		const pathChanged =
-			(changes.claudePath !== undefined && changes.claudePath !== settings.claudePath) ||
-			(changes.provider !== undefined && changes.provider !== settings.provider) ||
-			(changes.ollamaUrl !== undefined && changes.ollamaUrl !== settings.ollamaUrl);
+	/** 選んでいるプロバイダ(保存された ID が今は無いときは既定のプロバイダ) */
+	get provider(): AiProvider {
+		return registry.resolve(settings.provider);
+	},
+	/** 共通の設定(プロバイダの選択・編集モード)を更新する */
+	updateSettings(changes: Partial<Pick<AiSettings, 'provider' | 'editMode'>>) {
+		const providerChanged =
+			changes.provider !== undefined && changes.provider !== settings.provider;
 		settings = { ...settings, ...changes };
 		save(SETTINGS_KEY, settings);
-		if (pathChanged) void this.checkStatus();
+		if (providerChanged) void this.checkStatus();
+	},
+	/** プロバイダ別の設定を更新する。接続に関わる項目が変わったら状態を確かめ直す */
+	updateProviderSettings<K extends ProviderSettingsKey>(key: K, changes: Partial<AiSettings[K]>) {
+		const before = settings[key] as unknown as Record<string, unknown>;
+		const changed = Object.entries(changes).some(([k, v]) => v !== before[k]);
+		settings = { ...settings, [key]: { ...settings[key], ...changes } };
+		save(SETTINGS_KEY, settings);
+		// 接続先・実行ファイル・プリセットが変わったときだけ(モデルや許可の変更では通信しない)
+		const connection = ['claudePath', 'url', 'baseUrl', 'presetId'];
+		if (
+			changed &&
+			settings.provider === this.provider.id &&
+			Object.keys(changes).some((k) => connection.includes(k))
+		)
+			void this.checkStatus();
 	},
 	get messages(): ChatMessage[] {
 		return currentSession()?.messages ?? [];
@@ -1103,10 +1110,6 @@ export const claudeStore = {
 	},
 	get status() {
 		return status;
-	},
-	/** Ollama に入っているモデル(接続を確かめたときの一覧) */
-	get ollamaModels() {
-		return ollamaModels;
 	},
 	get quote() {
 		return quote;
@@ -1134,7 +1137,7 @@ export const claudeStore = {
 	},
 
 	/**
-	 * Claude の propose_edit(MCP)を処理する。対象と一致箇所を先に確かめ、通ったものだけ編集案として回答に記録する。
+	 * AI の propose_edit(MCP)を処理する。対象と一致箇所を先に確かめ、通ったものだけ編集案として回答に記録する。
 	 * confirm は承認待ちとして残し、auto はその場で反映して結果を返す。
 	 * 同じ対象にまだ反映していない編集案があるときは、それらを反映した状態に対して確かめる。
 	 */
@@ -1197,7 +1200,7 @@ export const claudeStore = {
 		return recorded;
 	},
 
-	/** Claude の propose_create(MCP)を処理する。項目の新規追加を提案として記録する(反映の扱いは propose_edit と同じ) */
+	/** AI の propose_create(MCP)を処理する。項目の新規追加を提案として記録する(反映の扱いは propose_edit と同じ) */
 	async proposeCreate(runId: string, input: ProposeCreateInput): Promise<ToolResult> {
 		const begun = beginProposal(runId);
 		if ('isError' in begun) return begun;
@@ -1233,7 +1236,7 @@ export const claudeStore = {
 		return recordProposal(begun.message, begun.mode, draft, draft.sceneTitle!);
 	},
 
-	/** Claude の propose_delete(MCP)を処理する。項目の削除を提案として記録する(反映の扱いは propose_edit と同じ) */
+	/** AI の propose_delete(MCP)を処理する。項目の削除を提案として記録する(反映の扱いは propose_edit と同じ) */
 	async proposeDelete(runId: string, input: ProposeDeleteInput): Promise<ToolResult> {
 		const begun = beginProposal(runId);
 		if ('isError' in begun) return begun;
@@ -1285,16 +1288,13 @@ export const claudeStore = {
 	},
 
 	async checkStatus() {
+		const provider = this.provider;
 		try {
-			if (settings.provider === 'ollama') {
-				const r = await getOllamaStatus(settings.ollamaUrl);
-				ollamaModels = r.models;
-				status = { found: r.found, version: r.version, error: r.error };
-				return;
-			}
-			status = await getClaudeStatus(settings.claudePath);
+			const result = await provider.status(settings);
+			// 確認の最中にプロバイダを切り替えたら、古い結果は捨てる
+			if (provider.id === this.provider.id) status = result;
 		} catch (error) {
-			status = { found: false, error: String(error) };
+			if (provider.id === this.provider.id) status = { found: false, error: String(error) };
 		}
 	},
 
@@ -1334,11 +1334,15 @@ export const claudeStore = {
 
 	/** ターミナルでログインを始める */
 	async openLogin() {
-		await openClaudeLogin(settings.claudePath);
+		await openClaudeLogin(settings.claudeCode.claudePath);
 	},
 
 	async cancel() {
-		if (runningId) await cancelClaude(runningId);
+		if (!runningId) return;
+		const controller = controllers.get(runningId);
+		// 再読み込みで受け取り直した実行にはコントローラーが無いので、ネイティブ側へ直接止めさせる
+		if (controller) controller.abort();
+		else await cancelNativeRun(runningId);
 	},
 
 	/** 質問を送る。options.quote を渡すとその引用を付ける(省略時は今の引用) */
@@ -1357,6 +1361,9 @@ export const claudeStore = {
 		const attached = options.quote !== undefined ? options.quote : quote;
 		if (options.quote === undefined) quote = null;
 		const mode = settings.editMode;
+		const provider = this.provider;
+		const controller = new AbortController();
+		controllers.set(requestId, controller);
 
 		conv.messages.push({
 			id: newId(),
@@ -1378,28 +1385,28 @@ export const claudeStore = {
 		// 送った時点で保存し、再読み込みしても質問と回答中の状態が残るようにする
 		persistChats();
 
-		await follow(conv, assistant, (onLine) =>
-			sendToClaude(
-				{
-					requestId,
-					prompt: buildPrompt(body, mode, attached),
-					// 会話の ID は AI ごとに別物なので、切り替えたあとは引き継がない
-					sessionId:
-						conv.sessionId?.startsWith('ollama-') === (settings.provider === 'ollama')
-							? conv.sessionId
-							: undefined,
-					provider: settings.provider,
-					ollamaUrl: settings.ollamaUrl || undefined,
-					model:
-						(settings.provider === 'ollama' ? settings.ollamaModel : settings.model) || undefined,
-					allowWeb: settings.allowWeb,
-					claudePath: settings.claudePath || undefined,
-					editMode: mode,
-					appendSystemPrompt: mode === 'suggest' ? undefined : EDIT_INSTRUCTIONS
-				},
-				onLine
-			)
-		);
+		try {
+			await follow(conv, assistant, provider.id, (onLine) =>
+				provider.run(
+					{
+						runId: requestId,
+						prompt: buildPrompt(body, mode, attached),
+						// 会話の ID はプロバイダごとに別物なので、切り替えたあとは引き継がない
+						sessionId:
+							conv.sessionId && registry.ownerOfSession(conv.sessionId) === provider.id
+								? conv.sessionId
+								: undefined,
+						editMode: mode,
+						appendSystemPrompt: mode === 'suggest' ? undefined : EDIT_INSTRUCTIONS,
+						settings: $state.snapshot(settings) as AiSettings
+					},
+					onLine,
+					controller.signal
+				)
+			);
+		} finally {
+			controllers.delete(requestId);
+		}
 	},
 
 	/** 最後の質問か(再生成・編集で送り直せるのは最後の質問だけ) */
@@ -1410,7 +1417,7 @@ export const claudeStore = {
 
 	/**
 	 * 最後の質問を送り直す(text を渡すと書き換えて送る)。それ以降の回答は一覧から消える。
-	 * Claude Code のセッションには前の回答も残るので、会話の流れとしては「もう一度聞いた」形になる
+	 * プロバイダの会話には前の回答も残るので、会話の流れとしては「もう一度聞いた」形になる
 	 */
 	async retry(message: ChatMessage, text = message.text ?? '') {
 		const conv = currentSession();
@@ -1562,6 +1569,7 @@ export const claudeStore = {
 async function follow(
 	conv: ChatSession,
 	assistant: ChatMessage,
+	providerId: AiProviderId,
 	run: (onLine: (line: string) => void) => Promise<ExitEvent | null>
 ) {
 	const requestId = assistant.id;
@@ -1598,9 +1606,9 @@ async function follow(
 			const detail = exit.stderr.trim() || turn.resultText || `終了コード ${exit.code}`;
 			// 古いセッションが見つからないときは、次から新しい会話で始める
 			if (/No conversation found/i.test(detail)) conv.sessionId = undefined;
-			const auth = isAuthError(detail);
-			if (auth && status) status = { ...status, loggedIn: false };
-			conv.messages.push({ id: newId(), role: 'error', text: detail, auth });
+			const auth = !!exit.authError || isAuthError(detail);
+			if (auth && status && providerId === 'claude-code') status = { ...status, loggedIn: false };
+			conv.messages.push({ id: newId(), role: 'error', text: detail, auth, provider: providerId });
 		}
 	} catch (error) {
 		conv.messages.push({ id: newId(), role: 'error', text: String(error) });
@@ -1610,7 +1618,7 @@ async function follow(
 		conv.updatedAt = Date.now();
 		if (runningId === requestId) runningId = null;
 		persistChats();
-		if (exit) void releaseClaude(requestId).catch(() => {});
+		if (exit) void releaseNativeRun(requestId).catch(() => {});
 	}
 }
 
@@ -1626,7 +1634,9 @@ function resumeRuns() {
 					continue;
 				}
 				runningId = message.id;
-				void follow(session, message, (onLine) => attachClaude(message.id, onLine));
+				void follow(session, message, settings.provider, (onLine) =>
+					attachNativeRun(message.id, onLine)
+				);
 			}
 		}
 	}

@@ -101,13 +101,13 @@ export const TOUR_STEPS: TourStep[] = [
 		optional: true
 	},
 	{
-		id: 'toolbar-claude',
-		title: 'Claude Code と連携する',
+		id: 'toolbar-ai',
+		title: 'AI と連携する',
 		body: [
-			'デスクトップ版では、Claude Code に本文の相談や推敲を依頼できます。',
-			'メモの todo を Claude Code に依頼することもできます。'
+			'デスクトップ版では、AI に本文の相談や推敲を依頼できます。',
+			'メモの todo を AI に依頼することもできます。'
 		],
-		target: '[data-tour="editor-claude"]',
+		target: '[data-tour="editor-ai"]',
 		optional: true,
 		when: 'desktop'
 	},

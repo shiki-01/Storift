@@ -20,7 +20,7 @@ export interface Memo {
 	sceneId?: string;
 	anchor?: MemoAnchor;
 	done: boolean;
-	/** Claude に依頼した日時 */
+	/** AI に依頼した日時 */
 	requestedAt?: number;
 	createdAt: number;
 	updatedAt: number;

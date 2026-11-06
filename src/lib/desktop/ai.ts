@@ -1,6 +1,7 @@
 /**
  * デスクトップ版のネイティブ側(src-tauri)の呼び出し。
  * Web 版では呼ばれない(呼び出し元で isDesktop() を確認する)。
+ * Claude Code と Ollama は Rust 側で実行し、出力を 1 行ずつ受け取る(sendNativeRun)。
  */
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
@@ -15,6 +16,9 @@ export interface ClaudeStatus {
 	loggedIn?: boolean;
 }
 
+/** ネイティブ側で実行するプロバイダ(Rust の SendRequest.provider の値) */
+export type NativeProvider = 'claude' | 'ollama';
+
 export interface SendRequest {
 	/** 実行の ID。MCP の呼び出しはこれで回答(assistant メッセージ)を特定する */
 	requestId: string;
@@ -27,7 +31,7 @@ export interface SendRequest {
 	/** 編集モード。propose_edit の扱い(提案のみでは使わせない)をネイティブ側が決める */
 	editMode: 'suggest' | 'confirm' | 'auto';
 	/** 省略時は claude。ollama ならローカルの Ollama で動かす(model は Ollama のモデル名) */
-	provider?: 'claude' | 'ollama';
+	provider?: NativeProvider;
 	ollamaUrl?: string;
 }
 
@@ -43,6 +47,8 @@ export interface ExitEvent {
 	code: number | null;
 	cancelled: boolean;
 	stderr: string;
+	/** HTTP 系プロバイダで、認証の失敗(API キーの誤りなど)だったとき */
+	authError?: boolean;
 }
 
 /** 出力 1 行(index はその実行の何行目か) */
@@ -70,7 +76,7 @@ export function openClaudeLogin(claudePath?: string): Promise<void> {
 	return invoke('claude_open_login', { claudePath: claudePath || null });
 }
 
-export function cancelClaude(requestId: string): Promise<void> {
+export function cancelNativeRun(requestId: string): Promise<void> {
 	return invoke('claude_cancel', { requestId });
 }
 
@@ -78,7 +84,7 @@ export function cancelClaude(requestId: string): Promise<void> {
  * メッセージを送り、出力を 1 行ずつ受け取る。
  * 戻り値の Promise はプロセスの終了で解決する。
  */
-export async function sendToClaude(
+export async function sendNativeRun(
 	request: SendRequest,
 	onLine: (line: string) => void
 ): Promise<ExitEvent> {
@@ -106,7 +112,7 @@ export async function sendToClaude(
  * 再読み込みなどで画面が入れ替わった後に、実行中(または直前に終わった)の出力を受け取り直し、
  * 続きも流す。ネイティブ側に記録が無ければ(アプリを再起動した等) null を返す。
  */
-export async function attachClaude(
+export async function attachNativeRun(
 	requestId: string,
 	onLine: (line: string) => void
 ): Promise<ExitEvent | null> {
@@ -145,8 +151,22 @@ export async function attachClaude(
 }
 
 /** 結果を受け取り終えた実行の記録をネイティブ側から消す */
-export function releaseClaude(requestId: string): Promise<void> {
+export function releaseNativeRun(requestId: string): Promise<void> {
 	return invoke('claude_release', { requestId });
+}
+
+/** アプリのツールの定義(MCP と同じ内容)。HTTP 系プロバイダが自分の形式へ変換して使う */
+export interface ToolDefinition {
+	name: string;
+	description: string;
+	inputSchema: Record<string, unknown>;
+}
+
+export function fetchToolDefinitions(
+	mode: 'suggest' | 'confirm' | 'auto',
+	allowWeb = false
+): Promise<ToolDefinition[]> {
+	return invoke('ai_tool_definitions', { mode, allowWeb });
 }
 
 export function getWorkspacePath(): Promise<{ path: string }> {

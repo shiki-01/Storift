@@ -180,7 +180,7 @@ function memosMarkdown(project: Project, memos: Memo[], sceneTitles: Map<string,
 			m.tags.length && `タグ: ${m.tags.map((t) => `#${t}`).join(' ')}`,
 			m.sceneId && sceneTitles.has(m.sceneId) && `シーン: ${sceneTitles.get(m.sceneId)}`,
 			m.anchor?.quote && `本文の引用: 「${m.anchor.quote.replace(/\s+/g, ' ')}」`,
-			m.requestedAt && '依頼: Claude に依頼済み'
+			m.requestedAt && '依頼: AI に依頼済み'
 		].filter(Boolean);
 		if (meta.length) lines.push(meta.map((x) => `- ${x}`).join('\n') + '\n');
 		if (rest.length) lines.push(`${rest.join('\n')}\n`);
@@ -254,7 +254,7 @@ export function entityContext(data: WorkspaceData): EntityContext {
 /**
  * IndexedDB の内容から、ワークスペースに置くファイル一式を作る。
  * overrides はシーン ID → 本文で、エディタの未保存の本文を反映するのに使う
- * (本文を毎回プロンプトに添付せず、Claude が必要なときにファイルを読めば済むようにするため)。
+ * (本文を毎回プロンプトに添付せず、AI が必要なときにファイルを読めば済むようにするため)。
  */
 export function buildWorkspace(
 	data: WorkspaceData,
@@ -303,7 +303,7 @@ export function buildWorkspace(
 			const chapterDir = chapterDirOf(dir, ci, chapter);
 			const scenes = byOrder(scenesByChapter.get(chapter.id) ?? []);
 			toc.push(`- 第${ci + 1}章 ${chapter.title}`);
-			// 概要が空でも書き出し、Claude が書き足せるようにする
+			// 概要が空でも書き出し、AI が書き足せるようにする
 			const synopsisPath = synopsisPathOf(chapterDir);
 			entityFiles[synopsisPath] = { kind: 'chapters', id: chapter.id };
 			files.push({ path: synopsisPath, content: renderEntity('chapters', chapter, ctx) });

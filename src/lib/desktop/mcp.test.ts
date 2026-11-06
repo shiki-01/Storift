@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ExitEvent, SendRequest } from './claude';
+import type { ExitEvent, SendRequest } from './ai';
 import type { Chapter, Character, Project, Scene } from '$lib/types';
 
 // ページ(開いている作品・シーン)と、Claude の実行(送信・出力・終了)を差し替える
@@ -25,12 +25,12 @@ vi.mock('$lib/services/sync.service', () => ({
 		env.queued.push(changes);
 	}
 }));
-vi.mock('$lib/desktop/claude', () => ({
-	sendToClaude: (req: SendRequest, onLine: (line: string) => void) =>
+vi.mock('$lib/desktop/ai', () => ({
+	sendNativeRun: (req: SendRequest, onLine: (line: string) => void) =>
 		new Promise<ExitEvent>((resolve) => env.sent.push({ req, onLine, resolve })),
-	releaseClaude: async () => {},
-	attachClaude: async () => null,
-	cancelClaude: async () => {},
+	releaseNativeRun: async () => {},
+	attachNativeRun: async () => null,
+	cancelNativeRun: async () => {},
 	getClaudeStatus: async () => ({ found: true }),
 	openClaudeLogin: async () => {},
 	syncWorkspace: async () => ({ files: [], projectDirs: {}, sceneFiles: {}, entityFiles: {} })
@@ -38,7 +38,7 @@ vi.mock('$lib/desktop/claude', () => ({
 
 const { db, scenesDB, charactersDB } = await import('$lib/db');
 const { callTool } = await import('./mcp');
-const { claudeStore } = await import('$lib/stores/claude.svelte');
+const { aiStore } = await import('$lib/stores/ai.svelte');
 const { editorStore } = await import('$lib/stores/editor.svelte');
 const { currentProjectStore } = await import('$lib/stores/currentProject.svelte');
 
@@ -124,7 +124,7 @@ async function seed() {
 
 /** 実行を始める。送信は保留され、テストが出力と終了を決める */
 function startRun(text: string) {
-	const done = claudeStore.send(text);
+	const done = aiStore.send(text);
 	const run = env.sent[env.sent.length - 1];
 	return { run, done };
 }
@@ -146,7 +146,7 @@ async function finishRun(run: (typeof env.sent)[number], done: Promise<void>) {
 
 /** 実行中の回答メッセージ(MCP の呼び出し元) */
 function assistantOf(requestId: string) {
-	return claudeStore.messages.find((m) => m.id === requestId);
+	return aiStore.messages.find((m) => m.id === requestId);
 }
 
 describe('MCP の読み取り', () => {
@@ -238,16 +238,16 @@ describe('propose_edit', () => {
 		env.page.url = new URL('http://localhost/project/p1');
 		editorStore.currentScene = null;
 		currentProjectStore.project = project();
-		claudeStore.newChat();
+		aiStore.newChat();
 	});
 
 	it('提案のみの設定では使えず、編集案も残らない', async () => {
-		claudeStore.updateSettings({ editMode: 'suggest' });
+		aiStore.updateSettings({ editMode: 'suggest' });
 		const { run, done } = startRun('直して');
 		expect(run.req.editMode).toBe('suggest');
 		expect(run.req.appendSystemPrompt).toBeUndefined();
 
-		const result = await claudeStore.proposeEdit(run.req.requestId, {
+		const result = await aiStore.proposeEdit(run.req.requestId, {
 			kind: 'scene',
 			id: 's1',
 			old: '夜明け',
@@ -260,13 +260,13 @@ describe('propose_edit', () => {
 	});
 
 	it('確認モードは承認待ちとして記録し、本文は変えない', async () => {
-		claudeStore.updateSettings({ editMode: 'confirm' });
+		aiStore.updateSettings({ editMode: 'confirm' });
 		const { run, done } = startRun('直して');
 		expect(run.req.editMode).toBe('confirm');
 		expect(run.req.appendSystemPrompt).toContain('propose_edit');
 		expect(run.req.prompt).toContain('projectId: p1');
 
-		const result = await claudeStore.proposeEdit(run.req.requestId, {
+		const result = await aiStore.proposeEdit(run.req.requestId, {
 			kind: 'scene',
 			id: 's1',
 			old: '夜明け',
@@ -282,14 +282,14 @@ describe('propose_edit', () => {
 
 		await finishRun(run, done);
 		// 承認(反映)すると本文に入る
-		await claudeStore.applyEdit(edit!);
+		await aiStore.applyEdit(edit!);
 		expect((await scenesDB.getById('s1'))?.content).toContain('朝焼けの街');
 	});
 
 	it('自動反映モードはその場で反映し、元に戻せる', async () => {
-		claudeStore.updateSettings({ editMode: 'auto' });
+		aiStore.updateSettings({ editMode: 'auto' });
 		const { run, done } = startRun('直して');
-		const result = await claudeStore.proposeEdit(run.req.requestId, {
+		const result = await aiStore.proposeEdit(run.req.requestId, {
 			kind: 'scene',
 			id: 's1',
 			old: '夜明け',
@@ -301,14 +301,14 @@ describe('propose_edit', () => {
 
 		const edit = assistantOf(run.req.requestId)!.edits![0];
 		expect(edit.status).toBe('applied');
-		await claudeStore.revertEdit(edit);
+		await aiStore.revertEdit(edit);
 		expect(edit.status).toBe('reverted');
 		expect((await scenesDB.getById('s1'))?.content).toBe(SCENE_TEXT);
 		await finishRun(run, done);
 	});
 
 	it('項目(キャラクター)も kind と id で指定して反映できる', async () => {
-		claudeStore.updateSettings({ editMode: 'auto' });
+		aiStore.updateSettings({ editMode: 'auto' });
 		const { run, done } = startRun('直して');
 		const result = await callTool(
 			'propose_edit',
@@ -321,11 +321,11 @@ describe('propose_edit', () => {
 	});
 
 	it('検証に失敗したら理由を返し、編集案は残さない', async () => {
-		claudeStore.updateSettings({ editMode: 'confirm' });
+		aiStore.updateSettings({ editMode: 'confirm' });
 		const { run, done } = startRun('直して');
 		const id = run.req.requestId;
 
-		const missing = await claudeStore.proposeEdit(id, {
+		const missing = await aiStore.proposeEdit(id, {
 			kind: 'scene',
 			id: 's1',
 			old: 'ない文',
@@ -334,7 +334,7 @@ describe('propose_edit', () => {
 		expect(missing).toMatchObject({ isError: true });
 		expect(missing.text).toContain('該当箇所が見つかりません');
 
-		const many = await claudeStore.proposeEdit(id, {
+		const many = await aiStore.proposeEdit(id, {
 			kind: 'scene',
 			id: 's1',
 			old: '。',
@@ -343,7 +343,7 @@ describe('propose_edit', () => {
 		expect(many).toMatchObject({ isError: true });
 		expect(many.text).toContain('2 か所');
 
-		const locked = await claudeStore.proposeEdit(id, {
+		const locked = await aiStore.proposeEdit(id, {
 			kind: 'characters',
 			id: 'ch1',
 			old: 'アキ',
@@ -357,9 +357,9 @@ describe('propose_edit', () => {
 	});
 
 	it('履歴は編集できず、回答中でなければ使えない', async () => {
-		claudeStore.updateSettings({ editMode: 'auto' });
+		aiStore.updateSettings({ editMode: 'auto' });
 		const { run, done } = startRun('直して');
-		const history = await claudeStore.proposeEdit(run.req.requestId, {
+		const history = await aiStore.proposeEdit(run.req.requestId, {
 			kind: 'history',
 			id: 'h1',
 			old: 'a',
@@ -369,7 +369,7 @@ describe('propose_edit', () => {
 		expect(history.text).toContain('履歴は読み取り専用');
 		await finishRun(run, done);
 
-		const late = await claudeStore.proposeEdit(run.req.requestId, {
+		const late = await aiStore.proposeEdit(run.req.requestId, {
 			kind: 'scene',
 			id: 's1',
 			old: '夜明け',
@@ -380,13 +380,13 @@ describe('propose_edit', () => {
 	});
 
 	it('開いているシーンへの提案は、未保存の本文を基準に確かめる', async () => {
-		claudeStore.updateSettings({ editMode: 'confirm' });
+		aiStore.updateSettings({ editMode: 'confirm' });
 		editorStore.currentScene = (await db.scenes.get('s1')) ?? null;
 		env.page.url = new URL('http://localhost/project/p1/editor');
 		editorStore.content = '未保存の夜明け';
 
 		const { run, done } = startRun('直して');
-		const result = await claudeStore.proposeEdit(run.req.requestId, {
+		const result = await aiStore.proposeEdit(run.req.requestId, {
 			kind: 'scene',
 			id: 's1',
 			old: '未保存',
@@ -400,13 +400,13 @@ describe('propose_edit', () => {
 	it('以前の形式の会話は、開き直すと古い --resume を捨てる', async () => {
 		const { run, done } = startRun('最初の質問');
 		await finishRun(run, done);
-		const first = claudeStore.sessions[0];
+		const first = aiStore.sessions[0];
 		expect(first.sessionId).toBe('s');
 		first.mcp = false;
 
-		claudeStore.newChat();
-		claudeStore.openSession(first.id);
-		expect(claudeStore.sessions.find((s) => s.id === first.id)?.sessionId).toBeUndefined();
+		aiStore.newChat();
+		aiStore.openSession(first.id);
+		expect(aiStore.sessions.find((s) => s.id === first.id)?.sessionId).toBeUndefined();
 	});
 });
 
@@ -420,7 +420,7 @@ async function prepareProposals() {
 	editorStore.currentScene = null;
 	currentProjectStore.project = project();
 	currentProjectStore.chapters = [chapter()];
-	claudeStore.newChat();
+	aiStore.newChat();
 }
 
 const queuedFlat = () => env.queued.flat();
@@ -429,7 +429,7 @@ describe('propose_create', () => {
 	beforeEach(prepareProposals);
 
 	it('確認モードは承認待ちで記録し、反映すると追加され、取り消すと削除される', async () => {
-		claudeStore.updateSettings({ editMode: 'confirm' });
+		aiStore.updateSettings({ editMode: 'confirm' });
 		const { run, done } = startRun('キャラを足して');
 		expect(run.req.appendSystemPrompt).toContain('propose_create');
 		const result = await callTool(
@@ -447,7 +447,7 @@ describe('propose_create', () => {
 		expect(edit.new).toContain('茶髪');
 		await finishRun(run, done);
 
-		await claudeStore.applyEdit(edit);
+		await aiStore.applyEdit(edit);
 		expect(edit.status).toBe('applied');
 		const created = await db.characters.get(edit.entity!.id);
 		expect(created).toMatchObject({
@@ -458,19 +458,19 @@ describe('propose_create', () => {
 		});
 		expect(queuedFlat()).toContainEqual({ type: 'characters', id: created!.id, action: 'create' });
 
-		await claudeStore.revertEdit(edit);
+		await aiStore.revertEdit(edit);
 		expect(edit.status).toBe('reverted');
 		expect(await db.characters.get(created!.id)).toBeUndefined();
 		expect(queuedFlat().at(-1)).toEqual({ type: 'characters', id: created!.id, action: 'delete' });
 
 		// 取り消したあとの再反映は同じ ID で復元される
-		await claudeStore.applyEdit(edit);
+		await aiStore.applyEdit(edit);
 		expect(edit.status).toBe('applied');
 		expect((await db.characters.get(created!.id))?.name).toBe('タロウ');
 	});
 
 	it('自動モードは種類ごとにその場で追加する(章は画面の状態も更新)', async () => {
-		claudeStore.updateSettings({ editMode: 'auto' });
+		aiStore.updateSettings({ editMode: 'auto' });
 		const { run, done } = startRun('足して');
 		const id = run.req.requestId;
 		const call = (kind: string, fields: Record<string, unknown>) =>
@@ -524,14 +524,14 @@ describe('propose_create', () => {
 		).toEqual([]);
 
 		const chapterEdit = assistantOf(id)!.edits!.at(-1)!;
-		await claudeStore.revertEdit(chapterEdit);
+		await aiStore.revertEdit(chapterEdit);
 		expect(await db.chapters.get(chapter2!.id)).toBeUndefined();
 		expect(currentProjectStore.chapters.map((c) => c.title)).toEqual(['一章']);
 		await finishRun(run, done);
 	});
 
 	it('章にシーンが追加されていたら取り消せない', async () => {
-		claudeStore.updateSettings({ editMode: 'auto' });
+		aiStore.updateSettings({ editMode: 'auto' });
 		const { run, done } = startRun('足して');
 		await callTool(
 			'propose_create',
@@ -540,14 +540,14 @@ describe('propose_create', () => {
 		);
 		const edit = assistantOf(run.req.requestId)!.edits![0];
 		await db.scenes.put({ ...scene('sx', '新', 0, 'x'), chapterId: edit.entity!.id });
-		await claudeStore.revertEdit(edit);
+		await aiStore.revertEdit(edit);
 		expect(edit.status).toBe('applied');
 		expect(edit.error).toContain('シーンがある');
 		await finishRun(run, done);
 	});
 
 	it('不正な入力は理由を返し、編集案を残さない', async () => {
-		claudeStore.updateSettings({ editMode: 'confirm' });
+		aiStore.updateSettings({ editMode: 'confirm' });
 		const { run, done } = startRun('足して');
 		const id = run.req.requestId;
 		await db.progressLogs.put({
@@ -589,7 +589,7 @@ describe('propose_create', () => {
 	});
 
 	it('提案のみの設定では使えない', async () => {
-		claudeStore.updateSettings({ editMode: 'suggest' });
+		aiStore.updateSettings({ editMode: 'suggest' });
 		const { run, done } = startRun('足して');
 		const result = await callTool(
 			'propose_create',
@@ -624,7 +624,7 @@ describe('propose_delete', () => {
 	});
 
 	it('確認モードは承認待ちで、反映するとキャラクターと参照が消え、取り消すと丸ごと戻る', async () => {
-		claudeStore.updateSettings({ editMode: 'confirm' });
+		aiStore.updateSettings({ editMode: 'confirm' });
 		const { run, done } = startRun('消して');
 		const before = (await db.characters.get('ch1'))!;
 		const result = await callTool(
@@ -648,7 +648,7 @@ describe('propose_delete', () => {
 		expect(again.isError).toBe(true);
 		await finishRun(run, done);
 
-		await claudeStore.applyEdit(edit);
+		await aiStore.applyEdit(edit);
 		expect(edit.status).toBe('applied');
 		expect(await db.characters.get('ch1')).toBeUndefined();
 		expect((await db.characters.get('ch2'))?.relationships).toEqual([
@@ -660,7 +660,7 @@ describe('propose_delete', () => {
 		expect(queuedFlat()).toContainEqual({ type: 'characters', id: 'ch1', action: 'delete' });
 		expect(queuedFlat()).toContainEqual({ type: 'characters', id: 'ch2', action: 'update' });
 
-		await claudeStore.revertEdit(edit);
+		await aiStore.revertEdit(edit);
 		expect(edit.status).toBe('reverted');
 		const restored = (await db.characters.get('ch1'))!;
 		expect(restored).toEqual(before);
@@ -675,7 +675,7 @@ describe('propose_delete', () => {
 	});
 
 	it('自動モードは種類ごとにその場で削除する', async () => {
-		claudeStore.updateSettings({ editMode: 'auto' });
+		aiStore.updateSettings({ editMode: 'auto' });
 		await db.plots.put({
 			id: 'pl1',
 			projectId: 'p1',
@@ -738,7 +738,7 @@ describe('propose_delete', () => {
 		expect(await db.progressLogs.count()).toBe(0);
 		// 取り消しで丸ごと戻る
 		const edits = assistantOf(id)!.edits!;
-		for (const edit of edits) await claudeStore.revertEdit(edit);
+		for (const edit of edits) await aiStore.revertEdit(edit);
 		expect((await db.memos.get('m1'))?.text).toBe('メモ');
 		expect((await db.progressLogs.get('l1'))?.date).toBe('2026-02-01');
 		expect((await db.plots.get('pl1'))?.title).toBe('起');
@@ -747,7 +747,7 @@ describe('propose_delete', () => {
 	});
 
 	it('削除できない種類・存在しない項目は理由を返す', async () => {
-		claudeStore.updateSettings({ editMode: 'auto' });
+		aiStore.updateSettings({ editMode: 'auto' });
 		const { run, done } = startRun('消して');
 		const id = run.req.requestId;
 		for (const [kind, target, message] of [
@@ -771,7 +771,7 @@ describe('まとめて反映', () => {
 	beforeEach(prepareProposals);
 
 	it('1 件が例外になっても残りを反映し、失敗した編集に理由を残す', async () => {
-		claudeStore.updateSettings({ editMode: 'confirm' });
+		aiStore.updateSettings({ editMode: 'confirm' });
 		const { run, done } = startRun('直して');
 		const id = run.req.requestId;
 		await callTool('propose_edit', { kind: 'characters', id: 'ch1', old: '黒髪', new: '銀髪' }, id);
@@ -781,7 +781,7 @@ describe('まとめて反映', () => {
 		const message = assistantOf(id)!;
 
 		const spy = vi.spyOn(charactersDB, 'update').mockRejectedValueOnce(new Error('disk full'));
-		await claudeStore.applyAll(message);
+		await aiStore.applyAll(message);
 		spy.mockRestore();
 
 		const [first, second, third] = message.edits!;
@@ -791,7 +791,7 @@ describe('まとめて反映', () => {
 		expect(third.status).toBe('applied');
 		expect((await db.characters.get('ch2'))?.appearance).toBe('青い外套');
 		expect((await scenesDB.getById('s2'))?.content).toBe('同じ場面');
-		expect(claudeStore.busy).toBe(false);
+		expect(aiStore.busy).toBe(false);
 		// 同期キューへの登録は 1 回にまとまる
 		expect(env.queued).toHaveLength(1);
 		expect(env.queued[0]).toEqual(
@@ -803,7 +803,7 @@ describe('まとめて反映', () => {
 
 		// 元に戻すときも 1 件の例外で止まらない
 		const revertSpy = vi.spyOn(scenesDB, 'update').mockRejectedValueOnce(new Error('locked'));
-		await claudeStore.revertAll(message);
+		await aiStore.revertAll(message);
 		revertSpy.mockRestore();
 		expect(third.status).toBe('applied');
 		expect(third.error).toContain('locked');
@@ -811,7 +811,7 @@ describe('まとめて反映', () => {
 	});
 
 	it('実行中の二重実行を防ぎ、同じ対象への編集は 1 回の書き込みにまとめる', async () => {
-		claudeStore.updateSettings({ editMode: 'confirm' });
+		aiStore.updateSettings({ editMode: 'confirm' });
 		const { run, done } = startRun('直して');
 		const id = run.req.requestId;
 		await callTool('propose_edit', { kind: 'scene', id: 's1', old: '夜明け', new: '朝焼け' }, id);
@@ -820,24 +820,24 @@ describe('まとめて反映', () => {
 		const message = assistantOf(id)!;
 
 		const spy = vi.spyOn(scenesDB, 'update');
-		const first = claudeStore.applyAll(message);
-		expect(claudeStore.busy).toBe(true);
-		const second = claudeStore.applyAll(message);
+		const first = aiStore.applyAll(message);
+		expect(aiStore.busy).toBe(true);
+		const second = aiStore.applyAll(message);
 		await Promise.all([first, second]);
 		expect(spy).toHaveBeenCalledTimes(1);
 		spy.mockRestore();
-		expect(claudeStore.busy).toBe(false);
+		expect(aiStore.busy).toBe(false);
 		expect(message.edits!.map((e) => e.status)).toEqual(['applied', 'applied']);
 		const content = (await scenesDB.getById('s1'))!.content;
 		expect(content).toContain('朝焼けの街');
 		expect(content).toContain('少女は駅');
 
-		await claudeStore.revertAll(message);
+		await aiStore.revertAll(message);
 		expect((await scenesDB.getById('s1'))?.content).toBe(SCENE_TEXT);
 	});
 
 	it('同じ対象の未反映の編集を踏まえて検証し、重なる提案は提案時に断る', async () => {
-		claudeStore.updateSettings({ editMode: 'confirm' });
+		aiStore.updateSettings({ editMode: 'confirm' });
 		const { run, done } = startRun('直して');
 		const id = run.req.requestId;
 		const ok = await callTool(
@@ -865,26 +865,26 @@ describe('まとめて反映', () => {
 
 		const [first, second] = assistantOf(id)!.edits!;
 		// 順番を逆にすると、依存した編集は反映できない
-		await claudeStore.applyEdit(second);
+		await aiStore.applyEdit(second);
 		expect(second.status).toBe('failed');
-		await claudeStore.applyEdit(first);
-		await claudeStore.applyEdit(second);
+		await aiStore.applyEdit(first);
+		await aiStore.applyEdit(second);
 		expect(second.status).toBe('applied');
 		expect((await scenesDB.getById('s1'))?.content).toContain('朝の村は静かだった');
 	});
 
 	it('反映済みの別の編集と重なって失敗したときは、そのことを添える', async () => {
-		claudeStore.updateSettings({ editMode: 'confirm' });
+		aiStore.updateSettings({ editMode: 'confirm' });
 		const { run, done } = startRun('直して');
 		const id = run.req.requestId;
 		await callTool('propose_edit', { kind: 'scene', id: 's1', old: '夜明け', new: '朝焼け' }, id);
 		await callTool('propose_edit', { kind: 'scene', id: 's1', old: '少年', new: '少女' }, id);
 		await finishRun(run, done);
 		const [first, second] = assistantOf(id)!.edits!;
-		await claudeStore.applyEdit(first);
+		await aiStore.applyEdit(first);
 		// 間に本文が書き換わった
 		await scenesDB.update('s1', { content: '全く別の本文' });
-		await claudeStore.applyEdit(second);
+		await aiStore.applyEdit(second);
 		expect(second.status).toBe('failed');
 		expect(second.error).toContain('該当箇所が見つかりません');
 		expect(second.error).toContain('反映済みの別の編集');

@@ -1,7 +1,7 @@
 /**
  * キャラクター・設定資料・プロット・メモ・章の概要・進捗ログ・履歴・相関図の配置を、
  * 1 項目 1 ファイルの Markdown にする定義と、
- * Claude の編集案を適用した結果のファイルを各フィールドへ書き戻すための解析。
+ * AI の編集案を適用した結果のファイルを各フィールドへ書き戻すための解析。
  *
  * ファイルは「# 見出し」+ 読み取り専用の情報 + 編集できるフィールドごとの「## フィールド名」節からなる。
  * 編集案を適用したあとのファイルを読み直し、編集できるフィールド以外(名前・関係の相手など)が
@@ -102,7 +102,7 @@ interface EntityDef<T> {
 	fields: FieldDef<T>[];
 	/** 編集フィールドのあとに置く、編集できない情報 */
 	tail?: (entity: T, ctx: EntityContext) => string[];
-	/** 編集できないものを Claude に伝える短い説明 */
+	/** 編集できないものを AI に伝える短い説明 */
 	readonly: string;
 	/** 指定すると、そのファイルは一切編集できない(理由を返す) */
 	locked?: string;
@@ -486,7 +486,7 @@ export function entityTitle<K extends EntityKind>(kind: K, entity: EntityMap[K])
 	return DEFS[kind].title(entity);
 }
 
-/** Claude が propose_edit で編集できる項目の種類(履歴は読み取り専用) */
+/** AI が propose_edit で編集できる項目の種類(履歴は読み取り専用) */
 export const EDITABLE_KINDS = [
 	'chapters',
 	'characters',

@@ -26,7 +26,7 @@
 	import TourOverlay from '$lib/components/tutorial/TourOverlay.svelte';
 	import { themes, themeStore } from '$lib/stores/theme.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
-	import { claudeStore } from '$lib/stores/claude.svelte';
+	import { aiStore } from '$lib/stores/ai.svelte';
 	import { updaterStore } from '$lib/stores/updater.svelte';
 	import TitleBar from '$lib/components/desktop/TitleBar.svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
@@ -37,14 +37,14 @@
 
 	let { children } = $props();
 
-	// デスクトップ版(Tauri)だけ、Claude Code のパネル(執筆画面)と自前のタイトルバーを使う
+	// デスクトップ版(Tauri)だけ、AI パネル(執筆画面)と自前のタイトルバーを使う
 	const desktop = isDesktop();
 
 	function onGlobalKeydown(e: KeyboardEvent) {
 		// Ctrl(Cmd)+Shift+L でパネルの開閉
 		if (desktop && (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'l') {
 			e.preventDefault();
-			claudeStore.toggle();
+			aiStore.toggle();
 		}
 	}
 

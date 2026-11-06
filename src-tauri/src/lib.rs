@@ -1,6 +1,7 @@
 mod claude;
 mod mcp;
 mod ollama;
+mod secrets;
 mod shell_env;
 mod workspace;
 
@@ -13,6 +14,8 @@ pub fn run() {
         // 更新の確認・ダウンロード・再起動(署名付きの配布物だけを受け付ける)
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // AI プロバイダの HTTP 通信(Rust 側から送るので CORS の影響を受けない)。送れる先は capabilities のスコープで制限する
+        .plugin(tauri_plugin_http::init())
         // 枠(装飾)の有無は保存しない。前回の状態が復元されると、Windows で外したはずの OS のタイトルバーが戻ってしまう
         .plugin(
             tauri_plugin_window_state::Builder::default()
@@ -48,6 +51,10 @@ pub fn run() {
             claude::claude_open_login,
             ollama::ollama_status,
             mcp::mcp_respond,
+            mcp::ai_tool_definitions,
+            secrets::secret_set,
+            secrets::secret_get,
+            secrets::secret_delete,
             workspace::workspace_sync,
             workspace::workspace_info,
             workspace::workspace_open,

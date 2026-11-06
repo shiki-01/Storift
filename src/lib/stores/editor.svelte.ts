@@ -6,7 +6,7 @@ let content = $state('');
 let isDirty = $state(false);
 // 共同編集(CRDT)中のシーン ID。本文は Y が正なので、同じシーンのメタ情報の差し替えで content を巻き戻さない
 let crdtSceneId: string | null = null;
-// 共同編集中に、エディタ以外(Claude など)が本文を書き換えるための入口(Y のハンドルへ差分を入れる)
+// 共同編集中に、エディタ以外(AI など)が本文を書き換えるための入口(Y のハンドルへ差分を入れる)
 let externalTextSink: ((text: string) => boolean) | null = null;
 let isSaving = $state(false);
 let writingMode = $state<'vertical' | 'horizontal'>('horizontal');
@@ -47,7 +47,7 @@ let sceneListOpen = $state(initialPrefs.sceneListOpen);
 // 集中モード: 上下のバーをすべて隠す(永続化しない)
 let focusMode = $state(false);
 
-// メモパネル(執筆画面の右側。Claude パネルと同じ位置で排他)
+// メモパネル(執筆画面の右側。AI パネルと同じ位置で排他)
 let memoOpen = $state(false);
 /** 本文の選択から開いたときの、新規メモの範囲 */
 let memoDraft = $state<MemoDraft | null>(null);
@@ -100,7 +100,7 @@ export const editorStore = {
 		externalTextSink = value;
 	},
 	/**
-	 * エディタ以外(Claude の編集の反映など)が、開いているシーンの本文を書き換える。
+	 * エディタ以外(AI の編集の反映など)が、開いているシーンの本文を書き換える。
 	 * 共同編集中は Y のハンドルへ差分として入れ(失敗なら false)、そうでなければ従来どおり content を更新する。
 	 */
 	applyExternalText(value: string): boolean {

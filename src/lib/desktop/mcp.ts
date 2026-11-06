@@ -8,7 +8,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { editorStore } from '$lib/stores/editor.svelte';
-import { claudeStore, type ToolResult } from '$lib/stores/claude.svelte';
+import { aiStore, type ToolResult } from '$lib/stores/ai.svelte';
 import { entityContext, loadWorkspaceData, STATUS_LABELS, type WorkspaceData } from './workspace';
 import {
 	PLOT_STATUS_LABELS,
@@ -29,7 +29,7 @@ interface McpRequest {
 type Args = Record<string, unknown>;
 type Handler = (args: Args, runId: string) => Promise<ToolResult>;
 
-/** 呼び出し側の誤り(引数の不備・対象が見つからない)。理由をそのまま Claude に返す */
+/** 呼び出し側の誤り(引数の不備・対象が見つからない)。理由をそのまま AI に返す */
 class ToolError extends Error {}
 
 const LIST_KINDS = [
@@ -115,7 +115,7 @@ function optStrList(args: Args, key: string): string[] | undefined {
 
 /** 作品の指定。省略時は開いている作品 */
 function projectOf(args: Args, data: WorkspaceData): string {
-	const id = optStr(args, 'projectId') || claudeStore.openProjectId;
+	const id = optStr(args, 'projectId') || aiStore.openProjectId;
 	if (!id)
 		throw new ToolError(
 			'作品が開かれていません。projectId を指定してください(list_projects で確認できます)'
@@ -149,7 +149,7 @@ function rowLines(rows: Row[]): string {
 
 /** シーンの本文。開いているシーンは未保存の編集を優先する */
 function sceneText(scene: { id: string; content: string }): string {
-	return claudeStore.openSceneId === scene.id ? editorStore.content : scene.content;
+	return aiStore.openSceneId === scene.id ? editorStore.content : scene.content;
 }
 
 function inProject<T extends { projectId: string }>(items: T[], projectId: string): T[] {
@@ -251,7 +251,7 @@ const HANDLERS: Record<string, Handler> = {
 				const chars = data.scenes
 					.filter((s) => s.projectId === p.id)
 					.reduce((sum, s) => sum + s.characterCount, 0);
-				const open = p.id === claudeStore.openProjectId ? ' / 開いている作品' : '';
+				const open = p.id === aiStore.openProjectId ? ' / 開いている作品' : '';
 				return {
 					id: p.id,
 					title: p.title,
@@ -378,14 +378,14 @@ const HANDLERS: Record<string, Handler> = {
 		const old = str(args, 'old');
 		if (typeof args.new !== 'string')
 			throw new ToolError('new は文字列で指定してください(削除するときは空文字)');
-		return claudeStore.proposeEdit(runId, { kind, id, old, new: args.new });
+		return aiStore.proposeEdit(runId, { kind, id, old, new: args.new });
 	},
 
 	async propose_create(args, runId) {
 		const kind = str(args, 'kind');
 		if (args.fields === undefined || args.fields === null)
 			throw new ToolError('fields を指定してください(項目名と値のオブジェクト)');
-		return claudeStore.proposeCreate(runId, {
+		return aiStore.proposeCreate(runId, {
 			kind,
 			fields: args.fields,
 			projectId: optStr(args, 'projectId')
@@ -393,7 +393,7 @@ const HANDLERS: Record<string, Handler> = {
 	},
 
 	async propose_delete(args, runId) {
-		return claudeStore.proposeDelete(runId, { kind: str(args, 'kind'), id: str(args, 'id') });
+		return aiStore.proposeDelete(runId, { kind: str(args, 'kind'), id: str(args, 'id') });
 	}
 };
 

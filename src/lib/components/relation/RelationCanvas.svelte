@@ -77,7 +77,7 @@
 		rebuild();
 	});
 
-	// 相関図が外(Claude の編集など)で書き換わったら、読み直して作り直す
+	// 相関図が外(AI の編集など)で書き換わったら、読み直して作り直す
 	let seenRelationRevision = dataChange.revision('relationMaps');
 	$effect(() => {
 		const revision = dataChange.revision('relationMaps');

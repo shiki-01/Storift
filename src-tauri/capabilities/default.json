@@ -13,6 +13,15 @@
 		"opener:default",
 		"window-state:default",
 		"updater:default",
-		"process:allow-restart"
+		"process:allow-restart",
+		{
+			"identifier": "http:default",
+			"allow": [
+				{ "url": "https://**" },
+				{ "url": "http://localhost:*/**" },
+				{ "url": "http://127.0.0.1:*/**" },
+				{ "url": "http://[::1]:*/**" }
+			]
+		}
 	]
 }

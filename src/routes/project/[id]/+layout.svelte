@@ -4,9 +4,9 @@
 	import { projectsDB, chaptersDB, scenesDB } from '$lib/db';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { slide } from 'svelte/transition';
-	import ClaudePanel from '$lib/components/desktop/ClaudePanel.svelte';
+	import AiPanel from '$lib/components/desktop/AiPanel.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
-	import { claudeStore } from '$lib/stores/claude.svelte';
+	import { aiStore } from '$lib/stores/ai.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
 	import { startCurrentProjectSync, stopCurrentProjectSync } from '$lib/services/sync.service';
@@ -14,11 +14,9 @@
 
 	let { children } = $props();
 
-	// Claude パネルは作品の全画面(執筆・プロット・人物・設定資料・進捗)で共通に右へ出す
+	// AI パネルは作品の全画面(執筆・プロット・人物・設定資料・進捗)で共通に右へ出す
 	const desktop = isDesktop();
-	let showClaude = $derived(
-		desktop && claudeStore.open && !viewport.isMobile && !editorStore.focusMode
-	);
+	let showAi = $derived(desktop && aiStore.open && !viewport.isMobile && !editorStore.focusMode);
 
 	onMount(async () => {
 		const projectId = page.params.id;
@@ -71,9 +69,9 @@
 				</div>
 			{/key}
 		</div>
-		{#if showClaude}
-			<div class="claude-slot" transition:slide={{ axis: 'x', duration: 220 }}>
-				<ClaudePanel />
+		{#if showAi}
+			<div class="ai-slot" transition:slide={{ axis: 'x', duration: 220 }}>
+				<AiPanel />
 			</div>
 		{/if}
 	</div>
@@ -94,7 +92,7 @@
 		flex-direction: column;
 	}
 
-	.claude-slot {
+	.ai-slot {
 		flex: none;
 		display: flex;
 		min-height: 0;

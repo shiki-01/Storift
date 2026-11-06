@@ -8,13 +8,13 @@
 	import DOMPurify from 'dompurify';
 	import { openUrl } from '@tauri-apps/plugin-opener';
 	import {
-		claudeStore,
+		aiStore,
 		EDIT_MODE_LABELS,
 		QUICK_ACTIONS,
 		type ChatMessage,
 		type EditMode,
 		type QuickAction
-	} from '$lib/stores/claude.svelte';
+	} from '$lib/stores/ai.svelte';
 	import { splitEdits, type EditProposal } from '$lib/desktop/edits';
 	import EditCard from './EditCard.svelte';
 
@@ -50,7 +50,7 @@
 	};
 
 	let sessionTitle = $derived(
-		claudeStore.sessions.find((s) => s.id === claudeStore.currentSessionId)?.title ?? '新しい会話'
+		aiStore.sessions.find((s) => s.id === aiStore.currentSessionId)?.title ?? '新しい会話'
 	);
 
 	async function copyText(id: string, text: string) {
@@ -82,7 +82,7 @@
 		const text = editingText;
 		editingId = null;
 		stickToBottom = true;
-		void claudeStore.retry(message, text);
+		void aiStore.retry(message, text);
 	}
 
 	function onEditKeydown(e: KeyboardEvent, message: ChatMessage) {
@@ -96,7 +96,7 @@
 	}
 
 	function startNewChat() {
-		claudeStore.newChat();
+		aiStore.newChat();
 		showHistory = false;
 		void tick().then(() => inputEl?.focus());
 	}
@@ -113,7 +113,7 @@
 		inputEl.style.height = `${Math.min(inputEl.scrollHeight, 200)}px`;
 	}
 
-	let notFound = $derived(claudeStore.status !== null && !claudeStore.status.found);
+	let notFound = $derived(aiStore.status !== null && !aiStore.status.found);
 
 	function renderMarkdown(text: string): string {
 		return DOMPurify.sanitize(marked.parse(text, { async: false, breaks: true }) as string);
@@ -127,7 +127,7 @@
 	}
 	$effect(() => {
 		// 表示内容の変化を購読する
-		void JSON.stringify(claudeStore.messages);
+		void JSON.stringify(aiStore.messages);
 		if (stickToBottom) void tick().then(() => listEl?.scrollTo({ top: listEl.scrollHeight }));
 	});
 
@@ -168,29 +168,29 @@
 
 	// エディタで「AI に聞く」を押したら入力欄へ
 	$effect(() => {
-		if (claudeStore.focusRequest) void tick().then(() => inputEl?.focus());
+		if (aiStore.focusRequest) void tick().then(() => inputEl?.focus());
 	});
 
 	async function send(text = input) {
-		if (!text.trim() || claudeStore.isRunning) return;
+		if (!text.trim() || aiStore.isRunning) return;
 		if (text === input) {
 			input = '';
 			void tick().then(autoGrow);
 		}
 		showHistory = false;
 		stickToBottom = true;
-		await claudeStore.send(text);
+		await aiStore.send(text);
 		inputEl?.focus();
 	}
 
 	function runAction(action: QuickAction) {
-		void send(claudeStore.actionPrompt(action));
+		void send(aiStore.actionPrompt(action));
 	}
 
 	function actionDisabled(action: QuickAction): boolean {
-		if (claudeStore.isRunning || notFound) return true;
-		if (action.needs === 'target') return !claudeStore.hasScene && !claudeStore.quote;
-		if (action.needs === 'project') return !claudeStore.hasProject;
+		if (aiStore.isRunning || notFound) return true;
+		if (action.needs === 'target') return !aiStore.hasScene && !aiStore.quote;
+		if (action.needs === 'project') return !aiStore.hasProject;
 		return false;
 	}
 
@@ -213,10 +213,10 @@
 	// 左端のつまみで幅を変える
 	function startResize(e: PointerEvent) {
 		const startX = e.clientX;
-		const startWidth = claudeStore.width;
+		const startWidth = aiStore.width;
 		const target = e.currentTarget as HTMLElement;
 		target.setPointerCapture(e.pointerId);
-		const move = (ev: PointerEvent) => (claudeStore.width = startWidth + (startX - ev.clientX));
+		const move = (ev: PointerEvent) => (aiStore.width = startWidth + (startX - ev.clientX));
 		const up = () => {
 			target.removeEventListener('pointermove', move);
 			target.removeEventListener('pointerup', up);
@@ -229,7 +229,7 @@
 	async function openLogin() {
 		loginError = '';
 		try {
-			await claudeStore.openLogin();
+			await aiStore.openLogin();
 		} catch (error) {
 			loginError = String(error);
 		}
@@ -240,7 +240,7 @@
 	}
 
 	onMount(() => {
-		if (!claudeStore.status) void claudeStore.checkStatus();
+		if (!aiStore.status) void aiStore.checkStatus();
 		inputEl?.focus();
 	});
 </script>
@@ -262,7 +262,7 @@
 	</svg>
 {/snippet}
 
-<aside class="panel" data-claude-panel style="width:{claudeStore.width}px" aria-label="Claude Code">
+<aside class="panel" data-ai-panel style="width:{aiStore.width}px" aria-label="AI">
 	<div
 		class="resize"
 		role="separator"
@@ -274,13 +274,13 @@
 	<header class="panel-header">
 		<span
 			class="dot"
-			class:ok={claudeStore.status?.found}
+			class:ok={aiStore.status?.found}
 			class:ng={notFound}
-			title={claudeStore.status?.version ?? claudeStore.status?.error ?? '確認中'}
+			title={aiStore.status?.version ?? aiStore.status?.error ?? '確認中'}
 		></span>
 		<div class="heading">
 			<span class="title">{showHistory ? '会話の履歴' : sessionTitle}</span>
-			<span class="scope" title="会話は作品ごとに分かれます">{claudeStore.scopeLabel}</span>
+			<span class="scope" title="会話は作品ごとに分かれます">{aiStore.scopeLabel}</span>
 		</div>
 		<button
 			class="icon"
@@ -293,22 +293,19 @@
 		<button
 			class="icon"
 			onclick={startNewChat}
-			disabled={claudeStore.isRunning}
+			disabled={aiStore.isRunning}
 			title="新しい会話"
 			aria-label="新しい会話">{@render icon(ICONS.compose)}</button
 		>
-		<button class="icon" onclick={openSettings} title="Claude の設定" aria-label="Claude の設定"
+		<button class="icon" onclick={openSettings} title="AI の設定" aria-label="AI の設定"
 			>{@render icon(ICONS.settings)}</button
 		>
-		<button
-			class="icon"
-			onclick={() => (claudeStore.open = false)}
-			title="閉じる"
-			aria-label="閉じる">{@render icon(ICONS.close)}</button
+		<button class="icon" onclick={() => (aiStore.open = false)} title="閉じる" aria-label="閉じる"
+			>{@render icon(ICONS.close)}</button
 		>
 	</header>
 
-	{#if claudeStore.status?.found && claudeStore.status.loggedIn === false}
+	{#if aiStore.settings.provider === 'claude-code' && aiStore.status?.found && aiStore.status.loggedIn === false}
 		<section class="setup">
 			<p><strong>Claude Code にログインしていません。</strong></p>
 			<p>
@@ -317,18 +314,27 @@
 			</p>
 			<div class="row">
 				<button class="small" onclick={openLogin}>ログインする(ターミナルを開く)</button>
-				<button class="small" onclick={() => claudeStore.checkStatus()}>ログインした</button>
+				<button class="small" onclick={() => aiStore.checkStatus()}>ログインした</button>
 			</div>
 			{#if loginError}<p class="hint">{loginError}</p>{/if}
 		</section>
 	{/if}
 
-	{#if notFound && claudeStore.settings.provider === 'ollama'}
+	{#if notFound && aiStore.settings.provider === 'ollama'}
 		<section class="setup">
 			<p><strong>Ollama に接続できません。</strong></p>
 			<p>Ollama を起動してください。接続先やモデルは設定画面で指定できます。</p>
-			{#if claudeStore.status?.error}<p class="hint">{claudeStore.status.error}</p>{/if}
-			<button class="small" onclick={() => claudeStore.checkStatus()}>再確認</button>
+			{#if aiStore.status?.error}<p class="hint">{aiStore.status.error}</p>{/if}
+			<button class="small" onclick={() => aiStore.checkStatus()}>再確認</button>
+		</section>
+	{:else if notFound && aiStore.settings.provider !== 'claude-code'}
+		<section class="setup">
+			<p><strong>{aiStore.provider.label}を使う準備ができていません。</strong></p>
+			{#if aiStore.status?.error}<p class="hint">{aiStore.status.error}</p>{/if}
+			<div class="row">
+				<button class="small" onclick={openSettings}>設定を開く</button>
+				<button class="small" onclick={() => aiStore.checkStatus()}>再確認</button>
+			</div>
 		</section>
 	{:else if notFound}
 		<section class="setup">
@@ -345,16 +351,16 @@
 
 	{#if showHistory}
 		<div class="history" transition:fade={{ duration: 120 }}>
-			{#if claudeStore.sessions.length === 0}
+			{#if aiStore.sessions.length === 0}
 				<p class="history-empty">まだ会話がありません</p>
 			{/if}
-			{#each claudeStore.sessions as session (session.id)}
-				<div class="history-item" class:current={session.id === claudeStore.currentSessionId}>
+			{#each aiStore.sessions as session (session.id)}
+				<div class="history-item" class:current={session.id === aiStore.currentSessionId}>
 					<button
 						class="history-open"
-						disabled={claudeStore.isRunning}
+						disabled={aiStore.isRunning}
 						onclick={() => {
-							claudeStore.openSession(session.id);
+							aiStore.openSession(session.id);
 							showHistory = false;
 						}}
 					>
@@ -367,7 +373,7 @@
 					</button>
 					<button
 						class="icon history-delete"
-						onclick={() => claudeStore.deleteSession(session.id)}
+						onclick={() => aiStore.deleteSession(session.id)}
 						title="この会話を削除"
 						aria-label="この会話を削除">{@render icon(ICONS.trash, 16)}</button
 					>
@@ -377,7 +383,7 @@
 	{:else}
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 		<div class="messages" bind:this={listEl} onscroll={onScroll} onclick={onClickContent}>
-			{#if claudeStore.messages.length === 0}
+			{#if aiStore.messages.length === 0}
 				<div class="empty">
 					<div class="empty-mark">{@render icon(ICONS.sparkles, 22)}</div>
 					<p>
@@ -387,9 +393,9 @@
 					<p>全作品を横断した質問(設定の使い回し、表記の統一など)もできます。</p>
 				</div>
 			{/if}
-			{#each claudeStore.messages as message (message.id)}
+			{#each aiStore.messages as message (message.id)}
 				{#if message.role === 'user'}
-					{@const last = claudeStore.isLastQuestion(message)}
+					{@const last = aiStore.isLastQuestion(message)}
 					<div
 						class="user-turn"
 						class:editing={editingId === message.id}
@@ -410,7 +416,7 @@
 									<button
 										class="small primary"
 										onclick={() => submitEdit(message)}
-										disabled={!editingText.trim() || claudeStore.isRunning}>送信</button
+										disabled={!editingText.trim() || aiStore.isRunning}>送信</button
 									>
 								</div>
 							</div>
@@ -433,7 +439,7 @@
 									<button
 										class="icon"
 										onclick={() => startEdit(message)}
-										disabled={claudeStore.isRunning}
+										disabled={aiStore.isRunning}
 										title="質問を編集して送り直す"
 										aria-label="質問を編集して送り直す">{@render icon(ICONS.edit, 15)}</button
 									>
@@ -441,9 +447,9 @@
 										class="icon"
 										onclick={() => {
 											stickToBottom = true;
-											void claudeStore.retry(message);
+											void aiStore.retry(message);
 										}}
-										disabled={claudeStore.isRunning}
+										disabled={aiStore.isRunning}
 										title="回答を作り直す"
 										aria-label="回答を作り直す">{@render icon(ICONS.retry, 15)}</button
 									>
@@ -453,7 +459,14 @@
 					</div>
 				{:else if message.role === 'error'}
 					<div class="msg error" class:auth={message.auth}>
-						{#if message.auth}
+						{#if message.auth && message.provider && message.provider !== 'claude-code'}
+							<strong>認証に失敗しました。</strong>
+							<span class="error-detail">{message.text}</span>
+							<div class="row">
+								<button class="small" onclick={openSettings}>設定を開く</button>
+							</div>
+							<span class="hint">API キーを確かめてから、もう一度送信してください。</span>
+						{:else if message.auth}
 							<strong>Claude Code のログインが切れています。</strong>
 							<span class="error-detail">{message.text}</span>
 							<div class="row">
@@ -500,21 +513,21 @@
 								{#if pending}
 									<button
 										class="small primary"
-										disabled={claudeStore.busy}
-										onclick={() => claudeStore.applyAll(message)}
+										disabled={aiStore.busy}
+										onclick={() => aiStore.applyAll(message)}
 										>{working ? '反映中…' : 'すべて反映'}</button
 									>
 									<button
 										class="small"
-										disabled={claudeStore.busy}
-										onclick={() => claudeStore.rejectAll(message)}>すべて却下</button
+										disabled={aiStore.busy}
+										onclick={() => aiStore.rejectAll(message)}>すべて却下</button
 									>
 								{/if}
 								{#if applied}
 									<button
 										class="small"
-										disabled={claudeStore.busy}
-										onclick={() => claudeStore.revertAll(message)}
+										disabled={aiStore.busy}
+										onclick={() => aiStore.revertAll(message)}
 										>{working ? '処理中…' : 'すべて元に戻す'}</button
 									>
 								{/if}
@@ -555,15 +568,15 @@
 				</button>
 			{/each}
 		</div>
-		{#if claudeStore.quote}
+		{#if aiStore.quote}
 			<div class="quote-card" transition:slide={{ duration: 160 }}>
 				<div class="quote-meta">
-					<span>引用: {claudeStore.quote.sceneTitle}({claudeStore.quote.text.length}字)</span>
-					<button class="icon" onclick={() => claudeStore.setQuote(null)} aria-label="引用を外す"
+					<span>引用: {aiStore.quote.sceneTitle}({aiStore.quote.text.length}字)</span>
+					<button class="icon" onclick={() => aiStore.setQuote(null)} aria-label="引用を外す"
 						>{@render icon(ICONS.close, 14)}</button
 					>
 				</div>
-				<blockquote class="quote">{claudeStore.quote.text}</blockquote>
+				<blockquote class="quote">{aiStore.quote.text}</blockquote>
 			</div>
 		{/if}
 		<div class="input-box" class:disabled={notFound}>
@@ -573,18 +586,16 @@
 				onkeydown={onKeydown}
 				oninput={autoGrow}
 				rows="1"
-				placeholder={claudeStore.quote
-					? '引用した部分について質問'
-					: 'Claude に相談(Shift+Enter で改行)'}
+				placeholder={aiStore.quote ? '引用した部分について質問' : 'AI に相談(Shift+Enter で改行)'}
 				disabled={notFound}
 			></textarea>
 			<div class="input-foot">
 				<label class="mode-select" title="本文の編集">
 					{@render icon(ICONS.pen, 14)}
 					<select
-						value={claudeStore.settings.editMode}
+						value={aiStore.settings.editMode}
 						onchange={(e) =>
-							claudeStore.updateSettings({ editMode: e.currentTarget.value as EditMode })}
+							aiStore.updateSettings({ editMode: e.currentTarget.value as EditMode })}
 						aria-label="本文の編集"
 					>
 						{#each Object.entries(EDIT_MODE_LABELS) as [value, label] (value)}
@@ -593,13 +604,8 @@
 					</select>
 				</label>
 				<span class="spacer"></span>
-				{#if claudeStore.isRunning}
-					<button
-						class="send stop"
-						onclick={() => claudeStore.cancel()}
-						title="停止"
-						aria-label="停止"
-					>
+				{#if aiStore.isRunning}
+					<button class="send stop" onclick={() => aiStore.cancel()} title="停止" aria-label="停止">
 						<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"
 							><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" /></svg
 						>
@@ -651,8 +657,9 @@
 		display: flex;
 		align-items: center;
 		gap: 2px;
-		height: 48px;
-		padding: 0 8px 0 14px;
+		box-sizing: border-box;
+		height: var(--editor-header-height);
+		padding: 0 12px 0 14px;
 		border-bottom: 1px solid var(--color-border);
 		flex: none;
 	}
@@ -668,7 +675,7 @@
 
 	.title {
 		min-width: 0;
-		font-size: 13.5px;
+		font-size: 15px;
 		font-weight: 600;
 		white-space: nowrap;
 		overflow: hidden;
@@ -713,10 +720,10 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 30px;
-		height: 30px;
+		width: 34px;
+		height: 34px;
 		padding: 0;
-		border-radius: 7px;
+		border-radius: 8px;
 		color: var(--color-text-secondary);
 		transition:
 			background-color 0.15s,

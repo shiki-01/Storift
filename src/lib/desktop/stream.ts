@@ -1,7 +1,7 @@
 /**
  * Claude Code の `--output-format stream-json` の出力を、表示用の状態へ畳み込む。
  *
- * 1 回の送信(ターン)の中で、Claude はツールを使いながら複数の API メッセージを返す。
+ * 1 回の送信(ターン)の中で、AI はツールを使いながら複数の API メッセージを返す。
  * `--include-partial-messages` の差分(stream_event)で逐次表示し、
  * 完成したメッセージ(assistant)が届いたらその内容で置き換える。
  */

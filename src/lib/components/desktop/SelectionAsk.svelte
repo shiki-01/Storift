@@ -1,10 +1,10 @@
 <script lang="ts">
 	/**
 	 * エディタで文章を選択したときに出る「AI に聞く」の小さなポップアップ。
-	 * 選んだ部分を引用として Claude パネルへ渡す。
+	 * 選んだ部分を引用として AI パネルへ渡す。
 	 */
 	import { onMount } from 'svelte';
-	import { claudeStore, QUICK_ACTIONS } from '$lib/stores/claude.svelte';
+	import { aiStore, QUICK_ACTIONS } from '$lib/stores/ai.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
 	import { makeAnchor, rangeTextOffsets } from '$lib/utils/memos';
 
@@ -26,8 +26,7 @@
 		const node = range.commonAncestorContainer;
 		const el = node instanceof Element ? node : node.parentElement;
 		const editor = el?.closest('[contenteditable="true"]');
-		if (!editor || editor.closest('[data-claude-panel]') || !editor.closest('.app-main'))
-			return null;
+		if (!editor || editor.closest('[data-ai-panel]') || !editor.closest('.app-main')) return null;
 		return range;
 	}
 
@@ -57,7 +56,7 @@
 	function quote() {
 		const scene = editorStore.currentScene;
 		if (!scene) return false;
-		claudeStore.setQuote({ text, sceneId: scene.id, sceneTitle: scene.title });
+		aiStore.setQuote({ text, sceneId: scene.id, sceneTitle: scene.title });
 		visible = false;
 		return true;
 	}
@@ -76,7 +75,7 @@
 		const offsets = range && editor ? rangeTextOffsets(editor, range) : null;
 		visible = false;
 		if (!scene || !offsets || offsets.end <= offsets.start) return;
-		claudeStore.open = false;
+		aiStore.open = false;
 		editorStore.requestMemo({
 			sceneId: scene.id,
 			anchor: makeAnchor(editorStore.content, offsets.start, offsets.end)
@@ -85,7 +84,7 @@
 
 	/** 引用してからプロンプトを作る(「引用した部分」を対象にするため) */
 	function run(prompt: () => string) {
-		if (quote()) void claudeStore.send(prompt());
+		if (quote()) void aiStore.send(prompt());
 	}
 
 	onMount(() => {
@@ -113,12 +112,10 @@
 	>
 		<button class="main" onclick={ask}>AI に聞く</button>
 		<button
-			onclick={() => run(() => claudeStore.actionPrompt(QUICK_ACTIONS[0]))}
-			disabled={claudeStore.isRunning}>校正</button
+			onclick={() => run(() => aiStore.actionPrompt(QUICK_ACTIONS[0]))}
+			disabled={aiStore.isRunning}>校正</button
 		>
-		<button onclick={() => run(() => REWRITE_PROMPT)} disabled={claudeStore.isRunning}
-			>書き換え</button
-		>
+		<button onclick={() => run(() => REWRITE_PROMPT)} disabled={aiStore.isRunning}>書き換え</button>
 		<button onclick={memo} title="選んだ範囲にメモを付ける">メモ</button>
 	</div>
 {/if}

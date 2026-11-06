@@ -49,7 +49,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 	{
 		id: 'ai',
 		label: 'AI',
-		description: 'Claude Code などの AI 連携を設定します。',
+		description:
+			'AI のプロバイダ(Claude Code・Ollama・OpenAI 互換 API など)と、本文の編集の扱いを設定します。',
 		icon: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/>',
 		desktopOnly: true
 	},

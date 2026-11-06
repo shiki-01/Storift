@@ -510,6 +510,15 @@ pub fn mcp_respond(state: State<'_, Arc<McpState>>, req_id: String, result: McpR
     }
 }
 
+/// アプリのツールの定義(MCP の `tools/list` と同じ内容)。
+/// HTTP 系の AI プロバイダ(TypeScript 側でループを回すもの)が、自分の形式へ変換して使う。
+/// `allow_web` は、将来ツール側で Web 系を足すときのために受け取る(今は定義に影響しない)
+#[tauri::command]
+pub fn ai_tool_definitions(mode: Option<String>, allow_web: Option<bool>) -> Vec<Value> {
+    let _ = allow_web;
+    tool_definitions(mode.as_deref())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

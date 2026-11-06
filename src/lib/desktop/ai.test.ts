@@ -20,7 +20,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 	invoke: (cmd: string) => (cmd === 'claude_attach' ? attachImpl() : Promise.resolve(null))
 }));
 
-const { attachClaude } = await import('./claude');
+const { attachNativeRun } = await import('./ai');
 
 function emit(name: string, payload: unknown) {
 	for (const h of handlers.get(name) ?? []) h({ payload });
@@ -28,18 +28,18 @@ function emit(name: string, payload: unknown) {
 
 const exit = { requestId: 'r', code: 0, cancelled: false, stderr: '' };
 
-describe('attachClaude', () => {
+describe('attachNativeRun', () => {
 	beforeEach(() => handlers.clear());
 
 	it('記録が無ければ null を返す', async () => {
 		attachImpl = async () => null;
-		expect(await attachClaude('r', () => {})).toBeNull();
+		expect(await attachNativeRun('r', () => {})).toBeNull();
 	});
 
 	it('終わった実行は、溜まっていた行と終了の情報をそのまま返す', async () => {
 		attachImpl = async () => ({ lines: ['a', 'b'], exit });
 		const lines: string[] = [];
-		expect(await attachClaude('r', (l) => lines.push(l))).toEqual(exit);
+		expect(await attachNativeRun('r', (l) => lines.push(l))).toEqual(exit);
 		expect(lines).toEqual(['a', 'b']);
 	});
 
@@ -52,7 +52,7 @@ describe('attachClaude', () => {
 			return { lines: ['a', 'b'], exit: null };
 		};
 		const lines: string[] = [];
-		const done = attachClaude('r', (l) => lines.push(l));
+		const done = attachNativeRun('r', (l) => lines.push(l));
 		await vi.waitFor(() => expect(lines).toEqual(['a', 'b', 'c']));
 		emit('claude://line', { requestId: 'r', index: 2, line: 'c' });
 		emit('claude://line', { requestId: 'r', index: 3, line: 'd' });

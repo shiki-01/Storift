@@ -22,7 +22,7 @@ import type { Project } from '$lib/types';
 
 /**
  * シーン本文の窓口(共有プロジェクトのシーンは CRDT、それ以外は従来どおり Scene.content)。
- * エディタ・検索置換・Claude の applyEdit・シーン切替は、共有プロジェクトのシーンの本文を
+ * エディタ・検索置換・AI の applyEdit・シーン切替は、共有プロジェクトのシーンの本文を
  * ここを通して読み書きする(Scene.content を直接書くと、CRDT 側の本文と食い違う)。
  */
 

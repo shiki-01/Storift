@@ -43,7 +43,7 @@ export const memosDB = {
 		return memos.sort((a, b) => b.createdAt - a.createdAt);
 	},
 
-	/** 全作品のメモ(Claude 用のワークスペースを書き出すときに使う) */
+	/** 全作品のメモ(AI 用のワークスペースを書き出すときに使う) */
 	async getAll(): Promise<Memo[]> {
 		await importLegacy();
 		return db.memos.toArray();

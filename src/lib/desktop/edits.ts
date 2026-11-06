@@ -194,7 +194,7 @@ export function diffChars(a: string, b: string): DiffOp[] {
 }
 
 /**
- * Claude に編集の進め方を伝える指示(編集を許可しているときだけ付ける)。
+ * AI に編集の進め方を伝える指示(編集を許可しているときだけ付ける)。
  * 編集は MCP ツール propose_edit で行う。ファイルは書き換えない。
  */
 export const EDIT_INSTRUCTIONS = `ユーザーは本文と項目(キャラクター・設定資料・プロット・メモ・章の概要・進捗・相関図)の編集を許可しています。

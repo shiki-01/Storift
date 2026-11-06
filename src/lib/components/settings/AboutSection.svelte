@@ -34,7 +34,7 @@
 		{#if isDesktop()}
 			<UpdateSettings />
 		{:else}
-			<p>Storift v0.0.1</p>
+			<p>Storift v{__APP_VERSION__}</p>
 			<p class="font:.875rem">ビルド: {buildVersion}</p>
 			<p class="font:.875rem">
 				オフライン対応: {swVersion

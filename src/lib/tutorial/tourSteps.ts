@@ -129,8 +129,8 @@ export const TOUR_STEPS: TourStep[] = [
 	},
 	{
 		id: 'nav-characters',
-		title: 'キャラクターを開く',
-		body: ['メニューの「キャラクター」を押してください。'],
+		title: '人物を開く',
+		body: ['メニューの「人物」を押してください。'],
 		target: '[data-tour="nav-characters"]',
 		advance: 'click'
 	},

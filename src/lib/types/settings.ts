@@ -10,6 +10,15 @@ export type EditorFont =
 	/** デスクトップ版限定: インストール済みフォント名(`system:フォント名`) */
 	| `system:${string}`;
 
+/**
+ * この端末の Firestore へのアクセス状態
+ * - owner: 新ルールで、この端末がオーナー登録済み
+ * - legacy: 旧ルール(認証済みなら従来コレクションを全開放)のまま。共有機能は使えない
+ * - needs-owner: 新ルールで、この端末は未登録(オーナー端末の設定コードが必要)
+ * - unknown: 判定できていない(通信エラーなど)
+ */
+export type AccessMode = 'owner' | 'legacy' | 'needs-owner' | 'unknown';
+
 export type ConflictResolutionPolicy = 'local' | 'remote' | 'manual';
 
 /**
@@ -37,6 +46,10 @@ export interface EditorFormatting {
 export interface AppSettings {
 	id: 'app-settings';
 	firebase?: FirebaseConfig;
+	/** オーナー鍵(設定コード由来、または初回登録で生成したもの)。設定コードの生成と2台目の登録に使う */
+	ownerKey?: string;
+	/** 直近に判定できたアクセスモード(オフライン起動時のキャッシュ) */
+	accessMode?: AccessMode;
 	/** 初回の Firebase 設定の案内に答え済み(設定した、または同期なしで始めた) */
 	setupCompleted?: boolean;
 	/** チュートリアルの案内を閉じた、または終えた */

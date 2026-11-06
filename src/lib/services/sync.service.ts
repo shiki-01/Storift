@@ -44,13 +44,14 @@ import {
 	type TypePlan
 } from '$lib/firebase/syncPlan';
 import { syncStore } from '$lib/stores/sync.svelte';
+import { authStore, NEEDS_OWNER_MESSAGE } from '$lib/stores/auth.svelte';
 import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 import { startNetworkMonitoring, onNetworkStatusChange } from '$lib/utils/offline';
 import { debounceAsync } from '$lib/utils/debounce';
 import { measureSync, recordSyncMetric } from '$lib/utils/syncMetrics';
 import { Mutex, withTimeout, mapLimit } from '$lib/utils/asyncControl';
 import { classifyError, RetryGate } from '$lib/utils/syncErrors';
-import type { ConflictResolutionPolicy, History } from '$lib/types';
+import type { AccessMode, ConflictResolutionPolicy, History } from '$lib/types';
 import type { Unsubscribe } from 'firebase/firestore';
 
 interface PendingConflict {
@@ -122,7 +123,13 @@ const syncMutex = new Mutex();
 // 進行中の処理の数(isSyncing / status を正確に保つ)
 let activeCount = 0;
 // 種別ごとの直近のエラー(あれば status は error になる)
-const runErrors: Record<string, string | null> = { upload: null, download: null, project: null };
+const runErrors: Record<string, string | null> = {
+	upload: null,
+	download: null,
+	project: null,
+	// アクセスモード(needs-owner)による停止。同期の処理自体は走らせないので、別枠で持つ
+	access: null
+};
 // 再試行(指数バックオフ)の状態
 const gates: Record<SyncKind, RetryGate> = { upload: new RetryGate(), download: new RetryGate() };
 const retryTimers: Record<SyncKind, ReturnType<typeof setTimeout> | null> = {
@@ -177,6 +184,12 @@ function beginActivity(): void {
 /** 処理の終了を記録し、全ての処理が終わっていれば status を確定する */
 function endActivity(): void {
 	activeCount = Math.max(0, activeCount - 1);
+	if (activeCount > 0) return;
+	settleStatus();
+}
+
+/** 進行中の処理がないときの isSyncing / error / status を確定する */
+function settleStatus(): void {
 	if (activeCount > 0) return;
 	syncStore.isSyncing = false;
 	syncStore.progress = { phase: null, done: 0, total: 0 };
@@ -594,6 +607,65 @@ function resetGates(): void {
 	}
 }
 
+/** 新ルールで、この端末がオーナー未登録(従来コレクションにアクセスできない)か */
+function isAccessBlocked(): boolean {
+	return authStore.accessMode === 'needs-owner';
+}
+
+/**
+ * アクセスモードの変化を同期に反映する。
+ * - 'needs-owner': 同期を止め、案内を syncStore のエラーとして表示する(無限リトライしない)
+ * - それ以外: 停止中だった場合(または新ルールでの権限エラーで止まっていた場合)は、
+ *   バックオフ・停止状態を解除して同期を自動で再開する
+ */
+export function applyAccessMode(mode: AccessMode | null): void {
+	if (mode === 'needs-owner') {
+		stopCurrentProjectSync();
+		for (const kind of ['upload', 'download'] as const) {
+			const timer = retryTimers[kind];
+			if (timer) clearTimeout(timer);
+			retryTimers[kind] = null;
+		}
+		runErrors.access = NEEDS_OWNER_MESSAGE;
+		settleStatus();
+		return;
+	}
+
+	const wasBlocked = runErrors.access !== null;
+	runErrors.access = null;
+	// 登録前に走った処理が permission-denied で止まっている場合も、登録できたので再開する
+	const stuck = mode === 'owner' && (gates.upload.isBlocked || gates.download.isBlocked);
+	if (!wasBlocked && !stuck) return;
+
+	resetGates();
+	runErrors.upload = null;
+	runErrors.download = null;
+	// オフライン表示は上書きしない(復帰時に通常どおり更新される)
+	if (navigator.onLine) settleStatus();
+	void resumeSync();
+}
+
+/** アクセスモードが使える状態になったあとの同期再開(同期が無効な設定なら何もしない) */
+async function resumeSync(): Promise<void> {
+	try {
+		const { settingsDB } = await import('$lib/db');
+		const settings = await settingsDB.get();
+		if (!settings.syncEnabled) return;
+		if (isAccessBlocked()) return;
+
+		if (!isInitialized) {
+			await initializeSync();
+		} else if (navigator.onLine) {
+			void downloadAllFromFirestore().catch((err) => console.warn('Resume download failed:', err));
+			flushPendingIfNeeded();
+		}
+		const projectId = currentProjectStore.project?.id;
+		if (projectId) await startCurrentProjectSync(projectId);
+	} catch (error) {
+		console.warn('Failed to resume sync:', error);
+	}
+}
+
 /**
  * 同期システムの初期化。実行中なら同じ Promise を返す(複数箇所から呼ばれても1回だけ実行する)
  */
@@ -625,6 +697,13 @@ async function doInitializeSync(): Promise<void> {
 		console.log('ℹ️ Firebase not configured, sync system will not be initialized');
 		syncStore.status = 'offline';
 		isInitialized = true; // 初期化済みフラグを立てて再実行を防ぐ
+		return;
+	}
+
+	// 新ルールでオーナー未登録なら、同期を始めない(isInitialized は立てず、登録後に改めて初期化する)
+	if (isAccessBlocked()) {
+		console.log('⏸️ Owner registration required, sync system will not be initialized');
+		applyAccessMode('needs-owner');
 		return;
 	}
 
@@ -762,6 +841,8 @@ function throwIfCancelled(ctx: RunContext): void {
  * ペンディング中の変更を処理
  */
 async function processPendingChanges(): Promise<void> {
+	// 新ルールでオーナー未登録の間は送らない(変更はキューに残る)
+	if (isAccessBlocked()) return;
 	// await より前に同期的にロックを取る(二重起動を防ぐ)。ロック中に積まれた変更は終了後に再予約される
 	if (isProcessing || pendingChanges.size === 0) return;
 	// バックオフ中・再試行不可のエラー中は送らない(変更はキューに残る)
@@ -1041,6 +1122,11 @@ export async function startCurrentProjectSync(projectId: string): Promise<void> 
 		return;
 	}
 
+	if (isAccessBlocked()) {
+		console.warn('⏸️ Owner registration required, skipping project sync');
+		return;
+	}
+
 	// 既存の監視を停止
 	stopCurrentProjectSync();
 
@@ -1078,6 +1164,7 @@ export function stopCurrentProjectSync(): void {
  * 現在のプロジェクトの全データを同期(ローカルの内容をそのままアップロード)
  */
 export async function syncCurrentProject(projectId: string): Promise<void> {
+	if (isAccessBlocked()) throw new Error(NEEDS_OWNER_MESSAGE);
 	beginActivity();
 
 	try {
@@ -1202,6 +1289,11 @@ export function downloadAllFromFirestore(
 	options: { trigger?: DownloadTrigger } = {}
 ): Promise<void> {
 	const trigger = options.trigger ?? 'periodic';
+	if (isAccessBlocked()) {
+		// 手動の完全同期は、成功したように見せず理由を返す
+		if (trigger === 'manual-full') return Promise.reject(new Error(NEEDS_OWNER_MESSAGE));
+		return Promise.resolve();
+	}
 	if (downloadPromise) {
 		// 実行中の取得が完全同期でなければ、手動の完全同期はその後に改めて実行する
 		if (trigger === 'manual-full' && downloadTrigger !== 'manual-full') {

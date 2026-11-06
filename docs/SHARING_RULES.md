@@ -4,7 +4,7 @@
 認証は匿名認証のまま。ルールテストは `bun run test:rules`(Firebase Emulator 使用、`tests/rules/`)。
 既存の `bun run test` はエミュレータ不要でルールテストを拾わない。
 
-`docs/FIRESTORE_SETUP.md` は未更新(段階 2b で更新予定)。
+`docs/FIRESTORE_SETUP.md` は段階 2b-1 で更新済み(オーナー鍵・設定コード・旧ルール互換)。
 
 ## データ構造
 

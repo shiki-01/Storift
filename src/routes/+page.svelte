@@ -7,6 +7,7 @@
 	import { authStore } from '$lib/stores/auth.svelte';
 	import { initializeFirebase, signInAnonymousUser } from '$lib/firebase';
 	import { initializeSync } from '$lib/services/sync.service';
+	import { initAccessMode } from '$lib/services/access.service';
 
 	onMount(async () => {
 		// 設定を読み込む
@@ -20,6 +21,9 @@
 				const user = await signInAnonymousUser();
 				authStore.user = user;
 				authStore.isInitialized = true;
+
+				// アクセスモードのキャッシュを反映し、判定をバックグラウンドで始める(待たない)
+				await initAccessMode();
 
 				// 同期システムを初期化
 				if (settings.syncEnabled) {

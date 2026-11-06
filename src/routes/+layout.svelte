@@ -11,6 +11,7 @@
 	} from '$lib/utils/offline';
 	import { syncStore } from '$lib/stores/sync.svelte';
 	import { initializeSync, stopSync } from '$lib/services/sync.service';
+	import { initAccessMode } from '$lib/services/access.service';
 	import { settingsDB } from '$lib/db';
 	import { initializeFirebase, signInAnonymousUser, isFirebaseInitialized } from '$lib/firebase';
 	import { authStore } from '$lib/stores/auth.svelte';
@@ -144,6 +145,9 @@
 					authStore.isInitialized = true;
 
 					console.log('✅ Firebase initialized on app load');
+
+					// アクセスモードのキャッシュを反映し、判定をバックグラウンドで始める(待たない)
+					await initAccessMode();
 
 					// Firebase初期化成功後に同期システムを初期化
 					await initializeSync();

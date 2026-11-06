@@ -148,7 +148,8 @@
 
 		if (current.route) {
 			const href = current.route({ projectId: tourStore.projectId });
-			if (window.location.pathname !== href) {
+			// hash(設定画面のセクションなど)まで含めて比較する
+			if (window.location.pathname + window.location.hash !== href) {
 				try {
 					// eslint-disable-next-line svelte/no-navigation-without-resolve -- 経路はステップ定義で決めた内部パス
 					await goto(href);

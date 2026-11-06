@@ -190,7 +190,7 @@ export const TOUR_STEPS: TourStep[] = [
 			'テーマを選ぶと、画面の配色が変わります。',
 			'テーマエディタでは自分の配色を作成し、書き出しや読み込みができます。'
 		],
-		route: () => '/settings',
+		route: () => '/settings#appearance',
 		target: '[data-tour="settings-theme"]'
 	},
 	{
@@ -201,6 +201,7 @@ export const TOUR_STEPS: TourStep[] = [
 			'Firebase は Google のクラウドサービスです。データはご自身の Firebase に保存され、運営者が内容を見ることはできません。',
 			'設定と管理は自己責任で行ってください。設定値は他人に教えないでください。手順は紹介サイトのガイドを参照してください。'
 		],
+		route: () => '/settings#sync',
 		target: '[data-tour="settings-sync"]',
 		link: {
 			label: 'Firebase 設定ガイドを開く',
@@ -215,7 +216,7 @@ export const TOUR_STEPS: TourStep[] = [
 			'サイトデータを削除すると消えるため、定期的に全データをエクスポートしてバックアップしてください。'
 		],
 		// 完了(ホーム)から戻ったときにも設定画面を開く
-		route: () => '/settings',
+		route: () => '/settings#data',
 		target: '[data-tour="settings-backup"]'
 	},
 	{

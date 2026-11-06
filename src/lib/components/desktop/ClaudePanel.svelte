@@ -103,7 +103,7 @@
 
 	function openSettings() {
 		// eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() の引数にハッシュは渡せないので、解決後に付ける
-		void goto(`${resolve('/settings')}#claude`);
+		void goto(`${resolve('/settings')}#ai`);
 	}
 
 	// 入力に合わせて入力欄を伸ばす(最大 8 行ほど)

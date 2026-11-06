@@ -3,6 +3,7 @@ import type { Character } from '$lib/types';
 import {
 	DEFAULT_EDGE_GAP,
 	buildEdgeSpecs,
+	remapEdgeStyles,
 	circleLayout,
 	curveToEdgeType,
 	defaultEdgeOffset,
@@ -159,5 +160,34 @@ describe('矢印の種類', () => {
 		});
 		expect(specs[0].arrow).toBe('both');
 		expect(specs[0].lane).toBe(0);
+	});
+});
+
+describe('remapEdgeStyles', () => {
+	it('関係の名前を変えたら、見た目を新しい関係へ移す', () => {
+		const styles = { 'a>b>友': { color: '#ef4444' }, 'a>c>敵': { arrow: 'both' as const } };
+		const next = remapEdgeStyles(
+			styles,
+			'a',
+			[
+				{ characterId: 'b', relation: '友' },
+				{ characterId: 'c', relation: '敵' }
+			],
+			[
+				{ characterId: 'b', relation: '親友' },
+				{ characterId: 'c', relation: '敵' }
+			]
+		);
+		expect(next).toEqual({ 'a>b>親友': { color: '#ef4444' }, 'a>c>敵': { arrow: 'both' } });
+	});
+
+	it('関係を消したら見た目も捨てる', () => {
+		const next = remapEdgeStyles(
+			{ 'a>b>友': { color: '#ef4444' } },
+			'a',
+			[{ characterId: 'b', relation: '友' }],
+			[]
+		);
+		expect(next).toEqual({});
 	});
 });

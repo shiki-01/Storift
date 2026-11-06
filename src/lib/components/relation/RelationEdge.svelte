@@ -1,8 +1,9 @@
 <script lang="ts" module>
-	import type { RelationCurve } from '$lib/types';
+	import type { RelationArrow, RelationCurve } from '$lib/types';
 
 	export interface RelationEdgeData {
 		curve: RelationCurve;
+		arrow: RelationArrow;
 		color: string;
 		/** 中点からの制御点のずれ(既定値を解決済み) */
 		offset: { x: number; y: number };
@@ -29,6 +30,8 @@
 
 	/** ラベルは制御点の少し上に置き、アンカーと重ならないようにする */
 	const LABEL_GAP = 16;
+	/** 双方向の直線(⇄)で 2 本の線を離す幅(px) */
+	const BOTH_LANE_GAP = 20;
 
 	let {
 		sourceX: rawSourceX,
@@ -65,12 +68,29 @@
 	const targetX = $derived(rawTargetX + shift.x);
 	const targetY = $derived(rawTargetY + shift.y);
 
+	/** 双方向の直線は ⇄ のように平行な 2 本にし、途中で曲げない */
+	const exchange = $derived(data.arrow === 'both' && data.curve === 'straight');
+	const half = BOTH_LANE_GAP / 2;
+	const exchangeShift = $derived.by(() => {
+		const dx = rawTargetX - rawSourceX;
+		const dy = rawTargetY - rawSourceY;
+		const len = Math.hypot(dx, dy);
+		if (len === 0) return { x: 0, y: 0 };
+		return { x: (-dy / len) * half, y: (dx / len) * half };
+	});
+	const forwardPath = $derived(
+		`M ${rawSourceX + exchangeShift.x} ${rawSourceY + exchangeShift.y} L ${rawTargetX + exchangeShift.x} ${rawTargetY + exchangeShift.y}`
+	);
+	const backwardPath = $derived(
+		`M ${rawTargetX - exchangeShift.x} ${rawTargetY - exchangeShift.y} L ${rawSourceX - exchangeShift.x} ${rawSourceY - exchangeShift.y}`
+	);
+
 	let dragOffset = $state<Point | null>(null);
 	let hovered = $state(false);
 	let drag: { start: Point; origin: Point; moved: boolean } | null = null;
 
 	const mid = $derived({ x: (sourceX + targetX) / 2, y: (sourceY + targetY) / 2 });
-	const offset = $derived(dragOffset ?? data.offset);
+	const offset = $derived(exchange ? { x: 0, y: 0 } : (dragOffset ?? data.offset));
 	/** 制御点 C = 中点 + ずれ */
 	const control = $derived({ x: mid.x + offset.x, y: mid.y + offset.y });
 
@@ -138,32 +158,39 @@
 	}
 </script>
 
-<BaseEdge {path} {markerStart} {markerEnd} {style} interactionWidth={20} />
+{#if exchange}
+	<BaseEdge path={forwardPath} {markerEnd} {style} interactionWidth={20} />
+	<BaseEdge path={backwardPath} {markerEnd} {style} interactionWidth={20} />
+{:else}
+	<BaseEdge {path} {markerStart} {markerEnd} {style} interactionWidth={20} />
+{/if}
 
 {#if label}
-	<EdgeLabel x={control.x} y={control.y - LABEL_GAP} selectEdgeOnClick>
+	<EdgeLabel x={control.x} y={control.y - LABEL_GAP - (exchange ? half : 0)} selectEdgeOnClick>
 		<span class="relation-edge-label" style:color={data.color}>{label}</span>
 	</EdgeLabel>
 {/if}
 
-<EdgeLabel x={control.x} y={control.y}>
-	<button
-		type="button"
-		class="relation-edge-anchor nodrag nopan"
-		class:active={selected || hovered}
-		style:border-color={data.color}
-		aria-label="線の位置を調整"
-		tabindex="-1"
-		onpointerdown={onAnchorDown}
-		onpointermove={onAnchorMove}
-		onpointerup={(e) => endDrag(e, true)}
-		onpointercancel={(e) => endDrag(e, false)}
-		onpointerenter={() => (hovered = true)}
-		onpointerleave={() => (hovered = false)}
-		ondblclick={onAnchorDblClick}
-		onclick={(e) => e.stopPropagation()}
-	></button>
-</EdgeLabel>
+{#if !exchange}
+	<EdgeLabel x={control.x} y={control.y}>
+		<button
+			type="button"
+			class="relation-edge-anchor nodrag nopan"
+			class:active={selected || hovered}
+			style:border-color={data.color}
+			aria-label="線の位置を調整"
+			tabindex="-1"
+			onpointerdown={onAnchorDown}
+			onpointermove={onAnchorMove}
+			onpointerup={(e) => endDrag(e, true)}
+			onpointercancel={(e) => endDrag(e, false)}
+			onpointerenter={() => (hovered = true)}
+			onpointerleave={() => (hovered = false)}
+			ondblclick={onAnchorDblClick}
+			onclick={(e) => e.stopPropagation()}
+		></button>
+	</EdgeLabel>
+{/if}
 
 <style>
 	.relation-edge-label {

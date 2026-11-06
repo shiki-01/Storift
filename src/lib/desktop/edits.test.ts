@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
 	appliedDecoration,
 	diffChars,
+	hasAdjacentRepeat,
+	introducesRepeat,
 	parseEdits,
 	pendingDecoration,
 	replaceOnce,
@@ -127,5 +129,33 @@ describe('エディタ上の色付け', () => {
 	it('見つからない・一意でないときは null', () => {
 		expect(pendingDecoration('ああ', { old: 'あ', new: 'い' })).toBeNull();
 		expect(appliedDecoration('なし', { old: 'a', new: 'b' })).toBeNull();
+	});
+});
+
+describe('重複の検出', () => {
+	const para = '母は朝早くから仕事に出て、妹がいる。ましゅまるくんが好きで、雑貨を買うのも好き。';
+
+	it('同じ文が続けて並ぶと検出する', () => {
+		expect(hasAdjacentRepeat(para + para)).toBe(true);
+		expect(hasAdjacentRepeat(para + '成績は中の上。' + para)).toBe(false);
+	});
+
+	it('置き換えで新しく生じた重複だけを見つける', () => {
+		const before = `背景: ${para}成績は中の上。`;
+		// 元の文を残したまま、全文を new に入れた
+		const from = '母は朝早くから仕事に出て、妹がいる。';
+		const to = para;
+		const after = before.replace(from, to);
+		expect(introducesRepeat(after, after.indexOf(to), from, to)).toBe(true);
+		const ok = before.replace(from, from + '父は単身赴任中。');
+		expect(introducesRepeat(ok, ok.indexOf(from), from, from + '父は単身赴任中。')).toBe(false);
+	});
+
+	it('もとから重複している本文は、編集のたびに警告しない', () => {
+		const before = para + para + '成績は中の上。';
+		const after = before.replace('成績は中の上。', '成績は中の下。');
+		expect(introducesRepeat(after, after.indexOf('成績'), '成績は中の上。', '成績は中の下。')).toBe(
+			false
+		);
 	});
 });

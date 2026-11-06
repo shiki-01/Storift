@@ -13,7 +13,8 @@
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
 	import RelationCanvas from '$lib/components/relation/RelationCanvas.svelte';
 	import { createCharacterContextMenu, type ContextMenuItem } from '$lib/utils/contextMenu';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
+	import { dataChange } from '$lib/stores/dataChange.svelte';
 
 	// 閲覧専用(閲覧権限、またはアクセス権の失効)。編集・追加・削除の入口を無効にする。同期層にも安全網がある
 	const readOnly = $derived(isReadOnlyProject(currentProjectStore.project?.id));
@@ -97,6 +98,20 @@
 			isLoading = false;
 		}
 	};
+
+	const refreshCharacters = async () => {
+		if (!currentProjectStore.project) return;
+		characters = await charactersDB.getByProjectId(currentProjectStore.project.id);
+	};
+
+	// Claude など画面の外で書き換わったら、読み直す(読み込み表示は出さない)
+	let seenRevision = dataChange.revision('characters');
+	$effect(() => {
+		const revision = dataChange.revision('characters');
+		if (revision === seenRevision) return;
+		seenRevision = revision;
+		untrack(() => void refreshCharacters());
+	});
 
 	const openCreateModal = () => {
 		if (readOnly) return;

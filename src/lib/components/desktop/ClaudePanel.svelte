@@ -158,6 +158,11 @@
 			}
 			if (pending && message.running) items.push({ kind: 'pending-edit' });
 		}
+		// タグで書かれなかった編集案(MCP の propose_edit で届いたもの)は、回答の後ろにまとめる
+		const rest = message.edits ?? [];
+		for (; index < rest.length; index++) {
+			items.push({ kind: 'edit', edit: rest[index], index });
+		}
 		return items;
 	}
 
@@ -318,7 +323,14 @@
 		</section>
 	{/if}
 
-	{#if notFound}
+	{#if notFound && claudeStore.settings.provider === 'ollama'}
+		<section class="setup">
+			<p><strong>Ollama に接続できません。</strong></p>
+			<p>Ollama を起動してください。接続先やモデルは設定画面で指定できます。</p>
+			{#if claudeStore.status?.error}<p class="hint">{claudeStore.status.error}</p>{/if}
+			<button class="small" onclick={() => claudeStore.checkStatus()}>再確認</button>
+		</section>
+	{:else if notFound}
 		<section class="setup">
 			<p><strong>Claude Code が見つかりません。</strong></p>
 			<p>ターミナルでインストールし、一度 <code>claude</code> を起動してログインしてください。</p>
@@ -476,23 +488,34 @@
 						{#if message.edits?.length && !message.running}
 							{@const pending = message.edits.filter((e) => e.status === 'pending').length}
 							{@const applied = message.edits.filter((e) => e.status === 'applied').length}
+							{@const working = message.edits.filter(
+								(e) => e.status === 'applying' || e.status === 'reverting'
+							).length}
 							<div class="changes">
 								<span class="changes-label"
 									>変更 {message.edits.length} 件(反映済み {applied}{pending
 										? `・未反映 ${pending}`
-										: ''})</span
+										: ''}{working ? `・処理中 ${working}` : ''})</span
 								>
 								{#if pending}
-									<button class="small primary" onclick={() => claudeStore.applyAll(message)}
-										>すべて反映</button
+									<button
+										class="small primary"
+										disabled={claudeStore.busy}
+										onclick={() => claudeStore.applyAll(message)}
+										>{working ? '反映中…' : 'すべて反映'}</button
 									>
-									<button class="small" onclick={() => claudeStore.rejectAll(message)}
-										>すべて却下</button
+									<button
+										class="small"
+										disabled={claudeStore.busy}
+										onclick={() => claudeStore.rejectAll(message)}>すべて却下</button
 									>
 								{/if}
 								{#if applied}
-									<button class="small" onclick={() => claudeStore.revertAll(message)}
-										>すべて元に戻す</button
+									<button
+										class="small"
+										disabled={claudeStore.busy}
+										onclick={() => claudeStore.revertAll(message)}
+										>{working ? '処理中…' : 'すべて元に戻す'}</button
 									>
 								{/if}
 							</div>

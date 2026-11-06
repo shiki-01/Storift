@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
+	import { dataChange } from '$lib/stores/dataChange.svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import {
 		SvelteFlow,
@@ -76,6 +77,20 @@
 		rebuild();
 	});
 
+	// 相関図が外(Claude の編集など)で書き換わったら、読み直して作り直す
+	let seenRelationRevision = dataChange.revision('relationMaps');
+	$effect(() => {
+		const revision = dataChange.revision('relationMaps');
+		if (revision === seenRelationRevision) return;
+		seenRelationRevision = revision;
+		untrack(async () => {
+			const fresh = await relationMapsDB.get(projectId);
+			if (!fresh) return;
+			map = fresh;
+			rebuild();
+		});
+	});
+
 	// キャラクターが増減・更新されたらノードと線を作り直す(位置などの map は参照のみ)
 	$effect(() => {
 		void characters;
@@ -141,8 +156,15 @@
 				type: 'relation',
 				label: s.label,
 				style: `stroke:${s.color};stroke-width:2;`,
-				markerEnd: { type: MarkerType.ArrowClosed, color: s.color },
-				...(s.arrow === 'both'
+				markerEnd: {
+					type:
+						s.arrow === 'both' && s.curve === 'straight'
+							? MarkerType.Arrow
+							: MarkerType.ArrowClosed,
+					color: s.color
+				},
+				// 双方向の直線は ⇄(平行な 2 本)で描くので、始点側の矢印は付けない
+				...(s.arrow === 'both' && s.curve !== 'straight'
 					? { markerStart: { type: MarkerType.ArrowClosed, color: s.color } }
 					: {}),
 				data: {
@@ -151,6 +173,7 @@
 					index: s.index,
 					label: s.label,
 					curve: s.curve,
+					arrow: s.arrow,
 					color: s.color,
 					offset: s.offset,
 					lane: s.lane,

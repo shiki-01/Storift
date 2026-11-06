@@ -1,4 +1,6 @@
 mod claude;
+mod mcp;
+mod ollama;
 mod shell_env;
 mod workspace;
 
@@ -18,11 +20,16 @@ pub fn run() {
                 .build(),
         )
         .manage(claude::ClaudeState::default())
+        .manage(std::sync::Arc::new(ollama::OllamaState::default()))
         .setup(|app| {
             // GUI から起動すると PATH がログインシェルと異なるため、先に読み込んでおく
             std::thread::spawn(shell_env::load);
             let dir = workspace::workspace_dir(app.handle())?;
             std::fs::create_dir_all(&dir)?;
+            // Claude Code に見せる MCP サーバー。前回の異常終了で残った設定ファイルも掃除する
+            claude::remove_stale_mcp_configs(app.handle());
+            let mcp_state = mcp::start(app.handle())?;
+            app.manage(mcp_state);
 
             // Windows / Linux は OS の枠を外し、アプリ側のタイトルバー(TitleBar.svelte)を使う。
             // 設定ファイル(tauri.windows.conf.json など)でも外しているが、念のため起動時にも外す
@@ -39,6 +46,8 @@ pub fn run() {
             claude::claude_attach,
             claude::claude_release,
             claude::claude_open_login,
+            ollama::ollama_status,
+            mcp::mcp_respond,
             workspace::workspace_sync,
             workspace::workspace_info,
             workspace::workspace_open,

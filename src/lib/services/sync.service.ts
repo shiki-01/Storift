@@ -1072,13 +1072,9 @@ export async function queueChange(
 	id: string,
 	action: 'create' | 'update' | 'delete'
 ): Promise<void> {
-	console.log(`📝 Queueing change: ${type}/${id} (${action})`);
-
-	// キューへの登録だけを待つ。アップロードは裏で予約し、完了は待たない
-	const targets = await resolveQueueTargets(type, id, action);
-	for (const target of targets) enqueue({ type, id, action, target });
-	void scheduleSyncIfReady();
+	await queueChanges([{ type, id, action }]);
 }
+
 
 /** 複数の変更をまとめてキューに載せる(行き先はそれぞれ解決する。保存は1回) */
 export async function queueChanges(

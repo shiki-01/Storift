@@ -39,9 +39,18 @@ function shortPath(path: string): string {
 	return parts.slice(-2).join('/');
 }
 
-/** ツール呼び出しを 1 行で表す */
+/** MCP サーバー storift のツール名の接頭辞 */
+const STORIFT_PREFIX = 'mcp__storift__';
+
+/** 表示用の名前。storift のツールは接頭辞を外す(get_scene など) */
+export function toolDisplayName(name: string): string {
+	return name.startsWith(STORIFT_PREFIX) ? name.slice(STORIFT_PREFIX.length) : name;
+}
+
+/** ツール呼び出しを 1 行で表す(name は接頭辞を含む元の名前) */
 export function summarizeTool(name: string, input: any): string {
 	if (!input || typeof input !== 'object') return '';
+	if (name.startsWith(STORIFT_PREFIX)) return summarizeStoriftTool(toolDisplayName(name), input);
 	switch (name) {
 		case 'Read':
 			return shortPath(String(input.file_path ?? ''));
@@ -60,13 +69,34 @@ export function summarizeTool(name: string, input: any): string {
 	}
 }
 
+/** storift の MCP ツールの要約(引数のうち人が読んで分かるものだけ) */
+function summarizeStoriftTool(name: string, input: any): string {
+	switch (name) {
+		case 'list_items':
+		case 'get_item':
+			return String(input.kind ?? '');
+		case 'search':
+			return `"${input.query ?? ''}"`;
+		case 'propose_edit': {
+			const old = String(input.old ?? '').replace(/\s+/g, ' ');
+			return `${input.kind ?? ''}: 「${old.length > 20 ? old.slice(0, 20) + '…' : old}」`;
+		}
+		case 'propose_create':
+			return `新規 ${input.kind ?? ''}`;
+		case 'propose_delete':
+			return `削除 ${input.kind ?? ''}`;
+		default:
+			return '';
+	}
+}
+
 function toPart(block: any): TurnPart | null {
 	if (block?.type === 'text') return { kind: 'text', text: String(block.text ?? '') };
 	if (block?.type === 'tool_use') {
 		return {
 			kind: 'tool',
-			name: String(block.name),
-			summary: summarizeTool(block.name, block.input)
+			name: toolDisplayName(String(block.name)),
+			summary: summarizeTool(String(block.name), block.input)
 		};
 	}
 	// thinking などは表示しない

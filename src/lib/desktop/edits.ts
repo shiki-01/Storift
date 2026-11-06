@@ -1,8 +1,8 @@
 /**
- * Claude が回答に書く本文の編集案(<storift-edit>)の解析・差分・適用。
+ * 編集案の差分・色付け・適用の純粋な処理。
  *
- * Claude Code にはファイルの書き換えを許可せず、編集は回答の中に決まった形式で書かせる。
- * アプリがそれを読み取り、設定に応じて差分を見せて確認するか、そのまま本文へ反映する。
+ * 編集案は MCP ツール propose_edit でアプリに届く(src/lib/desktop/mcp.ts)。
+ * 過去の回答に書かれた <storift-edit> タグは、履歴の表示のために解析だけ残している。
  */
 
 export interface EditProposal {
@@ -73,6 +73,34 @@ export function replaceOnce(content: string, from: string, to: string): ReplaceR
 	if (count > 1) return { ok: false, reason: `該当箇所が ${count} か所あり、特定できません` };
 	const i = content.indexOf(from);
 	return { ok: true, content: content.slice(0, i) + to + content.slice(i + from.length), index: i };
+}
+
+const REPEAT_MIN = 15;
+
+/** text の中に、REPEAT_MIN 文字以上のまとまりが隙間なく 2 回続く箇所があるか */
+export function hasAdjacentRepeat(text: string): boolean {
+	for (let i = 0; i + REPEAT_MIN * 2 <= text.length; i++) {
+		const head = text.slice(i, i + REPEAT_MIN);
+		for (let j = text.indexOf(head, i + REPEAT_MIN); j !== -1; j = text.indexOf(head, j + 1)) {
+			const len = j - i;
+			if (text.startsWith(text.slice(i, j), j) && len >= REPEAT_MIN) return true;
+			if (len > 2000) break;
+		}
+	}
+	return false;
+}
+
+/**
+ * 置き換えの結果、同じ文が続けて 2 回並んでしまっていないか(元の文を残したまま全文を new に入れたときなど)。
+ * after は置き換え後の本文、index は new が始まる位置。置き換え前に無かった重複だけを見つける。
+ */
+export function introducesRepeat(after: string, index: number, from: string, to: string): boolean {
+	const margin = 400;
+	const start = Math.max(0, index - margin);
+	const end = Math.min(after.length, index + to.length + margin);
+	const windowAfter = after.slice(start, end);
+	const windowBefore = after.slice(start, index) + from + after.slice(index + to.length, end);
+	return hasAdjacentRepeat(windowAfter) && !hasAdjacentRepeat(windowBefore);
 }
 
 /**
@@ -165,19 +193,18 @@ export function diffChars(a: string, b: string): DiffOp[] {
 	return ops;
 }
 
-/** Claude に編集案の書き方を伝える指示(編集を許可しているときだけ付ける) */
-export const EDIT_INSTRUCTIONS = `ユーザーは本文の編集を許可しています。本文(projects/<作品>/本文/ 以下のシーンファイル)を直すときは、ファイルを書き換えずに、回答の中に次の形式で編集案を書いてください。アプリが読み取って本文へ反映します。
-
-<storift-edit file="projects/<作品>/本文/<章>/<シーン>.md">
-<old>置き換える元の文</old>
-<new>置き換え後の文</new>
-</storift-edit>
-
-- file はワークスペースからの相対パス。本文のシーンファイル以外(概要・キャラクター・設定資料など)は編集できません。
-- old は本文からそのまま正確に抜き出し、本文中で 1 回だけ現れるよう前後を含めて十分な長さにする。見出し行(# シーン名)は含めない。
-- 直す箇所が複数あるときはブロックを分ける。1 ブロックはなるべく短く。
-- 編集案の前後に、何をなぜ直したかを簡潔に書く。
-- ユーザーが直しを求めていないときは、編集案を書かない。`;
+/**
+ * Claude に編集の進め方を伝える指示(編集を許可しているときだけ付ける)。
+ * 編集は MCP ツール propose_edit で行う。ファイルは書き換えない。
+ */
+export const EDIT_INSTRUCTIONS = `ユーザーは本文と項目(キャラクター・設定資料・プロット・メモ・章の概要・進捗・相関図)の編集を許可しています。
+変更するときは、ファイルを書き換えず、storift の propose_edit ツールを使ってください。
+- kind と id で対象を指定します。scene は本文のシーン、それ以外は項目の種類です。id は get_outline・list_items・search で確かめてください。履歴(history)は編集できません。
+- old は対象の現在の内容からそのまま抜き出し、その中で 1 か所だけに一致する長さにしてください。new は置き換え後の文です。
+- 変更は項目の「## 」で始まる節の中だけに限られます。見出しや箇条書きの情報を変えようとすると、ツールが理由を返します。
+- 反映の結果(反映済み・承認待ち・失敗と理由)はツールの戻り値に出ます。失敗したら理由を見て直してください。
+- 項目の新規追加は propose_create(kind と fields。fields は項目名と値で、作成時は名前・タイトル・種類・分類なども必須)、削除は propose_delete(kind と id。キャラクター・プロット・設定資料・メモ・進捗だけ)を使います。シーンの作成・削除、章の削除はできません。
+- 直しを求められていないときは、ツールを使わないでください。何をなぜ直したかは、ツールの前後で簡潔に書いてください。`;
 
 /** エディタ上に出す、1 件の編集の色付け */
 export interface Decoration {

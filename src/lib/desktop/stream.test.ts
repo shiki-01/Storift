@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyStreamLine, createTurnState, isAuthError, turnParts } from './stream';
+import { applyStreamLine, createTurnState, isAuthError, summarizeTool, turnParts } from './stream';
 
 const line = (value: unknown) => JSON.stringify(value);
 
@@ -112,5 +112,40 @@ describe('isAuthError', () => {
 		expect(isAuthError('Invalid API key · Please run /login')).toBe(true);
 		expect(isAuthError('No conversation found with session ID: abc')).toBe(false);
 		expect(isAuthError('終了コード 1')).toBe(false);
+	});
+});
+
+describe('storift の MCP ツールの表示', () => {
+	it('接頭辞を外した名前と、引数の要約を出す', () => {
+		const state = createTurnState();
+		applyStreamLine(
+			state,
+			line({
+				type: 'assistant',
+				message: {
+					id: 'm1',
+					content: [
+						{
+							type: 'tool_use',
+							name: 'mcp__storift__propose_edit',
+							input: { kind: 'scene', id: 's1', old: '夜明けの街は静かだった', new: 'x' }
+						},
+						{ type: 'tool_use', name: 'mcp__storift__search', input: { query: '夜明け' } },
+						{ type: 'tool_use', name: 'mcp__storift__get_scene', input: { sceneId: 's1' } }
+					]
+				}
+			})
+		);
+		expect(turnParts(state)).toEqual([
+			{ kind: 'tool', name: 'propose_edit', summary: 'scene: 「夜明けの街は静かだった」' },
+			{ kind: 'tool', name: 'search', summary: '"夜明け"' },
+			{ kind: 'tool', name: 'get_scene', summary: '' }
+		]);
+	});
+
+	it('長い編集の元の文は 20 字で切る', () => {
+		expect(
+			summarizeTool('mcp__storift__propose_edit', { kind: 'characters', old: 'あ'.repeat(30) })
+		).toBe(`characters: 「${'あ'.repeat(20)}…」`);
 	});
 });

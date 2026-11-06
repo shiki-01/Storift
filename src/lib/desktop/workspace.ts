@@ -6,7 +6,30 @@
  * ファイルはアプリ → ディスクの一方向で、ディスク側の変更はアプリに戻らない。
  */
 import { db, memosDB } from '$lib/db';
-import type { Chapter, Character, Memo, Plot, Project, Scene, Worldbuilding } from '$lib/types';
+import type { Table } from 'dexie';
+import type {
+	Chapter,
+	Character,
+	History,
+	Memo,
+	Plot,
+	ProgressLog,
+	Project,
+	RelationMap,
+	Scene,
+	Worldbuilding
+} from '$lib/types';
+import {
+	PLOT_STATUS_LABELS,
+	PLOT_TYPE_LABELS,
+	WORLD_LABELS,
+	entityTitle,
+	renderEntity,
+	type EntityContext,
+	type EntityKind,
+	type EntityMap,
+	type EntityRef
+} from './entities';
 
 export interface WorkspaceFile {
 	path: string;
@@ -19,6 +42,8 @@ export interface WorkspaceExport {
 	projectDirs: Record<string, string>;
 	/** シーン ID → ファイル(ワークスペースからの相対パス) */
 	sceneFiles: Record<string, string>;
+	/** 項目ファイル(キャラクター・設定資料・プロット・メモ・章の概要・進捗・履歴・相関図) → 種別と ID。編集できるのはこれらだけ(履歴は読み取り専用) */
+	entityFiles: Record<string, EntityRef>;
 }
 
 export interface WorkspaceData {
@@ -29,33 +54,19 @@ export interface WorkspaceData {
 	plots: Plot[];
 	worldbuilding: Worldbuilding[];
 	memos: Memo[];
+	progressLogs: ProgressLog[];
+	history: History[];
+	relationMaps: RelationMap[];
 }
 
-const STATUS_LABELS: Record<Project['status'], string> = {
+export const STATUS_LABELS: Record<Project['status'], string> = {
 	draft: '構想中',
 	writing: '執筆中',
 	completed: '完結'
 };
 
-const WORLD_LABELS: Record<Worldbuilding['category'], string> = {
-	term: '用語',
-	location: '場所',
-	timeline: '年表',
-	other: 'その他'
-};
-
-const PLOT_TYPE_LABELS: Record<Plot['type'], string> = {
-	arc: '全体の流れ',
-	chapter: '章',
-	scene: 'シーン'
-};
-
-const PLOT_STATUS_LABELS: Record<Plot['status'], string> = {
-	idea: 'アイデア',
-	planned: '予定',
-	written: '執筆済み',
-	revised: '推敲済み'
-};
+/** 作品ごとに履歴ファイルとして書き出す最大件数(新しい順) */
+const MAX_HISTORY_FILES = 100;
 
 /** ファイル名に使えない文字を除き、長すぎる名前を切り詰める */
 export function safeName(name: string, fallback = '無題'): string {
@@ -87,6 +98,76 @@ function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
 		else map.set(k, [item]);
 	}
 	return map;
+}
+
+/** 同名のプロジェクトがあってもフォルダが衝突しないよう、2 つ目以降は ID を添える(更新が新しい順に割り当てる) */
+function assignProjectDirs(projects: Project[]): Record<string, string> {
+	const used = new Set<string>();
+	const out: Record<string, string> = {};
+	for (const project of [...projects].sort((a, b) => b.updatedAt - a.updatedAt)) {
+		let dirName = safeName(project.title);
+		if (used.has(dirName)) dirName = `${dirName}-${project.id.slice(0, 6)}`;
+		used.add(dirName);
+		out[project.id] = `projects/${dirName}`;
+	}
+	return out;
+}
+
+/** 項目ファイルを置くフォルダ名(章の概要は本文の下なのでここには無い) */
+const ENTITY_DIR_NAMES: Partial<Record<EntityKind, string>> = {
+	characters: 'キャラクター',
+	worldbuilding: '設定資料',
+	plots: 'プロット',
+	memos: 'メモ',
+	progressLogs: '進捗',
+	relationMaps: '相関図',
+	history: '履歴'
+};
+
+function entityDirOf(projectDir: string, kind: EntityKind): string {
+	return `${projectDir}/${ENTITY_DIR_NAMES[kind]}`;
+}
+
+function chapterDirOf(projectDir: string, index: number, chapter: Chapter): string {
+	return `${projectDir}/本文/${pad(index)}_${safeName(chapter.title)}`;
+}
+
+function synopsisPathOf(chapterDir: string): string {
+	return `${chapterDir}/00_章の概要.md`;
+}
+
+function scenePathOf(chapterDir: string, index: number, scene: Scene): string {
+	return `${chapterDir}/${pad(index)}_${safeName(scene.title)}.md`;
+}
+
+/** 書き出す順に並べた項目(プロットは order、メモは作成順、進捗は日付順) */
+function sortedItems<K extends EntityKind>(kind: K, items: EntityMap[K][]): EntityMap[K][] {
+	if (kind === 'plots') return byOrder(items as unknown as Plot[]) as unknown as EntityMap[K][];
+	if (kind === 'memos')
+		return [...(items as unknown as Memo[])].sort(
+			(a, b) => a.createdAt - b.createdAt
+		) as unknown as EntityMap[K][];
+	if (kind === 'progressLogs')
+		return [...(items as unknown as ProgressLog[])].sort((a, b) =>
+			a.date.localeCompare(b.date)
+		) as unknown as EntityMap[K][];
+	return items;
+}
+
+/** 項目 ID → ファイル名(拡張子なし)。同名は ID を添えて分ける */
+function uniqueFileNames<K extends EntityKind>(
+	kind: K,
+	items: EntityMap[K][]
+): Map<string, string> {
+	const used = new Set<string>();
+	const names = new Map<string, string>();
+	for (const item of items) {
+		let name = safeName(entityTitle(kind, item));
+		if (used.has(name)) name = `${name}-${item.id.slice(0, 6)}`;
+		used.add(name);
+		names.set(item.id, name);
+	}
+	return names;
 }
 
 /** メモ一覧。タグ・完了状態・引用を付け、作成の古い順に並べる */
@@ -161,6 +242,15 @@ function plotMarkdown(project: Project, plots: Plot[]): string {
 	return lines.join('\n');
 }
 
+/** 項目ファイルの組み立て・解析に必要な、他の項目の情報 */
+export function entityContext(data: WorkspaceData): EntityContext {
+	return {
+		characterNames: new Map(data.characters.map((c) => [c.id, c.name])),
+		sceneTitles: new Map(data.scenes.map((s) => [s.id, s.title])),
+		characters: data.characters
+	};
+}
+
 /**
  * IndexedDB の内容から、ワークスペースに置くファイル一式を作る。
  * overrides はシーン ID → 本文で、エディタの未保存の本文を反映するのに使う
@@ -173,6 +263,18 @@ export function buildWorkspace(
 	const files: WorkspaceFile[] = [];
 	const projectDirs: Record<string, string> = {};
 	const sceneFiles: Record<string, string> = {};
+	const entityFiles: Record<string, EntityRef> = {};
+	const ctx = entityContext(data);
+
+	/** 項目 1 つ 1 ファイルで書き出す(同名は ID を添えて分ける) */
+	const addEntityFiles = <K extends EntityKind>(dir: string, kind: K, items: EntityMap[K][]) => {
+		const names = uniqueFileNames(kind, items);
+		for (const item of items) {
+			const path = `${dir}/${names.get(item.id)}.md`;
+			entityFiles[path] = { kind, id: item.id };
+			files.push({ path, content: renderEntity(kind, item, ctx) });
+		}
+	};
 
 	const chaptersByProject = groupBy(data.chapters, (c) => c.projectId);
 	const scenesByChapter = groupBy(data.scenes, (s) => s.chapterId);
@@ -180,18 +282,17 @@ export function buildWorkspace(
 	const plotsByProject = groupBy(data.plots, (p) => p.projectId);
 	const worldByProject = groupBy(data.worldbuilding, (w) => w.projectId);
 	const memosByProject = groupBy(data.memos, (m) => m.projectId);
+	const logsByProject = groupBy(data.progressLogs, (l) => l.projectId);
+	const historyByProject = groupBy(data.history, (h) => h.projectId);
+	const mapsByProject = groupBy(data.relationMaps, (m) => m.projectId);
 	const sceneTitles = new Map(data.scenes.map((s) => [s.id, s.title]));
 
-	// 同名のプロジェクトがあってもフォルダが衝突しないよう、2 つ目以降は ID を添える
-	const usedDirs = new Set<string>();
 	const projects = [...data.projects].sort((a, b) => b.updatedAt - a.updatedAt);
+	const dirs = assignProjectDirs(data.projects);
 	const index: string[] = [];
 
 	for (const project of projects) {
-		let dirName = safeName(project.title);
-		if (usedDirs.has(dirName)) dirName = `${dirName}-${project.id.slice(0, 6)}`;
-		usedDirs.add(dirName);
-		const dir = `projects/${dirName}`;
+		const dir = dirs[project.id];
 		projectDirs[project.id] = dir;
 
 		const chapters = byOrder(chaptersByProject.get(project.id) ?? []);
@@ -199,17 +300,15 @@ export function buildWorkspace(
 		let totalChars = 0;
 
 		chapters.forEach((chapter, ci) => {
-			const chapterDir = `${dir}/本文/${pad(ci)}_${safeName(chapter.title)}`;
+			const chapterDir = chapterDirOf(dir, ci, chapter);
 			const scenes = byOrder(scenesByChapter.get(chapter.id) ?? []);
 			toc.push(`- 第${ci + 1}章 ${chapter.title}`);
-			if (chapter.synopsis?.trim()) {
-				files.push({
-					path: `${chapterDir}/00_章の概要.md`,
-					content: `# ${chapter.title}(概要)\n\n${chapter.synopsis.trim()}\n`
-				});
-			}
+			// 概要が空でも書き出し、Claude が書き足せるようにする
+			const synopsisPath = synopsisPathOf(chapterDir);
+			entityFiles[synopsisPath] = { kind: 'chapters', id: chapter.id };
+			files.push({ path: synopsisPath, content: renderEntity('chapters', chapter, ctx) });
 			scenes.forEach((scene, si) => {
-				const path = `${chapterDir}/${pad(si)}_${safeName(scene.title)}.md`;
+				const path = scenePathOf(chapterDir, si, scene);
 				sceneFiles[scene.id] = path;
 				const content = overrides[scene.id] ?? scene.content;
 				const chars = content.length;
@@ -237,6 +336,28 @@ export function buildWorkspace(
 				path: `${dir}/メモ.md`,
 				content: memosMarkdown(project, memos, sceneTitles)
 			});
+		addEntityFiles(entityDirOf(dir, 'characters'), 'characters', characters);
+		addEntityFiles(entityDirOf(dir, 'worldbuilding'), 'worldbuilding', world);
+		addEntityFiles(entityDirOf(dir, 'plots'), 'plots', byOrder(plots));
+		addEntityFiles(entityDirOf(dir, 'memos'), 'memos', sortedItems('memos', memos));
+		addEntityFiles(
+			entityDirOf(dir, 'progressLogs'),
+			'progressLogs',
+			sortedItems('progressLogs', logsByProject.get(project.id) ?? [])
+		);
+		addEntityFiles(
+			entityDirOf(dir, 'relationMaps'),
+			'relationMaps',
+			mapsByProject.get(project.id) ?? []
+		);
+		// 履歴は件数が増え続けるため、新しい順に上限までにする
+		addEntityFiles(
+			entityDirOf(dir, 'history'),
+			'history',
+			[...(historyByProject.get(project.id) ?? [])]
+				.sort((a, b) => b.createdAt - a.createdAt)
+				.slice(0, MAX_HISTORY_FILES)
+		);
 
 		files.push({
 			path: `${dir}/概要.md`,
@@ -255,7 +376,7 @@ export function buildWorkspace(
 	}
 
 	files.push({ path: 'CLAUDE.md', content: claudeMd(index) });
-	return { files, projectDirs, sceneFiles };
+	return { files, projectDirs, sceneFiles, entityFiles };
 }
 
 function claudeMd(index: string[]): string {
@@ -268,7 +389,10 @@ function claudeMd(index: string[]): string {
 
 - \`projects/<作品名>/概要.md\`: 作品の説明・目次・文字数
 - \`projects/<作品名>/本文/<章番号>_<章名>/<シーン番号>_<シーン名>.md\`: 本文(1 シーン 1 ファイル)
-- \`projects/<作品名>/キャラクター.md\` / \`設定資料.md\` / \`プロット.md\` / \`メモ.md\`(タグ・完了状態・引用付き)
+- \`projects/<作品名>/キャラクター.md\` / \`設定資料.md\` / \`プロット.md\` / \`メモ.md\`(タグ・完了状態・引用付き): 一覧。読む用で、編集の対象にはならない
+- \`projects/<作品名>/キャラクター/<名前>.md\` / \`設定資料/\` / \`プロット/\` / \`メモ/\`: 1 項目 1 ファイル。「## フィールド名」の節が編集できる部分
+- \`projects/<作品名>/本文/<章>/00_章の概要.md\`: 章の概要
+- \`projects/<作品名>/進捗/\` / \`相関図/\`: 進捗ログ(日付・文字数・時間)と相関図の配置(座標・線の見た目)。\`履歴/\` は読み取り専用
 
 ## 注意
 
@@ -287,16 +411,130 @@ ${index.length ? index.join('\n') : '(まだ作品がありません)'}
 `;
 }
 
+/* 項目 1 件だけを DB から読む(全件を読み込まずに、提案の検証や反映をするため) */
+
+const ENTITY_TABLES: { [K in EntityKind]: () => Table<EntityMap[K], string> } = {
+	chapters: () => db.chapters,
+	characters: () => db.characters,
+	plots: () => db.plots,
+	worldbuilding: () => db.worldbuilding,
+	memos: () => db.memos,
+	progressLogs: () => db.progressLogs,
+	history: () => db.history,
+	relationMaps: () => db.relationMaps
+};
+
+/** 項目のテーブル(IndexedDB) */
+export function entityTable<K extends EntityKind>(kind: K): Table<EntityMap[K], string> {
+	return ENTITY_TABLES[kind]() as Table<EntityMap[K], string>;
+}
+
+/** 項目 1 件ぶんのファイルを組み立てるのに必要な、他の項目の情報だけを読む */
+export async function entityContextFor<K extends EntityKind>(
+	kind: K,
+	entity: EntityMap[K]
+): Promise<EntityContext> {
+	const sceneIds: string[] = [];
+	// 関係・線の見た目のファイルは、同じ作品のキャラクター全員を相手にできる
+	const projectCharacters =
+		kind === 'characters' || kind === 'relationMaps'
+			? await db.characters.where('projectId').equals(entity.projectId).toArray()
+			: [];
+	if (kind === 'memos' && (entity as Memo).sceneId) sceneIds.push((entity as Memo).sceneId!);
+	if (kind === 'progressLogs') sceneIds.push(...((entity as ProgressLog).sceneIds ?? []));
+	const scenes = sceneIds.length ? await db.scenes.bulkGet(sceneIds) : [];
+	return {
+		characterNames: new Map(projectCharacters.map((c) => [c.id, c.name])),
+		sceneTitles: new Map(scenes.filter((s) => !!s).map((s) => [s!.id, s!.title])),
+		characters: projectCharacters
+	};
+}
+
+/** 項目 1 件と、そのファイルの描画に必要な情報を読む。無ければ undefined */
+export async function loadEntity<K extends EntityKind>(ref: {
+	kind: K;
+	id: string;
+}): Promise<{ entity: EntityMap[K]; ctx: EntityContext } | undefined> {
+	const entity = await entityTable(ref.kind).get(ref.id);
+	if (!entity) return undefined;
+	return { entity, ctx: await entityContextFor(ref.kind, entity) };
+}
+
+/** シーンのファイルのパス(ワークスペースからの相対)。見つからなければ空文字 */
+export async function sceneFilePath(sceneId: string): Promise<string> {
+	const scene = await db.scenes.get(sceneId);
+	if (!scene) return '';
+	const [projects, chapters, siblings] = await Promise.all([
+		db.projects.toArray(),
+		db.chapters.where('projectId').equals(scene.projectId).toArray(),
+		db.scenes.where('chapterId').equals(scene.chapterId).toArray()
+	]);
+	const dir = assignProjectDirs(projects)[scene.projectId];
+	const sorted = byOrder(chapters);
+	const ci = sorted.findIndex((c) => c.id === scene.chapterId);
+	if (!dir || ci < 0) return '';
+	const si = byOrder(siblings).findIndex((s) => s.id === scene.id);
+	return scenePathOf(chapterDirOf(dir, ci, sorted[ci]), si, scene);
+}
+
+/** 項目ファイルのパス(ワークスペースからの相対)。見つからなければ空文字 */
+export async function entityFilePath(
+	kind: EntityKind,
+	entity: EntityMap[EntityKind]
+): Promise<string> {
+	const projectId = entity.projectId;
+	const projects = await db.projects.toArray();
+	const dir = assignProjectDirs(projects)[projectId];
+	if (!dir) return '';
+	if (kind === 'chapters') {
+		const chapters = byOrder(await db.chapters.where('projectId').equals(projectId).toArray());
+		const ci = chapters.findIndex((c) => c.id === entity.id);
+		return ci < 0 ? '' : synopsisPathOf(chapterDirOf(dir, ci, chapters[ci]));
+	}
+	const table = entityTable(kind) as unknown as Table<EntityMap[EntityKind], string>;
+	const items = sortedItems(
+		kind as 'plots',
+		(await table.where('projectId').equals(projectId).toArray()) as Plot[]
+	);
+	const name = uniqueFileNames(kind as 'plots', items).get(entity.id);
+	return name ? `${entityDirOf(dir, kind)}/${name}.md` : '';
+}
+
 /** IndexedDB から全プロジェクトを読み込む */
 export async function loadWorkspaceData(): Promise<WorkspaceData> {
-	const [projects, chapters, scenes, characters, plots, worldbuilding, memos] = await Promise.all([
+	const [
+		projects,
+		chapters,
+		scenes,
+		characters,
+		plots,
+		worldbuilding,
+		memos,
+		progressLogs,
+		history,
+		relationMaps
+	] = await Promise.all([
 		db.projects.toArray(),
 		db.chapters.toArray(),
 		db.scenes.toArray(),
 		db.characters.toArray(),
 		db.plots.toArray(),
 		db.worldbuilding.toArray(),
-		memosDB.getAll()
+		memosDB.getAll(),
+		db.progressLogs.toArray(),
+		db.history.toArray(),
+		db.relationMaps.toArray()
 	]);
-	return { projects, chapters, scenes, characters, plots, worldbuilding, memos };
+	return {
+		projects,
+		chapters,
+		scenes,
+		characters,
+		plots,
+		worldbuilding,
+		memos,
+		progressLogs,
+		history,
+		relationMaps
+	};
 }

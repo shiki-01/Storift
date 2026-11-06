@@ -1,13 +1,24 @@
 name: Desktop Build
 
 # デスクトップ版(Tauri)を macOS / Windows / Linux 向けにビルドする。
-# - main への push と PR: ビルドして成果物を Actions の Artifacts に置く
-# - v から始まるタグ(push、または release.yml からの手動実行): 加えて GitHub Releases にリリースを作り、ビルドが通れば公開する
+# - PR: デスクトップ版に関係するファイルが変わったときだけ、--no-bundle でビルドと Rust テストを行う(インストーラーは作らない)
+# - v から始まるタグ(push、または release.yml からの手動実行): インストーラーまで作り、GitHub Releases の下書きに添付して、ビルドが通れば公開する
+# - main への push 単独では動かない(Web 側の確認は Deploy App が行う)
 on:
   push:
-    branches: [main]
     tags: ['v*']
   pull_request:
+    paths:
+      - 'src/**'
+      - 'src-tauri/**'
+      - 'static/**'
+      - 'package.json'
+      - 'bun.lock'
+      - 'svelte.config.js'
+      - 'vite.config.ts'
+      - 'vitest.config.ts'
+      - 'tsconfig.json'
+      - '.github/workflows/desktop.yml'
   workflow_dispatch:
 
 concurrency:
@@ -70,6 +81,7 @@ jobs:
         run: cargo test
 
       # タグのときは、署名付きの更新用ファイルと latest.json も作り、下書きのリリースへ添付する。
+      # PR のとき(--no-bundle)は成果物もリリースも作らない。
       # (自動更新は GitHub Releases の latest.json を見るので、リリースを公開すると配られる)
       - name: Build app
         uses: tauri-apps/tauri-action@v0
@@ -79,13 +91,14 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: bun run tauri
-          args: --target ${{ matrix.target }}${{ startsWith(github.ref, 'refs/tags/v') && ' --config src-tauri/tauri.release.conf.json' || '' }}
+          args: --target ${{ matrix.target }}${{ startsWith(github.ref, 'refs/tags/v') && ' --config src-tauri/tauri.release.conf.json' || ' --no-bundle' }}
           tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
           releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('Storift {0}', github.ref_name) || '' }}
           releaseDraft: true
           uploadUpdaterJson: true
 
       - name: Upload artifacts
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: storift-${{ matrix.name }}

@@ -10,7 +10,9 @@
 	}
 
 	let { edit, editState, mode }: Props = $props();
-	let busy = $state(false);
+	let running = $state(false);
+	/** 自分の操作中か、パネル全体の一括操作中 */
+	let busy = $derived(running || claudeStore.busy);
 
 	let ops = $derived(diffChars(edit.old, edit.new));
 	let added = $derived(ops.reduce((n, op) => n + (op.kind === 'add' ? op.text.length : 0), 0));
@@ -28,18 +30,20 @@
 
 	const STATUS_LABELS: Record<EditState['status'], string> = {
 		pending: '未反映',
+		applying: '反映中…',
 		applied: '反映済み',
+		reverting: '取り消し中…',
 		rejected: '却下',
 		failed: '反映できません',
 		reverted: '元に戻しました'
 	};
 
 	async function run(action: () => Promise<void> | void) {
-		busy = true;
+		running = true;
 		try {
 			await action();
 		} finally {
-			busy = false;
+			running = false;
 		}
 	}
 </script>
@@ -48,6 +52,7 @@
 	class="edit"
 	class:applied={editState?.status === 'applied'}
 	class:failed={editState?.status === 'failed'}
+	class:working={editState?.status === 'applying' || editState?.status === 'reverting'}
 >
 	<button
 		class="edit-header"
@@ -89,7 +94,9 @@
 			{/if}
 			{#if editState.status === 'applied'}
 				{#if !editState.reviewed}
-					<button class="primary" onclick={() => claudeStore.keepEdit(editState)}>保持</button>
+					<button class="primary" disabled={busy} onclick={() => claudeStore.keepEdit(editState)}
+						>保持</button
+					>
 				{/if}
 				<button disabled={busy} onclick={() => run(() => claudeStore.revertEdit(editState))}
 					>元に戻す</button
@@ -181,6 +188,18 @@
 
 	.badge.failed {
 		color: var(--color-error);
+	}
+
+	.badge.applying,
+	.badge.reverting {
+		color: var(--color-primary);
+		animation: working 1s ease-in-out infinite alternate;
+	}
+
+	@keyframes working {
+		to {
+			opacity: 0.45;
+		}
 	}
 
 	.diff {

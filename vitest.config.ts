@@ -23,6 +23,8 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			$lib: resolve(__dirname, './src/lib'),
+			// テストでは $app/state を stub に向ける(page はテストごとに差し替える)
+			'$app/state': resolve(__dirname, './src/lib/test/app-state.ts'),
 			$app: resolve(__dirname, './.svelte-kit/runtime/app')
 		}
 	}

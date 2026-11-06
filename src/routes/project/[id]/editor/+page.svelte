@@ -7,6 +7,7 @@
 	import { editorStore } from '$lib/stores/editor.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
+	import { dataChange } from '$lib/stores/dataChange.svelte';
 	import { chaptersDB, scenesDB, settingsDB, progressLogsDB, projectsDB, memosDB } from '$lib/db';
 	import { getDateKey } from '$lib/utils/dateUtils';
 	import { queueChange } from '$lib/services/sync.service';
@@ -878,6 +879,7 @@
 
 	$effect(() => {
 		void editorStore.memoVersion;
+		void dataChange.revision('memos');
 		void currentProjectStore.project?.id;
 		void reloadMemoAnchors();
 	});

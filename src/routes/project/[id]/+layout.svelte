@@ -10,6 +10,7 @@
 	import { editorStore } from '$lib/stores/editor.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
 	import { startCurrentProjectSync, stopCurrentProjectSync } from '$lib/services/sync.service';
+	import ProjectAccessBanner from '$lib/components/ui/ProjectAccessBanner.svelte';
 
 	let { children } = $props();
 
@@ -63,6 +64,7 @@
 	<!-- 執筆・プロットなどの切り替え時に、内容を軽く滑り込ませる -->
 	<div class="project-shell">
 		<div class="project-content">
+			<ProjectAccessBanner projectId={currentProjectStore.project.id} />
 			{#key page.url.pathname}
 				<div class="section-enter w:100% h:100%">
 					{@render children()}
@@ -88,6 +90,8 @@
 		flex: 1;
 		min-width: 0;
 		min-height: 0;
+		display: flex;
+		flex-direction: column;
 	}
 
 	.claude-slot {
@@ -97,6 +101,8 @@
 	}
 
 	.section-enter {
+		flex: 1;
+		min-height: 0;
 		animation: section-enter 0.26s cubic-bezier(0.2, 0.7, 0.2, 1);
 	}
 

@@ -20,6 +20,9 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import ConflictBackups from '$lib/components/ui/ConflictBackups.svelte';
+	import AccessSettings from '$lib/components/ui/AccessSettings.svelte';
+	import DisplayNameSetting from '$lib/components/ui/DisplayNameSetting.svelte';
+	import AccessDiagnostics from '$lib/components/ui/AccessDiagnostics.svelte';
 	import { tourStore } from '$lib/tutorial/tour.svelte';
 	import NotificationSettings from '$lib/components/ui/NotificationSettings.svelte';
 	import ClaudeSettings from '$lib/components/desktop/ClaudeSettings.svelte';
@@ -35,8 +38,30 @@
 	import { version as buildVersion } from '$app/environment';
 	import { getServiceWorkerVersion, checkForUpdate } from '$lib/utils/sw-register';
 	import { resolve } from '$app/paths';
+	import { getSyncMetrics, type SyncMetric } from '$lib/utils/syncMetrics';
 
 	let backupsOpen = $state(false);
+	let fullSyncRunning = $state(false);
+
+	// 完全同期: 全件を取得して照合し、他端末での削除も検知する
+	const handleFullSync = async () => {
+		fullSyncRunning = true;
+		try {
+			const { runFullSync } = await import('$lib/services/sync.service');
+			await runFullSync();
+			toast.success('完全同期が完了しました');
+		} catch (error) {
+			toast.error(`完全同期に失敗しました: ${error instanceof Error ? error.message : error}`);
+		} finally {
+			fullSyncRunning = false;
+		}
+	};
+	let syncMetrics = $state<SyncMetric[]>([]);
+	const metricKindLabels: Record<SyncMetric['kind'], string> = {
+		processPendingChanges: '送信',
+		download: 'ダウンロード',
+		applyRealtime: 'リアルタイム受信'
+	};
 
 	let settings = $state<Omit<AppSettings, 'id' | 'updatedAt'>>({
 		theme: themeStore.theme.id as 'light' | 'dark' | 'auto',
@@ -729,6 +754,59 @@
 				</div>
 				<ConflictBackups bind:isOpen={backupsOpen} />
 
+				{#if isFirebaseInitialized() && settings.syncEnabled}
+					<div class="flex flex:column gap:.5rem">
+						<span class="font:bold">完全同期</span>
+						<p class="fg:theme-text-secondary font:.875rem">
+							通常は前回からの変更分だけを取得します。全件を取得して照合し直し、他の端末での削除も反映します(データ量が多いと時間がかかります)。
+						</p>
+						<div>
+							<Button
+								variant="secondary"
+								disabled={fullSyncRunning || syncStore.isSyncing}
+								onclick={handleFullSync}
+								>{fullSyncRunning ? '完全同期中...' : '完全同期を実行'}</Button
+							>
+						</div>
+					</div>
+				{/if}
+
+				<details
+					class="flex flex:column gap:.5rem"
+					ontoggle={(e) => {
+						if (e.currentTarget.open) syncMetrics = getSyncMetrics();
+					}}
+				>
+					<summary class="font:bold cursor:pointer">同期診断</summary>
+					<p class="fg:theme-text-secondary font:.875rem mt:8">
+						直近の同期処理の所要時間と件数です(最大50件。再読み込みで消えます)。
+					</p>
+					<div class="mt:8">
+						<Button variant="secondary" onclick={() => (syncMetrics = getSyncMetrics())}
+							>更新</Button
+						>
+					</div>
+					{#if syncMetrics.length === 0}
+						<p class="fg:theme-text-secondary font:.875rem mt:8">記録はまだありません。</p>
+					{:else}
+						<ul class="flex flex:column gap:.25rem mt:8 font:12 list-style:none p:0">
+							{#each syncMetrics as m (m.at + m.kind + (m.label ?? '') + m.durationMs)}
+								<li class={m.ok ? '' : 'fg:theme-error'}>
+									{new Date(m.at).toLocaleTimeString('ja-JP')}
+									{metricKindLabels[m.kind]}{m.label ? `(${m.label})` : ''}:
+									{Math.round(m.durationMs)}ms / {m.count}件{m.skipped !== undefined
+										? ` (スキップ ${m.skipped}件)`
+										: ''}{m.ok ? '' : ' / 失敗'}
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				</details>
+
+				{#if isFirebaseInitialized()}
+					<AccessDiagnostics />
+				{/if}
+
 				{#if isFirebaseInitialized()}
 					<div class="flex">
 						<div class="flex ai:center gap:.5rem">
@@ -772,6 +850,12 @@
 				{/if}
 			</div>
 		</Card>
+
+		<!-- オーナー鍵・設定コード・Firebase ルール -->
+		<AccessSettings />
+
+		<!-- 共有時の表示名 -->
+		<DisplayNameSetting />
 
 		<!-- エディタ(自動保存) -->
 		<Card class="b:1px|solid|theme-border flex flex:column gap:1rem">

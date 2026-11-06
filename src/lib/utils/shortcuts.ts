@@ -78,6 +78,19 @@ export function matchesShortcut(e: KeyLike, shortcut: string): boolean {
 	return !!actual && actual === normalizeShortcut(shortcut);
 }
 
+/**
+ * 元に戻す/やり直すのキーか。共同編集のシーンでは、ブラウザ標準の履歴ではなく自前の履歴(Y.UndoManager)へ回す。
+ * Ctrl+Shift+Z もやり直しとして扱う。
+ */
+export function historyActionOf(
+	e: KeyLike,
+	shortcuts: Pick<AppSettings['shortcuts'], 'undo' | 'redo'> = DEFAULT_SHORTCUTS
+): 'undo' | 'redo' | null {
+	if (matchesShortcut(e, shortcuts.undo)) return 'undo';
+	if (matchesShortcut(e, shortcuts.redo) || matchesShortcut(e, 'Ctrl+Shift+Z')) return 'redo';
+	return null;
+}
+
 /** 同じキーが複数の操作に割り当てられていれば、その操作名の組を返す */
 export function findConflicts(shortcuts: AppSettings['shortcuts']): ShortcutAction[][] {
 	const byKey = new Map<string, ShortcutAction[]>();

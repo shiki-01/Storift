@@ -7,6 +7,7 @@ import {
 } from 'firebase/firestore';
 import { getAuth, type Auth } from 'firebase/auth';
 import type { FirebaseConfig } from '$lib/types';
+import { connectEmulatorsIfConfigured } from './emulator';
 import { syncStore } from '$lib/stores/sync.svelte';
 
 let app: FirebaseApp | null = null;
@@ -15,8 +16,8 @@ let auth: Auth | null = null;
 
 export function initializeFirebase(config: FirebaseConfig): void {
 	try {
-		// 既に初期化されている場合はスキップ
-		if (getApps().length > 0) {
+		// 既に初期化されている場合はスキップ(ゲスト接続の名前付きアプリは数えない: 先に作られていても主 Firebase を初期化できるように)
+		if (getApps().some((existing) => existing.name === '[DEFAULT]')) {
 			console.log('⚠️ Firebase already initialized');
 			return;
 		}
@@ -30,6 +31,9 @@ export function initializeFirebase(config: FirebaseConfig): void {
 				cacheSizeBytes: CACHE_SIZE_UNLIMITED
 			})
 		});
+
+		// E2E 用: VITE_FIREBASE_EMULATOR が設定されているときだけエミュレータにつなぐ
+		connectEmulatorsIfConfigured(auth, firestore);
 
 		// 同期の有無を画面に反映するため、初期化できたことをストアにも伝える
 		syncStore.isConfigured = true;

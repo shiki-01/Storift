@@ -4,10 +4,17 @@ import type { SyncStatus } from '$lib/types';
 const initialStatus: SyncStatus =
 	typeof navigator !== 'undefined' && navigator.onLine ? 'synced' : 'offline';
 
+export interface SyncProgress {
+	phase: 'upload' | 'download' | null;
+	done: number;
+	total: number;
+}
+
 let status = $state<SyncStatus>(initialStatus);
 let lastSyncTime = $state<number | null>(null);
 let isSyncing = $state(false);
 let error = $state<string | null>(null);
+let progress = $state<SyncProgress>({ phase: null, done: 0, total: 0 });
 let conflictCount = $state(0);
 let conflictDialogOpen = $state(false);
 // Firebase の設定が読み込まれて初期化済みか(同期の有無の表示に使う)
@@ -37,6 +44,13 @@ export const syncStore = {
 	},
 	set error(value: string | null) {
 		error = value;
+	},
+	/** 同期中の進捗(phase が null のときは進捗なし) */
+	get progress() {
+		return progress;
+	},
+	set progress(value: SyncProgress) {
+		progress = value;
 	},
 	/** 手動解決待ちの競合の数 */
 	get conflictCount() {

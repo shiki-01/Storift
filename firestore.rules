@@ -1,13 +1,188 @@
 rules_version = '2';
 
+// =====================================================================
+// Storift Firestore セキュリティルール(厳格モード)
+//
+// 【破壊的変更】
+// 従来のルールは「認証済み(匿名含む)なら 6 コレクションを全開放」だった。
+// 本ルールは request.auth.uid ベースで強制するため、デプロイすると
+// オーナー登録(owners/{uid})のない端末は従来コレクションにアクセスできなくなる。
+// クライアント側の対応(オーナー登録フロー等)が揃う前にデプロイしないこと。
+//
+// 【構造】
+//   projects / chapters / scenes / characters / plots / worldbuilding
+//                                 従来コレクション(任意ネスト含む)。オーナーのみ
+//   owners/{uid}                  オーナー端末の登録
+//   _config/ownerKey              {key} オーナー鍵。クライアントは read 不可
+//                                 (ルール内の get() からのみ参照される)
+//   shared/{pid}                  共有メタ(visibility: 'private' | 'link', name ...)
+//   shared/{pid}/secrets/{role}   {value} role = viewer | editor。クライアント read 不可
+//   shared/{pid}/members/{uid}    参加者。{role, secret, joinedAt, name?}
+//   shared/{pid}/presence/{uid}   在席情報
+//   shared/{pid}/{type}/{id}[/...] type = projects ... worldbuilding と、そのネスト
+//
+// 【オーナー鍵の仕組み】
+// 初回端末は 1 つの batch で _config/ownerKey と owners/{uid} を同時に作る。
+// 2 台目以降は owners/{自分のuid} を、現在の _config/ownerKey と同じ key で作る。
+// 鍵のローテーションは _config/ownerKey の update(オーナーのみ)。
+// 失効は owners/{uid} の delete(オーナーのみ)。
+//
+// 【既知の制限: bootstrap の競合】
+// _config/ownerKey がまだ無い間は、最初に batch を commit した認証済みユーザーが
+// オーナーになれる(先着)。これは仕様として許容する。Firebase 設定を知る第三者が
+// 先に実行すると乗っ取られるため、デプロイ直後に速やかに自分の端末で登録すること。
+//
+// 【注意: 読み取り課金】
+// ルール内の get() / exists() / getAfter() / existsAfter() は、
+// リクエストごとに 1 回の文書読み取りとして課金される(同一リクエスト内の同一文書は
+// キャッシュされる)。isOwner() は大半のリクエストで exists を 1 回、
+// メンバー判定やロール取得でさらに最大 2〜3 回の読み取りが発生する。
+//
+// 【注意: match は OR 評価】
+// 複数の match のどれかが許可すれば許可される。shared/{pid}/{document=**} のような
+// 広いマッチを置くと secrets / members まで許可されてしまうため、
+// 共有データは type 名を明示した match に限定している。
+// =====================================================================
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 同期に使うコレクションだけを、認証済みユーザー(匿名認証を含む)に許可する。
-    // ユーザーごとの分離はしない。同じ Firebase 設定を読み込んだ端末が同じデータを共有する。
-    match /{collection}/{document=**} {
-      allow read, write: if request.auth != null
-        && collection in ['projects', 'chapters', 'scenes', 'characters', 'plots', 'worldbuilding'];
+
+    // ---------- ヘルパー ----------
+    function signedIn() {
+      return request.auth != null;
     }
-    // 上記以外は拒否される(既定)
+
+    function isOwner() {
+      return signedIn() && exists(/databases/$(database)/documents/owners/$(request.auth.uid));
+    }
+
+    function memberPath(pid, uid) {
+      return /databases/$(database)/documents/shared/$(pid)/members/$(uid);
+    }
+
+    function isMember(pid) {
+      return signedIn() && exists(memberPath(pid, request.auth.uid));
+    }
+
+    function memberRole(pid) {
+      return get(memberPath(pid, request.auth.uid)).data.role;
+    }
+
+    function isEditor(pid) {
+      return isMember(pid) && memberRole(pid) == 'editor';
+    }
+
+    function isLinkShared(pid) {
+      return signedIn() && get(/databases/$(database)/documents/shared/$(pid)).data.visibility == 'link';
+    }
+
+    function sharedTypes() {
+      return ['projects', 'chapters', 'scenes', 'characters', 'plots', 'worldbuilding'];
+    }
+
+    // ---------- 従来コレクション(オーナーのみ) ----------
+    match /{col}/{document=**} {
+      allow read, write: if isOwner() && col in sharedTypes();
+    }
+
+    // ---------- オーナー登録 ----------
+    match /_config/ownerKey {
+      allow read: if false;
+      // bootstrap: 未作成の場合のみ。同一 batch で作る owners/{uid} の key と一致すること。
+      // (先着で成立する。上部コメント参照)
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['key'])
+        && request.resource.data.key is string
+        && request.resource.data.key.size() > 0
+        && existsAfter(/databases/$(database)/documents/owners/$(request.auth.uid))
+        && getAfter(/databases/$(database)/documents/owners/$(request.auth.uid)).data.key
+          == request.resource.data.key;
+      // 鍵のローテーション
+      allow update, delete: if isOwner();
+    }
+
+    match /owners/{uid} {
+      allow read: if isOwner() || (signedIn() && request.auth.uid == uid);
+      // 2 台目以降: 現在の ownerKey と一致する key で自分の uid を登録
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['key', 'createdAt'])
+        && request.resource.data.key is string
+        && exists(/databases/$(database)/documents/_config/ownerKey)
+        && get(/databases/$(database)/documents/_config/ownerKey).data.key
+          == request.resource.data.key;
+      // 初回 bootstrap: ownerKey がまだ無く、同一 batch で同じ key の ownerKey が作られる
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['key', 'createdAt'])
+        && request.resource.data.key is string
+        && !exists(/databases/$(database)/documents/_config/ownerKey)
+        && existsAfter(/databases/$(database)/documents/_config/ownerKey)
+        && getAfter(/databases/$(database)/documents/_config/ownerKey).data.key
+          == request.resource.data.key;
+      // update は不可。delete は失効。
+      allow delete: if isOwner();
+    }
+
+    // ---------- 共有メタ ----------
+    match /shared/{pid} {
+      allow get: if isOwner() || isMember(pid) || (signedIn() && resource.data.visibility == 'link');
+      // link 公開のプロジェクトを列挙されないよう、list はオーナーのみ。
+      // 共有プロジェクトの ID(pid)は推測できない長いIDであることが前提なので、列挙できると link 公開が意味を失う。
+      allow list: if isOwner();
+      allow write: if isOwner();
+    }
+
+    match /shared/{pid}/secrets/{role} {
+      allow read: if false;
+      allow write: if isOwner();
+    }
+
+    match /shared/{pid}/members/{uid} {
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['role', 'secret', 'joinedAt', 'name'])
+        && request.resource.data.keys().hasAll(['role', 'secret'])
+        && request.resource.data.role in ['viewer', 'editor']
+        && request.resource.data.secret is string
+        && exists(/databases/$(database)/documents/shared/$(pid)/secrets/$(request.resource.data.role))
+        && request.resource.data.secret
+          == get(/databases/$(database)/documents/shared/$(pid)/secrets/$(request.resource.data.role)).data.value;
+      allow read: if isOwner() || (signedIn() && request.auth.uid == uid);
+      // 自己昇格を防ぐため update はオーナーのみ
+      allow update: if isOwner();
+      allow delete: if isOwner() || (signedIn() && request.auth.uid == uid);
+    }
+
+    match /shared/{pid}/presence/{uid} {
+      allow read: if isOwner() || isMember(pid);
+      allow create, update: if signedIn() && request.auth.uid == uid && (isOwner() || isMember(pid));
+      // 本人に加えて、オーナーも削除できる(共有の停止・メンバー削除のあとに、他人の在席情報を片付けるため)
+      allow delete: if isOwner() || (signedIn() && request.auth.uid == uid && isMember(pid));
+    }
+
+    // ---------- 共有データ ----------
+    // type 名を明示。secrets / members / presence には到達しない。
+    match /shared/{pid}/{col}/{id} {
+      allow read: if col in sharedTypes()
+        && (isOwner() || isMember(pid) || isLinkShared(pid));
+      allow create, update: if col in sharedTypes()
+        && (isOwner() || isEditor(pid))
+        && request.resource.data.projectId == pid
+        && (col != 'projects' || id == pid);
+      allow delete: if col in sharedTypes() && (isOwner() || isEditor(pid));
+    }
+
+    // scenes/{id}/updates, scenes/{id}/crdt などのネスト。
+    // 注意: {rest=**} は 0 個以上のセグメントに一致するため、{id}/{rest=**} と書くと
+    // 文書 {id} 自身にも一致し、projectId の検証を迂回できてしまう。
+    // そのため {sub}/{rest=**} とし、サブコレクション以下に限定する。
+    match /shared/{pid}/{col}/{id}/{sub}/{rest=**} {
+      allow read: if col in sharedTypes()
+        && (isOwner() || isMember(pid) || isLinkShared(pid));
+      allow write: if col in sharedTypes() && (isOwner() || isEditor(pid));
+    }
+
+    // 上記以外は既定で拒否
   }
 }

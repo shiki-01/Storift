@@ -70,12 +70,29 @@ export function moveCaret(delta: number): void {
 	}
 }
 
+/**
+ * 元に戻す/やり直すの差し替え。共同編集のシーンでは、ブラウザ標準の履歴の代わりに
+ * 自分の編集だけを対象にした履歴(Y.UndoManager)を使う。null なら標準の動作。
+ */
+export interface HistoryHandler {
+	undo(): void;
+	redo(): void;
+}
+
+let historyHandler: HistoryHandler | null = null;
+
+export function setHistoryHandler(handler: HistoryHandler | null): void {
+	historyHandler = handler;
+}
+
 export function undo(): void {
-	document.execCommand('undo');
+	if (historyHandler) historyHandler.undo();
+	else document.execCommand('undo');
 }
 
 export function redo(): void {
-	document.execCommand('redo');
+	if (historyHandler) historyHandler.redo();
+	else document.execCommand('redo');
 }
 
 /** カーソル位置の矩形(取得できなければ null) */

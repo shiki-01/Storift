@@ -4,6 +4,7 @@
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { worldbuildingDB } from '$lib/db';
 	import { queueChange } from '$lib/services/sync.service';
+	import { isReadOnlyProject } from '$lib/utils/readOnly';
 	import type { Worldbuilding } from '$lib/types';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -11,6 +12,9 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import { onMount, untrack } from 'svelte';
 	import { dataChange } from '$lib/stores/dataChange.svelte';
+
+	// 閲覧専用(閲覧権限、またはアクセス権の失効)。編集・追加・削除の入口を無効にする。同期層にも安全網がある
+	const readOnly = $derived(isReadOnlyProject(currentProjectStore.project?.id));
 
 	let worldbuildings = $state<Worldbuilding[]>([]);
 	let isLoading = $state(true);
@@ -98,6 +102,7 @@
 	};
 
 	const openCreateModal = () => {
+		if (readOnly) return;
 		formData = {
 			title: '',
 			category: 'term',
@@ -121,6 +126,7 @@
 	}
 
 	const handleCreate = async () => {
+		if (readOnly) return;
 		if (!currentProjectStore.project || !formData.title.trim()) return;
 
 		const worldbuilding = await worldbuildingDB.create({
@@ -143,6 +149,7 @@
 	};
 
 	const handleUpdate = async () => {
+		if (readOnly) return;
 		if (!editingWorldbuilding) return;
 
 		await worldbuildingDB.update(editingWorldbuilding.id, {
@@ -161,6 +168,7 @@
 	};
 
 	async function handleDelete(id: string) {
+		if (readOnly) return;
 		if (!(await confirmDialog({ message: 'この設定資料を削除しますか?', danger: true }))) return;
 		await worldbuildingDB.delete(id);
 		// 同期キューに追加
@@ -219,7 +227,7 @@
 					<Button
 						class="px:18 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
 						onclick={openCreateModal}
-						disabled={!currentProjectStore.project}
+						disabled={readOnly || !currentProjectStore.project}
 					>
 						+ 新規資料
 					</Button>
@@ -298,10 +306,11 @@
 										class={`flex:1 ${actionButtonClass()}`}
 										onclick={() => openEditModal(worldbuilding)}
 									>
-										編集
+										{readOnly ? '表示' : '編集'}
 									</button>
 									<button
 										class={actionButtonClass('danger')}
+										disabled={readOnly}
 										onclick={() => handleDelete(worldbuilding.id)}
 									>
 										削除
@@ -322,6 +331,7 @@
 							</p>
 							<Button
 								class="px:18 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8"
+								disabled={readOnly}
 								onclick={openCreateModal}
 							>
 								最初の資料を作成
@@ -446,7 +456,7 @@
 
 <!-- 編集モーダル -->
 <Modal bind:isOpen={showEditModal} title="設定資料編集">
-	<div class="flex flex:column gap:16">
+	<fieldset disabled={readOnly} class="flex flex:column gap:16 b:0 p:0 m:0 min-w:0">
 		<Input label="タイトル *" bind:value={formData.title} placeholder="用語名や場所名など" />
 
 		<div>
@@ -514,7 +524,7 @@
 				</div>
 			{/if}
 		</div>
-	</div>
+	</fieldset>
 
 	{#snippet footer()}
 		<div class="flex gap:12">
@@ -526,7 +536,7 @@
 			<Button
 				class="px:18 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8"
 				onclick={handleUpdate}
-				disabled={!formData.title.trim()}
+				disabled={readOnly || !formData.title.trim()}
 			>
 				更新
 			</Button>

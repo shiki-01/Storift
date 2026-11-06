@@ -2,7 +2,7 @@
 	"name": "storift",
 	"private": true,
 	"license": "MIT",
-	"version": "0.0.10",
+	"version": "0.1.0",
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
@@ -18,11 +18,14 @@
 		"test:coverage": "vitest --coverage",
 		"tauri": "tauri",
 		"desktop:dev": "tauri dev",
-		"desktop:build": "tauri build"
+		"desktop:build": "tauri build",
+		"test:rules": "firebase emulators:exec --only firestore --project demo-storift \"vitest run --config vitest.rules.config.ts\"",
+		"test:e2e": "firebase emulators:exec --only auth,firestore --project demo-storift \"node tests/e2e/coedit.spec.mjs\""
 	},
 	"devDependencies": {
 		"@eslint/compat": "^1.4.0",
 		"@eslint/js": "^9.38.0",
+		"@firebase/rules-unit-testing": "^6.0.0",
 		"@sveltejs/adapter-auto": "^7.0.0",
 		"@sveltejs/adapter-cloudflare": "^7.2.4",
 		"@sveltejs/adapter-static": "^3.0.10",
@@ -38,6 +41,7 @@
 		"eslint": "^9.38.0",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-svelte": "^3.12.4",
+		"firebase-tools": "^15.35.0",
 		"fake-indexeddb": "^6.2.7",
 		"globals": "^16.4.0",
 		"happy-dom": "^20.0.10",
@@ -73,7 +77,8 @@
 		"jszip": "^3.10.1",
 		"mammoth": "^1.11.0",
 		"marked": "^16.4.1",
-		"uuid": "^13.0.0"
+		"uuid": "^13.0.0",
+		"yjs": "^13.6.33"
 	},
 	"packageManager": "pnpm@10.14.0+sha512.ad27a79641b49c3e481a16a805baa71817a04bbe06a38d17e60e2eaee83f6a146c6a688125f5792e48dd5ba30e7da52a5cda4c3992b9ccf333f9ce223af84748"
 }

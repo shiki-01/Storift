@@ -27,3 +27,11 @@ vite.config.ts.timestamp-*
 /src-tauri/gen
 
 /.claude
+
+# Firebase Emulator
+firestore-debug.log
+*-debug.log
+.firebase/
+
+# Firebase Emulator
+*-debug.log

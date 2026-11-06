@@ -5,6 +5,12 @@
 	import { initializeFirebase, signInAnonymousUser } from '$lib/firebase';
 	import { authStore } from '$lib/stores/auth.svelte';
 	import { initializeSync } from '$lib/services/sync.service';
+	import { initAccessMode } from '$lib/services/access.service';
+	import {
+		decodeSettingsCode,
+		looksLikeSettingsCode,
+		SETTINGS_CODE_ERROR_MESSAGES
+	} from '$lib/firebase/settingsCode';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
@@ -23,8 +29,24 @@
 	let testResult = $state('');
 	let configText = $state('');
 	let showManualInput = $state(false);
+	// 設定コードから読み込んだオーナー鍵(保存時に登録に使う)
+	let pendingOwnerKey = $state<string | undefined>(undefined);
 
 	const handlePaste = () => {
+		// 設定コード(storift1:...)は、Firebase 設定とオーナー鍵をまとめて読み込む
+		if (looksLikeSettingsCode(configText)) {
+			const decoded = decodeSettingsCode(configText);
+			if (!decoded.ok) {
+				error = SETTINGS_CODE_ERROR_MESSAGES[decoded.error];
+				return;
+			}
+			({ apiKey, authDomain, projectId, storageBucket, messagingSenderId, appId } = decoded.config);
+			pendingOwnerKey = decoded.ownerKey;
+			configText = '';
+			error = '';
+			return;
+		}
+
 		try {
 			// まずJSON形式をトライ
 			const config = JSON.parse(configText);
@@ -123,7 +145,17 @@
 			authStore.isInitialized = true;
 
 			// IndexedDBに保存
-			await settingsDB.update({ firebase: config, setupCompleted: true });
+			// オーナー鍵は設定コードで貼られたときだけ持つ。別の Firebase に切り替える場合に古い鍵を残さない
+			await settingsDB.update({
+				firebase: config,
+				ownerKey: pendingOwnerKey,
+				accessMode: undefined,
+				setupCompleted: true
+			});
+			authStore.accessMode = null;
+
+			// アクセスモードの判定はバックグラウンドで始める(同期の開始より前に、キャッシュを反映する)
+			await initAccessMode();
 
 			// 同期システムを初期化
 			try {
@@ -159,7 +191,8 @@
 					<Icon name="rocket" /> 設定を一括入力
 				</h3>
 				<p class="font:14 fg:theme-primary m:0|0|12|0">
-					Firebase Consoleからコピーした設定をそのまま貼り付けてください
+					Firebase
+					Consoleからコピーした設定、または別の端末で表示した「設定コード」をそのまま貼り付けてください
 				</p>
 				<textarea
 					bind:value={configText}
@@ -172,6 +205,11 @@ projectId: 'your-project',
 				<div class="flex gap:8 mt:12">
 					<Button type="button" onclick={handlePaste} disabled={!configText}>設定を読み込む</Button>
 				</div>
+				{#if pendingOwnerKey}
+					<p class="font:13 fg:theme-success m:12|0|0|0">
+						設定コードを読み込みました。保存すると、この端末をオーナー端末として登録します。
+					</p>
+				{/if}
 			</div>
 
 			<form

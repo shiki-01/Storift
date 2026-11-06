@@ -4,6 +4,7 @@
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { charactersDB } from '$lib/db';
 	import { queueChange } from '$lib/services/sync.service';
+	import { filterReadOnlyMenu, isReadOnlyProject } from '$lib/utils/readOnly';
 	import type { Character } from '$lib/types';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -14,6 +15,9 @@
 	import { createCharacterContextMenu, type ContextMenuItem } from '$lib/utils/contextMenu';
 	import { onMount, untrack } from 'svelte';
 	import { dataChange } from '$lib/stores/dataChange.svelte';
+
+	// 閲覧専用(閲覧権限、またはアクセス権の失効)。編集・追加・削除の入口を無効にする。同期層にも安全網がある
+	const readOnly = $derived(isReadOnlyProject(currentProjectStore.project?.id));
 
 	let characters = $state<Character[]>([]);
 	let isLoading = $state(true);
@@ -110,6 +114,7 @@
 	});
 
 	const openCreateModal = () => {
+		if (readOnly) return;
 		formData = {
 			name: '',
 			role: '',
@@ -142,7 +147,7 @@
 	}
 
 	const handleCreate = async () => {
-		if (!currentProjectStore.project || !formData.name.trim()) return;
+		if (readOnly || !currentProjectStore.project || !formData.name.trim()) return;
 
 		const character = await charactersDB.create({
 			projectId: currentProjectStore.project.id,
@@ -167,6 +172,7 @@
 	};
 
 	const handleUpdate = async () => {
+		if (readOnly) return;
 		if (!editingCharacter) return;
 
 		await charactersDB.update(editingCharacter.id, {
@@ -188,6 +194,7 @@
 	};
 
 	async function handleDelete(id: string) {
+		if (readOnly) return;
 		if (!(await confirmDialog({ message: 'このキャラクターを削除しますか?', danger: true })))
 			return;
 		await charactersDB.delete(id);
@@ -221,6 +228,7 @@
 	}
 
 	async function handleRemoveRelation(characterId: string, relationshipIndex: number) {
+		if (readOnly) return;
 		const character = characters.find((c) => c.id === characterId);
 		if (!character) return;
 
@@ -255,12 +263,14 @@
 		e.preventDefault();
 		e.stopPropagation();
 
-		const items = createCharacterContextMenu({
+		const menuItems = createCharacterContextMenu({
 			onEdit: () => openEditModal(character),
 			onDuplicate: () => handleDuplicateCharacter(character),
 			onDelete: () => handleDelete(character.id),
 			onViewRelations: () => openRelationModal(character)
 		});
+		const items = readOnly ? filterReadOnlyMenu(menuItems) : menuItems;
+		if (items.length === 0) return;
 
 		contextMenu = {
 			visible: true,
@@ -273,7 +283,7 @@
 
 	// 複製処理
 	async function handleDuplicateCharacter(character: Character) {
-		if (!currentProjectStore.project) return;
+		if (readOnly || !currentProjectStore.project) return;
 
 		try {
 			const newCharacter = await charactersDB.create({
@@ -328,6 +338,7 @@
 					</div>
 					<Button
 						class="px:16 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
+						disabled={readOnly}
 						onclick={openCreateModal}
 					>
 						+ 新規キャラクター
@@ -410,7 +421,7 @@
 										class={`flex:1 ${actionButtonClass()}`}
 										onclick={() => openEditModal(character)}
 									>
-										編集
+										{readOnly ? '表示' : '編集'}
 									</button>
 									<button
 										class={`flex:1 ${actionButtonClass('secondary')}`}
@@ -420,6 +431,7 @@
 									</button>
 									<button
 										class={actionButtonClass('danger')}
+										disabled={readOnly}
 										onclick={() => handleDelete(character.id)}
 									>
 										削除
@@ -465,7 +477,7 @@
 											</div>
 											<div class="flex gap:8">
 												<button class={actionButtonClass()} onclick={() => openEditModal(character)}
-													>編集</button
+													>{readOnly ? '表示' : '編集'}</button
 												>
 												<button
 													class={actionButtonClass('secondary')}
@@ -473,6 +485,7 @@
 												>
 												<button
 													class={actionButtonClass('danger')}
+													disabled={readOnly}
 													onclick={() => handleDelete(character.id)}>削除</button
 												>
 											</div>
@@ -520,6 +533,7 @@
 						<p class="fg:theme-text-secondary font:18">キャラクターがまだありません</p>
 						<Button
 							class="px:20 py:12 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:10 font:14"
+							disabled={readOnly}
 							onclick={openCreateModal}
 						>
 							最初のキャラクターを作成
@@ -598,7 +612,7 @@
 
 <!-- 編集モーダル -->
 <Modal bind:isOpen={showEditModal} title="キャラクター編集">
-	<div class="flex flex:column gap:16">
+	<fieldset disabled={readOnly} class="flex flex:column gap:16 b:0 p:0 m:0 min-w:0">
 		<Input label="名前 *" bind:value={formData.name} placeholder="キャラクター名" />
 		<Input label="役割" bind:value={formData.role} placeholder="主人公、ヒロイン、悪役など" />
 
@@ -645,7 +659,7 @@
 				placeholder="生い立ち、経歴など..."
 			></textarea>
 		</div>
-	</div>
+	</fieldset>
 
 	{#snippet footer()}
 		<div class="flex gap:12">
@@ -655,7 +669,7 @@
 			<Button
 				class="px:20 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
 				onclick={handleUpdate}
-				disabled={!formData.name.trim()}>更新</Button
+				disabled={readOnly || !formData.name.trim()}>更新</Button
 			>
 		</div>
 	{/snippet}
@@ -687,6 +701,7 @@
 								</div>
 								<button
 									class={actionButtonClass('danger')}
+									disabled={readOnly}
 									onclick={() => handleRemoveRelation(selectedCharacter!.id, index)}
 								>
 									削除

@@ -10,9 +10,13 @@
 	import { projectsStore } from '$lib/stores/projects.svelte';
 	import { tourStore } from '$lib/tutorial/tour.svelte';
 	import { queueChange } from '$lib/services/sync.service';
+	import { deleteProjectSharing } from '$lib/services/sharing.service';
+	import { leaveGuestProject } from '$lib/services/join.service';
+	import JoinPanel from '$lib/components/ui/JoinPanel.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
+	import SharingDialog from '$lib/components/ui/SharingDialog.svelte';
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
 	import { formatRelativeTime } from '$lib/utils/dateUtils';
 	import { createProjectContextMenu, type ContextMenuItem } from '$lib/utils/contextMenu';
@@ -21,6 +25,9 @@
 
 	let isCreateModalOpen = $state(false);
 	let isRenameModalOpen = $state(false);
+	let isSharingOpen = $state(false);
+	let isJoinOpen = $state(false);
+	let sharingProjectId = $state('');
 	let newProjectTitle = $state('');
 	let newProjectDescription = $state('');
 	let renameValue = $state('');
@@ -147,6 +154,10 @@
 			onRename: () => handleRenameProject(project),
 			onDuplicate: () => handleDuplicateProject(project),
 			onExport: () => handleExportProject(project),
+			onShare: () => {
+				sharingProjectId = project.id;
+				isSharingOpen = true;
+			},
 			onDelete: () => handleDeleteProject(project)
 		});
 
@@ -186,15 +197,39 @@
 
 	// 削除処理
 	async function handleDeleteProject(project: Project) {
+		// ゲストとして参加しているプロジェクトは、共有から退出してこの端末のコピーを削除する(共有側のデータは消さない)
+		if (project.sharing && project.sharing.role !== 'owner') {
+			if (
+				!(await confirmDialog({
+					message: `プロジェクト「${project.title}」は他の人から共有されています。共有から退出し、この端末のコピーを削除しますか?\nこの操作は取り消せません(共有側のデータは削除されません)。`,
+					danger: true
+				}))
+			)
+				return;
+			try {
+				await leaveGuestProject(project.id, 'delete');
+				projectsStore.projects = projectsStore.projects.filter((p) => p.id !== project.id);
+			} catch (error) {
+				console.error('Failed to leave shared project:', error);
+				toast.error(error instanceof Error ? error.message : '共有からの退出に失敗しました');
+			}
+			return;
+		}
+
 		if (
 			!(await confirmDialog({
-				message: `プロジェクト「${project.title}」を削除しますか?\nこの操作は取り消せません。`,
+				message: project.sharing
+					? `プロジェクト「${project.title}」は共有中です。削除すると、共有側のデータ・参加者・秘密もすべて削除されます。\nこの操作は取り消せません。削除しますか?`
+					: `プロジェクト「${project.title}」を削除しますか?\nこの操作は取り消せません。`,
 				danger: true
 			}))
 		)
 			return;
 
 		try {
+			// 共有中なら、先に共有側(データ・参加者・秘密・メタ)を削除する。失敗したら削除しない
+			if (project.sharing) await deleteProjectSharing(project.id);
+
 			// プロジェクト関連のすべてのデータを削除
 			const { chaptersDB, scenesDB, charactersDB, plotsDB, worldbuildingDB, progressLogsDB } =
 				await import('$lib/db');
@@ -316,6 +351,7 @@
 				aria-label="作品を検索"
 				oninput={handleSearchInput}
 			/>
+			<Button variant="secondary" onclick={() => (isJoinOpen = true)}>共有リンクから参加</Button>
 			<Button data-tour="home-new-project" onclick={() => (isCreateModalOpen = true)}>
 				＋ 新しい作品
 			</Button>
@@ -450,6 +486,18 @@
 		</div>
 	</form>
 </Modal>
+
+<!-- 共有リンクから参加(デスクトップ版・Web 版とも、貼り付けた招待リンクを同じ処理で扱う) -->
+<Modal bind:isOpen={isJoinOpen} title="共有リンクから参加" size="medium">
+	{#if isJoinOpen}
+		<JoinPanel onJoined={() => void loadProjects()} onClose={() => (isJoinOpen = false)} />
+	{/if}
+</Modal>
+
+<!-- 共有ダイアログ -->
+{#if isSharingOpen}
+	<SharingDialog bind:isOpen={isSharingOpen} projectId={sharingProjectId} />
+{/if}
 
 <!-- リネームモーダル -->
 <Modal bind:isOpen={isRenameModalOpen} title="プロジェクト名を変更">

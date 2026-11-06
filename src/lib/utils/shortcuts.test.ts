@@ -3,6 +3,7 @@ import {
 	DEFAULT_SHORTCUTS,
 	eventToShortcut,
 	findConflicts,
+	historyActionOf,
 	matchesShortcut,
 	migrateShortcuts,
 	normalizeAutoSaveMs,
@@ -81,5 +82,20 @@ describe('normalizeAutoSaveMs', () => {
 		expect(normalizeAutoSaveMs(1)).toBe(5000);
 		expect(normalizeAutoSaveMs(999999)).toBe(300000);
 		expect(normalizeAutoSaveMs(undefined)).toBe(30000);
+	});
+});
+
+describe('historyActionOf', () => {
+	it('Ctrl+Z は元に戻す、Ctrl+Y と Ctrl+Shift+Z はやり直す', () => {
+		expect(historyActionOf(key('z', { ctrlKey: true }))).toBe('undo');
+		expect(historyActionOf(key('y', { ctrlKey: true }))).toBe('redo');
+		expect(historyActionOf(key('Z', { ctrlKey: true, shiftKey: true }))).toBe('redo');
+		expect(historyActionOf(key('z', { metaKey: true }))).toBe('undo');
+	});
+
+	it('それ以外のキーは対象外', () => {
+		expect(historyActionOf(key('z'))).toBeNull();
+		expect(historyActionOf(key('a', { ctrlKey: true }))).toBeNull();
+		expect(historyActionOf(key('z', { ctrlKey: true, altKey: true }))).toBeNull();
 	});
 });

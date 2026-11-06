@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { confirmDialog, toast } from '$lib/stores/toast.svelte';
 	import { searchInProject, replaceInProject, validateRegex } from '$lib/services/search.service';
-	import type { SearchOptions, SearchResult } from '$lib/services/search.service';
+	import type { ReplaceSkip, SearchOptions, SearchResult } from '$lib/services/search.service';
 	import Sheet from '$lib/components/mobile/Sheet.svelte';
 
 	type Scope = 'scenes' | 'chapters' | 'characters' | 'plots' | 'worldbuilding';
@@ -12,9 +12,11 @@
 		onClose: () => void;
 		/** 結果のシーンをタップしたとき */
 		onOpenScene?: (sceneId: string) => void;
+		/** 読み取り専用(閲覧権限など)のプロジェクトでは置換を使えない */
+		readOnly?: boolean;
 	}
 
-	let { projectId, show, onClose, onOpenScene }: Props = $props();
+	let { projectId, show, onClose, onOpenScene, readOnly = false }: Props = $props();
 
 	let searchQuery = $state('');
 	let replaceWith = $state('');
@@ -27,6 +29,8 @@
 	let hasSearched = $state(false);
 	let regexError = $state('');
 	let selectedScopes = $state<Scope[]>(['scenes']);
+	// 置換の結果(共有プロジェクトでスキップしたシーンがあれば、その件数と理由を表示する)
+	let replaceSummary = $state<{ replaced: number; skipped: ReplaceSkip[] } | null>(null);
 
 	const scopeLabels: { id: Scope; label: string }[] = [
 		{ id: 'scenes', label: 'シーン' },
@@ -56,8 +60,9 @@
 		};
 	}
 
-	async function handleSearch() {
+	async function handleSearch(keepSummary = false) {
 		if (!searchQuery) return;
+		if (!keepSummary) replaceSummary = null;
 		if (useRegex) {
 			const validation = validateRegex(searchQuery);
 			if (!validation.valid) {
@@ -79,7 +84,7 @@
 	}
 
 	async function handleReplace() {
-		if (!searchQuery) return;
+		if (readOnly || !searchQuery) return;
 		const total = searchResults.reduce((n, r) => n + r.matches, 0);
 		const ok = await confirmDialog({
 			title: '一括置換',
@@ -95,7 +100,8 @@
 				replaceAll: true
 			});
 			toast.success(`${result.replaced}か所を置換しました`);
-			await handleSearch();
+			replaceSummary = { replaced: result.replaced, skipped: result.skipped };
+			await handleSearch(true);
 		} catch (error) {
 			console.error('Replace failed:', error);
 			toast.error('置換に失敗しました');
@@ -137,7 +143,7 @@
 		</label>
 		{#if regexError}<p class="error" role="alert">{regexError}</p>{/if}
 
-		{#if showReplace}
+		{#if showReplace && !readOnly}
 			<label class="field">
 				<span>置換後</span>
 				<input type="text" bind:value={replaceWith} placeholder="置換後のテキスト" />
@@ -161,14 +167,16 @@
 			<label><input type="checkbox" bind:checked={caseSensitive} />大文字小文字を区別</label>
 			<label><input type="checkbox" bind:checked={wholeWord} />単語単位</label>
 			<label><input type="checkbox" bind:checked={useRegex} />正規表現</label>
-			<label><input type="checkbox" bind:checked={showReplace} />置換</label>
+			{#if !readOnly}
+				<label><input type="checkbox" bind:checked={showReplace} />置換</label>
+			{/if}
 		</div>
 
 		<div class="actions">
-			<button class="primary" onclick={handleSearch} disabled={isSearching || !searchQuery}>
+			<button class="primary" onclick={() => handleSearch()} disabled={isSearching || !searchQuery}>
 				{isSearching ? '検索中...' : '検索'}
 			</button>
-			{#if showReplace}
+			{#if showReplace && !readOnly}
 				<button
 					class="danger"
 					onclick={handleReplace}
@@ -178,6 +186,17 @@
 				</button>
 			{/if}
 		</div>
+
+		{#if replaceSummary && replaceSummary.skipped.length > 0}
+			<div class="skipped" role="alert" data-testid="replace-skipped">
+				<strong>{replaceSummary.skipped.length}件のシーンは置換できませんでした</strong>
+				<ul>
+					{#each replaceSummary.skipped as skip (skip.sceneId)}
+						<li>{skip.title}: {skip.message}</li>
+					{/each}
+				</ul>
+			</div>
+		{/if}
 
 		{#if searchResults.length > 0}
 			<h3>検索結果 ({searchResults.length}件)</h3>
@@ -205,6 +224,19 @@
 </Sheet>
 
 <style>
+	.skipped {
+		padding: 10px 12px;
+		border: 1px solid var(--color-warning);
+		border-radius: 10px;
+		font-size: 13px;
+	}
+
+	.skipped ul {
+		margin: 6px 0 0;
+		padding-left: 18px;
+		color: var(--color-text-secondary);
+	}
+
 	.search {
 		display: flex;
 		flex-direction: column;

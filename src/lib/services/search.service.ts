@@ -1,4 +1,5 @@
 import { db } from '$lib/db';
+import { applySceneText, getSceneText } from '$lib/services/sceneText.service';
 import type { Scene } from '$lib/types/scene';
 import type { Chapter } from '$lib/types/chapter';
 import type { Character } from '$lib/types/character';
@@ -23,6 +24,15 @@ export interface SearchResult {
 	data: Scene | Chapter | Character | Plot | Worldbuilding;
 }
 
+/** 置換できなかった(スキップした)シーン */
+export interface ReplaceSkip {
+	sceneId: string;
+	title: string;
+	/** applySceneText の失敗理由(offline / no-snapshot / read-only / denied など) */
+	reason: string;
+	message: string;
+}
+
 export interface ReplaceOptions extends SearchOptions {
 	replaceWith: string;
 	replaceAll?: boolean;
@@ -44,14 +54,17 @@ export async function searchInProject(
 	// シーンを検索
 	if (scopes.includes('scenes')) {
 		const scenes = await db.scenes.where('projectId').equals(projectId).toArray();
+		const shared = await isSharedActive(projectId);
 		for (const scene of scenes) {
-			const matches = findMatches(scene.content, pattern);
+			// 共有プロジェクトの本文は共同編集側が正(Scene.content はミラーで遅れることがある)
+			const text = shared ? ((await getSceneText(scene.id)) ?? scene.content) : scene.content;
+			const matches = findMatches(text, pattern);
 			if (matches.length > 0) {
 				results.push({
 					type: 'scene',
 					id: scene.id,
 					title: scene.title,
-					preview: createPreview(scene.content, matches[0].start),
+					preview: createPreview(text, matches[0].start),
 					matches: matches.length,
 					highlights: matches,
 					data: scene
@@ -152,37 +165,65 @@ export async function replaceInProject(
 ): Promise<{
 	replaced: number;
 	sceneIds: string[];
+	/** 置換できなかったシーン(共有プロジェクトで、オフライン・読み取り専用などのとき) */
+	skipped: ReplaceSkip[];
 }> {
 	const pattern = createSearchPattern(options);
 	const sceneIds: string[] = [];
+	const skipped: ReplaceSkip[] = [];
 	let replaced = 0;
 
 	// シーン内を置換
 	const scenes = await db.scenes.where('projectId').equals(projectId).toArray();
+	const shared = await isSharedActive(projectId);
 
 	for (const scene of scenes) {
-		const newContent = options.replaceAll
-			? scene.content.replace(pattern, options.replaceWith)
-			: scene.content.replace(pattern, options.replaceWith);
+		// 共有プロジェクトの本文は共同編集側の文字列を基準にする
+		const content = shared ? ((await getSceneText(scene.id)) ?? scene.content) : scene.content;
+		const newContent = content.replace(pattern, options.replaceWith);
+		if (newContent === content) continue;
 
-		if (newContent !== scene.content) {
-			// マッチ数をカウント
-			const matches = scene.content.match(new RegExp(pattern, 'g'));
-			replaced += matches ? matches.length : 0;
+		// マッチ数をカウント
+		const matches = content.match(new RegExp(pattern, 'g'));
+		const count = matches ? matches.length : 0;
 
-			// 更新
-			await db.scenes.update(scene.id, {
-				content: newContent,
-				characterCount: newContent.length,
-				updatedAt: Date.now(),
-				_version: scene._version + 1
-			});
-
+		if (shared) {
+			// 共有プロジェクトのシーンは applySceneText(最小差分を Y に適用して送信)で反映する。
+			// オフラインで本文を取得できない・読み取り専用などのシーンはスキップして理由を返す
+			const result = await applySceneText(scene.id, newContent);
+			if (!result.ok) {
+				skipped.push({
+					sceneId: scene.id,
+					title: scene.title,
+					reason: result.reason,
+					message: result.message
+				});
+				continue;
+			}
+			replaced += count;
 			sceneIds.push(scene.id);
+			continue;
 		}
+
+		replaced += count;
+
+		// 更新
+		await db.scenes.update(scene.id, {
+			content: newContent,
+			characterCount: newContent.length,
+			updatedAt: Date.now(),
+			_version: scene._version + 1
+		});
+
+		sceneIds.push(scene.id);
 	}
 
-	return { replaced, sceneIds };
+	return { replaced, sceneIds, skipped };
+}
+
+/** 共有が有効なプロジェクトか(本文が共同編集のもの) */
+async function isSharedActive(projectId: string): Promise<boolean> {
+	return (await db.projects.get(projectId))?.sharing?.status === 'active';
 }
 
 /**

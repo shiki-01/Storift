@@ -4,6 +4,10 @@ let isOpen = $state(false);
 let currentScene = $state<Scene | null>(null);
 let content = $state('');
 let isDirty = $state(false);
+// 共同編集(CRDT)中のシーン ID。本文は Y が正なので、同じシーンのメタ情報の差し替えで content を巻き戻さない
+let crdtSceneId: string | null = null;
+// 共同編集中に、エディタ以外(Claude など)が本文を書き換えるための入口(Y のハンドルへ差分を入れる)
+let externalTextSink: ((text: string) => boolean) | null = null;
 let isSaving = $state(false);
 let writingMode = $state<'vertical' | 'horizontal'>('horizontal');
 let fontSize = $state(16);
@@ -63,6 +67,15 @@ export const editorStore = {
 		return currentScene;
 	},
 	set currentScene(value: Scene | null) {
+		if (
+			value &&
+			crdtSceneId !== null &&
+			value.id === currentScene?.id &&
+			value.id === crdtSceneId
+		) {
+			currentScene = value;
+			return;
+		}
 		currentScene = value;
 		if (value) {
 			content = value.content;
@@ -74,6 +87,31 @@ export const editorStore = {
 	/** 本文・未保存状態に触れずにシーンのメタ情報(文字数・更新日時など)だけ差し替える */
 	updateSceneMeta(value: Scene) {
 		currentScene = value;
+	},
+	/** 共同編集中のシーン ID(無ければ null)。設定中は、同じシーンの currentScene 差し替えで本文を変えない */
+	get crdtSceneId() {
+		return crdtSceneId;
+	},
+	set crdtSceneId(value: string | null) {
+		crdtSceneId = value;
+	},
+	/** 共同編集の結合が、外部からの本文の書き換えを受け取る関数を登録する(解除は null) */
+	set externalTextSink(value: ((text: string) => boolean) | null) {
+		externalTextSink = value;
+	},
+	/**
+	 * エディタ以外(Claude の編集の反映など)が、開いているシーンの本文を書き換える。
+	 * 共同編集中は Y のハンドルへ差分として入れ(失敗なら false)、そうでなければ従来どおり content を更新する。
+	 */
+	applyExternalText(value: string): boolean {
+		if (externalTextSink) return externalTextSink(value);
+		content = value;
+		isDirty = true;
+		return true;
+	},
+	/** 未保存の印を付けずに本文を差し替える(共同編集で Y の本文に追随するとき) */
+	setContentFromSource(value: string) {
+		content = value;
 	},
 	get content() {
 		return content;

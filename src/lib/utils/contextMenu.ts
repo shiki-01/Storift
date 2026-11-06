@@ -218,6 +218,8 @@ export function createProjectContextMenu(params: {
 	onDuplicate: () => void;
 	onExport: () => void;
 	onArchive?: () => void;
+	/** 共有ダイアログを開く(省略時は項目を出さない) */
+	onShare?: () => void;
 }): ContextMenuItem[] {
 	const items: ContextMenuItem[] = [
 		{ label: '開く', icon: 'book-2', action: params.onOpen },
@@ -226,6 +228,10 @@ export function createProjectContextMenu(params: {
 		{ label: '複製', icon: 'files', action: params.onDuplicate },
 		{ label: 'エクスポート', icon: 'package-export', action: params.onExport }
 	];
+
+	if (params.onShare) {
+		items.push({ label: '共有...', icon: 'eye', action: params.onShare });
+	}
 
 	if (params.onArchive) {
 		items.push({ label: 'アーカイブ', icon: 'device-sd-card', action: params.onArchive });

@@ -34,6 +34,7 @@ import type {
 	Worldbuilding
 } from '$lib/types';
 import { queueChanges } from '$lib/services/sync.service';
+import { applySceneText, getSceneText, isCrdtScene } from '$lib/services/sceneText.service';
 import {
 	attachClaude,
 	cancelClaude,
@@ -486,7 +487,8 @@ type ChangeFn = (content: string) => ReplaceResult;
 
 /**
  * シーンの本文に changes を順に適用する(失敗した変更は飛ばし、結果は changes と同じ順で返す)。
- * 開いているシーンはエディタ経由(自動保存される)。保存は最後に 1 回だけ。
+ * 開いているシーンはエディタ経由(自動保存される。共同編集中は Y のハンドルへ)。
+ * 共有プロジェクトの開いていないシーンは applySceneText(最小差分を Y に適用して送信)で反映する。
  */
 async function editScene(
 	sceneId: string,
@@ -495,7 +497,12 @@ async function editScene(
 	batch?: SyncBatch
 ): Promise<ReplaceResult[]> {
 	const inEditor = isEditorOpenOn(sceneId);
-	const original = inEditor ? editorStore.content : (await scenesDB.getById(sceneId))?.content;
+	const crdt = !inEditor && (await isCrdtScene(sceneId));
+	const original = inEditor
+		? editorStore.content
+		: crdt
+			? await getSceneText(sceneId)
+			: (await scenesDB.getById(sceneId))?.content;
 	if (original == null)
 		return changes.map(() => ({ ok: false, reason: 'シーンが見つかりません' }) as ReplaceResult);
 	let content = original;
@@ -508,7 +515,14 @@ async function editScene(
 	if (!save || content === original) return results;
 
 	if (inEditor) {
-		editorStore.content = content;
+		if (!editorStore.applyExternalText(content))
+			return changes.map(
+				() => ({ ok: false, reason: 'このシーンは読み取り専用のため反映できません' }) as ReplaceResult
+			);
+	} else if (crdt) {
+		const applied = await applySceneText(sceneId, content);
+		if (!applied.ok)
+			return changes.map(() => ({ ok: false, reason: applied.message }) as ReplaceResult);
 	} else {
 		await scenesDB.update(sceneId, { content });
 		const fresh = await scenesDB.getById(sceneId);

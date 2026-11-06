@@ -23,10 +23,17 @@ Service Worker と PWA の動作には HTTPS が必要です(`localhost` を除�
 
 1. Firebase でプロジェクトを作成し、Firestore と匿名認証を有効にする。
 2. 配信するドメインを、Authentication の「承認済みドメイン」に追加する。
-3. Firestore のセキュリティルールを設定する([FIRESTORE_SETUP.md](FIRESTORE_SETUP.md))。
-4. アプリの初回画面(または設定画面)に、Firebase の設定を貼り付ける。同期を使わない場合は不要です。
+3. Firestore のセキュリティルール(`firestore.rules`)を公開する([FIRESTORE_SETUP.md](FIRESTORE_SETUP.md))。
+4. 最初の端末で、アプリの初回画面(または設定画面)に Firebase の設定を貼り付ける。同期を使わない場合は不要です。新ルールの公開後、この端末が自動でオーナーとして登録されます。
+5. 2 台目以降の端末では、Firebase の設定値の代わりに、最初の端末の 設定 →「設定コード」で表示したコードを貼り付ける。
 
-Firebase の設定値はビルドに含めず、利用者が端末ごとに入力します。
+Firebase の設定値はビルドに含めず、利用者が端末ごとに入力します。設定コードは Firebase の設定とオーナー鍵をまとめたもので、持つ人は全データにアクセスできるため、自分の端末にだけ貼ってください。旧ルール(認証済みなら全開放)のままでも同期は従来どおり動きますが、共有機能は使えません。
+
+### 招待リンク(共有)を使う場合
+
+- 招待リンクの `<base>` は、Web 版では配信しているドメイン(`location.origin`)、デスクトップ版では公開アプリの URL(既定 `https://app.storift.shiki-01.com`)です。自分のドメインで配信し、デスクトップ版でもそちらを使いたい場合は、`src/lib/firebase/invite.ts` の `PUBLIC_APP_URL` を書き換えてビルドしてください(定数 1 か所です)。
+- 招待された人(ゲスト)は、そのドメインのアプリから**ホストの Firebase に匿名認証で接続**します。ホストの Firebase の Authentication → 承認済みドメインに、**ゲストがアプリを開くドメイン**(自分で配信しているドメイン、公開版を使うならそのドメイン)を追加してください。ゲスト側に Firebase の設定は不要です。
+- 共有機能には新ルール(`firestore.rules`)が必要です。旧ルールのままでは、ゲストは参加できません([FIRESTORE_SETUP.md](FIRESTORE_SETUP.md))。
 
 ## 紹介サイト
 

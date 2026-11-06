@@ -2,6 +2,8 @@
 
 調査日: 2026-10-01
 
+> 表中のファイル名と行番号は、調査日時点の位置です。その後の変更で移動している箇所があります（例: 設定ページは `src/lib/components/settings/` のセクション別コンポーネントに分割済みで、`src/routes/settings/+page.svelte` にはサイドバーとタブだけが残っています）。対応状況は、末尾の表を参照してください。
+
 ## 0. 前提: スタイリングの方針
 
 | 区分               | 対象ページ                                                                                             | 方針                                                                       |
@@ -19,32 +21,32 @@
 
 ## A. 不具合（ユーザーに見える挙動の誤り）
 
-| #   | 内容                                                                                                                                                           | 場所                                              |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| A-1 | 同期状態の色・回転アニメーションが反映されない。`config.color + ' ' + syncStore.status === 'syncing' ? ... : ''` の演算子の優先順位により class が常に空になる | `src/lib/components/ui/SyncStatus.svelte:39`      |
-| A-2 | 保存処理中も `isDirty` を先に判定しているため、「保存中...」が表示されず「未保存」のままになる                                                                 | `src/routes/project/[id]/editor/+page.svelte:955` |
-| A-3 | 右クリックメニューの「カット」「貼り付け」が DOM だけを書き換え、`editorStore.content` を更新しない。保存すると変更が失われる                                  | `editor/+page.svelte:696-718`                     |
-| A-4 | textarea 用の旧ハンドラ（`handleEditorContextMenu`, `editorTextarea`）が使われずに残っている                                                                   | `editor/+page.svelte:266-332`                     |
-| A-5 | カーソル位置の復元が `firstChild` と `startOffset` のみに依存している。改行を含む本文が外部から変わる（執筆支援の適用など）とカーソルが飛ぶ                    | `editor/+page.svelte:746-779`                     |
-| A-6 | 書式設定のスライダーがエディタに即時反映されるため、「キャンセル」しても元に戻らない。フォントだけ即時保存で、他の項目は「保存」が必要という不一致もある       | `editor/+page.svelte:599-638, 1157-1244`          |
-| A-7 | 右クリックメニューの「エクスポート」が印刷プレビューを開く                                                                                                     | `editor/+page.svelte:320, 731`                    |
-| A-8 | 「すべて選択」が選択範囲のあるときにしか表示されない（条件が逆）                                                                                               | `src/lib/utils/contextMenu.ts:51`                 |
-| A-9 | `bg:theme-wraning` の誤字により色が当たらない                                                                                                                  | `src/routes/settings/+page.svelte:597`            |
+| #   | 内容                                                                                                                                                           | 場所                                                                                       |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| A-1 | 同期状態の色・回転アニメーションが反映されない。`config.color + ' ' + syncStore.status === 'syncing' ? ... : ''` の演算子の優先順位により class が常に空になる | `src/lib/components/ui/SyncStatus.svelte:39`                                               |
+| A-2 | 保存処理中も `isDirty` を先に判定しているため、「保存中...」が表示されず「未保存」のままになる                                                                 | `src/routes/project/[id]/editor/+page.svelte:955`                                          |
+| A-3 | 右クリックメニューの「カット」「貼り付け」が DOM だけを書き換え、`editorStore.content` を更新しない。保存すると変更が失われる                                  | `editor/+page.svelte:696-718`                                                              |
+| A-4 | textarea 用の旧ハンドラ（`handleEditorContextMenu`, `editorTextarea`）が使われずに残っている                                                                   | `editor/+page.svelte:266-332`                                                              |
+| A-5 | カーソル位置の復元が `firstChild` と `startOffset` のみに依存している。改行を含む本文が外部から変わる（執筆支援の適用など）とカーソルが飛ぶ                    | `editor/+page.svelte:746-779`                                                              |
+| A-6 | 書式設定のスライダーがエディタに即時反映されるため、「キャンセル」しても元に戻らない。フォントだけ即時保存で、他の項目は「保存」が必要という不一致もある       | `editor/+page.svelte:599-638, 1157-1244`                                                   |
+| A-7 | 右クリックメニューの「エクスポート」が印刷プレビューを開く                                                                                                     | `editor/+page.svelte:320, 731`                                                             |
+| A-8 | 「すべて選択」が選択範囲のあるときにしか表示されない（条件が逆）                                                                                               | `src/lib/utils/contextMenu.ts:51`                                                          |
+| A-9 | `bg:theme-wraning` の誤字により色が当たらない                                                                                                                  | `src/routes/settings/+page.svelte:597`（調査時。設定ページの分割で該当コードは無くなった） |
 
 ## B. 未実装・中途半端な機能
 
-| #    | 内容                                                                                                                                                                                       | 場所                                                                                    |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| B-1  | 競合を手動で解決する UI がない。競合解決ポリシーの既定値は `manual` で、競合は `pendingConflicts` に溜まるが、`ConflictResolver.svelte` がどこからも使われていない                         | `src/lib/services/sync.service.ts:48-136`                                               |
-| B-2  | 作成済みだが未使用: `SearchReplace.svelte`（検索・置換）、`HistoryViewer.svelte`、`ExportModal.svelte`、`backup.service.ts`、`proofreading.ts`。エディタに検索・置換や校正の入口がない     | `src/lib/components/ui/`, `src/lib/services/`, `src/lib/utils/`                         |
-| B-3  | 設定に値があるが反映されない: `shortcuts`（表示のみで編集不可、実際に動くのは Ctrl+S だけ）、`autoSave` / `autoSaveInterval`（エディタは 30 秒固定）、`paragraphSpacing`（エディタ未使用） | `src/lib/types/settings.ts`, `settings/+page.svelte:634-648`, `editor/+page.svelte:137` |
-| B-4  | プレビュー設定がエディタのローカル状態のみで、ページ遷移すると初期値に戻る                                                                                                                 | `editor/+page.svelte:56`                                                                |
-| B-5  | 進捗の目標値（`project.settings.goal`）を設定する UI がない。達成率の計算だけが行われている                                                                                                | `progress/+page.svelte:94-113`                                                          |
-| B-6  | 進捗ログは手入力のみ。エディタで保存しても執筆文字数が自動で記録されない                                                                                                                   | `progress/+page.svelte:175-197`                                                         |
-| B-7  | 相関図ビューにキャラクター間の線がなく、関係が描画されない                                                                                                                                 | `characters/+page.svelte:459-493`                                                       |
-| B-8  | エラーレポート送信が「開発中」の alert のみ                                                                                                                                                | `src/routes/+error.svelte:21`                                                           |
-| B-9  | 復元ポイントが localStorage 保存のため端末間で同期されない。自動保存（30 秒ごと）のたびに履歴が増え続け、間引く処理がない                                                                  | `src/lib/services/version.service.ts:176`, `src/lib/db/scenes.ts`                       |
-| B-10 | エディタ自体が横書きのみ。縦書きはプレビューでしか使えない                                                                                                                                 | `editor/+page.svelte`                                                                   |
+| #    | 内容                                                                                                                                                                                       | 場所                                                                                                                                                 |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| B-1  | 競合を手動で解決する UI がない。競合解決ポリシーの既定値は `manual` で、競合は `pendingConflicts` に溜まるが、`ConflictResolver.svelte` がどこからも使われていない                         | `src/lib/services/sync.service.ts:48-136`                                                                                                            |
+| B-2  | 作成済みだが未使用: `SearchReplace.svelte`（検索・置換）、`HistoryViewer.svelte`、`ExportModal.svelte`、`backup.service.ts`、`proofreading.ts`。エディタに検索・置換や校正の入口がない     | `src/lib/components/ui/`, `src/lib/services/`, `src/lib/utils/`                                                                                      |
+| B-3  | 設定に値があるが反映されない: `shortcuts`（表示のみで編集不可、実際に動くのは Ctrl+S だけ）、`autoSave` / `autoSaveInterval`（エディタは 30 秒固定）、`paragraphSpacing`（エディタ未使用） | `src/lib/types/settings.ts`, `settings/+page.svelte:634-648`（現在は `src/lib/components/settings/EditorSection.svelte`）, `editor/+page.svelte:137` |
+| B-4  | プレビュー設定がエディタのローカル状態のみで、ページ遷移すると初期値に戻る                                                                                                                 | `editor/+page.svelte:56`                                                                                                                             |
+| B-5  | 進捗の目標値（`project.settings.goal`）を設定する UI がない。達成率の計算だけが行われている                                                                                                | `progress/+page.svelte:94-113`                                                                                                                       |
+| B-6  | 進捗ログは手入力のみ。エディタで保存しても執筆文字数が自動で記録されない                                                                                                                   | `progress/+page.svelte:175-197`                                                                                                                      |
+| B-7  | 相関図ビューにキャラクター間の線がなく、関係が描画されない                                                                                                                                 | `characters/+page.svelte:459-493`                                                                                                                    |
+| B-8  | エラーレポート送信が「開発中」の alert のみ                                                                                                                                                | `src/routes/+error.svelte:21`                                                                                                                        |
+| B-9  | 復元ポイントが localStorage 保存のため端末間で同期されない。自動保存（30 秒ごと）のたびに履歴が増え続け、間引く処理がない                                                                  | `src/lib/services/version.service.ts:176`, `src/lib/db/scenes.ts`                                                                                    |
+| B-10 | エディタ自体が横書きのみ。縦書きはプレビューでしか使えない                                                                                                                                 | `editor/+page.svelte`                                                                                                                                |
 
 ## C. 操作性
 

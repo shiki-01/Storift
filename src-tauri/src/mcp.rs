@@ -53,7 +53,10 @@ pub fn allowed_tool_names(mode: Option<&str>) -> Vec<String> {
     if edit_enabled(mode) {
         names.extend_from_slice(EDIT_TOOLS);
     }
-    names.into_iter().map(|n| format!("mcp__{SERVER_NAME}__{n}")).collect()
+    names
+        .into_iter()
+        .map(|n| format!("mcp__{SERVER_NAME}__{n}"))
+        .collect()
 }
 
 pub fn tool_definitions(mode: Option<&str>) -> Vec<Value> {
@@ -255,7 +258,14 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 
 impl McpState {
     pub fn new(port: u16, token: String, emit: Emit, timeout: Duration) -> Self {
-        McpState { port, token, emit, timeout, counter: AtomicU64::new(0), pending: Mutex::new(HashMap::new()) }
+        McpState {
+            port,
+            token,
+            emit,
+            timeout,
+            counter: AtomicU64::new(0),
+            pending: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn token(&self) -> &str {
@@ -267,7 +277,13 @@ impl McpState {
     }
 
     /// 認証・Host/Origin の検証をして JSON-RPC を処理する。`headers` のキーは小文字
-    pub async fn process(&self, method: &str, path: &str, headers: &HashMap<String, String>, body: &[u8]) -> Reply {
+    pub async fn process(
+        &self,
+        method: &str,
+        path: &str,
+        headers: &HashMap<String, String>,
+        body: &[u8],
+    ) -> Reply {
         let host_ok = headers.get("host").is_some_and(|h| {
             *h == format!("127.0.0.1:{}", self.port) || *h == format!("localhost:{}", self.port)
         });
@@ -288,13 +304,22 @@ impl McpState {
         if method != "POST" {
             return Reply::status(405);
         }
-        let run_id = headers.get("x-storift-run").map(String::as_str).unwrap_or("");
+        let run_id = headers
+            .get("x-storift-run")
+            .map(String::as_str)
+            .unwrap_or("");
         let mode = headers.get("x-storift-mode").map(String::as_str);
         let Ok(msg) = serde_json::from_slice::<Value>(body) else {
-            return Reply { status: 400, body: Some(rpc_err(&Value::Null, -32700, "Parse error")) };
+            return Reply {
+                status: 400,
+                body: Some(rpc_err(&Value::Null, -32700, "Parse error")),
+            };
         };
         match self.dispatch(&msg, run_id, mode).await {
-            Some(v) => Reply { status: 200, body: Some(v) },
+            Some(v) => Reply {
+                status: 200,
+                body: Some(v),
+            },
             None => Reply::status(202),
         }
     }
@@ -310,8 +335,14 @@ impl McpState {
         let params = msg.get("params").cloned().unwrap_or(Value::Null);
         Some(match method {
             "initialize" => {
-                let requested = params.get("protocolVersion").and_then(Value::as_str).unwrap_or("");
-                let version = SUPPORTED_VERSIONS.iter().find(|v| **v == requested).unwrap_or(&SUPPORTED_VERSIONS[1]);
+                let requested = params
+                    .get("protocolVersion")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let version = SUPPORTED_VERSIONS
+                    .iter()
+                    .find(|v| **v == requested)
+                    .unwrap_or(&SUPPORTED_VERSIONS[1]);
                 rpc_ok(
                     &id,
                     json!({
@@ -327,7 +358,10 @@ impl McpState {
                 let Some(name) = params.get("name").and_then(Value::as_str) else {
                     return Some(rpc_err(&id, -32602, "name が必要です"));
                 };
-                let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
+                let args = params
+                    .get("arguments")
+                    .cloned()
+                    .unwrap_or_else(|| json!({}));
                 match self.call_tool(run_id, name, args, mode).await {
                     Ok(res) => rpc_ok(&id, tool_result(&res.text, res.is_error)),
                     Err((code, message)) => rpc_err(&id, code, &message),
@@ -356,7 +390,10 @@ impl McpState {
         }
         // 履歴は編集の対象外(フロントに渡す前にここでも断る)
         if is_edit_tool && args.get("kind").and_then(Value::as_str) == Some("history") {
-            return Ok(McpResult { text: "history は編集できません".into(), is_error: true });
+            return Ok(McpResult {
+                text: "history は編集できません".into(),
+                is_error: true,
+            });
         }
         Ok(self.relay(run_id, name, args).await)
     }
@@ -368,17 +405,33 @@ impl McpState {
         // 先に登録する(emit 直後に返ってきても取りこぼさない)
         match self.pending.lock() {
             Ok(mut p) => p.insert(req_id.clone(), tx),
-            Err(_) => return McpResult { text: "内部エラー".into(), is_error: true },
+            Err(_) => {
+                return McpResult {
+                    text: "内部エラー".into(),
+                    is_error: true,
+                }
+            }
         };
-        (self.emit)(RequestEvent { req_id: req_id.clone(), run_id: run_id.into(), tool: tool.into(), args });
+        (self.emit)(RequestEvent {
+            req_id: req_id.clone(),
+            run_id: run_id.into(),
+            tool: tool.into(),
+            args,
+        });
         match tokio::time::timeout(self.timeout, rx).await {
             Ok(Ok(res)) => res,
-            Ok(Err(_)) => McpResult { text: "アプリ側で処理できませんでした".into(), is_error: true },
+            Ok(Err(_)) => McpResult {
+                text: "アプリ側で処理できませんでした".into(),
+                is_error: true,
+            },
             Err(_) => {
                 if let Ok(mut p) = self.pending.lock() {
                     p.remove(&req_id);
                 }
-                McpResult { text: "アプリからの応答がタイムアウトしました".into(), is_error: true }
+                McpResult {
+                    text: "アプリからの応答がタイムアウトしました".into(),
+                    is_error: true,
+                }
             }
         }
     }
@@ -406,12 +459,19 @@ fn reason(status: u16) -> &'static str {
 /// 1 接続ぶんの HTTP/1.1 要求を読んで答える(Connection: close)
 async fn serve_connection(state: Arc<McpState>, mut stream: TcpStream) {
     let reply = match tokio::time::timeout(READ_TIMEOUT, read_request(&mut stream)).await {
-        Ok(Ok((method, path, headers, body))) => state.process(&method, &path, &headers, &body).await,
+        Ok(Ok((method, path, headers, body))) => {
+            state.process(&method, &path, &headers, &body).await
+        }
         Ok(Err(status)) => Reply::status(status),
         Err(_) => Reply::status(400),
     };
     let body = reply.body.map(|v| v.to_string()).unwrap_or_default();
-    let mut head = format!("HTTP/1.1 {} {}\r\nConnection: close\r\nContent-Length: {}\r\n", reply.status, reason(reply.status), body.len());
+    let mut head = format!(
+        "HTTP/1.1 {} {}\r\nConnection: close\r\nContent-Length: {}\r\n",
+        reply.status,
+        reason(reply.status),
+        body.len()
+    );
     if reply.status == 405 {
         head.push_str("Allow: POST\r\n");
     }
@@ -481,8 +541,11 @@ fn random_token() -> Result<String, String> {
 
 /// 待ち受けを始める。ポートは OS に選ばせ、アプリが終わるまで動かし続ける
 pub fn start(app: &AppHandle) -> Result<Arc<McpState>, String> {
-    let std_listener = std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| format!("MCP サーバーを開始できません: {e}"))?;
-    std_listener.set_nonblocking(true).map_err(|e| e.to_string())?;
+    let std_listener = std::net::TcpListener::bind("127.0.0.1:0")
+        .map_err(|e| format!("MCP サーバーを開始できません: {e}"))?;
+    std_listener
+        .set_nonblocking(true)
+        .map_err(|e| e.to_string())?;
     let port = std_listener.local_addr().map_err(|e| e.to_string())?.port();
     let app = app.clone();
     let emit: Emit = Box::new(move |ev| {
@@ -491,9 +554,13 @@ pub fn start(app: &AppHandle) -> Result<Arc<McpState>, String> {
     let state = Arc::new(McpState::new(port, random_token()?, emit, RELAY_TIMEOUT));
     let serving = state.clone();
     tauri::async_runtime::spawn(async move {
-        let Ok(listener) = TcpListener::from_std(std_listener) else { return };
+        let Ok(listener) = TcpListener::from_std(std_listener) else {
+            return;
+        };
         loop {
-            let Ok((stream, _)) = listener.accept().await else { continue };
+            let Ok((stream, _)) = listener.accept().await else {
+                continue;
+            };
             tokio::spawn(serve_connection(serving.clone(), stream));
         }
     });
@@ -502,7 +569,11 @@ pub fn start(app: &AppHandle) -> Result<Arc<McpState>, String> {
 
 /// フロントエンドからの結果を、待っている `tools/call` に返す
 #[tauri::command]
-pub fn mcp_respond(state: State<'_, Arc<McpState>>, req_id: String, result: McpResult) -> Result<(), String> {
+pub fn mcp_respond(
+    state: State<'_, Arc<McpState>>,
+    req_id: String,
+    result: McpResult,
+) -> Result<(), String> {
     if state.respond(&req_id, result) {
         Ok(())
     } else {
@@ -530,7 +601,12 @@ mod tests {
     fn state(timeout: Duration) -> (Arc<McpState>, Arc<StdMutex<Vec<RequestEvent>>>) {
         let seen = Arc::new(StdMutex::new(Vec::new()));
         let sink = seen.clone();
-        let st = McpState::new(5555, TOKEN.into(), Box::new(move |e| sink.lock().unwrap().push(e)), timeout);
+        let st = McpState::new(
+            5555,
+            TOKEN.into(),
+            Box::new(move |e| sink.lock().unwrap().push(e)),
+            timeout,
+        );
         (Arc::new(st), seen)
     }
 
@@ -547,7 +623,8 @@ mod tests {
     }
 
     async fn rpc(st: &McpState, mode: &str, msg: Value) -> Reply {
-        st.process("POST", "/mcp", &headers(mode), msg.to_string().as_bytes()).await
+        st.process("POST", "/mcp", &headers(mode), msg.to_string().as_bytes())
+            .await
     }
 
     fn result_of(r: &Reply) -> &Value {
@@ -555,7 +632,12 @@ mod tests {
     }
 
     fn tool_names(r: &Reply) -> Vec<String> {
-        result_of(r)["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect()
+        result_of(r)["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["name"].as_str().unwrap().to_string())
+            .collect()
     }
 
     #[tokio::test]
@@ -565,7 +647,12 @@ mod tests {
         assert_eq!(r.status, 200);
         assert_eq!(result_of(&r)["protocolVersion"], "2025-11-25");
         assert_eq!(result_of(&r)["serverInfo"]["name"], "storift");
-        let r = rpc(&st, "confirm", json!({"jsonrpc":"2.0","method":"notifications/initialized"})).await;
+        let r = rpc(
+            &st,
+            "confirm",
+            json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+        )
+        .await;
         assert_eq!(r.status, 202);
         assert!(r.body.is_none());
     }
@@ -573,7 +660,12 @@ mod tests {
     #[tokio::test]
     async fn unknown_method_is_jsonrpc_error() {
         let (st, _) = state(Duration::from_secs(1));
-        let r = rpc(&st, "confirm", json!({"jsonrpc":"2.0","id":"server-discover-probe-1","method":"server/discover"})).await;
+        let r = rpc(
+            &st,
+            "confirm",
+            json!({"jsonrpc":"2.0","id":"server-discover-probe-1","method":"server/discover"}),
+        )
+        .await;
         assert_eq!(r.status, 200);
         let body = r.body.unwrap();
         assert_eq!(body["id"], "server-discover-probe-1");
@@ -676,23 +768,49 @@ mod tests {
         assert_eq!(ev.run_id, "run1");
         assert_eq!(ev.tool, "get_scene");
         assert_eq!(ev.args, json!({"sceneId":"s1"}));
-        assert!(st.respond(&ev.req_id, McpResult { text: "本文".into(), is_error: false }));
+        assert!(st.respond(
+            &ev.req_id,
+            McpResult {
+                text: "本文".into(),
+                is_error: false
+            }
+        ));
         let r = call.await.unwrap();
         let body = r.body.unwrap();
         assert_eq!(body["id"], 9);
-        assert_eq!(body["result"]["content"][0], json!({"type":"text","text":"本文"}));
+        assert_eq!(
+            body["result"]["content"][0],
+            json!({"type":"text","text":"本文"})
+        );
         assert_eq!(body["result"]["isError"], false);
         // 二重の応答は受け付けない
-        assert!(!st.respond(&ev.req_id, McpResult { text: "x".into(), is_error: false }));
+        assert!(!st.respond(
+            &ev.req_id,
+            McpResult {
+                text: "x".into(),
+                is_error: false
+            }
+        ));
     }
 
     #[tokio::test]
     async fn tools_call_times_out() {
         let (st, seen) = state(Duration::from_millis(50));
-        let r = rpc(&st, "auto", json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"list_projects"}})).await;
+        let r = rpc(
+            &st,
+            "auto",
+            json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"list_projects"}}),
+        )
+        .await;
         assert_eq!(result_of(&r)["isError"], true);
         let ev = seen.lock().unwrap()[0].clone();
-        assert!(!st.respond(&ev.req_id, McpResult { text: "遅れた".into(), is_error: false }));
+        assert!(!st.respond(
+            &ev.req_id,
+            McpResult {
+                text: "遅れた".into(),
+                is_error: false
+            }
+        ));
     }
 
     #[tokio::test]
@@ -700,7 +818,12 @@ mod tests {
         let std_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         std_listener.set_nonblocking(true).unwrap();
         let port = std_listener.local_addr().unwrap().port();
-        let st = Arc::new(McpState::new(port, TOKEN.into(), Box::new(|_| {}), Duration::from_secs(1)));
+        let st = Arc::new(McpState::new(
+            port,
+            TOKEN.into(),
+            Box::new(|_| {}),
+            Duration::from_secs(1),
+        ));
         let listener = TcpListener::from_std(std_listener).unwrap();
         let serving = st.clone();
         tokio::spawn(async move {
@@ -729,7 +852,9 @@ mod tests {
         }
         let suggest = allowed_tool_names(Some("suggest"));
         assert_eq!(suggest.len(), 7);
-        assert!(suggest.iter().all(|n| n.starts_with("mcp__storift__") && !n.contains("propose_")));
+        assert!(suggest
+            .iter()
+            .all(|n| n.starts_with("mcp__storift__") && !n.contains("propose_")));
         assert_eq!(allowed_tool_names(None), suggest);
     }
 

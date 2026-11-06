@@ -82,7 +82,11 @@ fn sync_files(root: &Path, files: Vec<WorkspaceFile>) -> Result<SyncResult, Stri
     fs::create_dir_all(root).map_err(|e| e.to_string())?;
     let previous = read_manifest(root);
     let mut current = BTreeSet::new();
-    let mut result = SyncResult { written: 0, removed: 0, unchanged: 0 };
+    let mut result = SyncResult {
+        written: 0,
+        removed: 0,
+        unchanged: 0,
+    };
 
     for file in files {
         let path = resolve(root, &file.path)?;
@@ -134,7 +138,10 @@ mod tests {
     use super::*;
 
     fn file(path: &str, content: &str) -> WorkspaceFile {
-        WorkspaceFile { path: path.into(), content: content.into() }
+        WorkspaceFile {
+            path: path.into(),
+            content: content.into(),
+        }
     }
 
     #[test]

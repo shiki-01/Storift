@@ -50,7 +50,10 @@ struct Endpoint {
 }
 
 fn parse_endpoint(url: Option<&str>) -> Result<Endpoint, String> {
-    let url = url.map(str::trim).filter(|s| !s.is_empty()).unwrap_or(DEFAULT_URL);
+    let url = url
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(DEFAULT_URL);
     if url.starts_with("https://") {
         return Err("https:// の接続先には対応していません。http:// で指定してください。".into());
     }
@@ -61,16 +64,22 @@ fn parse_endpoint(url: Option<&str>) -> Result<Endpoint, String> {
     };
     let (host, port) = match authority.rsplit_once(':') {
         // IPv6 の [::1] 形式は host 側にコロンが残るため、ポートは ']' の後ろだけを見る
-        Some((h, p)) if !p.contains(']') => {
-            (h, p.parse::<u16>().map_err(|_| format!("ポート番号が正しくありません: {p}"))?)
-        }
+        Some((h, p)) if !p.contains(']') => (
+            h,
+            p.parse::<u16>()
+                .map_err(|_| format!("ポート番号が正しくありません: {p}"))?,
+        ),
         _ => (authority, 11434),
     };
     let host = host.trim_start_matches('[').trim_end_matches(']');
     if host.is_empty() {
         return Err("接続先のホスト名が空です".into());
     }
-    Ok(Endpoint { host: host.to_string(), port, base: path.trim_end_matches('/').to_string() })
+    Ok(Endpoint {
+        host: host.to_string(),
+        port,
+        base: path.trim_end_matches('/').to_string(),
+    })
 }
 
 /// HTTP の chunked 転送を復号する
@@ -96,12 +105,18 @@ impl Chunked {
         loop {
             match self.state {
                 ChunkState::Size => {
-                    let Some(pos) = self.buf.windows(2).position(|w| w == b"\r\n") else { break };
+                    let Some(pos) = self.buf.windows(2).position(|w| w == b"\r\n") else {
+                        break;
+                    };
                     let line = String::from_utf8_lossy(&self.buf[..pos]).into_owned();
                     self.buf.drain(..pos + 2);
                     let size = line.split(';').next().unwrap_or("").trim();
                     let n = usize::from_str_radix(size, 16).unwrap_or(0);
-                    self.state = if n == 0 { ChunkState::Done } else { ChunkState::Data(n) };
+                    self.state = if n == 0 {
+                        ChunkState::Done
+                    } else {
+                        ChunkState::Data(n)
+                    };
                 }
                 ChunkState::Data(n) => {
                     if self.buf.is_empty() {
@@ -109,7 +124,11 @@ impl Chunked {
                     }
                     let take = n.min(self.buf.len());
                     out.extend(self.buf.drain(..take));
-                    self.state = if n == take { ChunkState::DataEnd } else { ChunkState::Data(n - take) };
+                    self.state = if n == take {
+                        ChunkState::DataEnd
+                    } else {
+                        ChunkState::Data(n - take)
+                    };
                 }
                 ChunkState::DataEnd => {
                     if self.buf.len() < 2 {
@@ -140,8 +159,18 @@ async fn http_stream(
     let addr = (ep.host.as_str(), ep.port);
     let mut stream = tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect(addr))
         .await
-        .map_err(|_| format!("Ollama({}:{})に接続できません(タイムアウト)", ep.host, ep.port))?
-        .map_err(|e| format!("Ollama({}:{})に接続できません: {e}。Ollama を起動してください。", ep.host, ep.port))?;
+        .map_err(|_| {
+            format!(
+                "Ollama({}:{})に接続できません(タイムアウト)",
+                ep.host, ep.port
+            )
+        })?
+        .map_err(|e| {
+            format!(
+                "Ollama({}:{})に接続できません: {e}。Ollama を起動してください。",
+                ep.host, ep.port
+            )
+        })?;
     let body = body.unwrap_or(&[]);
     let head = format!(
         "{method} {}{path} HTTP/1.1\r\nHost: {}:{}\r\nConnection: close\r\nAccept: application/json\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
@@ -150,7 +179,10 @@ async fn http_stream(
         ep.port,
         body.len()
     );
-    stream.write_all(head.as_bytes()).await.map_err(|e| e.to_string())?;
+    stream
+        .write_all(head.as_bytes())
+        .await
+        .map_err(|e| e.to_string())?;
     stream.write_all(body).await.map_err(|e| e.to_string())?;
 
     let mut buf: Vec<u8> = Vec::new();
@@ -175,9 +207,17 @@ async fn http_stream(
         .and_then(|l| l.split_whitespace().nth(1))
         .and_then(|s| s.parse().ok())
         .ok_or("Ollama の応答を解釈できません")?;
-    let chunked = head.lines().any(|l| l.starts_with("transfer-encoding:") && l.contains("chunked"));
+    let chunked = head
+        .lines()
+        .any(|l| l.starts_with("transfer-encoding:") && l.contains("chunked"));
     let mut decoder = Chunked::default();
-    let mut feed = |data: &[u8]| -> Vec<u8> { if chunked { decoder.push(data) } else { data.to_vec() } };
+    let mut feed = |data: &[u8]| -> Vec<u8> {
+        if chunked {
+            decoder.push(data)
+        } else {
+            data.to_vec()
+        }
+    };
 
     let mut pending = feed(&buf[header_end + 4..]);
     let mut error_body: Vec<u8> = Vec::new();
@@ -236,24 +276,42 @@ pub struct OllamaStatus {
 /// 接続の確認と、入れてあるモデルの一覧
 #[tauri::command]
 pub async fn ollama_status(url: Option<String>) -> OllamaStatus {
-    let fail = |error: String| OllamaStatus { found: false, version: None, models: Vec::new(), error: Some(error) };
+    let fail = |error: String| OllamaStatus {
+        found: false,
+        version: None,
+        models: Vec::new(),
+        error: Some(error),
+    };
     let ep = match parse_endpoint(url.as_deref()) {
         Ok(ep) => ep,
         Err(e) => return fail(e),
     };
     let version = match get_json(&ep, "/api/version").await {
-        Ok(v) => v.get("version").and_then(Value::as_str).unwrap_or("").to_string(),
+        Ok(v) => v
+            .get("version")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
         Err(e) => return fail(e),
     };
     let models = match get_json(&ep, "/api/tags").await {
         Ok(v) => v
             .get("models")
             .and_then(Value::as_array)
-            .map(|a| a.iter().filter_map(|m| m.get("name").and_then(Value::as_str).map(str::to_string)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|m| m.get("name").and_then(Value::as_str).map(str::to_string))
+                    .collect()
+            })
             .unwrap_or_default(),
         Err(e) => return fail(e),
     };
-    OllamaStatus { found: true, version: Some(format!("Ollama {version}")), models, error: None }
+    OllamaStatus {
+        found: true,
+        version: Some(format!("Ollama {version}")),
+        models,
+        error: None,
+    }
 }
 
 /// 実行の入力
@@ -326,7 +384,15 @@ pub async fn run(
         .session_id
         .as_deref()
         .filter(|s| !s.is_empty())
-        .and_then(|id| state.sessions.lock().ok()?.get(id).cloned().map(|h| (id.to_string(), h)));
+        .and_then(|id| {
+            state
+                .sessions
+                .lock()
+                .ok()?
+                .get(id)
+                .cloned()
+                .map(|h| (id.to_string(), h))
+        });
     let (session_id, mut history) = match existing {
         Some(found) => found,
         None => {
@@ -335,7 +401,10 @@ pub async fn run(
                 system.push_str("\n\n");
                 system.push_str(extra);
             }
-            (format!("ollama-{}", p.run_id), vec![json!({"role": "system", "content": system})])
+            (
+                format!("ollama-{}", p.run_id),
+                vec![json!({"role": "system", "content": system})],
+            )
         }
     };
     history.push(json!({"role": "user", "content": p.prompt}));
@@ -346,7 +415,9 @@ pub async fn run(
     let mut finished = false;
     for step in 0..MAX_STEPS {
         let msg_id = format!("msg_{}_{step}", p.run_id);
-        emit(stream_event(json!({"type": "message_start", "message": {"id": msg_id}})));
+        emit(stream_event(
+            json!({"type": "message_start", "message": {"id": msg_id}}),
+        ));
         emit(stream_event(json!({
             "type": "content_block_start",
             "index": 0,
@@ -364,30 +435,42 @@ pub async fn run(
         let mut calls: Vec<Value> = Vec::new();
         let mut line_buf: Vec<u8> = Vec::new();
         let mut stream_error: Option<String> = None;
-        http_stream(&ep, "POST", "/api/chat", Some(request.to_string().as_bytes()), |data| {
-            line_buf.extend_from_slice(data);
-            while let Some(pos) = line_buf.iter().position(|b| *b == b'\n') {
-                let line: Vec<u8> = line_buf.drain(..=pos).collect();
-                let Ok(v) = serde_json::from_slice::<Value>(&line) else { continue };
-                if let Some(err) = v.get("error").and_then(Value::as_str) {
-                    stream_error = Some(err.to_string());
-                    continue;
+        http_stream(
+            &ep,
+            "POST",
+            "/api/chat",
+            Some(request.to_string().as_bytes()),
+            |data| {
+                line_buf.extend_from_slice(data);
+                while let Some(pos) = line_buf.iter().position(|b| *b == b'\n') {
+                    let line: Vec<u8> = line_buf.drain(..=pos).collect();
+                    let Ok(v) = serde_json::from_slice::<Value>(&line) else {
+                        continue;
+                    };
+                    if let Some(err) = v.get("error").and_then(Value::as_str) {
+                        stream_error = Some(err.to_string());
+                        continue;
+                    }
+                    let message = &v["message"];
+                    if let Some(delta) = message
+                        .get("content")
+                        .and_then(Value::as_str)
+                        .filter(|s| !s.is_empty())
+                    {
+                        text.push_str(delta);
+                        emit(stream_event(json!({
+                            "type": "content_block_delta",
+                            "index": 0,
+                            "delta": {"type": "text_delta", "text": delta}
+                        })));
+                    }
+                    if let Some(arr) = message.get("tool_calls").and_then(Value::as_array) {
+                        calls.extend(arr.iter().cloned());
+                    }
                 }
-                let message = &v["message"];
-                if let Some(delta) = message.get("content").and_then(Value::as_str).filter(|s| !s.is_empty()) {
-                    text.push_str(delta);
-                    emit(stream_event(json!({
-                        "type": "content_block_delta",
-                        "index": 0,
-                        "delta": {"type": "text_delta", "text": delta}
-                    })));
-                }
-                if let Some(arr) = message.get("tool_calls").and_then(Value::as_array) {
-                    calls.extend(arr.iter().cloned());
-                }
-            }
-            Ok(())
-        })
+                Ok(())
+            },
+        )
         .await?;
         if let Some(err) = stream_error {
             return Err(format!("Ollama がエラーを返しました: {err}"));
@@ -402,7 +485,13 @@ pub async fn run(
             .iter()
             .map(|c| {
                 let f = &c["function"];
-                (f.get("name").and_then(Value::as_str).unwrap_or("").to_string(), tool_arguments(f.get("arguments")))
+                (
+                    f.get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string(),
+                    tool_arguments(f.get("arguments")),
+                )
             })
             .collect();
         for (i, (name, args)) in parsed.iter().enumerate() {
@@ -436,7 +525,9 @@ pub async fn run(
         }
     }
     if !finished {
-        return Err(format!("ツールの呼び出しが {MAX_STEPS} 回に達したため、途中で打ち切りました。"));
+        return Err(format!(
+            "ツールの呼び出しが {MAX_STEPS} 回に達したため、途中で打ち切りました。"
+        ));
     }
 
     if let Ok(mut sessions) = state.sessions.lock() {
@@ -465,9 +556,15 @@ mod tests {
     #[test]
     fn endpoint_defaults_and_parsing() {
         let ep = parse_endpoint(None).unwrap();
-        assert_eq!((ep.host.as_str(), ep.port, ep.base.as_str()), ("localhost", 11434, ""));
+        assert_eq!(
+            (ep.host.as_str(), ep.port, ep.base.as_str()),
+            ("localhost", 11434, "")
+        );
         let ep = parse_endpoint(Some("http://192.168.0.5:8080/ollama/")).unwrap();
-        assert_eq!((ep.host.as_str(), ep.port, ep.base.as_str()), ("192.168.0.5", 8080, "/ollama"));
+        assert_eq!(
+            (ep.host.as_str(), ep.port, ep.base.as_str()),
+            ("192.168.0.5", 8080, "/ollama")
+        );
         let ep = parse_endpoint(Some("127.0.0.1")).unwrap();
         assert_eq!((ep.host.as_str(), ep.port), ("127.0.0.1", 11434));
         let ep = parse_endpoint(Some("http://[::1]:11434")).unwrap();

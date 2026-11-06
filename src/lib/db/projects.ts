@@ -1,6 +1,7 @@
 import { db } from './schema';
 import type { Project, ProjectCreateInput } from '$lib/types';
 import { v4 as uuidv4 } from 'uuid';
+import { isUnchanged } from './utils';
 
 export const projectsDB = {
 	async getAll(): Promise<Project[]> {
@@ -38,6 +39,8 @@ export const projectsDB = {
 
 	async update(id: string, changes: Partial<Project>): Promise<void> {
 		const project = await db.projects.get(id);
+		// 内容が変わらない更新では updatedAt を進めない
+		if (isUnchanged(project, changes)) return;
 		await db.projects.update(id, {
 			...changes,
 			updatedAt: Date.now(),

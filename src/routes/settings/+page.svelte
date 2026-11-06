@@ -61,7 +61,8 @@
 	const metricKindLabels: Record<SyncMetric['kind'], string> = {
 		processPendingChanges: '送信',
 		download: 'ダウンロード',
-		applyRealtime: 'リアルタイム受信'
+		applyRealtime: 'リアルタイム受信',
+		conflictAutoResolved: '競合を自動解決'
 	};
 
 	let settings = $state<Omit<AppSettings, 'id' | 'updatedAt'>>({
@@ -795,7 +796,9 @@
 								<li class={m.ok ? '' : 'fg:theme-error'}>
 									{new Date(m.at).toLocaleTimeString('ja-JP')}
 									{metricKindLabels[m.kind]}{m.label ? `(${m.label})` : ''}:
-									{Math.round(m.durationMs)}ms / {m.count}件{m.skipped !== undefined
+									{m.kind === 'conflictAutoResolved'
+										? ''
+										: `${Math.round(m.durationMs)}ms / `}{m.count}件{m.skipped !== undefined
 										? ` (スキップ ${m.skipped}件)`
 										: ''}{m.ok ? '' : ' / 失敗'}
 								</li>

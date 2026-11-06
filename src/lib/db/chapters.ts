@@ -1,7 +1,7 @@
 import { db } from './schema';
 import type { Chapter, ChapterCreateInput } from '$lib/types';
 import { v4 as uuidv4 } from 'uuid';
-import { touchProject } from './utils';
+import { isUnchanged, touchProject } from './utils';
 import { historyDB } from './history';
 
 export const chaptersDB = {
@@ -40,6 +40,8 @@ export const chaptersDB = {
 
 	async update(id: string, changes: Partial<Chapter>): Promise<void> {
 		const chapter = await db.chapters.get(id);
+		// 内容が変わらない更新では updatedAt を進めない(他端末との不要な競合を避ける)
+		if (isUnchanged(chapter, changes)) return;
 		await db.chapters.update(id, {
 			...changes,
 			updatedAt: Date.now(),
@@ -68,15 +70,19 @@ export const chaptersDB = {
 	},
 
 	async reorder(projectId: string, chapterIds: string[]): Promise<void> {
+		let changed = false;
 		await db.transaction('rw', [db.chapters, db.projects], async () => {
 			for (let i = 0; i < chapterIds.length; i++) {
+				// 位置が変わらないものは更新しない
+				if ((await db.chapters.get(chapterIds[i]))?.order === i) continue;
 				await db.chapters.update(chapterIds[i], {
 					order: i,
 					updatedAt: Date.now()
 				});
+				changed = true;
 			}
 		});
-		await touchProject(projectId);
+		if (changed) await touchProject(projectId);
 	},
 
 	/**

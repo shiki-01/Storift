@@ -43,6 +43,7 @@
 {#if current}
 	<ConflictResolver
 		isOpen={syncStore.conflictDialogOpen}
+		entityType={current.type}
 		conflictData={current.conflictData}
 		{onResolve}
 		onClose={() => (syncStore.conflictDialogOpen = false)}

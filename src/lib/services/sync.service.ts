@@ -23,6 +23,7 @@ import {
 	type SyncableEntity
 } from '$lib/firebase/sync';
 import { prepareConflictData, type ConflictData } from '$lib/firebase/conflict';
+import { contentDiffers, decideConflict } from '$lib/firebase/conflictContent';
 import {
 	adoptOwnedFields,
 	reconcile,
@@ -371,21 +372,11 @@ async function backupEntity(
 	}
 }
 
-const META_KEYS = new Set(['updatedAt', '_version', 'syncedAt']);
-
-export function contentDiffers(a: SyncableEntity, b: SyncableEntity): boolean {
-	const strip = (e: SyncableEntity) =>
-		JSON.stringify(
-			Object.entries(e)
-				.filter(([key]) => !META_KEYS.has(key))
-				.sort(([x], [y]) => x.localeCompare(y))
-		);
-	return strip(a) !== strip(b);
-}
+export { contentDiffers };
 
 /**
- * 競合を処理する。
- * プロジェクトは更新日時が頻繁に変わるメタ情報なので常に新しい方を採用する(newestWins で CRDT 化したシーンも同様)。
+ * 競合を処理する。自動で決まる場合(decideConflict)は ダイアログを出さずに採用する側を返し、
+ * 手動解決が必要な場合だけ保留リストに載せて 'conflict' を返す。
  */
 async function handleConflict(
 	type: EntityType,
@@ -397,40 +388,61 @@ async function handleConflict(
 ): Promise<Exclude<ReconcileAction, 'skip'>> {
 	console.log(`⚠️ Conflict detected for ${type}: ${local.id} (policy: ${policy})`);
 
-	// CRDT 化したシーンは、本文を比べないので残る差(題名・並び順など)は軽微。ダイアログを出さず新しい方を採用する
-	if (type === 'projects' || newestWins) {
-		return remote.updatedAt > local.updatedAt ? 'apply-remote' : 'push-local';
+	const decision = decideConflict(type, local, remote, policy, newestWins);
+	if (decision.kind === 'auto') {
+		if (decision.reason === 'same-content') {
+			// 自動書き込みで updatedAt だけが動いた競合。新しい方を採用して終わり(履歴退避は不要)
+			recordSyncMetric({
+				kind: 'conflictAutoResolved',
+				label: `${type}: 内容が同一(更新日時のみ違う)`,
+				durationMs: 0,
+				count: 1,
+				ok: true
+			});
+		}
+		return decision.action;
 	}
 
-	switch (policy) {
-		case 'local':
-			return 'push-local';
-		case 'remote':
-			return 'apply-remote';
-		default: {
-			const conflict: PendingConflict = {
-				type,
-				id: local.id,
-				target,
-				local,
-				remote,
-				conflictData: prepareConflictData(
-					local as unknown as Record<string, unknown>,
-					remote as unknown as Record<string, unknown>
-				) as unknown as ConflictData<SyncableEntity>
-			};
-			const index = pendingConflicts.findIndex((c) => c.id === local.id && targetOf(c) === target);
-			if (index >= 0) {
-				pendingConflicts[index] = conflict;
-			} else {
-				pendingConflicts.push(conflict);
-			}
-			savePendingConflicts(pendingConflicts);
-			syncStore.status = 'conflict';
-			syncStore.conflictCount = pendingConflicts.length;
-			return 'conflict';
-		}
+	const conflict: PendingConflict = {
+		type,
+		id: local.id,
+		target,
+		local,
+		remote,
+		conflictData: prepareConflictData(
+			local as unknown as Record<string, unknown>,
+			remote as unknown as Record<string, unknown>
+		) as unknown as ConflictData<SyncableEntity>
+	};
+	const index = pendingConflicts.findIndex((c) => c.id === local.id && targetOf(c) === target);
+	if (index >= 0) {
+		pendingConflicts[index] = conflict;
+	} else {
+		pendingConflicts.push(conflict);
 	}
+	savePendingConflicts(pendingConflicts);
+	syncStore.status = 'conflict';
+	syncStore.conflictCount = pendingConflicts.length;
+	return 'conflict';
+}
+
+/**
+ * 保留中の競合のうち、内容が同一のもの(旧版が更新日時だけの違いで保留にしたもの)を取り下げ、
+ * 最新のデータで改めて突き合わせるよう再送信の対象にする(そこで自動解決される。違いが残っていれば再び保留になる)。
+ */
+function dropIdenticalPendingConflicts(): void {
+	const stale = pendingConflicts.filter((c) => !contentDiffers(c.local, c.remote));
+	if (stale.length === 0) return;
+	for (const conflict of stale) {
+		pendingConflicts.splice(pendingConflicts.indexOf(conflict), 1);
+	}
+	savePendingConflicts(pendingConflicts);
+	syncStore.conflictCount = pendingConflicts.length;
+	if (pendingConflicts.length === 0 && syncStore.status === 'conflict') syncStore.status = 'synced';
+	enqueueManyAndSchedule(
+		stale.map((c) => ({ type: c.type, id: c.id, action: 'update' as const, target: targetOf(c) }))
+	);
+	console.log(`ℹ️ Re-checking ${stale.length} stale conflict(s) with identical content`);
 }
 
 /**
@@ -970,6 +982,7 @@ async function doInitializeSync(): Promise<void> {
 
 	console.log('🚀 Initializing sync system...');
 	resetGates();
+	dropIdenticalPendingConflicts();
 
 	historyDB.deleteOldHistory().catch((err) => console.warn('Failed to prune history:', err));
 

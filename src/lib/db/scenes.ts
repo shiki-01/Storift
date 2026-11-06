@@ -1,7 +1,7 @@
 import { db } from './schema';
 import type { Scene, SceneCreateInput } from '$lib/types';
 import { v4 as uuidv4 } from 'uuid';
-import { touchProject } from './utils';
+import { isUnchanged, touchProject } from './utils';
 import { historyDB } from './history';
 
 export const scenesDB = {
@@ -49,16 +49,20 @@ export const scenesDB = {
 		// 変更前のデータを保存（履歴用）
 		const currentScene = await db.scenes.get(id);
 
+		// 文字数を自動計算
+		const effective: Partial<Scene> = { ...changes };
+		if (changes.content !== undefined) {
+			effective.characterCount = changes.content.length;
+		}
+
+		// 内容が変わらない保存(未変更の離脱時保存・ミラーなど)では updatedAt を進めない
+		if (isUnchanged(currentScene, effective)) return;
+
 		const updates: Partial<Scene> = {
-			...changes,
+			...effective,
 			updatedAt: Date.now(),
 			_version: (currentScene?._version || 0) + 1
 		};
-
-		// 文字数を自動計算
-		if (changes.content !== undefined) {
-			updates.characterCount = changes.content.length;
-		}
 
 		await db.scenes.update(id, updates);
 
@@ -94,19 +98,22 @@ export const scenesDB = {
 
 	async reorder(chapterId: string, sceneIds: string[]): Promise<void> {
 		let projectId: string | undefined;
+		let changed = false;
 		await db.transaction('rw', [db.scenes, db.projects], async () => {
 			for (let i = 0; i < sceneIds.length; i++) {
 				const scene = await db.scenes.get(sceneIds[i]);
 				if (scene && !projectId) {
 					projectId = scene.projectId;
 				}
+				if (scene && scene.order === i) continue;
 				await db.scenes.update(sceneIds[i], {
 					order: i,
 					updatedAt: Date.now()
 				});
+				changed = true;
 			}
 		});
-		if (projectId) {
+		if (projectId && changed) {
 			await touchProject(projectId);
 		}
 	},

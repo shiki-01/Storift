@@ -1,7 +1,7 @@
 import { db } from './schema';
 import type { Worldbuilding, WorldbuildingCreateInput } from '$lib/types';
 import { v4 as uuidv4 } from 'uuid';
-import { touchProject } from './utils';
+import { isUnchanged, touchProject } from './utils';
 
 export const worldbuildingDB = {
 	async getByProjectId(projectId: string): Promise<Worldbuilding[]> {
@@ -44,6 +44,8 @@ export const worldbuildingDB = {
 
 	async update(id: string, changes: Partial<Worldbuilding>): Promise<void> {
 		const worldbuilding = await db.worldbuilding.get(id);
+		// 内容が変わらない更新では updatedAt を進めない(他端末との不要な競合を避ける)
+		if (isUnchanged(worldbuilding, changes)) return;
 		await db.worldbuilding.update(id, {
 			...changes,
 			updatedAt: Date.now(),

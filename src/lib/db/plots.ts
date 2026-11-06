@@ -1,7 +1,7 @@
 import { db } from './schema';
 import type { Plot, PlotCreateInput } from '$lib/types';
 import { v4 as uuidv4 } from 'uuid';
-import { touchProject } from './utils';
+import { isUnchanged, touchProject } from './utils';
 
 export const plotsDB = {
 	async getByProjectId(projectId: string): Promise<Plot[]> {
@@ -39,6 +39,8 @@ export const plotsDB = {
 
 	async update(id: string, changes: Partial<Plot>): Promise<void> {
 		const plot = await db.plots.get(id);
+		// 内容が変わらない更新では updatedAt を進めない(他端末との不要な競合を避ける)
+		if (isUnchanged(plot, changes)) return;
 		await db.plots.update(id, {
 			...changes,
 			updatedAt: Date.now(),
@@ -58,15 +60,19 @@ export const plotsDB = {
 	},
 
 	async reorder(projectId: string, plotIds: string[]): Promise<void> {
+		let changed = false;
 		await db.transaction('rw', [db.plots, db.projects], async () => {
 			for (let i = 0; i < plotIds.length; i++) {
+				// 位置が変わらないものは更新しない
+				if ((await db.plots.get(plotIds[i]))?.order === i) continue;
 				await db.plots.update(plotIds[i], {
 					order: i,
 					updatedAt: Date.now()
 				});
+				changed = true;
 			}
 		});
-		await touchProject(projectId);
+		if (changed) await touchProject(projectId);
 	},
 
 	/**

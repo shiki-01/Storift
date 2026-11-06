@@ -6,7 +6,7 @@
 <footer>
 	<div class="wrap inner">
 		<div class="about">
-			<Logo height={22} />
+			<Logo size={28} />
 			<p>小説を書くための、ひとつの場所。</p>
 		</div>
 		<nav aria-label="サイト">

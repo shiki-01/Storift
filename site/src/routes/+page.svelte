@@ -81,7 +81,7 @@
 	<div class="wrap">
 		<div class="hero-head">
 			<div class="hero-text">
-				<div class="brand"><Logo height={40} /></div>
+				<div class="brand"><Logo size={56} /></div>
 				<h1>小説を書くための、<br />ひとつの場所。</h1>
 				<p class="lead">
 					原稿、プロット、人物、設定資料、進捗。ばらばらになりがちな物語の材料を、作品ごとにひとつにまとめる執筆アプリです。

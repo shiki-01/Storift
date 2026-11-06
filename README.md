@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="static/brand/storift-logo-light.svg">
+    <img src="static/brand/storift-logo.svg" alt="Storift" height="56">
+  </picture>
+</p>
+
 # Storift
 
 小説を書くための、ひとつの場所。

@@ -1,6 +1,5 @@
 <script lang="ts">
 	import '../app.css';
-	import { logo } from '$lib/assets/logo';
 	import { onMount } from 'svelte';
 	import { page, updated } from '$app/state';
 	import { resolve } from '$app/paths';
@@ -21,10 +20,10 @@
 	import { registerServiceWorker, checkForUpdate } from '$lib/utils/sw-register';
 	import { initializeErrorHandler } from '$lib/utils/errorHandler';
 	import SyncStatus from '$lib/components/ui/SyncStatus.svelte';
+	import Logo from '$lib/components/ui/Logo.svelte';
 	import ToastHost from '$lib/components/ui/ToastHost.svelte';
 	import ConflictHost from '$lib/components/ui/ConflictHost.svelte';
 	import TourOverlay from '$lib/components/tutorial/TourOverlay.svelte';
-	import { themes, themeStore } from '$lib/stores/theme.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
 	import { aiStore } from '$lib/stores/ai.svelte';
 	import { updaterStore } from '$lib/stores/updater.svelte';
@@ -239,8 +238,7 @@
 							<span class="header-title">{sectionLabel ?? ''}</span>
 						{:else}
 							<a href={resolve('/home')} class="header-logo" aria-label="ホーム">
-								<!-- eslint-disable-next-line svelte/no-at-html-tags -- 固定の SVG ロゴ(色のみ可変) -->
-								{@html logo(themes[themeStore.theme.id].colors.text)}
+								<Logo variant="full" size={20} title="Storift" />
 							</a>
 							<span class="flex:1"></span>
 						{/if}
@@ -376,7 +374,6 @@
 
 	.header-logo {
 		display: flex;
-		width: 88px;
 	}
 
 	.header-link {

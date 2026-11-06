@@ -2,7 +2,7 @@
 	"name": "storift",
 	"private": true,
 	"license": "MIT",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
@@ -17,6 +17,7 @@
 		"test:ui": "vitest --ui",
 		"test:coverage": "vitest --coverage",
 		"tauri": "tauri",
+		"icons": "node scripts/build-icons.mjs",
 		"desktop:dev": "tauri dev",
 		"desktop:build": "tauri build",
 		"test:rules": "firebase emulators:exec --only firestore --project demo-storift \"vitest run --config vitest.rules.config.ts\"",

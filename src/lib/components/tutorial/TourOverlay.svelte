@@ -2,7 +2,7 @@
 	import { tick, untrack } from 'svelte';
 	import { fly } from 'svelte/transition';
 	import { goto } from '$app/navigation';
-	import { logo } from '$lib/assets/logo';
+	import Logo from '$lib/components/ui/Logo.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { projectsStore } from '$lib/stores/projects.svelte';
@@ -379,8 +379,7 @@
 
 					{#if step.logo}
 						<div class="tour-logo" aria-hidden="true">
-							<!-- eslint-disable-next-line svelte/no-at-html-tags -- 固定のロゴ SVG -->
-							{@html logo('currentColor')}
+							<Logo variant="full" size={44} />
 						</div>
 					{/if}
 
@@ -589,11 +588,6 @@
 		justify-content: center;
 		padding: 18px 0 6px;
 		color: var(--color-text);
-	}
-
-	.tour-logo :global(svg) {
-		width: auto;
-		height: 44px;
 	}
 
 	.tour-progress {

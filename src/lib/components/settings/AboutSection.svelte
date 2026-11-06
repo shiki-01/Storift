@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import Logo from '$lib/components/ui/Logo.svelte';
 	import UpdateSettings from '$lib/components/desktop/UpdateSettings.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
 	import { tourStore } from '$lib/tutorial/tour.svelte';
@@ -31,6 +32,7 @@
 
 <SettingsCard title="バージョン情報">
 	<div class="fg:theme-text-secondary">
+		<div class="mb:12"><Logo variant="full" size={28} /></div>
 		{#if isDesktop()}
 			<UpdateSettings />
 		{:else}

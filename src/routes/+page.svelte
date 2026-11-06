@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import Logo from '$lib/components/ui/Logo.svelte';
 	import { settingsDB } from '$lib/db';
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { authStore } from '$lib/stores/auth.svelte';
@@ -52,7 +53,7 @@
 
 <div class="flex ai:center jc:center h:100%">
 	<div class="text-align:center">
-		<h1 class="font:32 font-weight:700 m:0|0|16|0">Storift</h1>
+		<h1 class="flex jc:center m:0|0|16|0"><Logo variant="full" size={44} title="Storift" /></h1>
 		<p class="fg:theme-text-secondary">読み込み中...</p>
 	</div>
 </div>

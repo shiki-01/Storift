@@ -23,7 +23,9 @@ const SHELL_URL = '/';
 // フォントは大きいので、インストール時ではなく初回使用時にキャッシュする
 const PRECACHE = [
 	...build,
-	...files.filter((path) => !path.startsWith('/font/') && !path.endsWith('.woff'))
+	...files.filter(
+		(path) => !path.startsWith('/font/') && !path.startsWith('/brand/') && !path.endsWith('.woff')
+	)
 ];
 
 sw.addEventListener('install', (event) => {

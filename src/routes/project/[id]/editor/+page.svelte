@@ -47,7 +47,9 @@
 	import { EditorBinding, type TextSelection } from '$lib/crdt/editorBinding';
 	import { createDomAdapter, type DomEditorAdapter } from '$lib/crdt/domAdapter';
 	import { trackLocalGrowth, type LocalGrowthTracker } from '$lib/crdt/progress';
-	import { presenceLabel } from '$lib/crdt/presencePolicy';
+	import { cursorsOnScene, presenceLabel } from '$lib/crdt/presencePolicy';
+	import { CURSOR_BLUR_DELAY_MS, encodeCursor } from '$lib/crdt/remoteCursor';
+	import RemoteCursors from '$lib/components/editor/RemoteCursors.svelte';
 	import { getSceneText, openSceneDoc } from '$lib/services/sceneText.service';
 	import { startPresence, type PresenceSession } from '$lib/services/presence.service';
 	import { presenceStore } from '$lib/stores/presence.svelte';
@@ -475,7 +477,7 @@
 		if (!editorDiv) return;
 		editorDiv.focus({ preventScroll: true });
 		if (selectTextRange(editorDiv, start, end) && editorScrollContainer) {
-			typewriterScroll(editorScrollContainer, 0.35);
+			typewriterScroll(editorScrollContainer, 0.35, barInset());
 		}
 	}
 
@@ -507,6 +509,13 @@
 	);
 
 	let session: CollabSession | null = null;
+	// 他者のカーソルの描画に使う、今の共同編集セッションの参照(session は非リアクティブなので別に持つ)
+	let remoteView = $state.raw<{
+		sceneId: string;
+		ydoc: SceneDocHandle['ydoc'];
+		ytext: SceneDocHandle['ytext'];
+		binding: EditorBinding;
+	} | null>(null);
 	let collabTarget: string | null = null;
 	let collabToken = 0;
 	let progressTimer: ReturnType<typeof setTimeout> | null = null;
@@ -577,6 +586,7 @@
 			]
 		};
 		session = next;
+		remoteView = { sceneId, ydoc: handle.ydoc, ytext: handle.ytext, binding };
 		collabReadOnly = handle.readOnly;
 		editorStore.crdtSceneId = sceneId;
 		editorStore.setContentFromSource(handle.ytext.toString());
@@ -591,6 +601,7 @@
 	function detachSession(): CollabSession | null {
 		const current = session;
 		session = null;
+		remoteView = null;
 		editorStore.crdtSceneId = null;
 		editorStore.externalTextSink = null;
 		setHistoryHandler(null);
@@ -806,7 +817,79 @@
 		presenceSession?.setScene(editorStore.currentScene?.id ?? null);
 	});
 
+	// ===== 他者のカーソル/選択範囲(共同編集中のシーンのみ) =====
+	// 設定がオフの間は、描画も自分の位置の送信もしない
+	const showRemoteCursors = $derived(settingsStore.settings.showRemoteCursors !== false);
+	let cursorFrame = 0;
+	let blurTimer: ReturnType<typeof setTimeout> | null = null;
+	let cursorRetry: ReturnType<typeof setTimeout> | null = null;
+
+	/** 今の選択範囲を presence に渡す(書き込みは presence 側で 3 秒以上あけて間引かれる) */
+	function reportCursor() {
+		cursorFrame = 0;
+		const current = session;
+		if (!current || !presenceSession || !editorDiv) return;
+		if (document.activeElement !== editorDiv) return;
+		// 変換中や、リモートの変更が DOM に入る前は DOM と Y の座標がずれているので、少し待つ
+		if (current.binding.isComposing) return;
+		if (current.binding.hasPendingRemote) {
+			if (!cursorRetry) {
+				cursorRetry = setTimeout(() => {
+					cursorRetry = null;
+					reportCursor();
+				}, 60);
+			}
+			return;
+		}
+		const selection = current.adapter.getSelection();
+		if (!selection) return;
+		presenceSession.setCursor(encodeCursor(current.handle.ytext, selection));
+	}
+
+	function scheduleCursorReport() {
+		if (cursorFrame) return;
+		cursorFrame = requestAnimationFrame(reportCursor);
+	}
+
+	function handleEditorFocus() {
+		if (blurTimer) clearTimeout(blurTimer);
+		blurTimer = null;
+		if (session) scheduleCursorReport();
+	}
+
+	// フォーカスを失ったら、少し待ってから位置を消す(ボタン操作などの一瞬の外れでは消さない)
+	function handleEditorBlur() {
+		if (blurTimer) clearTimeout(blurTimer);
+		blurTimer = setTimeout(() => {
+			blurTimer = null;
+			if (document.activeElement !== editorDiv) presenceSession?.setCursor(null);
+		}, CURSOR_BLUR_DELAY_MS);
+	}
+
+	$effect(() => {
+		if (collab !== 'on') return;
+		const onSelectionChange = () => {
+			if (document.activeElement === editorDiv) scheduleCursorReport();
+		};
+		document.addEventListener('selectionchange', onSelectionChange);
+		return () => {
+			document.removeEventListener('selectionchange', onSelectionChange);
+			if (cursorFrame) cancelAnimationFrame(cursorFrame);
+			cursorFrame = 0;
+			if (blurTimer) clearTimeout(blurTimer);
+			blurTimer = null;
+			if (cursorRetry) clearTimeout(cursorRetry);
+			cursorRetry = null;
+			presenceSession?.setCursor(null);
+		};
+	});
+
 	const otherMembers = $derived(presenceStore.others);
+	const remoteCursorList = $derived(
+		showRemoteCursors && remoteView && remoteView.sceneId === editorStore.currentScene?.id
+			? cursorsOnScene(otherMembers, remoteView.sceneId)
+			: []
+	);
 	const presenceText = $derived(presenceLabel(otherMembers, 5));
 	const membersOnScene = (sceneId: string) => otherMembers.filter((m) => m.sceneId === sceneId);
 
@@ -1490,6 +1573,18 @@
 	let showDisplaySheet = $state(false);
 	let showActionSheet = $state(false);
 	let chromeHidden = $state(false);
+	let mBarEl = $state<HTMLElement | null>(null);
+
+	/**
+	 * 本文の上端に重なっている上部バーの高さ(px)。バーが隠れている間・無い間は 0。
+	 * キャレットの補正(ensureCaretVisible / typewriterScroll)が、バーの裏を避けるために使う。
+	 */
+	function barInset(): number {
+		if (!mBarEl || chromeHidden || !editorScrollContainer) return 0;
+		const bar = mBarEl.getBoundingClientRect();
+		const box = editorScrollContainer.getBoundingClientRect();
+		return Math.max(0, bar.bottom - box.top);
+	}
 
 	let sceneFilter = $state('');
 	let collapsedChapters = new SvelteSet<string>();
@@ -1565,6 +1660,18 @@
 		viewport.isMobile
 			? Math.max(16, localFormatting.fontSize ?? 16)
 			: (localFormatting.fontSize ?? 16)
+	);
+
+	// 他者のカーソルの位置は、これらが変わると計算し直す
+	const cursorLayoutKey = $derived(
+		[
+			settingsStore.editorFont,
+			effectiveFontSize,
+			localFormatting.lineHeight,
+			localFormatting.letterSpacing,
+			settingsStore.settings.theme,
+			viewport.isMobile
+		].join('|')
 	);
 
 	// --- 自動保存(入力が止まって約2秒後。入力し続けても最大待ち時間ごとに保存) ---
@@ -1664,8 +1771,8 @@
 		if (viewport.isMobile && viewport.isKeyboardOpen) chromeHidden = true;
 		requestAnimationFrame(() => {
 			if (!editorScrollContainer) return;
-			if (editorStore.typewriter) typewriterScroll(editorScrollContainer);
-			else ensureCaretVisible(editorScrollContainer);
+			if (editorStore.typewriter) typewriterScroll(editorScrollContainer, 0.4, barInset());
+			else ensureCaretVisible(editorScrollContainer, 28, barInset());
 		});
 	}
 
@@ -1679,7 +1786,7 @@
 		void viewport.height;
 		if (!viewport.isMobile || !viewport.isKeyboardOpen) return;
 		requestAnimationFrame(() => {
-			if (editorScrollContainer) ensureCaretVisible(editorScrollContainer);
+			if (editorScrollContainer) ensureCaretVisible(editorScrollContainer, 28, barInset());
 		});
 	});
 
@@ -1689,7 +1796,7 @@
 			if (!editorDiv || document.activeElement !== editorDiv) return;
 			const selection = window.getSelection();
 			if (editorStore.typewriter && editorScrollContainer && selection?.isCollapsed) {
-				typewriterScroll(editorScrollContainer);
+				typewriterScroll(editorScrollContainer, 0.4, barInset());
 			}
 			if (editorStore.dimOthers) updateDimHighlight(editorDiv, true);
 		};
@@ -2003,6 +2110,7 @@
 		<!-- スマホ: 1 本だけの上部バー -->
 		{#if viewport.isMobile && !editorStore.focusMode}
 			<div
+				bind:this={mBarEl}
 				class="m-bar-wrap"
 				class:m-bar-off={chromeHidden}
 				inert={chromeHidden}
@@ -2358,6 +2466,8 @@
 									oncompositionstart={handleCompositionStart}
 									oncompositionend={handleCompositionEnd}
 									onkeydown={handleEditorKeydown}
+									onfocus={handleEditorFocus}
+									onblur={handleEditorBlur}
 									ondragstart={handleDragStart}
 									ondragend={() => (dragSelection = null)}
 									ondrop={handleDrop}
@@ -2374,6 +2484,17 @@
 								>
 									{editorStore.content}
 								</div>
+
+								{#if remoteView && editorDiv && remoteCursorList.length > 0}
+									<RemoteCursors
+										root={editorDiv}
+										ydoc={remoteView.ydoc}
+										ytext={remoteView.ytext}
+										binding={remoteView.binding}
+										cursors={remoteCursorList}
+										layoutKey={cursorLayoutKey}
+									/>
+								{/if}
 
 								{#if viewport.isMobile}
 									<div class="scene-nav">
@@ -3157,6 +3278,7 @@
 
 	/* ===== 原稿 ===== */
 	.editor-page {
+		position: relative;
 		max-width: 46rem;
 		min-height: 100%;
 		margin: 0 auto;

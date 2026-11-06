@@ -248,6 +248,139 @@ async function converged(clients, mustContain, timeout = 40_000) {
 	);
 }
 
+// ---------- 他者のカーソル表示 ----------
+
+const A_NAME = 'オーナー';
+
+/** page のエディタ上で、本文のインデックス [from,to) を選択する(フォーカスも移す) */
+async function selectIn(page, from, to = from) {
+	await page.locator(EDITOR).focus();
+	await page.evaluate(
+		async ([a, b]) => {
+			const { selectTextRange } = await import('/src/lib/utils/editorInput.ts');
+			const el = document.querySelector('[role="textbox"][aria-label="エディタ"]');
+			selectTextRange(el, a, b);
+		},
+		[from, to]
+	);
+}
+
+/**
+ * page に描かれた name さんのカーソルと、同じページの本文での [from,to) の実際の矩形を返す。
+ * 描画位置が「期待する文字の位置」と合っているかを、別経路(editorInput.textRange)の矩形と比べるため。
+ */
+const cursorProbe = (page, name, from, to) =>
+	page.evaluate(
+		async ([n, a, b]) => {
+			const { textRange } = await import('/src/lib/utils/editorInput.ts');
+			const editor = document.querySelector('[role="textbox"][aria-label="エディタ"]');
+			const box = document.querySelector(`[data-remote-cursor][data-name="${n}"]`);
+			const rectOf = (r) => ({ l: r.left, t: r.top, r: r.right, b: r.bottom });
+			const exp = (i, j) => {
+				const range = textRange(editor, i, j);
+				if (!range) return null;
+				const rects = [...range.getClientRects()].filter((r) => r.height > 0);
+				return rects.length ? rects.map(rectOf) : [rectOf(range.getBoundingClientRect())];
+			};
+			if (!box)
+				return { found: false, count: document.querySelectorAll('[data-remote-cursor]').length };
+			const caret = box.querySelector('.rc-caret');
+			const overlay = box.closest('[data-testid="remote-cursors"]');
+			return {
+				found: true,
+				ariaHidden: overlay.getAttribute('aria-hidden'),
+				pointerEvents: getComputedStyle(overlay).pointerEvents,
+				position: getComputedStyle(overlay).position,
+				uid: box.getAttribute('data-remote-cursor'),
+				color: box.style.getPropertyValue('--rc-color'),
+				caretBg: caret ? getComputedStyle(caret).backgroundColor : null,
+				caretWidth: caret ? caret.getBoundingClientRect().width : null,
+				caret: caret ? rectOf(caret.getBoundingClientRect()) : null,
+				label: caret?.querySelector('.rc-label')?.textContent ?? null,
+				sels: [...box.querySelectorAll('.rc-sel')].map((e) => rectOf(e.getBoundingClientRect())),
+				expCaret: a === undefined ? null : exp(a, a),
+				expSel: a === undefined || b === undefined || a === b ? null : exp(a, b)
+			};
+		},
+		[name, from, to]
+	);
+
+const near = (x, y, tol = 3) => Math.abs(x - y) <= tol;
+
+/** 描画したキャレットが、期待する文字の位置(左端と、行の高さの範囲)に一致するか */
+function caretMatches(probe) {
+	if (!probe.found || !probe.caret || !probe.expCaret) return false;
+	const exp = probe.expCaret[0];
+	const centerY = (probe.caret.t + probe.caret.b) / 2;
+	return near(probe.caret.l + 1, exp.l, 3) && centerY >= exp.t - 2 && centerY <= exp.b + 2;
+}
+
+/** 描画した選択範囲(複数の矩形)が、期待する範囲の外接矩形と一致するか */
+function selectionMatches(probe) {
+	if (!probe.found || probe.sels.length === 0 || !probe.expSel) return false;
+	const union = (rs) => ({
+		l: Math.min(...rs.map((r) => r.l)),
+		t: Math.min(...rs.map((r) => r.t)),
+		r: Math.max(...rs.map((r) => r.r)),
+		b: Math.max(...rs.map((r) => r.b))
+	});
+	const got = union(probe.sels);
+	const exp = union(probe.expSel);
+	return near(got.l, exp.l) && near(got.r, exp.r) && near(got.t, exp.t) && near(got.b, exp.b);
+}
+
+/** page のオーナー(A)のカーソル描画が条件を満たすまで待つ。最後の測定値を返す */
+async function waitCursor(page, description, from, to, predicate, timeout = 25_000) {
+	let last;
+	const debug = async () => {
+		console.log(`\n  [debug] ${description}: ${JSON.stringify(last)}`);
+		console.log(
+			await page
+				.evaluate(async () => {
+					const { presenceStore } = await import('/src/lib/stores/presence.svelte.ts');
+					return JSON.stringify(presenceStore.entries);
+				})
+				.catch(() => '')
+		);
+	};
+	const debug2 = async () => {
+		for (const [k, c] of Object.entries(globalThis.__clients ?? {})) {
+			console.log(
+				k,
+				await c.page
+					.evaluate(() => {
+						const sel = getSelection();
+						return JSON.stringify({
+							active: document.activeElement?.getAttribute('aria-label'),
+							anchor: sel?.anchorOffset,
+							text: sel?.toString().length,
+							focus: document.hasFocus(),
+							vis: document.visibilityState
+						});
+					})
+					.catch((e) => String(e))
+			);
+		}
+	};
+	await waitFor(
+		description,
+		async () => {
+			// 期待位置は毎回の本文から求める(from/to は関数でも可)
+			const a = typeof from === 'function' ? await from() : from;
+			const b = typeof to === 'function' ? await to() : to;
+			last = await cursorProbe(page, A_NAME, a, b);
+			return predicate(last);
+		},
+		timeout,
+		250
+	).catch(async (error) => {
+		await debug();
+		await debug2();
+		throw error;
+	});
+	return last;
+}
+
 // ---------- シナリオ ----------
 
 async function main() {
@@ -390,6 +523,7 @@ async function main() {
 		});
 
 		const guest = await newClient(browser, 'B(編集ゲスト)');
+		globalThis.__clients = { owner, guest };
 		await step('ゲスト B: 招待リンク(編集)で参加し、同じシーンを開く', async () => {
 			await joinWith(guest, base, state.links.editor, state.pid);
 			await openEditor(guest, base, state.pid, INITIAL);
@@ -513,6 +647,201 @@ async function main() {
 			await cdp.detach();
 		});
 
+		// ----- 他者のカーソル/選択範囲の表示(段階 4) -----
+		const MARK = '名前は迷う'; // IME の確定で入った文字列。位置の目印にする
+		const markIndex = async (page, offset) => (await editorText(page)).indexOf(MARK) + offset;
+
+		await step('カーソル: A がキャレットを移動すると、B に A の色のキャレットが出る', async () => {
+			const at = await markIndex(owner.page, 2);
+			await selectIn(owner.page, at);
+			const probe = await waitCursor(
+				guest.page,
+				'B に A のキャレット',
+				() => markIndex(guest.page, 2),
+				() => markIndex(guest.page, 2),
+				caretMatches
+			);
+			const aColor = await run(owner.page, async () => {
+				const { presenceColor } = await import('/src/lib/crdt/presencePolicy.ts');
+				const { presenceStore } = await import('/src/lib/stores/presence.svelte.ts');
+				return presenceColor(presenceStore.selfUid);
+			});
+			assert(probe.color === aColor, `A の色: ${probe.color} / ${aColor}`);
+			assert(probe.caretBg !== 'rgba(0, 0, 0, 0)', `キャレットに色がある: ${probe.caretBg}`);
+			assert(near(probe.caretWidth, 2, 0.5), `キャレット線は 2px: ${probe.caretWidth}`);
+			assert(probe.label === A_NAME, `名前ラベル: ${probe.label}`);
+			assert(probe.ariaHidden === 'true', 'オーバーレイは aria-hidden');
+			assert(probe.pointerEvents === 'none', 'オーバーレイは pointer-events:none');
+			assert(probe.position === 'absolute', 'オーバーレイは position:absolute');
+			// 自分(B)のカーソルは B には描かれない
+			const bUid = await run(guest.page, async () => {
+				const { presenceStore } = await import('/src/lib/stores/presence.svelte.ts');
+				return presenceStore.selfUid;
+			});
+			const own = await guest.page.locator(`[data-remote-cursor="${bUid}"]`).count();
+			assert(own === 0, '自分のカーソルは描かない');
+		});
+
+		await step('カーソル: 数秒後に名前ラベルが淡くなる', async () => {
+			await waitFor(
+				'ラベルがフェード',
+				async () => {
+					const opacity = await guest.page
+						.locator('[data-remote-cursor] .rc-label')
+						.first()
+						.evaluate((el) => Number(getComputedStyle(el).opacity));
+					return opacity < 0.6;
+				},
+				10_000,
+				250
+			);
+		});
+
+		await step('カーソル: A が範囲選択すると、B に選択ハイライトが出る', async () => {
+			const from = await markIndex(owner.page, 0);
+			await selectIn(owner.page, from, from + 5);
+			const probe = await waitCursor(
+				guest.page,
+				'B に A の選択範囲',
+				() => markIndex(guest.page, 0),
+				async () => (await markIndex(guest.page, 0)) + 5,
+				selectionMatches
+			);
+			assert(probe.sels.length >= 1, '選択ハイライトがある');
+		});
+
+		await step(
+			'カーソル: B が A のキャレットより前に入力しても、A のキャレットは同じ文字に留まる',
+			async () => {
+				const at = await markIndex(owner.page, 2);
+				await selectIn(owner.page, at);
+				await waitCursor(
+					guest.page,
+					'B に A のキャレット(入力前)',
+					() => markIndex(guest.page, 2),
+					() => markIndex(guest.page, 2),
+					caretMatches
+				);
+				// B が先頭に入力: A の位置を再送信しなくても、相対位置なので同じ文字の隣のまま
+				await typeAt(guest.page, 'start', '〔B先頭〕');
+				await converged([owner, guest], ['〔B先頭〕']);
+				const probe = await waitCursor(
+					guest.page,
+					'ずれずに同じ文字の隣',
+					() => markIndex(guest.page, 2),
+					() => markIndex(guest.page, 2),
+					caretMatches,
+					10_000
+				);
+				assert(probe.found, 'A のキャレットが残っている');
+				state.synced = await editorText(owner.page);
+			}
+		);
+
+		await step(
+			'カーソル: A が入力すると、B 側の A のキャレットは入力した文字の直後に来る',
+			async () => {
+				await selectIn(owner.page, await markIndex(owner.page, 2));
+				await owner.page.keyboard.type('挿入', { delay: 40 });
+				await converged([owner, guest], ['名前は迷う'.slice(0, 2) + '挿入']);
+				// 3 秒の間引きののち、A の最後の位置(「挿入」の直後)が B に届く
+				await waitCursor(
+					guest.page,
+					'A の入力位置がずれない',
+					async () => (await editorText(guest.page)).indexOf('名前挿入') + 4,
+					async () => (await editorText(guest.page)).indexOf('名前挿入') + 4,
+					caretMatches
+				);
+				state.synced = await editorText(owner.page);
+			}
+		);
+
+		await step(
+			'設定: B が「他の人のカーソルを表示」をオフにすると消え、B の位置も送られなくなる',
+			async () => {
+				// B が本文にキャレットを置くと、A には B のキャレットが出る
+				const bName = await run(guest.page, async () => {
+					const { presenceStore } = await import('/src/lib/stores/presence.svelte.ts');
+					return presenceStore.others.map((e) => e.name).find((n) => n !== 'オーナー');
+				});
+				void bName;
+				await selectIn(guest.page, 3);
+				await waitFor(
+					'A に B のキャレット',
+					async () => (await owner.page.locator('[data-remote-cursor]').count()) >= 1,
+					25_000,
+					250
+				);
+
+				// 設定画面でオフにして、エディタへ戻る
+				await guest.page.goto(`${base}/settings`);
+				const toggle = guest.page.getByLabel('他の人のカーソルを表示');
+				await toggle.waitFor({ timeout: 30_000 });
+				assert(await toggle.isChecked(), '既定はオン');
+				await toggle.uncheck();
+				await waitFor(
+					'設定が端末に保存される',
+					() =>
+						run(guest.page, async () => {
+							const { settingsDB } = await import('/src/lib/db/index.ts');
+							return (await settingsDB.get()).showRemoteCursors === false;
+						}),
+					10_000
+				);
+				await openEditor(guest, base, state.pid);
+
+				// A が動かすと、B の presence には A のカーソルが届くが、描画されない
+				await selectIn(owner.page, 5, 8);
+				await waitFor(
+					'B の購読に A のカーソルが届く',
+					() =>
+						run(guest.page, async () => {
+							const { presenceStore } = await import('/src/lib/stores/presence.svelte.ts');
+							return presenceStore.others.some((e) => e.name === 'オーナー' && e.cursor);
+						}),
+					25_000,
+					250
+				);
+				await sleep(800);
+				assert(
+					(await guest.page.locator('[data-remote-cursor]').count()) === 0,
+					'オフの間は他者のカーソルを描かない'
+				);
+
+				// B が選択しても送信されない(A には B のカーソルが出ない)
+				await selectIn(guest.page, 10, 14);
+				await sleep(4500);
+				assert(
+					(await owner.page.locator('[data-remote-cursor]').count()) === 0,
+					'オフの間は自分のカーソルも送らない'
+				);
+
+				// 戻すと、また表示される
+				await guest.page.goto(`${base}/settings`);
+				const toggle2 = guest.page.getByLabel('他の人のカーソルを表示');
+				await toggle2.waitFor({ timeout: 30_000 });
+				assert(!(await toggle2.isChecked()), 'オフが保存されている');
+				await toggle2.check();
+				await waitFor(
+					'オンの設定が端末に保存される',
+					() =>
+						run(guest.page, async () => {
+							const { settingsDB } = await import('/src/lib/db/index.ts');
+							return (await settingsDB.get()).showRemoteCursors === true;
+						}),
+					10_000
+				);
+				await openEditor(guest, base, state.pid);
+				await selectIn(owner.page, 6, 9);
+				await waitFor(
+					'オンに戻すと再び描かれる',
+					async () => (await guest.page.locator('[data-remote-cursor]').count()) >= 1,
+					25_000,
+					250
+				);
+			}
+		);
+
 		const pwGuest = await newClient(browser, 'E(パスワードゲスト)');
 		await step(
 			'ゲスト E: パスワード方式のリンクを直接開き、誤り→正しいパスワードで参加する',
@@ -591,6 +920,33 @@ async function main() {
 				'viewer の入力は残らない'
 			);
 		});
+
+		await step(
+			'カーソル: 閲覧ゲスト C にも A のカーソルが見え、C 自身のカーソルは描かれない',
+			async () => {
+				// C は編集できないが、本文を選択(クリック)することはできる
+				await viewer.page.locator(EDITOR).click({ force: true });
+				const textLength = async () => (await editorText(owner.page)).length;
+				await selectIn(owner.page, await textLength());
+				const probe = await waitCursor(
+					viewer.page,
+					'C に A のキャレット',
+					async () => (await editorText(viewer.page)).length,
+					async () => (await editorText(viewer.page)).length,
+					caretMatches,
+					40_000
+				);
+				assert(probe.label === A_NAME, `C にも A の名前: ${probe.label}`);
+				const cUid = await run(viewer.page, async () => {
+					const { presenceStore } = await import('/src/lib/stores/presence.svelte.ts');
+					return presenceStore.selfUid;
+				});
+				assert(
+					(await viewer.page.locator(`[data-remote-cursor="${cUid}"]`).count()) === 0,
+					'C 自身のカーソルは描かない'
+				);
+			}
+		);
 
 		await step('オーナーが B を削除すると、B のアクセスが失効表示になる', async () => {
 			await run(

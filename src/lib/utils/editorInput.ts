@@ -112,28 +112,35 @@ export function getCaretRect(): DOMRect | null {
 }
 
 /**
- * カーソルのある行を、スクロール領域の一定の高さ(既定: 上から40%)に保つ。
+ * カーソルのある行を、可視領域の一定の高さ(既定: 上から40%)に保つ。
  * 上端より上にある、または下端付近のときだけ動かし、細かな揺れは無視する。
+ * topInset は、スクロール領域の上端に重なって本文を隠すもの(スマホの上部バーなど)の高さ(px)。
+ * 可視領域はその下端から始まるものとして扱う。
  */
-export function typewriterScroll(container: HTMLElement, ratio = 0.4): void {
+export function typewriterScroll(container: HTMLElement, ratio = 0.4, topInset = 0): void {
 	const caret = getCaretRect();
 	if (!caret) return;
 	const box = container.getBoundingClientRect();
-	const target = box.top + box.height * ratio;
+	const inset = Math.max(0, topInset);
+	const target = box.top + inset + (box.height - inset) * ratio;
 	const delta = caret.top + caret.height / 2 - target;
 	if (Math.abs(delta) < 6) return;
 	container.scrollTop += delta;
 }
 
-/** カーソルがスクロール領域の外(キーボードの陰を含む)に出ないよう最小限だけ動かす */
-export function ensureCaretVisible(container: HTMLElement, margin = 28): void {
+/**
+ * カーソルが可視領域の外(キーボードの陰や、上端に重なる上部バーの裏を含む)に出ないよう最小限だけ動かす。
+ * topInset は、スクロール領域の上端に重なって本文を隠すものの高さ(px)。
+ */
+export function ensureCaretVisible(container: HTMLElement, margin = 28, topInset = 0): void {
 	const caret = getCaretRect();
 	if (!caret) return;
 	const box = container.getBoundingClientRect();
+	const top = box.top + Math.max(0, topInset);
 	if (caret.bottom > box.bottom - margin) {
 		container.scrollTop += caret.bottom - (box.bottom - margin);
-	} else if (caret.top < box.top + margin) {
-		container.scrollTop -= box.top + margin - caret.top;
+	} else if (caret.top < top + margin) {
+		container.scrollTop -= top + margin - caret.top;
 	}
 }
 

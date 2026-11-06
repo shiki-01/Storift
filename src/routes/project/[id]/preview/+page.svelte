@@ -388,6 +388,11 @@
 							このシーンをエディタで開く
 						</button>
 					</div>
+					{#if currentProjectStore.project?.sharing?.status === 'active'}
+						<p class="pop-note" data-testid="shared-note">
+							開いていないシーンは、この端末が最後に同期した内容です。
+						</p>
+					{/if}
 				</div>
 			{/if}
 		</header>
@@ -603,6 +608,12 @@
 
 	.pop-label {
 		font-size: 0.85rem;
+	}
+
+	.pop-note {
+		margin: 0;
+		font-size: 0.75rem;
+		color: var(--color-text-secondary);
 	}
 
 	.stepper {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	PRESENCE_TTL_MS,
 	activePresence,
+	cursorsOnScene,
 	defaultDisplayName,
 	parsePresence,
 	presenceColor,
@@ -74,9 +75,62 @@ describe('parsePresence', () => {
 		expect(parsed).toMatchObject({ uid: 'u1', name: 'A', sceneId: 's', updatedAt: 5 });
 		expect(parsed?.color).toBe(presenceColor('u1'));
 	});
+	it('色が想定の形でなければ(style に使われるので)uid から作り直す', () => {
+		const evil = parsePresence('u1', {
+			name: 'A',
+			color: 'red; background: url(x)',
+			updatedAt: 1
+		});
+		expect(evil?.color).toBe(presenceColor('u1'));
+		expect(
+			parsePresence('u1', { name: 'A', color: 'hsl(10, 65%, 45%)', updatedAt: 1 })?.color
+		).toBe('hsl(10, 65%, 45%)');
+	});
 	it('形が違えば null', () => {
 		expect(parsePresence('u', { name: 1, updatedAt: 1 })).toBeNull();
 		expect(parsePresence('u', { name: 'A' })).toBeNull();
 		expect(parsePresence('u', { name: 'A', updatedAt: 'x' })).toBeNull();
+	});
+});
+
+describe('カーソルの読み取り', () => {
+	const rel = { type: { client: 1, clock: 2 }, assoc: 0 };
+
+	it('cursor が正しい形なら読み、欠けていれば null', () => {
+		expect(
+			parsePresence('u', { name: 'A', updatedAt: 1, cursor: { anchor: rel, head: rel } })?.cursor
+		).toEqual({ anchor: rel, head: rel });
+		expect(parsePresence('u', { name: 'A', updatedAt: 1 })?.cursor).toBeNull();
+		expect(parsePresence('u', { name: 'A', updatedAt: 1, cursor: null })?.cursor).toBeNull();
+	});
+
+	it('cursor の形が壊れていても在席自体は有効(カーソルだけ無視)', () => {
+		for (const cursor of ['x', 1, [], { anchor: rel }, { anchor: rel, head: 'y' }]) {
+			const parsed = parsePresence('u', { name: 'A', updatedAt: 1, cursor });
+			expect(parsed).not.toBeNull();
+			expect(parsed?.cursor).toBeNull();
+		}
+	});
+
+	it('cursorsOnScene: 同じシーンでカーソルを持つ人だけ', () => {
+		const c = { anchor: rel, head: rel };
+		const list = [
+			{ ...entry('a', 'A', 0, 's1'), cursor: c },
+			{ ...entry('b', 'B', 0, 's2'), cursor: c },
+			{ ...entry('c', 'C', 0, 's1'), cursor: null },
+			entry('d', 'D', 0, 's1')
+		];
+		expect(cursorsOnScene(list, 's1').map((e) => e.uid)).toEqual(['a']);
+		expect(cursorsOnScene(list, null)).toEqual([]);
+	});
+
+	it('90 秒を過ぎたカーソルは activePresence の段階で消える', () => {
+		const c = { anchor: rel, head: rel };
+		const now = 500_000;
+		const list = [
+			{ ...entry('a', 'A', now - 10_000), cursor: c },
+			{ ...entry('b', 'B', now - PRESENCE_TTL_MS - 1), cursor: c }
+		];
+		expect(cursorsOnScene(activePresence(list, 'me', now), 's1').map((e) => e.uid)).toEqual(['a']);
 	});
 });

@@ -52,6 +52,8 @@ export interface AppSettings {
 	accessMode?: AccessMode;
 	/** 共有プロジェクトで他のメンバーに見せる名前(参加時のメンバー一覧と在席表示に使う)。未設定ならオーナー/ゲスト-xxxx */
 	displayName?: string;
+	/** 共同編集中に他の人のカーソル/選択範囲を表示する(未設定は表示)。オフの間は自分のカーソルも送らない。端末内にだけ保存 */
+	showRemoteCursors?: boolean;
 	/** 初回の Firebase 設定の案内に答え済み(設定した、または同期なしで始めた) */
 	setupCompleted?: boolean;
 	/** チュートリアルの案内を閉じた、または終えた */

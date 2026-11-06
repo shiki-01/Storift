@@ -276,6 +276,103 @@ async function main() {
 		const rmHidden = await barState(rm.page);
 		check('即時に隠れる(待たずに opacity 0)', rmHidden.opacity === 0);
 		await rm.context.close();
+		// ---------- キャレットが上部バーの裏に入らない ----------
+		console.log('[キャレットの補正(バーの高さを考慮)]');
+		const cr = await openEditor(browser, base, false);
+		const caretMetrics = (page) =>
+			page.evaluate(
+				async ([panelSel, barSel]) => {
+					const panel = document.querySelector(panelSel).getBoundingClientRect();
+					const bar = document.querySelector(barSel).getBoundingClientRect();
+					const range = getSelection().getRangeAt(0).cloneRange();
+					range.collapse(true);
+					const rects = [...range.getClientRects()].filter((r) => r.height > 0);
+					const r = rects[0] ?? range.getBoundingClientRect();
+					return {
+						top: r.top,
+						bottom: r.bottom,
+						center: (r.top + r.bottom) / 2,
+						barBottom: bar.bottom,
+						panelTop: panel.top,
+						panelBottom: panel.bottom
+					};
+				},
+				[PANEL, BAR]
+			);
+		/** n 行目(0 始まり)の行末にキャレットを置き、その行がバーの裏に来るようにスクロールする(ユーザー操作ではない) */
+		const placeCaretBehindBar = async (page, line, offsetBelowTop) => {
+			await page.locator(EDITOR).focus();
+			await page.evaluate(
+				async ([panelSel, editorSel, n, offset]) => {
+					const { selectTextRange } = await import('/src/lib/utils/editorInput.ts');
+					const editor = document.querySelector(editorSel);
+					const lines = editor.innerText.split('\n');
+					const start = lines.slice(0, n).reduce((sum, l) => sum + l.length + 1, 0);
+					const end = start + lines[n].length;
+					selectTextRange(editor, end, end);
+					const range = getSelection().getRangeAt(0).cloneRange();
+					range.collapse(true);
+					const panel = document.querySelector(panelSel);
+					const rect = [...range.getClientRects()][0] ?? range.getBoundingClientRect();
+					panel.scrollTop += rect.top - (panel.getBoundingClientRect().top + offset);
+				},
+				[PANEL, EDITOR, line, offsetBelowTop]
+			);
+			await sleep(100);
+		};
+
+		const bar0 = await barState(cr.page);
+		check('キャレット補正の前提: バーが表示されている', bar0.opacity === 1 && bar0.bottom > 40);
+		// 行の先頭がバーの中ほど(上から 20px)に来る位置へ。バーの高さより上なので、補正が無いとバーの裏のまま
+		await placeCaretBehindBar(cr.page, 60, 20);
+		const before = await caretMetrics(cr.page);
+		check(
+			'準備: キャレットがバーの裏にある',
+			before.top < before.barBottom,
+			`caret.top=${before.top} bar.bottom=${before.barBottom}`
+		);
+		await cr.page.keyboard.type('あ');
+		await sleep(300);
+		const fixed = await caretMetrics(cr.page);
+		check(
+			'入力するとキャレットがバーの下端より下に補正される',
+			fixed.top >= fixed.barBottom - 0.5,
+			`caret.top=${fixed.top} bar.bottom=${fixed.barBottom}`
+		);
+		check(
+			'補正後も可視領域の下端を越えない',
+			fixed.bottom <= fixed.panelBottom,
+			`caret.bottom=${fixed.bottom} panel.bottom=${fixed.panelBottom}`
+		);
+
+		// 下端側は従来どおり(バーの有無に関わらず下端の手前に収まる)
+		await placeCaretBehindBar(cr.page, 100, initial.height - 4);
+		await cr.page.keyboard.type('い');
+		await sleep(300);
+		const lower = await caretMetrics(cr.page);
+		check(
+			'下端にはみ出たキャレットも可視領域に収まる',
+			lower.bottom <= lower.panelBottom && lower.top >= lower.barBottom - 0.5,
+			JSON.stringify(lower)
+		);
+
+		// タイプライタースクロール: 可視領域(バーの下端〜下端)の 40% 付近に置く
+		await cr.page.evaluate(async () => {
+			const { editorStore } = await import('/src/lib/stores/editor.svelte.ts');
+			editorStore.typewriter = true;
+		});
+		await sleep(200);
+		await placeCaretBehindBar(cr.page, 60, 20);
+		await cr.page.keyboard.type('う');
+		await sleep(300);
+		const tw = await caretMetrics(cr.page);
+		const target = tw.barBottom + (tw.panelBottom - tw.barBottom) * 0.4;
+		check(
+			'タイプライタースクロールでもバーの下端より下に置かれる',
+			tw.top >= tw.barBottom - 0.5 && Math.abs(tw.center - target) <= 12,
+			`caret.center=${tw.center} target=${target} bar.bottom=${tw.barBottom}`
+		);
+		await cr.context.close();
 	} finally {
 		await browser.close();
 		vite.stop();

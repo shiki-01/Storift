@@ -292,6 +292,22 @@ describe('presence', () => {
 		await assertSucceeds(setDoc(doc(dbOf(env, 'editor1'), path('editor1')), { t: 1 }));
 	});
 
+	it('cursor(相対位置の入れ子)を含む presence も書ける。viewer も可(段階 4。ルールの変更は不要)', async () => {
+		const rel = { tname: 'content', item: { client: 123, clock: 4 }, assoc: 0 };
+		const data = {
+			name: 'A',
+			color: 'hsl(1, 65%, 45%)',
+			sceneId: 's1',
+			cursor: { anchor: rel, head: rel },
+			updatedAt: 1
+		};
+		await assertSucceeds(setDoc(doc(dbOf(env, 'viewer1'), path('viewer1')), data));
+		await assertSucceeds(
+			setDoc(doc(dbOf(env, 'editor1'), path('editor1')), { ...data, cursor: null })
+		);
+		await assertFails(setDoc(doc(dbOf(env, 'stranger'), path('stranger')), data));
+	});
+
 	it('オーナーも自分の uid なら write できる', async () => {
 		await assertSucceeds(setDoc(doc(dbOf(env, 'owner1'), path('owner1')), { t: 1 }));
 	});

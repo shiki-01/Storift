@@ -10,6 +10,7 @@
 	import { dataChange } from '$lib/stores/dataChange.svelte';
 	import { chaptersDB, scenesDB, settingsDB, progressLogsDB, projectsDB, memosDB } from '$lib/db';
 	import { getDateKey } from '$lib/utils/dateUtils';
+	import { computeHeaderVisibility } from '$lib/utils/headerVisibility';
 	import { queueChange } from '$lib/services/sync.service';
 	import { filterReadOnlyMenu, isReadOnlyProject } from '$lib/utils/readOnly';
 	import { AutoSave, enableUnsavedWarning, enableVisibilityAutoSave } from '$lib/utils/autoSave';
@@ -1703,15 +1704,38 @@
 		lastTouchAt = Date.now();
 	}
 
+	// ソフトキーボードの出入りによる viewport のリサイズ直後は、スクロールの揺れを無視する
+	const RESIZE_SETTLE_MS = 500;
+	let lastResizeAt = 0;
+	let headerTravel = 0;
+
+	$effect(() => {
+		void viewport.height;
+		void viewport.keyboardHeight;
+		lastResizeAt = Date.now();
+		headerTravel = 0;
+	});
+
 	function onEditorScroll(e: Event) {
 		const el = e.currentTarget as HTMLElement;
-		const delta = el.scrollTop - lastScrollTop;
+		const prevY = lastScrollTop;
 		lastScrollTop = el.scrollTop;
 		// 先頭まで戻ったら、操作の種類にかかわらずバーを出す
-		if (el.scrollTop <= 0) chromeHidden = false;
-		if (!viewport.isMobile || Date.now() - lastTouchAt > 400) return;
-		if (delta < -8) chromeHidden = false;
-		else if (delta > 8) chromeHidden = true;
+		if (el.scrollTop <= 0) {
+			chromeHidden = false;
+			headerTravel = 0;
+			return;
+		}
+		const now = Date.now();
+		if (!viewport.isMobile || now - lastTouchAt > 400 || now - lastResizeAt < RESIZE_SETTLE_MS) {
+			return;
+		}
+		const next = computeHeaderVisibility(prevY, el.scrollTop, {
+			visible: !chromeHidden,
+			travel: headerTravel
+		});
+		headerTravel = next.travel;
+		chromeHidden = !next.visible;
 	}
 
 	function dismissKeyboard() {
@@ -1972,7 +1996,12 @@
 	<div class="editor-main flex flex:column w:100% h:100% overflow-y:auto">
 		<!-- スマホ: 1 本だけの上部バー -->
 		{#if viewport.isMobile && !editorStore.focusMode}
-			<div class="m-bar-wrap" class:hidden={chromeHidden}>
+			<div
+				class="m-bar-wrap"
+				class:m-bar-off={chromeHidden}
+				inert={chromeHidden}
+				aria-hidden={chromeHidden ? 'true' : undefined}
+			>
 				<div class="m-bar">
 					<button class="m-btn" aria-label="章・シーン一覧" onclick={() => (showSceneSheet = true)}>
 						<Icon name="list" class="w:22px" />
@@ -2294,7 +2323,11 @@
 								? 'w:50%'
 								: 'w:100%'} transition:width|0.3s"
 						>
-							<div class="editor-page" class:typewriter={editorStore.typewriter}>
+							<div
+								class="editor-page"
+								class:typewriter={editorStore.typewriter}
+								class:with-m-bar={viewport.isMobile && !editorStore.focusMode}
+							>
 								<!-- contentEditable div -->
 								<div
 									bind:this={editorDiv}
@@ -3532,26 +3565,41 @@
 	}
 
 	/* ===== スマホ: 上部バー ===== */
+	/*
+	 * 本文のレイアウトに影響しないよう、バーは本文の上に重ねる(absolute)。
+	 * 出入りは transform/opacity だけで行い、高さや余白は変えない。
+	 */
 	.m-bar-wrap {
-		flex: none;
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		z-index: 4;
 		padding-top: var(--safe-top);
 		padding-left: var(--safe-left);
 		padding-right: var(--safe-right);
-		background: var(--color-background);
+		background: color-mix(in srgb, var(--color-background) 90%, transparent);
+		-webkit-backdrop-filter: blur(10px);
+		backdrop-filter: blur(10px);
 		border-bottom: 1px solid var(--color-border);
-		overflow: hidden;
-		max-height: calc(var(--safe-top) + var(--bar-height) + 1px);
+		transform: translateY(0);
+		opacity: 1;
 		transition:
-			max-height 0.2s ease,
-			opacity 0.2s ease,
-			padding-top 0.2s ease;
+			transform 0.2s ease-out,
+			opacity 0.2s ease-out;
+		will-change: transform;
 	}
 
-	.m-bar-wrap.hidden {
-		max-height: 0;
-		padding-top: 0;
+	.m-bar-wrap.m-bar-off {
+		transform: translateY(-100%);
 		opacity: 0;
-		border-bottom-color: transparent;
+		pointer-events: none;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.m-bar-wrap {
+			transition: none;
+		}
 	}
 
 	.m-bar {
@@ -3984,6 +4032,11 @@
 			padding: 16px 16px 24px !important;
 			max-width: 100%;
 			border-radius: 0 !important;
+		}
+
+		/* 上部バーは本文に重なるので、その分の余白を常に確保する(出入りで変わらない) */
+		.editor-page.with-m-bar {
+			padding-top: calc(var(--safe-top) + var(--bar-height) + 1px + 16px) !important;
 		}
 
 		/* タイプライタースクロール時は最終行も画面の途中まで持ち上げられるよう余白を足す */

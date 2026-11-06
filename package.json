@@ -20,7 +20,8 @@
 		"desktop:dev": "tauri dev",
 		"desktop:build": "tauri build",
 		"test:rules": "firebase emulators:exec --only firestore --project demo-storift \"vitest run --config vitest.rules.config.ts\"",
-		"test:e2e": "firebase emulators:exec --only auth,firestore --project demo-storift \"node tests/e2e/coedit.spec.mjs\""
+		"test:e2e": "firebase emulators:exec --only auth,firestore --project demo-storift \"node tests/e2e/coedit.spec.mjs\"",
+		"test:e2e:mobile": "node tests/e2e/mobile-header.spec.mjs"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^1.4.0",

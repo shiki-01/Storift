@@ -1075,7 +1075,6 @@ export async function queueChange(
 	await queueChanges([{ type, id, action }]);
 }
 
-
 /** 複数の変更をまとめてキューに載せる(行き先はそれぞれ解決する。保存は1回) */
 export async function queueChanges(
 	changes: { type: EntityType; id: string; action: 'create' | 'update' | 'delete' }[]

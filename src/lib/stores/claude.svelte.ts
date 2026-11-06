@@ -517,7 +517,8 @@ async function editScene(
 	if (inEditor) {
 		if (!editorStore.applyExternalText(content))
 			return changes.map(
-				() => ({ ok: false, reason: 'このシーンは読み取り専用のため反映できません' }) as ReplaceResult
+				() =>
+					({ ok: false, reason: 'このシーンは読み取り専用のため反映できません' }) as ReplaceResult
 			);
 	} else if (crdt) {
 		const applied = await applySceneText(sceneId, content);

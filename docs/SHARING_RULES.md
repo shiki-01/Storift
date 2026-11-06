@@ -1,5 +1,7 @@
 # 共有機能の Firestore ルール設計メモ(段階 2a)
 
+データ配置のクライアント実装(段階 2b-2)は末尾の「データ配置の実装(ポインタ方式)」を参照。
+
 `firestore.rules` は、従来の「認証済みなら全開放」から request.auth.uid ベースの厳格モードに置き換わった(破壊的変更)。
 認証は匿名認証のまま。ルールテストは `bun run test:rules`(Firebase Emulator 使用、`tests/rules/`)。
 既存の `bun run test` はエミュレータ不要でルールテストを拾わない。
@@ -69,3 +71,47 @@ shared/{pid}/{type}/{id}[/{sub}/...]   type = projects, chapters, scenes, charac
 - link 公開ではメタの列挙と全データの read が誰にでも可能(URL を知らなくても、PJ ID が分かれば読める)。
 - ネスト(updates/crdt)文書にはスキーマ検証(projectId 等)をしていない。
 - presence の内容(フィールド)は検証していない。
+
+## データ配置の実装(ポインタ方式、段階 2b-2)
+
+共有中のプロジェクトは、最上位の `projects/{pid}` 文書だけを「ポインタ」として残し、子要素(chapters, scenes, characters, plots, worldbuilding)は `shared/{pid}/{type}/{id}` にだけ置く。
+
+```
+projects/{pid}                  ポインタ。プロジェクト本体 + sharing(secrets 付き。オーナーのみ読める)
+shared/{pid}                    メタ {visibility, name, ownerUid, updatedAt}
+shared/{pid}/secrets/{role}     {value}   クライアントからは読めない(list も不可)
+shared/{pid}/projects/{pid}     ゲストが参照するプロジェクトのコピー。sharing.secrets を除く。projectId = pid を付ける
+shared/{pid}/{type}/{id}        子要素。projectId == pid(元々子要素が持つ値がそのまま満たす)
+```
+
+- **pid = プロジェクト ID**。プロジェクト ID は `uuid` の v4(暗号論的乱数)で生成される。ただしサンプル作品など固定 ID のものがあるため、`isUnguessableProjectId`(UUID v4 の形式)を満たさない ID は共有を開始できない。
+- ローカル(Dexie)の `Project.sharing` が状態を持つ: `{pid, role, connectionId?, visibility, status: 'active'|'migrating'|'error', secrets?, startedAt, migration?: 'start'|'stop'}`。Dexie のスキーマ版は変更なし(索引不要)。`migration` は移行の向き(再開時の判断に使う。仕様の型への追加)。`status: 'error'` は型にだけあり、現在は設定しない。
+- ポインタの `sharing` は、共有の開始・停止・管理の専用処理だけが書く。通常のアップロードは `sharing` を送らない(共有を知らない古い端末が書き戻すのを防ぐ)。他端末の共有開始/停止は、取得したポインタから `adoptSharing` の規則でローカルに反映する。
+- 秘密はオーナー端末のローカルとポインタの `sharing.secrets` にだけ持つ。共有側のコピー・メタには入れない。
+
+### 共有の開始(`firebase/sharing.ts: startSharing`、`services/sharing.service.ts`)
+
+1. 保留中の変更をフラッシュ(未送信の primary 向け変更が残っていれば開始しない)
+2. ローカルを `migrating`(`migration: 'start'`、秘密もここで確定)で保存
+3. `shared/{pid}` メタ → secrets → ポインタを `migrating` で書く(他端末が「子要素が無い」と誤って削除しないため。仕様の手順より早くポインタを書く)
+4. プロジェクトと全子要素を `shared/{pid}/…` へコピー(ローカルと最上位の新しい方を採用。コピー先が新しければ上書きしない。500 件/約 4MB で分割)
+5. **共有側を読み戻して確認**できたものだけ、最上位の子要素を削除(確認できなければ `VerifyError` で止まり、何も消さない)
+6. ポインタを `active` に、共有側のコピーも書く。7. ローカルを `active` に
+
+起動時に `migrating` が残っていれば、`resumeSharingMigrations` が自動で再開する(バックグラウンド)。ダイアログの「続きを実行」からも再開できる。
+
+### 共有の停止
+
+`migrating`(`stop`)にし、保留中の変更を送って共有側を取り込み(参加者の編集を失わないため)、共有側の子要素を最上位へ書き戻して読み戻し確認 → `shared/{pid}` 配下を全削除 → ポインタの `sharing` を除去 → ローカル更新。ローカルに未送信の編集が残るものは、最上位へ再送する。プロジェクトの削除は、共有中なら先に `shared/{pid}` 配下を削除する(`deleteProjectSharing`)。
+
+### ルールとの突き合わせで分かったこと(ルールは変更していない)
+
+- `shared/{pid}/secrets` は list もできない(`read: if false`)ため、全削除では役割名(viewer / editor)を指定して削除する。
+- `shared/{pid}/presence/{uid}` の write は本人のみのため、**オーナーは他人の presence 文書を削除できない**。共有の停止・削除のあとも、他人の presence 文書が残る(在席情報だけで、メンバーでなくなれば読めない)。必要ならルールで「オーナーは削除可」にすること。
+- projects 型の共有側コピーにも `projectId == pid` が要るため、コピーに `projectId` を足している(ゲスト側で読むときは無視すること)。
+- 共有側の更新ログ(`scenes/{id}/updates|crdt`)は、全削除時にシーンごとに 2 回の一覧取得で消す(将来それらを使い始めたとき、シーン数が多いと読み取りが増える)。
+
+### 未検証
+
+- 実 Firestore・複数端末での動作(Emulator テストとユニットテストのみ)。
+- メンバーの削除(失効)は、同じ秘密で再参加できる。再参加させないなら秘密の再生成も必要。

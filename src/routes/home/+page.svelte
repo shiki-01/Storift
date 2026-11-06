@@ -10,9 +10,11 @@
 	import { projectsStore } from '$lib/stores/projects.svelte';
 	import { tourStore } from '$lib/tutorial/tour.svelte';
 	import { queueChange } from '$lib/services/sync.service';
+	import { deleteProjectSharing } from '$lib/services/sharing.service';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
+	import SharingDialog from '$lib/components/ui/SharingDialog.svelte';
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
 	import { formatRelativeTime } from '$lib/utils/dateUtils';
 	import { createProjectContextMenu, type ContextMenuItem } from '$lib/utils/contextMenu';
@@ -21,6 +23,8 @@
 
 	let isCreateModalOpen = $state(false);
 	let isRenameModalOpen = $state(false);
+	let isSharingOpen = $state(false);
+	let sharingProjectId = $state('');
 	let newProjectTitle = $state('');
 	let newProjectDescription = $state('');
 	let renameValue = $state('');
@@ -147,6 +151,10 @@
 			onRename: () => handleRenameProject(project),
 			onDuplicate: () => handleDuplicateProject(project),
 			onExport: () => handleExportProject(project),
+			onShare: () => {
+				sharingProjectId = project.id;
+				isSharingOpen = true;
+			},
 			onDelete: () => handleDeleteProject(project)
 		});
 
@@ -188,13 +196,18 @@
 	async function handleDeleteProject(project: Project) {
 		if (
 			!(await confirmDialog({
-				message: `プロジェクト「${project.title}」を削除しますか?\nこの操作は取り消せません。`,
+				message: project.sharing
+					? `プロジェクト「${project.title}」は共有中です。削除すると、共有側のデータ・参加者・秘密もすべて削除されます。\nこの操作は取り消せません。削除しますか?`
+					: `プロジェクト「${project.title}」を削除しますか?\nこの操作は取り消せません。`,
 				danger: true
 			}))
 		)
 			return;
 
 		try {
+			// 共有中なら、先に共有側(データ・参加者・秘密・メタ)を削除する。失敗したら削除しない
+			if (project.sharing) await deleteProjectSharing(project.id);
+
 			// プロジェクト関連のすべてのデータを削除
 			const { chaptersDB, scenesDB, charactersDB, plotsDB, worldbuildingDB, progressLogsDB } =
 				await import('$lib/db');
@@ -450,6 +463,11 @@
 		</div>
 	</form>
 </Modal>
+
+<!-- 共有ダイアログ -->
+{#if isSharingOpen}
+	<SharingDialog bind:isOpen={isSharingOpen} projectId={sharingProjectId} />
+{/if}
 
 <!-- リネームモーダル -->
 <Modal bind:isOpen={isRenameModalOpen} title="プロジェクト名を変更">

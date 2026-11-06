@@ -93,6 +93,25 @@ stopCurrentProjectSync();
 
 ---
 
+### ✅ 2d. 同期対象(SyncTarget)と共有プロジェクト(段階2b-2)
+
+エンティティの置き場所を `SyncTarget`(`firebase/syncTarget.ts`)で表す。`primary` は従来の最上位コレクション、`shared(pid)` は主 Firebase の `shared/{pid}/{type}/{id}`。ゲスト接続(別の Firebase)は `connectionId` つきのキーで表せる(接続の登録は段階 2b-3)。データ配置の詳細は [SHARING_RULES.md](./SHARING_RULES.md)。
+
+- **行き先の解決**: 子要素は、所属プロジェクトの `sharing`(active / migrating)なら shared、そうでなければ primary。projects 型(ポインタ文書)は常に primary で、共有中は同じバッチで `shared/{pid}/projects/{pid}`(secrets 除く)とメタの name にも書く。
+- **pending キュー**: エントリに `target` を持つ。キーは `type/id`(primary。旧形式と同じ)か `{target}|type/id`。旧形式(target なし)は primary として読む。削除でエンティティが既にローカルに無い場合は、Dexie の削除フックで覚えた所属プロジェクトから決める(分からなければ primary と共有中の全プロジェクトに送る。存在しない文書の削除は無害)。**送信時に行き先を再解決する**(積んだ後に共有が始まった/止まった場合に追随)。
+- **base**: キーに target を含める(primary は従来のキー)。**最終同期時刻**: `storift_sync_state` の `targets[キー]` にターゲットごとに持つ(primary は従来どおりトップレベル)。差分/完全の判定(`planDownload`)はターゲットごとに呼ぶ。
+- **取得**: primary の下りでは、共有中プロジェクトの子要素を「ローカルにだけある」判定の母集団と取り込み対象から外す(最上位に子要素が再作成・削除されるのを防ぐ)。続けて、共有中の各プロジェクトを shared ターゲットから差分取得する(型は並列、プロジェクトは順に)。共有が止まったターゲットの状態は取り除く。
+- **リアルタイム**: 開いているプロジェクトが共有中なら `shared/{pid}/{type}` を購読する(停止の移行中は購読しない)。共有の開始・停止で購読先を切り替える。
+- **移行中の削除イベント**: 共有の開始で最上位の子要素が消える/停止で共有側が消えるのは、データの移動なので、他端末での削除として扱わない(`isMovedByMigration`)。
+- **段階0・1の性質**: 取得と送信の排他(ミューテックス)、バックオフ、WriteBatch の分割(送信先ごとにまとめてコミット)、診断(`label` にターゲットのキー)、進捗は従来どおり。
+- **送信データ**: Firestore が受け付けない `undefined` のフィールドを取り除く(`stripUndefined`)。
+
+実装箇所: `firebase/syncTarget.ts`(純粋なロジック)、`firebase/sync.ts`(Firestore 呼び出しが target を受ける)、`firebase/syncMeta.ts`、`firebase/sharingAdopt.ts`、`services/sync.service.ts`、`services/sharing.service.ts`。
+
+**未実施・制約**: 実 Firestore・複数端末での確認、ゲスト接続の同期(2b-3)、共有側の更新ログ(updates / crdt)の同期。
+
+---
+
 ### ✅ 3. 自動保存のデバウンス処理
 
 **変更前:**

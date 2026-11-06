@@ -15,6 +15,7 @@ import {
 	syncAllFromFirestore,
 	commitBatchOps,
 	setupRealtimeSync,
+	targetFromKey,
 	type BatchOp,
 	monitorOnlineStatus,
 	type EntityType,
@@ -33,8 +34,24 @@ import {
 	loadSyncState,
 	saveSyncState,
 	flushSyncMeta,
+	pendingKey,
+	targetOf,
+	getTargetState,
+	withTargetState,
 	type PendingChange
 } from '$lib/firebase/syncMeta';
+import {
+	PRIMARY_KEY,
+	effectiveTargetKey,
+	isSharedStatus,
+	parseTargetKey,
+	sharedTargetKey,
+	targetKeyForEntity,
+	targetKeyForProject,
+	withoutSharedChildren,
+	type SyncTarget
+} from '$lib/firebase/syncTarget';
+import { adoptSharing } from '$lib/firebase/sharingAdopt';
 import {
 	planDownload,
 	classifyLocalOnly,
@@ -51,12 +68,14 @@ import { debounceAsync } from '$lib/utils/debounce';
 import { measureSync, recordSyncMetric } from '$lib/utils/syncMetrics';
 import { Mutex, withTimeout, mapLimit } from '$lib/utils/asyncControl';
 import { classifyError, RetryGate } from '$lib/utils/syncErrors';
-import type { AccessMode, ConflictResolutionPolicy, History } from '$lib/types';
+import type { AccessMode, ConflictResolutionPolicy, History, Project } from '$lib/types';
 import type { Unsubscribe } from 'firebase/firestore';
 
 interface PendingConflict {
 	type: EntityType;
 	id: string;
+	/** 競合が起きたターゲット(旧形式は primary) */
+	target?: string;
 	local: SyncableEntity;
 	remote: SyncableEntity;
 	conflictData: ConflictData<SyncableEntity>;
@@ -105,7 +124,8 @@ const UPLOAD_PREPARE_CONCURRENCY = 5;
 
 type SyncKind = 'upload' | 'download';
 
-const changeKey = (c: { type: EntityType; id: string }) => `${c.type}/${c.id}`;
+// pending / 処理中の変更のキー(ターゲットを含む。primary は従来どおり type/id)
+const changeKey = pendingKey;
 
 // 未アップロードの変更(再読み込みで失われないよう localStorage にも保存する)。キーは type/id
 let pendingChanges = new Map<string, PendingChange>(
@@ -202,8 +222,12 @@ function setProgress(phase: 'upload' | 'download', done: number, total: number):
 	syncStore.progress = { phase, done, total };
 }
 
-function findPending(type: EntityType, id: string): PendingChange | undefined {
-	const key = `${type}/${id}`;
+function findPending(
+	type: EntityType,
+	id: string,
+	target: string = PRIMARY_KEY
+): PendingChange | undefined {
+	const key = pendingKey({ type, id, target });
 	return pendingChanges.get(key) ?? inFlight.get(key);
 }
 
@@ -211,7 +235,8 @@ function persistPending(): void {
 	savePendingChanges([...pendingChanges.values()]);
 }
 
-function enqueueInMemory(change: PendingChange): void {
+function enqueueInMemory(input: PendingChange): void {
+	const change: PendingChange = { ...input, target: targetOf(input) };
 	const existing = pendingChanges.get(changeKey(change));
 	if (existing) {
 		existing.action = change.action;
@@ -283,7 +308,8 @@ async function handleConflict(
 	type: EntityType,
 	local: SyncableEntity,
 	remote: SyncableEntity,
-	policy: ConflictResolutionPolicy
+	policy: ConflictResolutionPolicy,
+	target: string = PRIMARY_KEY
 ): Promise<Exclude<ReconcileAction, 'skip'>> {
 	console.log(`⚠️ Conflict detected for ${type}: ${local.id} (policy: ${policy})`);
 
@@ -300,6 +326,7 @@ async function handleConflict(
 			const conflict: PendingConflict = {
 				type,
 				id: local.id,
+				target,
 				local,
 				remote,
 				conflictData: prepareConflictData(
@@ -307,7 +334,7 @@ async function handleConflict(
 					remote as unknown as Record<string, unknown>
 				) as unknown as ConflictData<SyncableEntity>
 			};
-			const index = pendingConflicts.findIndex((c) => c.id === local.id);
+			const index = pendingConflicts.findIndex((c) => c.id === local.id && targetOf(c) === target);
 			if (index >= 0) {
 				pendingConflicts[index] = conflict;
 			} else {
@@ -342,6 +369,7 @@ export async function resolveManualConflict(
 	}
 
 	const conflict = pendingConflicts[index];
+	const target = targetOf(conflict);
 	pendingConflicts.splice(index, 1);
 	savePendingConflicts(pendingConflicts);
 	syncStore.conflictCount = pendingConflicts.length;
@@ -355,13 +383,13 @@ export async function resolveManualConflict(
 
 	if (resolution === 'remote') {
 		await tableOf(conflict.type).put(conflict.remote);
-		setBase(conflict.type, conflict.id, conflict.remote.updatedAt);
+		setBase(conflict.type, conflict.id, conflict.remote.updatedAt, target);
 		await refreshStores(new Set([conflict.type]));
 		console.log(`✅ Conflict resolved: ${conflict.type}/${conflictId} (adopted remote)`);
 	} else {
 		// リモートの版を確認済みとして扱い、ローカルを次回アップロードで反映する
-		setBase(conflict.type, conflict.id, conflict.remote.updatedAt);
-		enqueueAndSchedule({ type: conflict.type, id: conflict.id, action: 'update' });
+		setBase(conflict.type, conflict.id, conflict.remote.updatedAt, target);
+		enqueueAndSchedule({ type: conflict.type, id: conflict.id, action: 'update', target });
 		console.log(`✅ Conflict resolved: ${conflict.type}/${conflictId} (kept local)`);
 	}
 
@@ -380,18 +408,19 @@ async function decideRemote(
 	type: EntityType,
 	remote: SyncableEntity,
 	local: SyncableEntity | undefined,
-	policy: ConflictResolutionPolicy
+	policy: ConflictResolutionPolicy,
+	target: string
 ): Promise<RemoteDecision> {
 	if (!local) {
 		// この端末で削除済みでアップロード待ちのものは復活させない
-		if (findPending(type, remote.id)?.action === 'delete') return 'none';
+		if (findPending(type, remote.id, target)?.action === 'delete') return 'none';
 		return 'write';
 	}
 
-	const base = getBase(type, remote.id);
+	const base = getBase(type, remote.id, target);
 	let action = reconcile(local, remote, base);
 	if (action === 'conflict') {
-		action = await handleConflict(type, local, remote, policy);
+		action = await handleConflict(type, local, remote, policy, target);
 	}
 
 	switch (action) {
@@ -404,7 +433,7 @@ async function decideRemote(
 		case 'push-local':
 			return 'push';
 		case 'skip':
-			setBase(type, remote.id, remote.updatedAt);
+			setBase(type, remote.id, remote.updatedAt, target);
 			return 'none';
 		default:
 			return 'none';
@@ -427,7 +456,8 @@ const sameVersion = (a: SyncableEntity | undefined, b: SyncableEntity | undefine
 async function reconcileBatch(
 	type: EntityType,
 	remotes: SyncableEntity[],
-	policy: ConflictResolutionPolicy
+	policy: ConflictResolutionPolicy,
+	target: string = PRIMARY_KEY
 ): Promise<boolean> {
 	if (remotes.length === 0) return false;
 	const table = tableOf(type);
@@ -437,9 +467,9 @@ async function reconcileBatch(
 	const pushes: PendingChange[] = [];
 	const results = await mapLimit(remotes, RECONCILE_CONCURRENCY, async (remote, i) => {
 		const local = locals[i];
-		const decision = await decideRemote(type, remote, local, policy);
+		const decision = await decideRemote(type, remote, local, policy, target);
 		if (decision === 'write') writes.push({ remote, seen: local });
-		else if (decision === 'push') pushes.push({ type, id: remote.id, action: 'update' });
+		else if (decision === 'push') pushes.push({ type, id: remote.id, action: 'update', target });
 	});
 
 	enqueueManyAndSchedule(pushes);
@@ -452,30 +482,90 @@ async function reconcileBatch(
 			// updatedAt / _version を書き換えないよう DB の update ではなく put で保存する
 			await table.bulkPut(applied.map((w) => w.remote));
 		});
-		for (const { remote } of applied) setBase(type, remote.id, remote.updatedAt);
+		for (const { remote } of applied) setBase(type, remote.id, remote.updatedAt, target);
+	}
+
+	// プロジェクト文書は sharing だけが通常の突き合わせとは別に決まる(他端末の共有開始・停止の反映)
+	let adopted = false;
+	if (type === 'projects') {
+		const written = new Set(applied.map((w) => w.remote.id));
+		adopted = await adoptRemoteSharing(
+			remotes.filter((r) => !written.has(r.id)) as Project[],
+			locals as (Project | undefined)[],
+			remotes
+		);
 	}
 
 	const failed = results.find((r) => r.status === 'rejected');
 	if (failed && failed.status === 'rejected') throw failed.reason;
-	return applied.length > 0;
+	return applied.length > 0 || adopted;
+}
+
+// この端末が共有の開始・停止を実行している最中のプロジェクト ID(ダウンロードで状態を巻き戻さないため)
+const sharingBusy = new Set<string>();
+
+/** sharing.service が、移行の実行中に呼ぶ */
+export function setSharingBusy(pid: string, busy: boolean): void {
+	if (busy) sharingBusy.add(pid);
+	else sharingBusy.delete(pid);
+}
+
+/**
+ * 取得したポインタ文書の sharing を、書き換えなかったローカルのプロジェクトへ取り込む(sharingAdopt.ts の規則)。
+ * updatedAt は変えない(他端末の操作の反映であり、この端末の編集ではないため)。
+ */
+async function adoptRemoteSharing(
+	remotes: Project[],
+	locals: (Project | undefined)[],
+	all: SyncableEntity[]
+): Promise<boolean> {
+	const localById = new Map(all.map((r, i) => [r.id, locals[i]]));
+	const updates: { id: string; sharing: Project['sharing'] }[] = [];
+	for (const remote of remotes) {
+		const local = localById.get(remote.id);
+		if (!local) continue;
+		const result = adoptSharing(local.sharing, remote.sharing, sharingBusy.has(remote.id));
+		if (result.adopt) updates.push({ id: remote.id, sharing: result.sharing });
+	}
+	if (updates.length === 0) return false;
+
+	await db.transaction('rw', db.projects, async () => {
+		for (const { id, sharing } of updates) {
+			const current = await db.projects.get(id);
+			// 判定中にこの端末で共有の操作が始まっていたら触らない
+			if (!current || sharingBusy.has(id)) continue;
+			const next = { ...current };
+			if (sharing) next.sharing = sharing;
+			else delete next.sharing;
+			await db.projects.put(next);
+		}
+	});
+	return true;
 }
 
 /**
  * 他端末で削除されたものをローカルから取り除く。
  * 削除後にこの端末で編集されていた場合は、削除せず再アップロードする。
  */
-async function applyRemoteDeletion(type: EntityType, id: string): Promise<boolean> {
-	if (findPending(type, id)) return false;
+async function applyRemoteDeletion(
+	type: EntityType,
+	id: string,
+	target: string = PRIMARY_KEY
+): Promise<boolean> {
+	if (findPending(type, id, target)) return false;
 
 	const local = await tableOf(type).get(id);
 	if (!local) {
-		removeBase(type, id);
+		removeBase(type, id, target);
 		return false;
 	}
 
-	const base = getBase(type, id);
+	// 共有の移行中に起きる削除(最上位の子要素の削除・共有側の全削除)は、データの移動であって削除ではない
+	if (await isMovedByMigration(type, local, target)) return false;
+
+	const base = getBase(type, id, target);
 	if (base !== undefined && local.updatedAt > base) {
-		enqueueAndSchedule({ type, id, action: 'update' });
+		enqueueAndSchedule({ type, id, action: 'update', target });
 		return false;
 	}
 
@@ -490,8 +580,28 @@ async function applyRemoteDeletion(type: EntityType, id: string): Promise<boolea
 		await backupEntity(type, local, 'remote-delete');
 		await tableOf(type).delete(id);
 	}
-	removeBase(type, id);
+	removeBase(type, id, target);
 	return true;
+}
+
+/**
+ * リモートでの削除が、共有の移行によるデータの移動のためのものか。
+ * - primary の子要素: 所属プロジェクトが共有中(開始の移行で最上位から消える)
+ * - shared: 共有の停止の移行中(共有側が全削除される)
+ */
+async function isMovedByMigration(
+	type: EntityType,
+	local: SyncableEntity,
+	target: string
+): Promise<boolean> {
+	const ref = parseTargetKey(target);
+	if (ref?.kind === 'shared') {
+		const project = ref.pid ? await db.projects.get(ref.pid) : undefined;
+		return project?.sharing?.status === 'migrating' && project.sharing.migration === 'stop';
+	}
+	if (type === 'projects' || !('projectId' in local)) return false;
+	const project = await db.projects.get(local.projectId);
+	return isSharedStatus(project?.sharing);
 }
 
 /**
@@ -658,6 +768,7 @@ async function resumeSync(): Promise<void> {
 		} else if (navigator.onLine) {
 			void downloadAllFromFirestore().catch((err) => console.warn('Resume download failed:', err));
 			flushPendingIfNeeded();
+			startSharingResume();
 		}
 		const projectId = currentProjectStore.project?.id;
 		if (projectId) await startCurrentProjectSync(projectId);
@@ -764,6 +875,9 @@ async function doInitializeSync(): Promise<void> {
 	// 初期化完了フラグを設定
 	isInitialized = true;
 
+	// 前回の起動で途中になった共有の開始・停止を再開する(起動はブロックしない)
+	if (navigator.onLine) startSharingResume();
+
 	// 初期化成功 - オンライン状態に設定
 	if (navigator.onLine && syncStore.status !== 'error') {
 		syncStore.status = settledStatus();
@@ -810,8 +924,79 @@ export async function queueChange(
 	console.log(`📝 Queueing change: ${type}/${id} (${action})`);
 
 	// キューへの登録だけを待つ。アップロードは裏で予約し、完了は待たない
-	enqueue({ type, id, action });
+	const targets = await resolveQueueTargets(type, id, action);
+	for (const target of targets) enqueue({ type, id, action, target });
 	void scheduleSyncIfReady();
+}
+
+/** 複数の変更をまとめてキューに載せる(行き先はそれぞれ解決する。保存は1回) */
+export async function queueChanges(
+	changes: { type: EntityType; id: string; action: 'create' | 'update' | 'delete' }[]
+): Promise<void> {
+	const queued: PendingChange[] = [];
+	for (const c of changes) {
+		for (const target of await resolveQueueTargets(c.type, c.id, c.action)) {
+			queued.push({ ...c, target });
+		}
+	}
+	enqueueManyAndSchedule(queued);
+}
+
+// 子要素を削除した時点の所属プロジェクト(削除後はローカルから引けないため。削除の行き先の解決に使う)
+const DELETED_PROJECT_CACHE_MAX = 5000;
+const deletedProjectOf = new Map<string, string>();
+
+function rememberDeletedProject(id: string, projectId: unknown): void {
+	if (typeof projectId !== 'string') return;
+	deletedProjectOf.delete(id);
+	deletedProjectOf.set(id, projectId);
+	if (deletedProjectOf.size > DELETED_PROJECT_CACHE_MAX) {
+		const oldest = deletedProjectOf.keys().next().value;
+		if (oldest !== undefined) deletedProjectOf.delete(oldest);
+	}
+}
+
+for (const type of PROJECT_SCOPED_TYPES) {
+	// Dexie の削除フック: 削除される行の projectId を覚えておく(sync の取り込みによる削除も含む。害はない)
+	tableOf(type).hook('deleting', (primKey, obj) => {
+		rememberDeletedProject(String(primKey), (obj as { projectId?: unknown }).projectId);
+	});
+}
+
+/**
+ * 変更の行き先(ターゲットのキー)を決める。
+ * - projects 型: 常に primary(ポインタ文書)
+ * - 子要素: 所属プロジェクトの共有状態(共有中なら shared、そうでなければ primary)
+ * - 削除でエンティティが既にローカルに無い場合: 削除時に覚えた所属プロジェクトから決める。
+ *   それも分からなければ、primary と、ローカルの共有中プロジェクトすべてへ送る(存在しない文書の削除は無害)
+ */
+async function resolveQueueTargets(
+	type: EntityType,
+	id: string,
+	action: 'create' | 'update' | 'delete'
+): Promise<string[]> {
+	if (type === 'projects') return [PRIMARY_KEY];
+
+	let projectId: string | undefined;
+	const local = (await tableOf(type).get(id)) as { projectId?: string } | undefined;
+	if (local) {
+		projectId = local.projectId;
+	} else if (action === 'delete') {
+		projectId = deletedProjectOf.get(id);
+	}
+
+	if (projectId) {
+		const project = await db.projects.get(projectId);
+		return [targetKeyForEntity(type, project)];
+	}
+	if (action !== 'delete') return [PRIMARY_KEY];
+
+	const keys = new Set<string>([PRIMARY_KEY]);
+	for (const project of await db.projects.toArray()) {
+		const key = targetKeyForProject(project);
+		if (key !== PRIMARY_KEY) keys.add(key);
+	}
+	return [...keys];
 }
 
 async function scheduleSyncIfReady(): Promise<void> {
@@ -922,9 +1107,32 @@ async function runUpload(): Promise<void> {
 	}
 }
 
+/** change は積まれたときの変更(キーの管理用)。target は実際に送る先(積んだ後の共有状態の変化を反映する) */
 type UploadOp =
-	| { kind: 'delete'; change: PendingChange }
-	| { kind: 'set'; change: PendingChange; local: SyncableEntity };
+	| { kind: 'delete'; change: PendingChange; target: SyncTarget }
+	| { kind: 'set'; change: PendingChange; local: SyncableEntity; target: SyncTarget };
+
+/**
+ * 変更の実際の行き先を決める。
+ * - エンティティがローカルにあれば、所属プロジェクトの今の共有状態(積んだ後に共有が始まった/止まった場合に追随する)
+ * - 無ければ(削除など)積んだときの行き先。ただしそのプロジェクトがもう共有されていなければ primary
+ * 接続先が使えない(未登録のゲスト接続など)場合は null。その変更は送らずキューに残す。
+ */
+async function resolveUploadTarget(
+	change: PendingChange,
+	local: SyncableEntity | undefined
+): Promise<SyncTarget | null> {
+	let key: string;
+	if (local && change.type !== 'projects' && 'projectId' in local) {
+		key = targetKeyForEntity(change.type, await db.projects.get(local.projectId));
+	} else {
+		const stored = targetOf(change);
+		const ref = parseTargetKey(stored);
+		const project = ref?.pid && !ref.connectionId ? await db.projects.get(ref.pid) : undefined;
+		key = effectiveTargetKey(stored, () => project);
+	}
+	return targetFromKey(key);
+}
 
 /**
  * 変更をまとめて送る。
@@ -949,7 +1157,10 @@ async function uploadChanges(
 		const results = await mapLimit(changes, UPLOAD_PREPARE_CONCURRENCY, async (change) => {
 			throwIfCancelled(ctx);
 			const op = await prepareUpload(change, policy, refreshTypes);
-			if (op) {
+			if (op === 'defer') {
+				// 送り先が使えない: 完了扱いにせず、キューに残す
+				errors.push(new Error(`送信先を利用できません(${targetOf(change)})`));
+			} else if (op) {
 				ops.push(op);
 			} else {
 				completed.add(changeKey(change));
@@ -962,36 +1173,47 @@ async function uploadChanges(
 		const order = new Map(changes.map((c, i) => [changeKey(c), i]));
 		ops.sort((x, y) => order.get(changeKey(x.change))! - order.get(changeKey(y.change))!);
 
-		const sized = ops.map((op) => ({
-			op,
-			size: op.kind === 'set' ? JSON.stringify(op.local).length : 200
-		}));
-		for (const batch of chunkBatches(sized)) {
-			throwIfCancelled(ctx);
-			try {
-				await commitBatchOps(
-					batch.map(
-						({ op }): BatchOp =>
-							op.kind === 'delete'
-								? { kind: 'delete', entityType: op.change.type, id: op.change.id }
-								: { kind: 'set', entityType: op.change.type, entity: op.local }
-					)
-				);
-			} catch (error) {
-				// このバッチは全件失敗(原子的)。以降は同じ原因で失敗する可能性が高いので打ち切る
-				errors.push(error);
-				break;
-			}
-			for (const { op } of batch) {
-				if (op.kind === 'delete') {
-					removeBase(op.change.type, op.change.id);
-				} else {
-					setBase(op.change.type, op.change.id, op.local.updatedAt);
+		// 送信先(ターゲット)ごとにまとめてコミットする(Firestore インスタンスが違うことがある)
+		const byTarget = new Map<string, UploadOp[]>();
+		for (const op of ops) {
+			const list = byTarget.get(op.target.key) ?? [];
+			list.push(op);
+			byTarget.set(op.target.key, list);
+		}
+		outer: for (const targetOps of byTarget.values()) {
+			const sized = targetOps.map((op) => ({
+				op,
+				size: op.kind === 'set' ? JSON.stringify(op.local).length : 200
+			}));
+			for (const batch of chunkBatches(sized)) {
+				throwIfCancelled(ctx);
+				const target = batch[0].op.target;
+				try {
+					await commitBatchOps(
+						batch.map(
+							({ op }): BatchOp =>
+								op.kind === 'delete'
+									? { kind: 'delete', entityType: op.change.type, id: op.change.id }
+									: { kind: 'set', entityType: op.change.type, entity: op.local }
+						),
+						target
+					);
+				} catch (error) {
+					// このバッチは全件失敗(原子的)。以降は同じ原因で失敗する可能性が高いので打ち切る
+					errors.push(error);
+					break outer;
 				}
-				completed.add(changeKey(op.change));
+				for (const { op } of batch) {
+					if (op.kind === 'delete') {
+						removeBase(op.change.type, op.change.id, op.target.key);
+					} else {
+						setBase(op.change.type, op.change.id, op.local.updatedAt, op.target.key);
+					}
+					completed.add(changeKey(op.change));
+				}
+				done += batch.length;
+				setProgress('upload', done, total);
 			}
-			done += batch.length;
-			setProgress('upload', done, total);
 		}
 	} finally {
 		if (refreshTypes.size > 0) await refreshStores(refreshTypes);
@@ -1008,16 +1230,21 @@ async function prepareUpload(
 	change: PendingChange,
 	policy: ConflictResolutionPolicy,
 	refreshTypes: Set<EntityType>
-): Promise<UploadOp | null> {
+): Promise<UploadOp | 'defer' | null> {
 	const { type, id, action } = change;
 
-	if (action === 'delete') return { kind: 'delete', change };
+	if (action === 'delete') {
+		const target = await resolveUploadTarget(change, undefined);
+		return target ? { kind: 'delete', change, target } : 'defer';
+	}
 
 	const local = await tableOf(type).get(id);
+	const target = await resolveUploadTarget(change, local);
+	if (!target) return 'defer';
 	if (!local) {
 		// ローカルに無い create/update は、リモートにも無いと確認できた場合だけキューから外す。
 		// 確認できない場合(通信エラー等)は例外のまま伝播し、変更はキューに残る。
-		const remoteExisting = await syncFromFirestore(type, id);
+		const remoteExisting = await syncFromFirestore(type, id, target);
 		if (!remoteExisting) {
 			console.warn(
 				`Dropping ${action} for ${type}/${id}: not found locally nor in Firestore (nothing to upload)`
@@ -1032,46 +1259,53 @@ async function prepareUpload(
 	}
 
 	// リモートデータを取得して競合チェック
-	const remote = await syncFromFirestore(type, id);
+	const remote = await syncFromFirestore(type, id, target);
 	if (remote) {
-		let result = reconcile(local, remote, getBase(type, id));
+		let result = reconcile(local, remote, getBase(type, id, target.key));
 		if (result === 'conflict') {
-			result = await handleConflict(type, local, remote, policy);
+			result = await handleConflict(type, local, remote, policy, target.key);
 		}
 
 		if (result === 'apply-remote') {
 			if (contentDiffers(local, remote)) await backupEntity(type, local, 'conflict');
 			await tableOf(type).put(remote);
-			setBase(type, id, remote.updatedAt);
+			setBase(type, id, remote.updatedAt, target.key);
 			refreshTypes.add(type);
 			return null;
 		}
 		if (result === 'conflict') return null; // 手動解決待ち(アップロードしない)
 		if (result === 'skip') {
-			setBase(type, id, local.updatedAt);
+			setBase(type, id, local.updatedAt, target.key);
 			return null;
 		}
 	}
 
-	console.log(`📤 Uploading ${type}/${id} to Firestore...`);
-	return { kind: 'set', change, local };
+	console.log(
+		`📤 Uploading ${type}/${id} to Firestore${target.kind === 'shared' ? ` (${target.key})` : ''}...`
+	);
+	return { kind: 'set', change, local, target };
 }
 
 /**
  * リアルタイム同期で受信したデータを反映する
  */
-function applyRealtimeEntities(type: EntityType, entities: SyncableEntity[]): Promise<void> {
+function applyRealtimeEntities(
+	type: EntityType,
+	entities: SyncableEntity[],
+	target: string
+): Promise<void> {
 	return measureSync(
 		'applyRealtime',
 		type,
-		() => applyRealtimeEntitiesInner(type, entities),
+		() => applyRealtimeEntitiesInner(type, entities, target),
 		() => entities.length
 	);
 }
 
 async function applyRealtimeEntitiesInner(
 	type: EntityType,
-	entities: SyncableEntity[]
+	entities: SyncableEntity[],
+	target: string
 ): Promise<void> {
 	const policy = await getPolicy();
 	let changed = false;
@@ -1079,7 +1313,7 @@ async function applyRealtimeEntitiesInner(
 	for (let i = 0; i < entities.length; i += RECONCILE_CHUNK_SIZE) {
 		const chunk = entities.slice(i, i + RECONCILE_CHUNK_SIZE);
 		try {
-			if (await reconcileBatch(type, chunk, policy)) changed = true;
+			if (await reconcileBatch(type, chunk, policy, target)) changed = true;
 		} catch (error) {
 			console.error(`Failed to apply ${chunk.length} ${type} document(s):`, error);
 		}
@@ -1087,11 +1321,15 @@ async function applyRealtimeEntitiesInner(
 	if (changed) await refreshStores(new Set([type]));
 }
 
-async function applyRealtimeRemovals(type: EntityType, ids: string[]): Promise<void> {
+async function applyRealtimeRemovals(
+	type: EntityType,
+	ids: string[],
+	target: string
+): Promise<void> {
 	let changed = false;
 	for (const id of ids) {
 		try {
-			if (await applyRemoteDeletion(type, id)) changed = true;
+			if (await applyRemoteDeletion(type, id, target)) changed = true;
 		} catch (error) {
 			console.error(`Failed to remove ${type}/${id}:`, error);
 		}
@@ -1130,11 +1368,24 @@ export async function startCurrentProjectSync(projectId: string): Promise<void> 
 	// 既存の監視を停止
 	stopCurrentProjectSync();
 
+	// 共有中のプロジェクトは shared/{pid} を購読する(停止の移行中は共有側が消えるので購読しない)
+	const project = await db.projects.get(projectId);
+	if (project?.sharing?.status === 'migrating' && project.sharing.migration === 'stop') {
+		console.log('⏸️ Sharing is being stopped, skipping realtime sync');
+		return;
+	}
+	const targetKey = targetKeyForProject(project);
+	const target = targetFromKey(targetKey);
+	if (!target) {
+		console.warn(`⚠️ Sync target unavailable (${targetKey}), skipping project sync`);
+		return;
+	}
+
 	currentProjectUnsubscribers = PROJECT_SCOPED_TYPES.map((type) =>
 		setupRealtimeSync(
 			type,
 			(entities) => {
-				void applyRealtimeEntities(type, entities);
+				void applyRealtimeEntities(type, entities, targetKey);
 			},
 			(error) => {
 				console.error(`${type} realtime sync error:`, error);
@@ -1142,8 +1393,9 @@ export async function startCurrentProjectSync(projectId: string): Promise<void> 
 			},
 			projectId,
 			(ids) => {
-				void applyRealtimeRemovals(type, ids);
-			}
+				void applyRealtimeRemovals(type, ids, targetKey);
+			},
+			target
 		)
 	);
 	console.log(`✅ Realtime sync started for project: ${projectId}`);
@@ -1168,12 +1420,18 @@ export async function syncCurrentProject(projectId: string): Promise<void> {
 	beginActivity();
 
 	try {
+		const project = await projectsDB.getById(projectId);
+		const childKey = targetKeyForProject(project);
+		const childTarget = targetFromKey(childKey);
+		if (!childTarget) throw new Error(`送信先を利用できません(${childKey})`);
+
 		const upload = async (type: EntityType, entity: SyncableEntity) => {
-			await syncToFirestore(type, entity);
-			setBase(type, entity.id, entity.updatedAt);
+			// プロジェクト文書(ポインタ)は常に primary。子要素は所属プロジェクトの行き先
+			const key = type === 'projects' ? PRIMARY_KEY : childKey;
+			await syncToFirestore(type, entity, type === 'projects' ? undefined : childTarget);
+			setBase(type, entity.id, entity.updatedAt, key);
 		};
 
-		const project = await projectsDB.getById(projectId);
 		if (project) await upload('projects', project);
 
 		for (const chapter of await chaptersDB.getByProjectId(projectId)) {
@@ -1209,6 +1467,42 @@ interface DownloadTypeResult {
 	skipped: number;
 }
 
+/** 取得の対象(ターゲット)。primary では、共有中のプロジェクトの子要素を扱わない */
+interface DownloadScope {
+	key: string;
+	target: SyncTarget;
+	/** shared のとき、対象プロジェクトの ID */
+	pid?: string;
+	/** primary のとき、子要素を除外するプロジェクト(共有中。子要素は shared 側にある) */
+	excludePids: ReadonlySet<string>;
+}
+
+/** 取得の対象で、ローカルにあるものの主キー(リモートに無い＝削除/未アップロードの判定の母集団) */
+async function localIdsInScope(type: EntityType, scope: DownloadScope): Promise<string[]> {
+	const table = tableOf(type);
+	if (scope.pid) {
+		return (await table.where('projectId').equals(scope.pid).primaryKeys()) as string[];
+	}
+	if (type !== 'projects' && scope.excludePids.size > 0) {
+		return (await table
+			.where('projectId')
+			.noneOf([...scope.excludePids])
+			.primaryKeys()) as string[];
+	}
+	return (await table.toCollection().primaryKeys()) as string[];
+}
+
+async function localCountInScope(type: EntityType, scope: DownloadScope): Promise<number> {
+	if (scope.pid) return tableOf(type).where('projectId').equals(scope.pid).count();
+	if (type !== 'projects' && scope.excludePids.size > 0) {
+		return tableOf(type)
+			.where('projectId')
+			.noneOf([...scope.excludePids])
+			.count();
+	}
+	return tableOf(type).count();
+}
+
 /**
  * 1種類のエンティティについて、Firestore との差分をローカルに反映する。
  * plan が差分取得のときは、更新されたものだけを取得し、削除の判定(リモートに無い＝削除)は行わない。
@@ -1218,33 +1512,38 @@ async function downloadType(
 	plan: TypePlan,
 	policy: ConflictResolutionPolicy,
 	ctx: RunContext,
-	progress: { done: number; total: number }
+	progress: { done: number; total: number },
+	scope: DownloadScope
 ): Promise<DownloadTypeResult> {
 	const started = performance.now();
 	let fetched = 0;
 	let skipped = 0;
 	let ok = false;
 	try {
-		const remotes = await syncAllFromFirestore(
+		let remotes = await syncAllFromFirestore(
 			type,
 			undefined,
-			plan.mode === 'diff' ? plan.since : undefined
+			plan.mode === 'diff' ? plan.since : undefined,
+			scope.target
 		);
+		// primary に残っている、共有中プロジェクトの子要素(古い端末が書いたものなど)は取り込まない
+		if (!scope.pid && type !== 'projects') {
+			remotes = withoutSharedChildren(remotes, scope.excludePids);
+		}
 		fetched = remotes.length;
 		progress.total += remotes.length;
 		setProgress('download', progress.done, progress.total);
-		console.log(`📦 Found ${remotes.length} ${type} in Firestore (${plan.mode})`);
+		console.log(`📦 Found ${remotes.length} ${type} in Firestore ${scope.key} (${plan.mode})`);
 		let changed = false;
 
 		for (let i = 0; i < remotes.length; i += RECONCILE_CHUNK_SIZE) {
 			throwIfCancelled(ctx);
 			const chunk = remotes.slice(i, i + RECONCILE_CHUNK_SIZE);
-			if (await reconcileBatch(type, chunk, policy)) changed = true;
+			if (await reconcileBatch(type, chunk, policy, scope.key)) changed = true;
 			progress.done += chunk.length;
 			setProgress('download', progress.done, progress.total);
 		}
 
-		const table = tableOf(type);
 		if (canDetectRemoteDeletion(plan)) {
 			// Firestore に無いローカルデータ(完全取得のときだけ判定する):
 			//  同期済みだったもの → 他端末で削除された。未同期のもの → 未アップロードなので送る
@@ -1252,17 +1551,19 @@ async function downloadType(
 			const remoteIds = new Set(remotes.map((r) => r.id));
 			const { removals, uploads } = classifyLocalOnly(
 				plan,
-				(await table.toCollection().primaryKeys()) as string[],
+				await localIdsInScope(type, scope),
 				remoteIds,
-				(id) => findPending(type, id) !== undefined,
-				(id) => getBase(type, id) !== undefined
+				(id) => findPending(type, id, scope.key) !== undefined,
+				(id) => getBase(type, id, scope.key) !== undefined
 			);
 			for (const id of removals) {
-				if (await applyRemoteDeletion(type, id)) changed = true;
+				if (await applyRemoteDeletion(type, id, scope.key)) changed = true;
 			}
-			enqueueManyAndSchedule(uploads.map((id) => ({ type, id, action: 'create' as const })));
+			enqueueManyAndSchedule(
+				uploads.map((id) => ({ type, id, action: 'create' as const, target: scope.key }))
+			);
 		} else {
-			skipped = Math.max(0, (await table.count()) - remotes.length);
+			skipped = Math.max(0, (await localCountInScope(type, scope)) - remotes.length);
 		}
 
 		ok = true;
@@ -1270,7 +1571,7 @@ async function downloadType(
 	} finally {
 		recordSyncMetric({
 			kind: 'download',
-			label: `${type}:${plan.mode}`,
+			label: `${scope.key === PRIMARY_KEY ? '' : `${scope.key}:`}${type}:${plan.mode}`,
 			durationMs: performance.now() - started,
 			count: fetched,
 			skipped: plan.mode === 'diff' ? skipped : undefined,
@@ -1369,25 +1670,20 @@ async function downloadAllTypes(
 	const policy = await getPolicy();
 	console.log(`🔧 Conflict resolution policy: ${policy}`);
 
-	const state = loadSyncState();
-	const counts = await Promise.all(ENTITY_TYPES.map((type) => tableOf(type).count()));
-	const plan = planDownload({
-		now: startedAt,
-		trigger,
-		types: ENTITY_TYPES,
-		lastFullSyncAt: state.lastFullSyncAt,
-		lastSyncTimes: state.lastSyncTimes,
-		localCounts: Object.fromEntries(ENTITY_TYPES.map((t, i) => [t, counts[i]]))
-	});
-
+	let state = loadSyncState();
 	const progress = { done: 0, total: 0 };
 	const changedTypes = new Set<EntityType>();
-	const succeeded = new Set<EntityType>();
 	const errors: unknown[] = [];
 
-	const run = async (type: EntityType) => {
+	/** 1つのターゲットの1種類を取得する。成功した型を succeeded に入れる */
+	const runType = async (
+		type: EntityType,
+		plan: TypePlan,
+		scope: DownloadScope,
+		succeeded: Set<EntityType>
+	) => {
 		try {
-			const result = await downloadType(type, plan[type], policy, ctx, progress);
+			const result = await downloadType(type, plan, policy, ctx, progress, scope);
 			if (result.changed) changedTypes.add(type);
 			succeeded.add(type);
 			addCount(result.fetched);
@@ -1396,25 +1692,215 @@ async function downloadAllTypes(
 		}
 	};
 
-	// プロジェクトを先に処理し、子要素は並列に処理する
-	await run('projects');
-	if (succeeded.has('projects')) {
-		await Promise.all(PROJECT_SCOPED_TYPES.map(run));
+	// ---- primary: プロジェクト(ポインタ文書)を先に処理し、続けて共有中でない子要素を並列に処理する
+	const primaryState = getTargetState(state, PRIMARY_KEY);
+	const projectCount = await tableOf('projects').count();
+	const projectPlan = planDownload({
+		now: startedAt,
+		trigger,
+		types: ['projects'],
+		lastFullSyncAt: primaryState.lastFullSyncAt,
+		lastSyncTimes: primaryState.lastSyncTimes,
+		localCounts: { projects: projectCount }
+	}).projects;
+	const primarySucceeded = new Set<EntityType>();
+	const primaryScope: DownloadScope = {
+		key: PRIMARY_KEY,
+		target: targetFromKey(PRIMARY_KEY)!,
+		excludePids: new Set()
+	};
+	await runType('projects', projectPlan, primaryScope, primarySucceeded);
+
+	let sharedPlans: { scope: DownloadScope; plan: Record<EntityType, TypePlan> }[] = [];
+	const primaryPlans = new Map<EntityType, TypePlan>();
+	if (primarySucceeded.has('projects')) {
+		// 取得したポインタ文書の sharing が反映されたあとのローカルのプロジェクトから、共有中のものを決める
+		const projects = await db.projects.toArray();
+		const excludePids = new Set(projects.filter((p) => isSharedStatus(p.sharing)).map((p) => p.id));
+		const scopedPrimary: DownloadScope = { ...primaryScope, excludePids };
+
+		const counts = await Promise.all(
+			PROJECT_SCOPED_TYPES.map((type) => localCountInScope(type, scopedPrimary))
+		);
+		const plan = planDownload({
+			now: startedAt,
+			trigger,
+			types: PROJECT_SCOPED_TYPES,
+			lastFullSyncAt: primaryState.lastFullSyncAt,
+			lastSyncTimes: primaryState.lastSyncTimes,
+			localCounts: Object.fromEntries(PROJECT_SCOPED_TYPES.map((t, i) => [t, counts[i]]))
+		});
+		for (const type of PROJECT_SCOPED_TYPES) primaryPlans.set(type, plan[type]);
+
+		// 共有中のプロジェクト(主 Firebase のオーナー分。停止の移行中は共有側が消えるので除く)の shared ターゲット
+		sharedPlans = [];
+		for (const project of projects) {
+			const sharing = project.sharing;
+			if (!isSharedStatus(sharing) || sharing.connectionId) continue;
+			if (sharing.status === 'migrating' && sharing.migration === 'stop') continue;
+			const key = sharedTargetKey(sharing.pid);
+			const target = targetFromKey(key);
+			if (!target) continue;
+			const scope: DownloadScope = { key, target, pid: sharing.pid, excludePids: new Set() };
+			const targetState = getTargetState(state, key);
+			const sharedCounts = await Promise.all(
+				PROJECT_SCOPED_TYPES.map((type) => localCountInScope(type, scope))
+			);
+			sharedPlans.push({
+				scope,
+				plan: planDownload({
+					now: startedAt,
+					trigger,
+					types: PROJECT_SCOPED_TYPES,
+					lastFullSyncAt: targetState.lastFullSyncAt,
+					lastSyncTimes: targetState.lastSyncTimes,
+					localCounts: Object.fromEntries(PROJECT_SCOPED_TYPES.map((t, i) => [t, sharedCounts[i]]))
+				}) as Record<EntityType, TypePlan>
+			});
+		}
+
+		await Promise.all([
+			...PROJECT_SCOPED_TYPES.map((type) =>
+				runType(type, primaryPlans.get(type)!, scopedPrimary, primarySucceeded)
+			),
+			// 共有中のプロジェクトは数が少ないので順に処理する(型は並列)
+			(async () => {
+				for (const { scope, plan: sp } of sharedPlans) {
+					const succeeded = new Set<EntityType>();
+					await Promise.all(
+						PROJECT_SCOPED_TYPES.map((type) => runType(type, sp[type], scope, succeeded))
+					);
+					if (!ctx.cancelled && succeeded.size > 0) {
+						const current = getTargetState(state, scope.key);
+						const lastSyncTimes = { ...current.lastSyncTimes };
+						for (const type of succeeded) lastSyncTimes[type] = startedAt;
+						const fullDone = PROJECT_SCOPED_TYPES.every(
+							(t) => succeeded.has(t) && sp[t].mode === 'full'
+						);
+						state = withTargetState(state, scope.key, {
+							lastFullSyncAt: fullDone ? startedAt : current.lastFullSyncAt,
+							lastSyncTimes
+						});
+					}
+				}
+			})()
+		]);
+
+		// 共有でなくなったターゲットの状態を取り除く
+		const live = new Set(sharedPlans.map((p) => p.scope.key));
+		for (const key of Object.keys(state.targets)) {
+			if (!live.has(key) && !parseTargetKey(key)?.connectionId) {
+				state = {
+					...state,
+					targets: Object.fromEntries(Object.entries(state.targets).filter(([k]) => k !== key))
+				};
+			}
+		}
 	}
 
 	// 成功した型の取得時刻を記録する(取得開始時刻。次回は安全マージンを引いて使う)
-	if (!ctx.cancelled && succeeded.size > 0) {
-		const lastSyncTimes = { ...state.lastSyncTimes };
-		for (const type of succeeded) lastSyncTimes[type] = startedAt;
-		const fullDone = ENTITY_TYPES.every((t) => succeeded.has(t) && plan[t].mode === 'full');
-		saveSyncState({
-			lastFullSyncAt: fullDone ? startedAt : state.lastFullSyncAt,
+	if (!ctx.cancelled && primarySucceeded.size > 0) {
+		const lastSyncTimes = { ...primaryState.lastSyncTimes };
+		for (const type of primarySucceeded) lastSyncTimes[type] = startedAt;
+		const fullDone = ENTITY_TYPES.every(
+			(t) =>
+				primarySucceeded.has(t) &&
+				(t === 'projects' ? projectPlan : primaryPlans.get(t)!).mode === 'full'
+		);
+		state = withTargetState(state, PRIMARY_KEY, {
+			lastFullSyncAt: fullDone ? startedAt : primaryState.lastFullSyncAt,
 			lastSyncTimes
 		});
 	}
+	saveSyncState(state);
 
 	// 変化のあった型だけ、全体で1回だけストアを更新する
 	if (changedTypes.size > 0) await refreshStores(changedTypes);
 
 	if (errors.length > 0) throw errors[0];
+}
+
+/** 共有の移行の再開をバックグラウンドで始める(sharing.service は sync.service を使うので動的に読み込む) */
+function startSharingResume(): void {
+	void import('$lib/services/sharing.service')
+		.then((m) => m.resumeSharingMigrations())
+		.catch((error) => console.warn('Failed to resume sharing migrations:', error));
+}
+
+// ---------- 共有(sharing.service)向けの操作 ----------
+
+/** 送信待ち・送信中の変更(共有の開始前に「未送信が残っていないか」を確認するため) */
+export function getPendingSnapshot(): PendingChange[] {
+	return [...pendingChanges.values(), ...inFlight.values()].map((c) => ({
+		...c,
+		target: targetOf(c)
+	}));
+}
+
+/**
+ * 保留中の変更を送る。実行中の取得・送信の終了を待ってから送る。
+ * 送れなかった変更はキューに残るので、完了後に getPendingSnapshot で確認すること。
+ */
+export async function flushPendingChanges(): Promise<void> {
+	await syncMutex.runExclusive(async () => {});
+	await processPendingChanges();
+}
+
+/**
+ * 共有プロジェクト(主 Firebase の shared/{pid})を完全取得してローカルに取り込む。
+ * 共有の停止の前に、他の参加者の編集をローカルに取り込むために使う(停止の移行中でも実行する)。
+ * 失敗したら例外を投げる。
+ */
+export async function pullSharedProject(pid: string): Promise<void> {
+	const key = sharedTargetKey(pid);
+	const target = targetFromKey(key);
+	if (!target) throw new Error('共有の取得先を利用できません');
+	const policy = await getPolicy();
+
+	await syncMutex.runExclusive(async () => {
+		beginActivity();
+		const ctx: RunContext = { cancelled: false };
+		const scope: DownloadScope = { key, target, pid, excludePids: new Set() };
+		const progress = { done: 0, total: 0 };
+		const changed = new Set<EntityType>();
+		try {
+			await withTimeout(
+				(async () => {
+					for (const type of PROJECT_SCOPED_TYPES) {
+						const result = await downloadType(type, { mode: 'full' }, policy, ctx, progress, scope);
+						if (result.changed) changed.add(type);
+					}
+				})(),
+				OPERATION_TIMEOUT,
+				'共有データの取得',
+				() => {
+					ctx.cancelled = true;
+				}
+			);
+			if (changed.size > 0) await refreshStores(changed);
+		} finally {
+			endActivity();
+		}
+	});
+}
+
+/** 開いているプロジェクトが pid なら、リアルタイム同期をやり直す(共有の開始・停止で購読先が変わるため) */
+export async function restartProjectRealtime(pid: string): Promise<void> {
+	if (currentProjectStore.project?.id !== pid) return;
+	await startCurrentProjectSync(pid);
+}
+
+/** 開いているプロジェクトが pid なら、リアルタイム同期を止める */
+export function stopProjectRealtime(pid: string): void {
+	if (currentProjectStore.project?.id === pid) stopCurrentProjectSync();
+}
+
+/** ストアを(sharing の変更を含めて)ローカルDBの内容に更新する */
+export async function refreshProjectStores(): Promise<void> {
+	await refreshStores(new Set<EntityType>(['projects']));
+	const current = currentProjectStore.project;
+	if (current) {
+		const latest = await projectsDB.getById(current.id);
+		if (latest) currentProjectStore.project = latest;
+	}
 }

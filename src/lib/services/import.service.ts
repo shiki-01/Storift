@@ -87,6 +87,8 @@ async function importSingleProject(data: ImportedProjectData): Promise<string | 
 		updatedAt: now,
 		syncedAt: undefined,
 		_firestoreId: undefined,
+		// 共有の状態(pid や秘密を含む)は別プロジェクトに持ち込まない
+		sharing: undefined,
 		_version: 1
 	} as Project;
 

@@ -1,6 +1,7 @@
 /** レールとスマホ下部ナビで共通に使う、プロジェクト内の画面一覧 */
 export const projectNavItems = [
 	{ path: 'editor', label: '執筆', icon: 'write' },
+	{ path: 'preview', label: '通読', icon: 'preview' },
 	{ path: 'plot', label: 'プロット', icon: 'plot' },
 	{ path: 'characters', label: '人物', icon: 'characters' },
 	{ path: 'worldbuilding', label: '設定資料', icon: 'world' },
@@ -10,6 +11,8 @@ export const projectNavItems = [
 /** 24x24 の線画アイコン(svg の中身だけ) */
 export const navIcons = {
 	write: '<path d="M4 20h4L18.5 9.5a2.83 2.83 0 0 0-4-4L4 16v4"/><path d="M13.5 6.5l4 4"/>',
+	preview:
+		'<path d="M3 5.5C5.5 4.3 8.5 4.3 12 6c3.5-1.7 6.5-1.7 9 -.5V18c-2.5-1.2-5.5-1.2-9 .5-3.5-1.7-6.5-1.7-9-.5z"/><path d="M12 6v12.5"/>',
 	plot: '<path d="M4 6h10M4 12h16M4 18h7"/><circle cx="17" cy="6" r="2"/><circle cx="14" cy="18" r="2"/>',
 	characters:
 		'<circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.4c1.8.9 3 2.8 3 5.6"/>',

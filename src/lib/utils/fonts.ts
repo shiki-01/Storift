@@ -42,3 +42,21 @@ export async function listSystemFonts(): Promise<string[]> {
 		return [];
 	}
 }
+
+const FONT_FAMILIES: Record<string, string> = {
+	'yu-gothic': '"Yu Gothic", "游ゴシック", YuGothic, "游ゴシック体", sans-serif',
+	'gen-shin-mincho': '"源真明朝", "Gen Shin Mincho", serif',
+	'hiragino-mincho': '"Hiragino Mincho ProN", "ヒラギノ明朝 ProN", serif',
+	'noto-sans': '"Noto Sans JP", sans-serif',
+	'noto-serif': '"Noto Serif JP", serif',
+	'hannari-mincho': '"はんなり明朝", "Hannari Mincho", serif',
+	'sawarabi-mincho': '"さわらび明朝", "Sawarabi Mincho", serif',
+	'sawarabi-gothic': '"さわらびゴシック", "Sawarabi Gothic", sans-serif'
+};
+
+/** 執筆画面のフォント設定(EditorFont)を CSS の font-family に変換する(通読プレビュー用) */
+export function editorFontToCss(font: EditorFont): string {
+	const systemName = getSystemFontName(font);
+	if (systemName) return systemFontToCss(systemName);
+	return FONT_FAMILIES[font] || FONT_FAMILIES['yu-gothic'];
+}

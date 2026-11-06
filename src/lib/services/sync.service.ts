@@ -1153,19 +1153,6 @@ async function resolveQueueTargets(
 	return [...keys];
 }
 
-async function scheduleSyncIfReady(): Promise<void> {
-	try {
-		if (navigator.onLine && (isFirebaseInitialized() || hasGuestWork())) {
-			// デバウンス処理で同期（連続した変更をまとめる）
-			scheduleProcess();
-		} else {
-			console.log(`⏳ Sync deferred - will sync when conditions are met`);
-		}
-	} catch (error) {
-		console.error('Failed to schedule sync:', error);
-	}
-}
-
 /** 1回の処理の打ち切りフラグ(タイムアウト後に、残りの作業が続きを進めないようにする) */
 interface RunContext {
 	cancelled: boolean;

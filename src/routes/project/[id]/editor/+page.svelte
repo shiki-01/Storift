@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
-	import { beforeNavigate } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
@@ -1617,6 +1618,11 @@
 			.catch((error) => console.error('Failed to load progress:', error));
 	});
 
+	// 作品全体を通して読む画面へ(未保存の変更は beforeNavigate で保存される)
+	function openManuscriptPreview() {
+		void goto(resolve('/project/[id]/preview', { id: currentProjectStore.project?.id ?? '' }));
+	}
+
 	// --- 前回のシーンを自動で開く ---
 	const lastSceneKey = (projectId: string) => `storift:last-scene:${projectId}`;
 
@@ -2231,6 +2237,15 @@
 							</button>
 							<button
 								class="tool"
+								onclick={openManuscriptPreview}
+								aria-label="作品全体を通して読む"
+								title="作品全体を通して読む"
+								data-testid="open-manuscript-preview"
+							>
+								<Icon name="book-2" class="w:20px" />
+							</button>
+							<button
+								class="tool"
 								onclick={() => (showPrintPreview = true)}
 								aria-label="印刷プレビュー"
 								title="印刷プレビュー"
@@ -2613,6 +2628,7 @@
 			>執筆支援(字下げ・ルビ)</button
 		>
 		<button onclick={() => runAction(() => (showExportModal = true))}>エクスポート</button>
+		<button onclick={() => runAction(openManuscriptPreview)}>作品全体を通して読む</button>
 		<button onclick={() => runAction(() => (showPrintPreview = true))}>印刷プレビュー</button>
 		<button disabled={readOnly} onclick={() => runAction(() => (showVersionManager = true))}
 			>バージョン履歴</button

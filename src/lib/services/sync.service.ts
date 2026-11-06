@@ -13,8 +13,9 @@ import {
 	syncToFirestore,
 	syncFromFirestore,
 	syncAllFromFirestore,
-	deleteFromFirestore,
+	commitBatchOps,
 	setupRealtimeSync,
+	type BatchOp,
 	monitorOnlineStatus,
 	type EntityType,
 	type SyncableEntity
@@ -27,12 +28,28 @@ import {
 	removeBase,
 	loadPendingChanges,
 	savePendingChanges,
+	loadPendingConflicts,
+	savePendingConflicts,
+	loadSyncState,
+	saveSyncState,
+	flushSyncMeta,
 	type PendingChange
 } from '$lib/firebase/syncMeta';
+import {
+	planDownload,
+	classifyLocalOnly,
+	chunkBatches,
+	canDetectRemoteDeletion,
+	type DownloadTrigger,
+	type TypePlan
+} from '$lib/firebase/syncPlan';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 import { startNetworkMonitoring, onNetworkStatusChange } from '$lib/utils/offline';
 import { debounceAsync } from '$lib/utils/debounce';
+import { measureSync, recordSyncMetric } from '$lib/utils/syncMetrics';
+import { Mutex, withTimeout, mapLimit } from '$lib/utils/asyncControl';
+import { classifyError, RetryGate } from '$lib/utils/syncErrors';
 import type { ConflictResolutionPolicy, History } from '$lib/types';
 import type { Unsubscribe } from 'firebase/firestore';
 
@@ -75,23 +92,66 @@ const ENTITY_TYPE_OF_HISTORY: Record<History['entityType'], EntityType> = {
 	worldbuilding: 'worldbuilding'
 };
 
-// 他端末の変更を取り込む最短間隔
+// 他端末の変更を取り込む最短間隔(成功・失敗に関わらず、取得を試みた時刻から数える)
 const REMOTE_REFRESH_INTERVAL = 60 * 1000;
+// 取得・送信それぞれの全体タイムアウト(Firestore 呼び出し自体は中断できない)
+const OPERATION_TIMEOUT = 90 * 1000;
+// 型内でリモートの1件ずつを突き合わせるときの並列数と、1回にまとめて処理する件数
+const RECONCILE_CONCURRENCY = 8;
+const RECONCILE_CHUNK_SIZE = 100;
+// アップロード準備(ローカル読み出し+リモート取得)の並列数
+const UPLOAD_PREPARE_CONCURRENCY = 5;
 
-// 未アップロードの変更(再読み込みで失われないよう localStorage にも保存する)
-let pendingChanges: PendingChange[] = loadPendingChanges();
+type SyncKind = 'upload' | 'download';
+
+const changeKey = (c: { type: EntityType; id: string }) => `${c.type}/${c.id}`;
+
+// 未アップロードの変更(再読み込みで失われないよう localStorage にも保存する)。キーは type/id
+let pendingChanges = new Map<string, PendingChange>(
+	loadPendingChanges().map((c) => [changeKey(c), c])
+);
 // アップロード処理中の変更(リアルタイム同期で巻き戻されないよう保護する)
-let inFlight: PendingChange[] = [];
-const pendingConflicts: PendingConflict[] = [];
+let inFlight = new Map<string, PendingChange>();
+// 手動解決待ちの競合(localStorage にも保存し、再読み込み後も復元する)
+const pendingConflicts: PendingConflict[] = loadPendingConflicts<PendingConflict>();
+syncStore.conflictCount = pendingConflicts.length;
+// processPendingChanges の実行中フラグ(二重起動を防ぐ)
+let isProcessing = false;
+// 取得と送信を同時に走らせないための排他
+const syncMutex = new Mutex();
+// 進行中の処理の数(isSyncing / status を正確に保つ)
+let activeCount = 0;
+// 種別ごとの直近のエラー(あれば status は error になる)
+const runErrors: Record<string, string | null> = { upload: null, download: null, project: null };
+// 再試行(指数バックオフ)の状態
+const gates: Record<SyncKind, RetryGate> = { upload: new RetryGate(), download: new RetryGate() };
+const retryTimers: Record<SyncKind, ReturnType<typeof setTimeout> | null> = {
+	upload: null,
+	download: null
+};
 let syncInterval: number | null = null;
 let visibilityHandler: (() => void) | null = null;
+let unsubscribeNetwork: (() => void) | null = null;
 let isInitialized = false;
+let initPromise: Promise<void> | null = null;
+let initPromiseGeneration = 0;
+// stopSync で増やし、停止後に初期化の続きが走らないようにする
+let initGeneration = 0;
 let currentProjectUnsubscribers: Unsubscribe[] = [];
 let downloadPromise: Promise<void> | null = null;
-let lastDownloadAt = 0;
+let downloadTrigger: DownloadTrigger | null = null;
+// 取得を試みた時刻(失敗でも更新する。成功時刻とは別)
+let lastDownloadAttemptAt = 0;
 
 // デバウンスされた同期処理（3秒）
 const debouncedProcessPendingChanges = debounceAsync(processPendingChanges, 3000);
+
+/** 同期を予約する(完了は待たない。失敗はログに残す) */
+function scheduleProcess(): void {
+	debouncedProcessPendingChanges().catch((error) => {
+		console.error('Scheduled sync failed:', error);
+	});
+}
 
 function tableOf(type: EntityType): Table<SyncableEntity, string> {
 	return db[type] as unknown as Table<SyncableEntity, string>;
@@ -107,21 +167,49 @@ function settledStatus(): 'synced' | 'conflict' {
 	return pendingConflicts.length > 0 ? 'conflict' : 'synced';
 }
 
-function findPending(type: EntityType, id: string): PendingChange | undefined {
-	return (
-		pendingChanges.find((c) => c.type === type && c.id === id) ??
-		inFlight.find((c) => c.type === type && c.id === id)
-	);
+/** 処理の開始を記録する(並行して走っても isSyncing が正確になる) */
+function beginActivity(): void {
+	activeCount++;
+	syncStore.isSyncing = true;
+	syncStore.status = 'syncing';
 }
 
-function enqueue(change: PendingChange): void {
-	const existing = pendingChanges.find((c) => c.type === change.type && c.id === change.id);
+/** 処理の終了を記録し、全ての処理が終わっていれば status を確定する */
+function endActivity(): void {
+	activeCount = Math.max(0, activeCount - 1);
+	if (activeCount > 0) return;
+	syncStore.isSyncing = false;
+	syncStore.progress = { phase: null, done: 0, total: 0 };
+	const message = Object.values(runErrors).find((m) => m !== null) ?? null;
+	syncStore.error = message;
+	syncStore.status = message !== null ? 'error' : settledStatus();
+}
+
+function setProgress(phase: 'upload' | 'download', done: number, total: number): void {
+	syncStore.progress = { phase, done, total };
+}
+
+function findPending(type: EntityType, id: string): PendingChange | undefined {
+	const key = `${type}/${id}`;
+	return pendingChanges.get(key) ?? inFlight.get(key);
+}
+
+function persistPending(): void {
+	savePendingChanges([...pendingChanges.values()]);
+}
+
+function enqueueInMemory(change: PendingChange): void {
+	const existing = pendingChanges.get(changeKey(change));
 	if (existing) {
 		existing.action = change.action;
 	} else {
-		pendingChanges.push(change);
+		pendingChanges.set(changeKey(change), change);
 	}
-	savePendingChanges(pendingChanges);
+}
+
+function enqueue(change: PendingChange): void {
+	enqueueInMemory(change);
+	persistPending();
 }
 
 /**
@@ -130,7 +218,17 @@ function enqueue(change: PendingChange): void {
 function enqueueAndSchedule(change: PendingChange): void {
 	enqueue(change);
 	if (navigator.onLine) {
-		void debouncedProcessPendingChanges();
+		scheduleProcess();
+	}
+}
+
+/** 複数の変更をまとめてキューに載せる(保存は1回。キューの内容を失わない側に倒すため即時に書く) */
+function enqueueManyAndSchedule(changes: PendingChange[]): void {
+	if (changes.length === 0) return;
+	for (const change of changes) enqueueInMemory(change);
+	persistPending();
+	if (navigator.onLine) {
+		scheduleProcess();
 	}
 }
 
@@ -202,6 +300,7 @@ async function handleConflict(
 			} else {
 				pendingConflicts.push(conflict);
 			}
+			savePendingConflicts(pendingConflicts);
 			syncStore.status = 'conflict';
 			syncStore.conflictCount = pendingConflicts.length;
 			return 'conflict';
@@ -231,6 +330,7 @@ export async function resolveManualConflict(
 
 	const conflict = pendingConflicts[index];
 	pendingConflicts.splice(index, 1);
+	savePendingConflicts(pendingConflicts);
 	syncStore.conflictCount = pendingConflicts.length;
 
 	// 採用しない側の版を、解決前にバックアップする
@@ -257,22 +357,22 @@ export async function resolveManualConflict(
 	}
 }
 
+type RemoteDecision = 'write' | 'push' | 'none';
+
 /**
- * リモートの1件をローカルに反映する。ローカルが書き換わった場合 true。
+ * リモートの1件について、ローカルをどう扱うか決める(DB への書き込みは呼び出し側で行う)。
+ * 'write': リモートの版でローカルを置き換える / 'push': ローカルをアップロードする
  */
-async function reconcileRemote(
+async function decideRemote(
 	type: EntityType,
 	remote: SyncableEntity,
+	local: SyncableEntity | undefined,
 	policy: ConflictResolutionPolicy
-): Promise<boolean> {
-	const local = await tableOf(type).get(remote.id);
-
+): Promise<RemoteDecision> {
 	if (!local) {
 		// この端末で削除済みでアップロード待ちのものは復活させない
-		if (findPending(type, remote.id)?.action === 'delete') return false;
-		await tableOf(type).put(remote);
-		setBase(type, remote.id, remote.updatedAt);
-		return true;
+		if (findPending(type, remote.id)?.action === 'delete') return 'none';
+		return 'write';
 	}
 
 	const base = getBase(type, remote.id);
@@ -287,19 +387,64 @@ async function reconcileRemote(
 			if ((base === undefined || local.updatedAt > base) && contentDiffers(local, remote)) {
 				await backupEntity(type, local, 'conflict');
 			}
-			// updatedAt / _version を書き換えないよう DB の update ではなく put で保存する
-			await tableOf(type).put(remote);
-			setBase(type, remote.id, remote.updatedAt);
-			return true;
+			return 'write';
 		case 'push-local':
-			enqueueAndSchedule({ type, id: remote.id, action: 'update' });
-			return false;
+			return 'push';
 		case 'skip':
 			setBase(type, remote.id, remote.updatedAt);
-			return false;
+			return 'none';
 		default:
-			return false;
+			return 'none';
 	}
+}
+
+const sameVersion = (a: SyncableEntity | undefined, b: SyncableEntity | undefined) =>
+	a === undefined || b === undefined
+		? a === b
+		: a.updatedAt === b.updatedAt && a._version === b._version;
+
+/**
+ * リモートの複数件をまとめてローカルに反映する。ローカルが書き換わった場合 true。
+ *
+ * 突き合わせは上限付きの並列で行い、IndexedDB への書き込みは1つのトランザクションで bulkPut する。
+ * トランザクション内でローカルが判定時から変わっていないことを再確認し、
+ * 判定中にユーザーが編集していた項目は上書きしない(その編集は通常の送信で3者比較される)。
+ * 1件でも失敗した場合は、残りを処理したうえで最初のエラーを投げる。
+ */
+async function reconcileBatch(
+	type: EntityType,
+	remotes: SyncableEntity[],
+	policy: ConflictResolutionPolicy
+): Promise<boolean> {
+	if (remotes.length === 0) return false;
+	const table = tableOf(type);
+	const locals = await table.bulkGet(remotes.map((r) => r.id));
+
+	const writes: { remote: SyncableEntity; seen: SyncableEntity | undefined }[] = [];
+	const pushes: PendingChange[] = [];
+	const results = await mapLimit(remotes, RECONCILE_CONCURRENCY, async (remote, i) => {
+		const local = locals[i];
+		const decision = await decideRemote(type, remote, local, policy);
+		if (decision === 'write') writes.push({ remote, seen: local });
+		else if (decision === 'push') pushes.push({ type, id: remote.id, action: 'update' });
+	});
+
+	enqueueManyAndSchedule(pushes);
+
+	let applied: typeof writes = [];
+	if (writes.length > 0) {
+		await db.transaction('rw', table, async () => {
+			const current = await table.bulkGet(writes.map((w) => w.remote.id));
+			applied = writes.filter((w, i) => sameVersion(current[i], w.seen));
+			// updatedAt / _version を書き換えないよう DB の update ではなく put で保存する
+			await table.bulkPut(applied.map((w) => w.remote));
+		});
+		for (const { remote } of applied) setBase(type, remote.id, remote.updatedAt);
+	}
+
+	const failed = results.find((r) => r.status === 'rejected');
+	if (failed && failed.status === 'rejected') throw failed.reason;
+	return applied.length > 0;
 }
 
 /**
@@ -387,25 +532,94 @@ async function refreshStores(types: Set<EntityType>): Promise<void> {
 }
 
 /**
- * 他端末の変更をまとめて取り込む(最小間隔つき)
+ * 他端末の変更をまとめて取り込む(最小間隔つき・差分取得)。
+ * 取得を試みた時刻から最小間隔を数えるので、失敗が続いても毎回のトリガでは再試行しない。
+ * バックオフ中・再試行不可のエラー中は何もしない。
  */
 function refreshFromRemoteIfNeeded(): void {
 	if (!navigator.onLine) return;
-	if (Date.now() - lastDownloadAt < REMOTE_REFRESH_INTERVAL) return;
+	const now = Date.now();
+	if (now - lastDownloadAttemptAt < REMOTE_REFRESH_INTERVAL) return;
+	if (!gates.download.canRun(now)) return;
 	downloadAllFromFirestore().catch((err) => console.warn('Remote refresh failed:', err));
 }
 
+/** 溜まった変更を送る(バックオフ中・再試行不可のエラー中は何もしない) */
+function flushPendingIfNeeded(): void {
+	if (pendingChanges.size === 0) return;
+	if (!gates.upload.canRun(Date.now())) return;
+	void processPendingChanges();
+}
+
+/** 再試行可のエラーの後、バックオフ時間が経ったら自動で再実行する */
+function scheduleRetry(kind: SyncKind, delayMs: number): void {
+	const existing = retryTimers[kind];
+	if (existing) clearTimeout(existing);
+	console.log(`⏳ Retry ${kind} in ${Math.round(delayMs / 1000)}s`);
+	retryTimers[kind] = setTimeout(() => {
+		retryTimers[kind] = null;
+		if (!isInitialized || !navigator.onLine) return;
+		if (kind === 'download') {
+			downloadAllFromFirestore().catch((err) => console.warn('Download retry failed:', err));
+		} else {
+			void processPendingChanges();
+		}
+	}, delayMs);
+}
+
+/** 処理の失敗を分類して記録し、再試行可なら次回を予約する */
+function recordFailure(kind: SyncKind, error: unknown): void {
+	const info = classifyError(error);
+	runErrors[kind] = info.message;
+	const delay = gates[kind].onFailure(info, Date.now());
+	if (delay !== null) {
+		scheduleRetry(kind, delay);
+	} else {
+		console.error(`❌ ${kind} failed with a non-retryable error (${info.code}): ${info.message}`);
+	}
+}
+
+function recordSuccess(kind: SyncKind): void {
+	runErrors[kind] = null;
+	gates[kind].onSuccess();
+}
+
+/** バックオフ・再試行不可の状態を解除する(手動の操作や再初期化のとき) */
+function resetGates(): void {
+	for (const kind of ['upload', 'download'] as const) {
+		gates[kind].reset();
+		const timer = retryTimers[kind];
+		if (timer) clearTimeout(timer);
+		retryTimers[kind] = null;
+	}
+}
+
 /**
- * 同期システムの初期化
+ * 同期システムの初期化。実行中なら同じ Promise を返す(複数箇所から呼ばれても1回だけ実行する)
  */
-export async function initializeSync(): Promise<void> {
-	// 既に初期化済みの場合はスキップ
+export function initializeSync(): Promise<void> {
 	if (isInitialized) {
 		console.log('⏭️ Sync already initialized, skipping...');
-		return;
+		return Promise.resolve();
 	}
+	if (initPromise && initPromiseGeneration === initGeneration) return initPromise;
 
+	// stopSync の後の再初期化は、古い初期化の終了を待ってから始める
+	const previous = initPromise;
+	initPromiseGeneration = initGeneration;
+	const current: Promise<void> = (previous ? previous.catch(() => {}) : Promise.resolve())
+		.then(doInitializeSync)
+		.finally(() => {
+			if (initPromise === current) initPromise = null;
+		});
+	initPromise = current;
+	return current;
+}
+
+async function doInitializeSync(): Promise<void> {
+	const generation = initGeneration;
 	const { isFirebaseInitialized } = await import('$lib/firebase');
+	if (generation !== initGeneration) return;
 
 	if (!isFirebaseInitialized()) {
 		console.log('ℹ️ Firebase not configured, sync system will not be initialized');
@@ -415,20 +629,25 @@ export async function initializeSync(): Promise<void> {
 	}
 
 	console.log('🚀 Initializing sync system...');
+	resetGates();
 
 	historyDB.deleteOldHistory().catch((err) => console.warn('Failed to prune history:', err));
 
-	// オンライン状態の監視
+	// オンライン状態の監視(登録は1回だけ)
 	monitorOnlineStatus();
 	startNetworkMonitoring();
 
-	// オンライン復帰時: 溜まった変更を送り、他端末の変更を取り込む
-	onNetworkStatusChange((status) => {
+	// オンライン復帰時: 溜まった変更を送り、他端末の変更を取り込む。
+	// 購読直後の初回通知(現在の状態)は無視する(起動時の取得は下で行う)
+	let armed = false;
+	unsubscribeNetwork = onNetworkStatusChange((status) => {
+		if (!armed) return;
 		if (status === 'online') {
-			if (pendingChanges.length > 0) void processPendingChanges();
+			flushPendingIfNeeded();
 			refreshFromRemoteIfNeeded();
 		}
 	});
+	armed = true;
 
 	// アプリに戻ってきたとき、他端末の変更を取り込む
 	visibilityHandler = () => {
@@ -440,26 +659,28 @@ export async function initializeSync(): Promise<void> {
 	syncInterval = window.setInterval(
 		() => {
 			if (!navigator.onLine) return;
-			if (pendingChanges.length > 0) void processPendingChanges();
+			flushPendingIfNeeded();
 			refreshFromRemoteIfNeeded();
 		},
 		5 * 60 * 1000
 	);
 
-	// Firestore にあるデータをローカルに取り込む（別端末で作成・更新されたものを反映する）
+	// Firestore にあるデータをローカルに取り込む（別端末で作成・更新されたものを反映する）。
+	// 前回の完全同期から時間が経っていれば完全取得になる
 	if (navigator.onLine) {
 		try {
 			console.log('📥 Checking Firestore for remote data to download...');
-			await downloadAllFromFirestore();
+			await downloadAllFromFirestore({ trigger: 'startup' });
 		} catch (err) {
 			console.warn('Failed to download initial data from Firestore:', err);
 		}
 	}
 
+	// stopSync が呼ばれていたら、ここから先は行わない
+	if (generation !== initGeneration) return;
+
 	// 前回の起動で送れなかった変更を送る
-	if (navigator.onLine && pendingChanges.length > 0) {
-		void processPendingChanges();
-	}
+	if (navigator.onLine) flushPendingIfNeeded();
 
 	// 初期化完了フラグを設定
 	isInitialized = true;
@@ -476,6 +697,7 @@ export async function initializeSync(): Promise<void> {
  * 同期システムの停止
  */
 export function stopSync(): void {
+	initGeneration++;
 	if (syncInterval) {
 		clearInterval(syncInterval);
 		syncInterval = null;
@@ -484,6 +706,16 @@ export function stopSync(): void {
 		document.removeEventListener('visibilitychange', visibilityHandler);
 		visibilityHandler = null;
 	}
+	if (unsubscribeNetwork) {
+		unsubscribeNetwork();
+		unsubscribeNetwork = null;
+	}
+	for (const kind of ['upload', 'download'] as const) {
+		const timer = retryTimers[kind];
+		if (timer) clearTimeout(timer);
+		retryTimers[kind] = null;
+	}
+	flushSyncMeta();
 	isInitialized = false;
 	console.log('🛑 Sync system stopped');
 }
@@ -498,26 +730,59 @@ export async function queueChange(
 ): Promise<void> {
 	console.log(`📝 Queueing change: ${type}/${id} (${action})`);
 
+	// キューへの登録だけを待つ。アップロードは裏で予約し、完了は待たない
 	enqueue({ type, id, action });
+	void scheduleSyncIfReady();
+}
 
-	// Firebaseが初期化されていて、かつオンラインなら即座に同期
-	const { isFirebaseInitialized } = await import('$lib/firebase');
-	const firebaseReady = isFirebaseInitialized();
-	const online = navigator.onLine;
-
-	if (online && firebaseReady) {
-		// デバウンス処理で同期（連続した変更をまとめる）
-		await debouncedProcessPendingChanges();
-	} else {
-		console.log(`⏳ Sync deferred - will sync when conditions are met`);
+async function scheduleSyncIfReady(): Promise<void> {
+	try {
+		const { isFirebaseInitialized } = await import('$lib/firebase');
+		if (navigator.onLine && isFirebaseInitialized()) {
+			// デバウンス処理で同期（連続した変更をまとめる）
+			scheduleProcess();
+		} else {
+			console.log(`⏳ Sync deferred - will sync when conditions are met`);
+		}
+	} catch (error) {
+		console.error('Failed to schedule sync:', error);
 	}
+}
+
+/** 1回の処理の打ち切りフラグ(タイムアウト後に、残りの作業が続きを進めないようにする) */
+interface RunContext {
+	cancelled: boolean;
+}
+
+function throwIfCancelled(ctx: RunContext): void {
+	if (ctx.cancelled) throw new Error('同期がタイムアウトしたため中断しました');
 }
 
 /**
  * ペンディング中の変更を処理
  */
 async function processPendingChanges(): Promise<void> {
-	if (pendingChanges.length === 0 || inFlight.length > 0) return;
+	// await より前に同期的にロックを取る(二重起動を防ぐ)。ロック中に積まれた変更は終了後に再予約される
+	if (isProcessing || pendingChanges.size === 0) return;
+	// バックオフ中・再試行不可のエラー中は送らない(変更はキューに残る)
+	if (!gates.upload.canRun(Date.now())) return;
+	isProcessing = true;
+
+	try {
+		// 取得(runDownload)と同時には走らせない
+		await syncMutex.runExclusive(runUpload);
+	} finally {
+		isProcessing = false;
+	}
+
+	// 処理中に追加された変更があれば続けて処理する
+	if (pendingChanges.size > 0 && gates.upload.canRun(Date.now()) && !runErrors.upload) {
+		scheduleProcess();
+	}
+}
+
+async function runUpload(): Promise<void> {
+	if (pendingChanges.size === 0) return;
 
 	// Firebaseが初期化されていない場合はスキップ
 	const { isFirebaseInitialized } = await import('$lib/firebase');
@@ -526,67 +791,163 @@ async function processPendingChanges(): Promise<void> {
 		return;
 	}
 
-	console.log(`📤 Processing ${pendingChanges.length} pending change(s)...`);
+	// ロック待ちの間に積まれた変更も含めて、ここで取り出す
+	const changes = [...pendingChanges.values()];
+	console.log(`📤 Processing ${changes.length} pending change(s)...`);
 
-	syncStore.isSyncing = true;
-	syncStore.status = 'syncing';
+	beginActivity();
+	setProgress('upload', 0, changes.length);
+	pendingChanges = new Map();
+	inFlight = new Map(changes.map((c) => [changeKey(c), c]));
+	persistPending();
 
-	const changes = [...pendingChanges];
-	pendingChanges = [];
-	inFlight = changes;
-	savePendingChanges(pendingChanges);
-
-	// 失敗した変更以降は、処理中に積まれた新しい変更を優先しつつキューに戻す
-	let processed = 0;
+	const startedAt = performance.now();
+	const ctx: RunContext = { cancelled: false };
+	// 送信が完了した(キューから外してよい)変更
+	const completed = new Set<string>();
+	let ok = false;
 	try {
 		const policy = await getPolicy();
-		for (; processed < changes.length; processed++) {
-			await processChange(changes[processed], policy);
-		}
+		await withTimeout(
+			uploadChanges(changes, policy, ctx, completed),
+			OPERATION_TIMEOUT,
+			'送信',
+			() => {
+				ctx.cancelled = true;
+			}
+		);
+		ok = true;
 		console.log('✅ All changes synced successfully');
 		syncStore.lastSyncTime = Date.now();
-		syncStore.status = settledStatus();
-		syncStore.error = null;
+		recordSuccess('upload');
 	} catch (error) {
 		console.error('❌ Sync error:', error);
-		for (const change of changes.slice(processed)) {
-			if (!pendingChanges.some((c) => c.type === change.type && c.id === change.id)) {
-				pendingChanges.push(change);
-			}
+		// 失敗した変更だけをキューに戻す。処理中に積まれた新しい変更があればそちらを優先する
+		for (const change of changes) {
+			const key = changeKey(change);
+			if (!completed.has(key) && !pendingChanges.has(key)) pendingChanges.set(key, change);
 		}
-		savePendingChanges(pendingChanges);
-		syncStore.error = error instanceof Error ? error.message : 'Unknown error';
-		syncStore.status = 'error';
+		persistPending();
+		recordFailure('upload', error);
 	} finally {
-		inFlight = [];
-		syncStore.isSyncing = false;
-	}
-
-	// 処理中に追加された変更があれば続けて処理する
-	if (pendingChanges.length > 0 && syncStore.status !== 'error') {
-		void debouncedProcessPendingChanges();
+		inFlight = new Map();
+		endActivity();
+		recordSyncMetric({
+			kind: 'processPendingChanges',
+			durationMs: performance.now() - startedAt,
+			count: completed.size,
+			ok
+		});
 	}
 }
 
+type UploadOp =
+	| { kind: 'delete'; change: PendingChange }
+	| { kind: 'set'; change: PendingChange; local: SyncableEntity };
+
 /**
- * 個別の変更を処理
+ * 変更をまとめて送る。
+ * 1) 上限付き並列で、ローカルの読み出しとリモートの取得(3者比較)を行う
+ * 2) 送信が必要なものを WriteBatch(件数・サイズの上限で分割)でコミットする
+ * 同一ドキュメントの変更はキュー上で1件にまとまっているので、順序は保たれる。
+ * 成功したものは completed に入れる。失敗があれば、可能な分を進めたうえで最初のエラーを投げる。
  */
-async function processChange(
-	change: PendingChange,
-	policy: ConflictResolutionPolicy
+async function uploadChanges(
+	changes: PendingChange[],
+	policy: ConflictResolutionPolicy,
+	ctx: RunContext,
+	completed: Set<string>
 ): Promise<void> {
+	const total = changes.length;
+	let done = 0;
+	const refreshTypes = new Set<EntityType>();
+	const ops: UploadOp[] = [];
+	const errors: unknown[] = [];
+
+	try {
+		const results = await mapLimit(changes, UPLOAD_PREPARE_CONCURRENCY, async (change) => {
+			throwIfCancelled(ctx);
+			const op = await prepareUpload(change, policy, refreshTypes);
+			if (op) {
+				ops.push(op);
+			} else {
+				completed.add(changeKey(change));
+				setProgress('upload', ++done, total);
+			}
+		});
+		for (const r of results) if (r.status === 'rejected') errors.push(r.reason);
+
+		// 元のキューの順序でコミットする
+		const order = new Map(changes.map((c, i) => [changeKey(c), i]));
+		ops.sort((x, y) => order.get(changeKey(x.change))! - order.get(changeKey(y.change))!);
+
+		const sized = ops.map((op) => ({
+			op,
+			size: op.kind === 'set' ? JSON.stringify(op.local).length : 200
+		}));
+		for (const batch of chunkBatches(sized)) {
+			throwIfCancelled(ctx);
+			try {
+				await commitBatchOps(
+					batch.map(
+						({ op }): BatchOp =>
+							op.kind === 'delete'
+								? { kind: 'delete', entityType: op.change.type, id: op.change.id }
+								: { kind: 'set', entityType: op.change.type, entity: op.local }
+					)
+				);
+			} catch (error) {
+				// このバッチは全件失敗(原子的)。以降は同じ原因で失敗する可能性が高いので打ち切る
+				errors.push(error);
+				break;
+			}
+			for (const { op } of batch) {
+				if (op.kind === 'delete') {
+					removeBase(op.change.type, op.change.id);
+				} else {
+					setBase(op.change.type, op.change.id, op.local.updatedAt);
+				}
+				completed.add(changeKey(op.change));
+			}
+			done += batch.length;
+			setProgress('upload', done, total);
+		}
+	} finally {
+		if (refreshTypes.size > 0) await refreshStores(refreshTypes);
+	}
+
+	if (errors.length > 0) throw errors[0];
+}
+
+/**
+ * 個別の変更を、送信してよいか判定する。送信が必要なら UploadOp を返し、
+ * 送信不要(スキップ・競合・リモートを採用・対象なし)なら null を返す。
+ */
+async function prepareUpload(
+	change: PendingChange,
+	policy: ConflictResolutionPolicy,
+	refreshTypes: Set<EntityType>
+): Promise<UploadOp | null> {
 	const { type, id, action } = change;
 
-	if (action === 'delete') {
-		await deleteFromFirestore(type, id);
-		removeBase(type, id);
-		return;
-	}
+	if (action === 'delete') return { kind: 'delete', change };
 
 	const local = await tableOf(type).get(id);
 	if (!local) {
-		console.warn(`Local data not found for ${type}/${id}`);
-		return;
+		// ローカルに無い create/update は、リモートにも無いと確認できた場合だけキューから外す。
+		// 確認できない場合(通信エラー等)は例外のまま伝播し、変更はキューに残る。
+		const remoteExisting = await syncFromFirestore(type, id);
+		if (!remoteExisting) {
+			console.warn(
+				`Dropping ${action} for ${type}/${id}: not found locally nor in Firestore (nothing to upload)`
+			);
+		} else {
+			console.warn(
+				`Dropping ${action} for ${type}/${id}: deleted locally without a queued delete; ` +
+					'the Firestore copy is left untouched and may be re-downloaded'
+			);
+		}
+		return null;
 	}
 
 	// リモートデータを取得して競合チェック
@@ -601,32 +962,45 @@ async function processChange(
 			if (contentDiffers(local, remote)) await backupEntity(type, local, 'conflict');
 			await tableOf(type).put(remote);
 			setBase(type, id, remote.updatedAt);
-			await refreshStores(new Set([type]));
-			return;
+			refreshTypes.add(type);
+			return null;
 		}
-		if (result === 'conflict') return; // 手動解決待ち(アップロードしない)
+		if (result === 'conflict') return null; // 手動解決待ち(アップロードしない)
 		if (result === 'skip') {
 			setBase(type, id, local.updatedAt);
-			return;
+			return null;
 		}
 	}
 
 	console.log(`📤 Uploading ${type}/${id} to Firestore...`);
-	await syncToFirestore(type, local);
-	setBase(type, id, local.updatedAt);
+	return { kind: 'set', change, local };
 }
 
 /**
  * リアルタイム同期で受信したデータを反映する
  */
-async function applyRealtimeEntities(type: EntityType, entities: SyncableEntity[]): Promise<void> {
+function applyRealtimeEntities(type: EntityType, entities: SyncableEntity[]): Promise<void> {
+	return measureSync(
+		'applyRealtime',
+		type,
+		() => applyRealtimeEntitiesInner(type, entities),
+		() => entities.length
+	);
+}
+
+async function applyRealtimeEntitiesInner(
+	type: EntityType,
+	entities: SyncableEntity[]
+): Promise<void> {
 	const policy = await getPolicy();
 	let changed = false;
-	for (const remote of entities) {
+	// 変化のあった分(初回スナップショットは全件)を、チャンクごとにまとめて反映する
+	for (let i = 0; i < entities.length; i += RECONCILE_CHUNK_SIZE) {
+		const chunk = entities.slice(i, i + RECONCILE_CHUNK_SIZE);
 		try {
-			if (await reconcileRemote(type, remote, policy)) changed = true;
+			if (await reconcileBatch(type, chunk, policy)) changed = true;
 		} catch (error) {
-			console.error(`Failed to apply ${type}/${remote.id}:`, error);
+			console.error(`Failed to apply ${chunk.length} ${type} document(s):`, error);
 		}
 	}
 	if (changed) await refreshStores(new Set([type]));
@@ -704,8 +1078,7 @@ export function stopCurrentProjectSync(): void {
  * 現在のプロジェクトの全データを同期(ローカルの内容をそのままアップロード)
  */
 export async function syncCurrentProject(projectId: string): Promise<void> {
-	syncStore.isSyncing = true;
-	syncStore.status = 'syncing';
+	beginActivity();
 
 	try {
 		const upload = async (type: EntityType, entity: SyncableEntity) => {
@@ -733,87 +1106,223 @@ export async function syncCurrentProject(projectId: string): Promise<void> {
 		}
 
 		syncStore.lastSyncTime = Date.now();
-		syncStore.status = settledStatus();
-		syncStore.error = null;
+		runErrors.project = null;
 	} catch (error) {
 		console.error('Project sync error:', error);
-		syncStore.error = error instanceof Error ? error.message : 'Unknown error';
-		syncStore.status = 'error';
+		runErrors.project = error instanceof Error ? error.message : 'Unknown error';
 		throw error;
 	} finally {
-		syncStore.isSyncing = false;
+		endActivity();
 	}
 }
 
+interface DownloadTypeResult {
+	changed: boolean;
+	fetched: number;
+	skipped: number;
+}
+
 /**
- * 1種類のエンティティについて、Firestore との差分をローカルに反映する
+ * 1種類のエンティティについて、Firestore との差分をローカルに反映する。
+ * plan が差分取得のときは、更新されたものだけを取得し、削除の判定(リモートに無い＝削除)は行わない。
  */
-async function downloadType(type: EntityType, policy: ConflictResolutionPolicy): Promise<boolean> {
-	const remotes = await syncAllFromFirestore(type);
-	console.log(`📦 Found ${remotes.length} ${type} in Firestore`);
-	const remoteIds = new Set(remotes.map((r) => r.id));
-	let changed = false;
+async function downloadType(
+	type: EntityType,
+	plan: TypePlan,
+	policy: ConflictResolutionPolicy,
+	ctx: RunContext,
+	progress: { done: number; total: number }
+): Promise<DownloadTypeResult> {
+	const started = performance.now();
+	let fetched = 0;
+	let skipped = 0;
+	let ok = false;
+	try {
+		const remotes = await syncAllFromFirestore(
+			type,
+			undefined,
+			plan.mode === 'diff' ? plan.since : undefined
+		);
+		fetched = remotes.length;
+		progress.total += remotes.length;
+		setProgress('download', progress.done, progress.total);
+		console.log(`📦 Found ${remotes.length} ${type} in Firestore (${plan.mode})`);
+		let changed = false;
 
-	for (const remote of remotes) {
-		if (await reconcileRemote(type, remote, policy)) changed = true;
-	}
-
-	// Firestore に無いローカルデータ:
-	//  同期済みだったもの → 他端末で削除された。未同期のもの → 未アップロードなので送る
-	for (const local of await tableOf(type).toArray()) {
-		if (remoteIds.has(local.id) || findPending(type, local.id)) continue;
-
-		if (getBase(type, local.id) !== undefined) {
-			if (await applyRemoteDeletion(type, local.id)) changed = true;
-		} else {
-			enqueueAndSchedule({ type, id: local.id, action: 'create' });
+		for (let i = 0; i < remotes.length; i += RECONCILE_CHUNK_SIZE) {
+			throwIfCancelled(ctx);
+			const chunk = remotes.slice(i, i + RECONCILE_CHUNK_SIZE);
+			if (await reconcileBatch(type, chunk, policy)) changed = true;
+			progress.done += chunk.length;
+			setProgress('download', progress.done, progress.total);
 		}
-	}
 
-	return changed;
-}
+		const table = tableOf(type);
+		if (canDetectRemoteDeletion(plan)) {
+			// Firestore に無いローカルデータ(完全取得のときだけ判定する):
+			//  同期済みだったもの → 他端末で削除された。未同期のもの → 未アップロードなので送る
+			throwIfCancelled(ctx);
+			const remoteIds = new Set(remotes.map((r) => r.id));
+			const { removals, uploads } = classifyLocalOnly(
+				plan,
+				(await table.toCollection().primaryKeys()) as string[],
+				remoteIds,
+				(id) => findPending(type, id) !== undefined,
+				(id) => getBase(type, id) !== undefined
+			);
+			for (const id of removals) {
+				if (await applyRemoteDeletion(type, id)) changed = true;
+			}
+			enqueueManyAndSchedule(uploads.map((id) => ({ type, id, action: 'create' as const })));
+		} else {
+			skipped = Math.max(0, (await table.count()) - remotes.length);
+		}
 
-/**
- * 全データをFirestoreからダウンロード
- */
-export function downloadAllFromFirestore(): Promise<void> {
-	// 同時実行は1つにまとめる
-	if (!downloadPromise) {
-		downloadPromise = runDownload().finally(() => {
-			downloadPromise = null;
+		ok = true;
+		return { changed, fetched, skipped };
+	} finally {
+		recordSyncMetric({
+			kind: 'download',
+			label: `${type}:${plan.mode}`,
+			durationMs: performance.now() - started,
+			count: fetched,
+			skipped: plan.mode === 'diff' ? skipped : undefined,
+			ok
 		});
 	}
+}
+
+/**
+ * Firestoreから取り込む。
+ * 通常(trigger 省略 / 'periodic')は型ごとの最終同期時刻以降の差分だけを取得する。
+ * 'startup' は前回の完全同期から一定時間が経っていれば、'manual-full' は常に、完全取得(削除の検知を含む)を行う。
+ * 同時実行は1つにまとめる。
+ */
+export function downloadAllFromFirestore(
+	options: { trigger?: DownloadTrigger } = {}
+): Promise<void> {
+	const trigger = options.trigger ?? 'periodic';
+	if (downloadPromise) {
+		// 実行中の取得が完全同期でなければ、手動の完全同期はその後に改めて実行する
+		if (trigger === 'manual-full' && downloadTrigger !== 'manual-full') {
+			return downloadPromise.catch(() => {}).then(() => downloadAllFromFirestore(options));
+		}
+		return downloadPromise;
+	}
+	downloadTrigger = trigger;
+	downloadPromise = runDownload(trigger).finally(() => {
+		downloadPromise = null;
+		downloadTrigger = null;
+	});
 	return downloadPromise;
 }
 
-async function runDownload(): Promise<void> {
-	console.log('📥 Downloading all data from Firestore...');
-	syncStore.isSyncing = true;
-	syncStore.status = 'syncing';
+/**
+ * 完全同期(全件を取得して照合し、他端末での削除も検知する)。設定画面の手動ボタンから呼ぶ
+ */
+export function runFullSync(): Promise<void> {
+	resetGates();
+	return downloadAllFromFirestore({ trigger: 'manual-full' });
+}
 
+function runDownload(trigger: DownloadTrigger): Promise<void> {
+	let downloaded = 0;
+	return measureSync(
+		'download',
+		trigger === 'manual-full' ? 'full-sync' : undefined,
+		// 取得と送信は同時に走らせない
+		() =>
+			syncMutex.runExclusive(() =>
+				runDownloadInner(trigger, (fetched) => {
+					downloaded += fetched;
+				})
+			),
+		() => downloaded
+	);
+}
+
+async function runDownloadInner(
+	trigger: DownloadTrigger,
+	addCount: (fetched: number) => void
+): Promise<void> {
+	console.log(`📥 Downloading data from Firestore (${trigger})...`);
+	// 失敗しても「試行時刻」を残し、最小間隔の判定に使う
+	lastDownloadAttemptAt = Date.now();
+	beginActivity();
+	setProgress('download', 0, 0);
+
+	const ctx: RunContext = { cancelled: false };
 	try {
-		const policy = await getPolicy();
-		console.log(`🔧 Conflict resolution policy: ${policy}`);
-
-		const changedTypes = new Set<EntityType>();
-		// プロジェクト → 子要素の順に処理する
-		for (const type of ENTITY_TYPES) {
-			if (await downloadType(type, policy)) changedTypes.add(type);
-		}
-
-		console.log('✅ Download completed successfully');
-		await refreshStores(changedTypes.add('projects'));
-
-		lastDownloadAt = Date.now();
+		await withTimeout(downloadAllTypes(trigger, ctx, addCount), OPERATION_TIMEOUT, '取得', () => {
+			ctx.cancelled = true;
+		});
 		syncStore.lastSyncTime = Date.now();
-		syncStore.status = settledStatus();
-		syncStore.error = null;
+		recordSuccess('download');
+		console.log('✅ Download completed successfully');
 	} catch (error) {
 		console.error('❌ Download error:', error);
-		syncStore.error = error instanceof Error ? error.message : 'Unknown error';
-		syncStore.status = 'error';
+		recordFailure('download', error);
 		throw error;
 	} finally {
-		syncStore.isSyncing = false;
+		endActivity();
 	}
+}
+
+async function downloadAllTypes(
+	trigger: DownloadTrigger,
+	ctx: RunContext,
+	addCount: (fetched: number) => void
+): Promise<void> {
+	const startedAt = Date.now();
+	const policy = await getPolicy();
+	console.log(`🔧 Conflict resolution policy: ${policy}`);
+
+	const state = loadSyncState();
+	const counts = await Promise.all(ENTITY_TYPES.map((type) => tableOf(type).count()));
+	const plan = planDownload({
+		now: startedAt,
+		trigger,
+		types: ENTITY_TYPES,
+		lastFullSyncAt: state.lastFullSyncAt,
+		lastSyncTimes: state.lastSyncTimes,
+		localCounts: Object.fromEntries(ENTITY_TYPES.map((t, i) => [t, counts[i]]))
+	});
+
+	const progress = { done: 0, total: 0 };
+	const changedTypes = new Set<EntityType>();
+	const succeeded = new Set<EntityType>();
+	const errors: unknown[] = [];
+
+	const run = async (type: EntityType) => {
+		try {
+			const result = await downloadType(type, plan[type], policy, ctx, progress);
+			if (result.changed) changedTypes.add(type);
+			succeeded.add(type);
+			addCount(result.fetched);
+		} catch (error) {
+			errors.push(error);
+		}
+	};
+
+	// プロジェクトを先に処理し、子要素は並列に処理する
+	await run('projects');
+	if (succeeded.has('projects')) {
+		await Promise.all(PROJECT_SCOPED_TYPES.map(run));
+	}
+
+	// 成功した型の取得時刻を記録する(取得開始時刻。次回は安全マージンを引いて使う)
+	if (!ctx.cancelled && succeeded.size > 0) {
+		const lastSyncTimes = { ...state.lastSyncTimes };
+		for (const type of succeeded) lastSyncTimes[type] = startedAt;
+		const fullDone = ENTITY_TYPES.every((t) => succeeded.has(t) && plan[t].mode === 'full');
+		saveSyncState({
+			lastFullSyncAt: fullDone ? startedAt : state.lastFullSyncAt,
+			lastSyncTimes
+		});
+	}
+
+	// 変化のあった型だけ、全体で1回だけストアを更新する
+	if (changedTypes.size > 0) await refreshStores(changedTypes);
+
+	if (errors.length > 0) throw errors[0];
 }

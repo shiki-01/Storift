@@ -9,6 +9,7 @@ import {
 	where,
 	onSnapshot,
 	serverTimestamp,
+	writeBatch,
 	type Unsubscribe
 } from 'firebase/firestore';
 import { getFirestoreInstance } from './index';
@@ -55,6 +56,32 @@ export async function syncToFirestore<T extends SyncableEntity>(
 	};
 
 	await setDoc(docRef, firestoreData, { merge: true });
+}
+
+export type BatchOp =
+	| { kind: 'set'; entityType: EntityType; entity: SyncableEntity }
+	| { kind: 'delete'; entityType: EntityType; id: string };
+
+/**
+ * 複数の書き込み・削除を1回の WriteBatch でコミットする(原子的: 全部成功か全部失敗)。
+ * 呼び出し側で 500 件・サイズの上限に収まるよう分割すること(chunkBatches)。
+ */
+export async function commitBatchOps(ops: BatchOp[]): Promise<void> {
+	if (ops.length === 0) return;
+	const db = getFirestoreInstance();
+	const batch = writeBatch(db);
+	for (const op of ops) {
+		if (op.kind === 'delete') {
+			batch.delete(doc(db, `${op.entityType}/${op.id}`));
+		} else {
+			batch.set(
+				doc(db, `${op.entityType}/${op.entity.id}`),
+				{ ...op.entity, syncedAt: serverTimestamp() },
+				{ merge: true }
+			);
+		}
+	}
+	await batch.commit();
 }
 
 /**
@@ -110,7 +137,9 @@ export async function syncAllFromFirestore(
 
 	// キャッシュ由来の不完全な一覧は、リモート削除の判定を誤らせるため採用しない
 	if (snapshot.metadata.fromCache) {
-		throw new Error('Firestore から最新データを取得できませんでした(オフライン)');
+		throw Object.assign(new Error('Firestore から最新データを取得できませんでした(オフライン)'), {
+			code: 'unavailable'
+		});
 	}
 
 	console.log(
@@ -150,8 +179,16 @@ export async function deleteFromFirestore(entityType: EntityType, entityId: stri
 	await deleteDoc(docRef);
 }
 
+export interface RealtimeMeta {
+	/** 最初のスナップショット(既存の全件が added として届く) */
+	initial: boolean;
+	/** キャッシュ由来のスナップショット */
+	fromCache: boolean;
+}
+
 /**
  * リアルタイム同期のリスナーをセットアップ（最適化版）
+ * onUpdate には変化のあった(added / modified)ドキュメントだけを渡す。削除は onRemoved で通知する。
  * @param entityType - エンティティタイプ
  * @param onUpdate - 更新時のコールバック
  * @param onError - エラー時のコールバック
@@ -159,7 +196,7 @@ export async function deleteFromFirestore(entityType: EntityType, entityId: stri
  */
 export function setupRealtimeSync(
 	entityType: EntityType,
-	onUpdate: (entities: SyncableEntity[]) => void,
+	onUpdate: (entities: SyncableEntity[], meta: RealtimeMeta) => void,
 	onError?: (error: Error) => void,
 	projectId?: string,
 	onRemoved?: (ids: string[]) => void
@@ -178,23 +215,36 @@ export function setupRealtimeSync(
 		console.log(`🔍 Setting up realtime sync for ${entityType} (all)`);
 	}
 
+	let initial = true;
 	const unsubscribe = onSnapshot(
 		q,
 		(snapshot) => {
-			const entities = snapshot.docs.map((doc) => {
-				const data = doc.data() as SyncableEntity & { syncedAt?: { toMillis: () => number } };
-				// Timestamp型をnumberに変換
-				if (data.syncedAt && typeof data.syncedAt === 'object' && 'toMillis' in data.syncedAt) {
-					(data as SyncableEntity & { syncedAt?: number }).syncedAt = data.syncedAt.toMillis();
-				}
-				return data as SyncableEntity;
-			});
-			console.log(`📨 Realtime update: ${entities.length} ${entityType} received`);
-			onUpdate(entities);
+			const meta: RealtimeMeta = { initial, fromCache: snapshot.metadata.fromCache };
+			initial = false;
+
+			// 変化のあった(追加・更新された)ドキュメントだけを渡す。初回は全件が added として届く
+			const changes = snapshot.docChanges();
+			const entities = changes
+				.filter((change) => change.type === 'added' || change.type === 'modified')
+				.map((change) => {
+					const data = change.doc.data() as SyncableEntity & {
+						syncedAt?: { toMillis: () => number };
+					};
+					// Timestamp型をnumberに変換
+					if (data.syncedAt && typeof data.syncedAt === 'object' && 'toMillis' in data.syncedAt) {
+						(data as SyncableEntity & { syncedAt?: number }).syncedAt = data.syncedAt.toMillis();
+					}
+					return data as SyncableEntity;
+				});
+			if (entities.length > 0) {
+				console.log(
+					`📨 Realtime update: ${entities.length} ${entityType} changed${meta.initial ? ' (initial)' : ''}${meta.fromCache ? ' (from cache)' : ''}`
+				);
+				onUpdate(entities, meta);
+			}
 
 			if (onRemoved) {
-				const removed = snapshot
-					.docChanges()
+				const removed = changes
 					.filter((change) => change.type === 'removed')
 					.map((change) => change.doc.id);
 				if (removed.length > 0) onRemoved(removed);

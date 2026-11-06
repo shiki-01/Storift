@@ -6,16 +6,21 @@ export type NetworkStatus = 'online' | 'offline' | 'slow';
 
 let currentStatus: NetworkStatus = navigator.onLine ? 'online' : 'offline';
 let listeners: ((status: NetworkStatus) => void)[] = [];
+let connectionTimer: ReturnType<typeof setInterval> | null = null;
+let monitoring = false;
 
 /**
  * ネットワーク状態の監視を開始
  */
 export function startNetworkMonitoring(): void {
+	// 複数箇所から呼ばれても登録は1回だけにする
+	if (monitoring) return;
+	monitoring = true;
 	window.addEventListener('online', handleOnline);
 	window.addEventListener('offline', handleOffline);
 
 	// 定期的な接続チェック（オプション）
-	setInterval(checkConnection, 30000); // 30秒ごと
+	connectionTimer = setInterval(checkConnection, 30000); // 30秒ごと
 }
 
 /**
@@ -24,6 +29,11 @@ export function startNetworkMonitoring(): void {
 export function stopNetworkMonitoring(): void {
 	window.removeEventListener('online', handleOnline);
 	window.removeEventListener('offline', handleOffline);
+	if (connectionTimer) {
+		clearInterval(connectionTimer);
+		connectionTimer = null;
+	}
+	monitoring = false;
 }
 
 /**

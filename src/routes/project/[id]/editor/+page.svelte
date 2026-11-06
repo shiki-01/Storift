@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 	import { onDestroy, onMount, tick } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
@@ -245,17 +246,18 @@
 		const removeWarning = enableUnsavedWarning(() => editorStore.isDirty);
 
 		// タブ非表示時の自動保存を有効化
-		const removeVisibilitySave = enableVisibilityAutoSave(async () => {
-			if (editorStore.isDirty && editorStore.currentScene) {
-				await handleSave();
-			}
-		});
+		const removeVisibilitySave = enableVisibilityAutoSave(saveOnLeave);
+
+		// ページを閉じる/バックグラウンドへ移るときも保存する(自動保存の設定に関わらず)
+		const handlePageHide = () => void saveOnLeave();
+		window.addEventListener('pagehide', handlePageHide);
 
 		// クリーンアップ関数を同期的に返す
 		return () => {
 			if (autoSave) autoSave.stop();
 			removeWarning();
 			removeVisibilitySave();
+			window.removeEventListener('pagehide', handlePageHide);
 			window.removeEventListener('keydown', handleKeyDown);
 		};
 	});
@@ -363,9 +365,41 @@
 		}
 	};
 
+	// 離脱時の保存。保存中(isSaving)でも、その時点の本文を必ず書き込む。自動保存の設定にも依存しない
+	async function saveOnLeave() {
+		const scene = editorStore.currentScene;
+		if (!scene || !editorStore.isDirty) return;
+		const sceneId = scene.id;
+		const content = editorStore.content;
+		try {
+			await scenesDB.update(sceneId, { content });
+			if (editorStore.currentScene?.id === sceneId && editorStore.content === content) {
+				editorStore.isDirty = false;
+			}
+			await queueChange('scenes', sceneId, 'update');
+		} catch (error) {
+			console.error('Failed to save scene on leave:', error);
+			saveFailed = true;
+		}
+	}
+
+	// ルート遷移の直前に保存を開始する(同一ドキュメント内の遷移なので IndexedDB への書き込みは完了する)
+	beforeNavigate(() => {
+		clearSaveTimers();
+		void saveOnLeave();
+	});
+
+	onDestroy(() => {
+		clearSaveTimers();
+		void saveOnLeave();
+	});
+
 	// 検索・置換はDBを直接書き換えるため、開く前に保存し、閉じたら画面側のデータを読み直す
 	async function openSearch() {
-		await flushSave();
+		if (!(await flushSave())) {
+			toast.error('未保存の変更を保存できませんでした');
+			return;
+		}
 		showSearch = true;
 	}
 
@@ -519,18 +553,26 @@
 		}
 	});
 
-	// 未保存の変更があれば保存してから次の操作へ進む
-	async function flushSave() {
+	// 未保存の変更があれば保存してから次の操作へ進む。未保存のまま残った場合は false
+	async function flushSave(): Promise<boolean> {
 		clearSaveTimers();
-		// 保存中なら完了を待つ
-		for (let i = 0; i < 50 && editorStore.isSaving; i++) {
-			await new Promise((r) => setTimeout(r, 40));
+		for (let attempt = 0; attempt < 3; attempt++) {
+			// 保存中なら完了を待つ(最大10秒)
+			for (let i = 0; i < 250 && editorStore.isSaving; i++) {
+				await new Promise((r) => setTimeout(r, 40));
+			}
+			if (editorStore.isSaving) return false;
+			if (!editorStore.isDirty || !editorStore.currentScene) return true;
+			await handleSave();
 		}
-		await handleSave();
+		return !editorStore.isDirty || !editorStore.currentScene;
 	}
 
 	async function handleSceneSelect(scene: (typeof currentProjectStore.scenes)[0]) {
-		if (scene.id !== editorStore.currentScene?.id) await flushSave();
+		if (scene.id !== editorStore.currentScene?.id && !(await flushSave())) {
+			toast.error('未保存の変更を保存できなかったため、シーンを切り替えませんでした');
+			return;
+		}
 		editorStore.currentScene = scene;
 		rememberLastScene(scene.id);
 		if (window.matchMedia('(max-width: 1024px)').matches) {
@@ -1126,6 +1168,10 @@
 		const saving = editorStore.isSaving;
 		const autoSave = settingsStore.settings.autoSave;
 		const maxWait = normalizeAutoSaveMs(settingsStore.settings.autoSaveInterval);
+		if (!dirty && maxWaitTimer) {
+			clearTimeout(maxWaitTimer);
+			maxWaitTimer = null;
+		}
 		if (!dirty || saving || !editorStore.currentScene || !autoSave) return;
 		if (saveTimer) clearTimeout(saveTimer);
 		saveTimer = setTimeout(() => {

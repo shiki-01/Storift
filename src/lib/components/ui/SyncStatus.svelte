@@ -38,6 +38,21 @@
 	};
 
 	const config = $derived(syncStore.isConfigured ? statusConfig[syncStore.status] : localConfig);
+
+	// 同期中は進捗(件数が分かっているとき)を表示する
+	const progress = $derived(syncStore.progress);
+	const statusText = $derived(
+		syncStore.isConfigured && syncStore.status === 'syncing' && progress.phase && progress.total > 0
+			? `同期中 ${progress.done}/${progress.total}`
+			: config.text
+	);
+	const progressTitle = $derived(
+		syncStore.status === 'syncing' && progress.phase
+			? progress.phase === 'upload'
+				? '変更をクラウドへ送信中'
+				: 'クラウドから取得中'
+			: undefined
+	);
 </script>
 
 <svelte:element
@@ -48,7 +63,7 @@
 		? '同期は行わず、作品はこの端末に保存されます'
 		: syncStore.status === 'conflict'
 			? 'クリックして競合を解決'
-			: undefined}
+			: progressTitle}
 	onclick={syncStore.status === 'conflict'
 		? () => (syncStore.conflictDialogOpen = true)
 		: undefined}
@@ -57,7 +72,7 @@
 		{config.icon}
 	</span>
 	<span class={config.color + ' white-space:nowrap'}>
-		{config.text}
+		{statusText}
 	</span>
 	{#if syncStore.lastSyncTime}
 		<span class="sync-time fg:theme-text-secondary white-space:nowrap">

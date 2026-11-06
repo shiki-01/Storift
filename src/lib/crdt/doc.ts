@@ -128,6 +128,13 @@ export interface DocManager {
 	isOpen(sceneId: string): boolean;
 	/** 開いている全シーンの永続化を今すぐ行う(pagehide 用) */
 	persistAll(): Promise<void>;
+	/** 開いている全シーンの永続化・ミラー・送信を今すぐ行う(共有の停止の前に最新の本文をそろえるとき) */
+	flushAll(): Promise<void>;
+	/**
+	 * シーンの共同編集の状態を捨てる(共有の停止・退出・失効、シーンの削除のとき)。
+	 * 開いていれば、以後は購読・送信・保存・ミラーを一切しない。呼び出し側が crdtDocs の行も削除すること。
+	 */
+	discard(sceneId: string): void;
 }
 
 class SceneDocEntry {
@@ -146,6 +153,8 @@ class SceneDocEntry {
 	private retryAttempt = 0;
 	private blocked = false;
 	private destroyed = false;
+	/** 捨てられた(共有の停止・退出・失効・シーンの削除)。通信・保存・ミラーをしない */
+	private discarded = false;
 	private listening = false;
 	private unsubscribers: Unsubscribe[] = [];
 	private offOnline: (() => void) | null = null;
@@ -267,7 +276,7 @@ class SceneDocEntry {
 
 	/** 購読を始め、未送信があれば送る。オンラインに戻ったときにも呼ぶ(冪等) */
 	async connect(): Promise<void> {
-		if (this.destroyed) return;
+		if (this.destroyed || this.discarded) return;
 		if (!this.offOnline) this.offOnline = this.deps.onOnline(() => void this.connect());
 		if (!this.deps.isOnline()) return;
 
@@ -405,7 +414,7 @@ class SceneDocEntry {
 	// ---------- 永続化 ----------
 
 	private schedulePersist(): void {
-		if (this.persistTimer || this.destroyed) return;
+		if (this.persistTimer || this.destroyed || this.discarded) return;
 		this.persistTimer = setTimeout(() => {
 			this.persistTimer = null;
 			void this.persistNow();
@@ -417,6 +426,7 @@ class SceneDocEntry {
 			clearTimeout(this.persistTimer);
 			this.persistTimer = null;
 		}
+		if (this.discarded) return;
 		const row: CrdtDocRow = {
 			sceneId: this.sceneId,
 			targetKey: this.targetKey,
@@ -437,7 +447,7 @@ class SceneDocEntry {
 	// ---------- ミラー ----------
 
 	private scheduleMirror(delay = MIRROR_DELAY): void {
-		if (this.mirrorTimer || this.destroyed) return;
+		if (this.mirrorTimer || this.destroyed || this.discarded) return;
 		this.mirrorTimer = setTimeout(() => {
 			this.mirrorTimer = null;
 			void this.mirrorNow();
@@ -450,6 +460,7 @@ class SceneDocEntry {
 			this.mirrorTimer = null;
 		}
 		this.mirrorChain = this.mirrorChain.then(async () => {
+			if (this.discarded) return;
 			const text = this.ytext.toString();
 			if (text === this.lastMirrored) return;
 			try {
@@ -468,7 +479,7 @@ class SceneDocEntry {
 	// ---------- 送信 ----------
 
 	private scheduleSend(delay = SEND_DELAY): void {
-		if (this.sendTimer || this.destroyed || this.blocked) return;
+		if (this.sendTimer || this.destroyed || this.blocked || this.discarded) return;
 		this.sendTimer = setTimeout(() => {
 			this.sendTimer = null;
 			void this.sendNow();
@@ -482,7 +493,9 @@ class SceneDocEntry {
 			this.sendTimer = null;
 		}
 		if (this.sending) return this.sending;
-		if (this.unsent.length === 0 || this.readOnly || this.blocked) return Promise.resolve();
+		if (this.unsent.length === 0 || this.readOnly || this.blocked || this.discarded) {
+			return Promise.resolve();
+		}
 		const db = this.db;
 		if (!db || !this.deps.isOnline()) return Promise.resolve();
 
@@ -539,8 +552,8 @@ class SceneDocEntry {
 
 	async maybeCompact(trigger: CompactTrigger): Promise<void> {
 		const db = this.db;
-		if (!db || this.readOnly || this.blocked || this.compacting || !this.deps.isOnline()) return;
-		if (!shouldCompact(this.applied.size, trigger)) return;
+		if (this.discarded || !db || this.readOnly || this.blocked || this.compacting) return;
+		if (!this.deps.isOnline() || !shouldCompact(this.applied.size, trigger)) return;
 
 		this.compacting = true;
 		try {
@@ -574,10 +587,25 @@ class SceneDocEntry {
 		await this.persistNow();
 	}
 
+	/** 以後、通信・保存・ミラーをしない(購読とタイマーも止める) */
+	discard(): void {
+		if (this.discarded) return;
+		this.discarded = true;
+		this.stopListening();
+		this.offOnline?.();
+		this.offOnline = null;
+		for (const timer of [this.persistTimer, this.sendTimer, this.mirrorTimer]) {
+			if (timer) clearTimeout(timer);
+		}
+		this.persistTimer = this.sendTimer = this.mirrorTimer = null;
+	}
+
 	/** 最後の参照が手放されたとき。保存・送信・圧縮をして破棄する(通信は短い時間で打ち切る) */
 	async close(): Promise<void> {
 		if (this.destroyed) return;
 		this.destroyed = true;
+		// 閉じるまでの間にシーンが削除されていたら、行を書き戻さない
+		if (!this.discarded && !(await this.deps.getScene(this.sceneId))) this.discard();
 		this.stopListening();
 		this.offOnline?.();
 		this.offOnline = null;
@@ -648,8 +676,11 @@ export function createDocManager(deps: CrdtDeps): DocManager {
 	async function release(sceneId: string, entry: SceneDocEntry): Promise<void> {
 		entry.refs -= 1;
 		if (entry.refs > 0) return;
-		entries.delete(sceneId);
-		live.delete(sceneId);
+		// 捨てられたあとに同じシーンが開き直されていれば、そちらの登録は消さない
+		if (live.get(sceneId) === entry) {
+			entries.delete(sceneId);
+			live.delete(sceneId);
+		}
 		const done = entry.close();
 		closing.set(sceneId, done);
 		try {
@@ -698,6 +729,17 @@ export function createDocManager(deps: CrdtDeps): DocManager {
 		isOpen: (sceneId) => live.has(sceneId),
 		persistAll: async () => {
 			await Promise.all([...live.values()].map((e) => e.persistNow()));
+		},
+		flushAll: async () => {
+			await Promise.all([...live.values()].map((e) => e.flush()));
+		},
+		discard(sceneId) {
+			const entry = live.get(sceneId);
+			if (!entry) return;
+			entry.discard();
+			// 以後に開き直されたシーンは新しい文書にする(古いハンドルは自分の参照を手放せばよい)
+			entries.delete(sceneId);
+			live.delete(sceneId);
 		}
 	};
 }

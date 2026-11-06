@@ -8,6 +8,7 @@ import {
 	mergeTags,
 	normalizeTag,
 	parseLegacyMemos,
+	reanchorMemos,
 	rangeTextOffsets,
 	resolveAnchor,
 	textOffsetAt
@@ -181,5 +182,31 @@ describe('filterMemos', () => {
 			filterMemos(memos, { scope: 'all', tag: 'todo', openOnly: true }).map((m) => m.id)
 		).toEqual(['todo']);
 		expect(filterMemos(memos, { scope: 'all', query: '雨' }).map((m) => m.id)).toEqual(['quoted']);
+	});
+});
+
+describe('reanchorMemos', () => {
+	const m = (id: string, start: number, end: number, quote: string) => ({
+		id,
+		anchor: { start, end, quote }
+	});
+
+	it('位置がずれたメモだけ、新しい範囲を返す', () => {
+		const text = '前置き。吾輩は猫である。名前はまだ無い。';
+		const updates = reanchorMemos(text, [
+			m('moved', 0, 7, '吾輩は猫である'),
+			m('same', 4, 11, '吾輩は猫である')
+		]);
+		expect(updates).toEqual([
+			{ id: 'moved', anchor: { start: 4, end: 11, quote: '吾輩は猫である' } }
+		]);
+	});
+
+	it('見つからないメモ(孤立)は何も返さず、範囲を書き換えない', () => {
+		expect(reanchorMemos('全く別の本文', [m('lost', 0, 3, '吾輩は')])).toEqual([]);
+	});
+
+	it('範囲の無いメモは対象外', () => {
+		expect(reanchorMemos('本文', [{ id: 'plain', anchor: undefined }])).toEqual([]);
 	});
 });

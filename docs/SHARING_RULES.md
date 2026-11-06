@@ -17,7 +17,7 @@ _config/ownerKey                {key}              オーナー鍵(クライア�
 shared/{pid}                    {visibility: 'private'|'link', name, ...}
 shared/{pid}/secrets/{role}     {value}            role = viewer | editor
 shared/{pid}/members/{uid}      {role, secret, joinedAt?, name?}
-shared/{pid}/presence/{uid}
+shared/{pid}/presence/{uid}     {name, color, sceneId, updatedAt}   在席情報(段階 3b)
 shared/{pid}/{type}/{id}[/{sub}/...]   type = projects, chapters, scenes, characters, plots, worldbuilding
 ```
 
@@ -182,7 +182,7 @@ JSON のバックアップ/エクスポート(`backup.service.ts`、`export.serv
 
 ## シーン本文の CRDT(段階 3a)
 
-共有プロジェクト(`sharing.status === 'active'`)のシーン本文(`Scene.content`)だけが対象。Yjs の `Y.Text`(名前 `content`、インデックスは UTF-16 コードユニット)として扱う。非共有プロジェクトは従来どおり。エディタ UI との結合(contenteditable・IME・undo・在席表示)は段階 3b。
+共有プロジェクト(`sharing.status === 'active'`)のシーン本文(`Scene.content`)だけが対象。Yjs の `Y.Text`(名前 `content`、インデックスは UTF-16 コードユニット)として扱う。非共有プロジェクトは従来どおり。エディタ UI との結合(contenteditable・IME・undo・在席表示)は段階 3b(下の「エディタとの結合・在席表示(段階 3b)」)。
 
 ### データ配置(ルールは変更していない)
 
@@ -220,4 +220,22 @@ shared/{pid}/scenes/{sceneId}/updates/{autoId}  { update: Bytes, by: uid, client
 
 ### 未検証
 
-実 Firestore・複数端末・実機での動作、エディタ UI との結合(3b)。オフラインで書き込みが宙に浮いた場合の挙動(送信は 20 秒で打ち切り、バックオフして再送する。SDK のキューに残った書き込みと再送が重なると同じ更新の文書が重複するが、更新は冪等で、圧縮で片付く)。
+実 Firestore・複数端末・実機での動作。オフラインで書き込みが宙に浮いた場合の挙動(送信は 20 秒で打ち切り、バックオフして再送する。SDK のキューに残った書き込みと再送が重なると同じ更新の文書が重複するが、更新は冪等で、圧縮で片付く)。
+
+## エディタとの結合・在席表示(段階 3b)
+
+ルールの変更は無い。エディタの結合の挙動(IME・undo・フォールバック・既知の制限)は [SYNC_OPTIMIZATION.md](./SYNC_OPTIMIZATION.md) の「2f」。
+
+### 在席情報(presence)
+
+`shared/{pid}/presence/{uid}` に `{ name, color, sceneId, updatedAt }` を書く(`firebase/presence.ts`、送受信は `services/presence.service.ts`、判断は `crdt/presencePolicy.ts`)。ルールは 2a のまま(読み取り: メンバー/オーナー、作成・更新: 本人のみ、削除: 本人またはオーナー)で、フィールドの内容は検証しない。
+
+- **書く**: 共有プロジェクトのエディタを開いたとき・開いているシーンが変わったとき・30 秒ごと(タブが見えている間。非表示から戻ったときもすぐ)。離脱時(`pagehide`・エディタを閉じたとき)は削除する(ベストエフォート。取りこぼしても 90 秒で表示から消える)。`updatedAt` は端末の時刻(`Date.now()`)。
+- **読む**: エディタを開いている間だけ `presence` コレクション全体を購読する。`updatedAt` が 90 秒以内の他者だけを表示する(自分は除く)。ゲスト接続(`connectionId`)のときは、その接続の Firestore とサインイン中の uid を使う。権限エラー・通信エラーは黙って止める。
+- **表示**: エディタのヘッダーに「他 N 人が閲覧中: 名前, …」(同じシーンを開いている人は強調)、シーン一覧の各シーンに相手の色の小さな点。他者のカーソル/選択範囲の表示は段階 4。
+- **表示名**: 設定画面「共有時の表示名」(`AppSettings.displayName`)。未設定ならオーナーは「オーナー」、ゲストは「ゲスト-<uid の先頭 4 文字>」。色は uid から決まる(同じ uid は常に同じ色)。参加時の `members/{uid}.name` にも同じ規則を使う(指定があればそれ、無ければ設定の表示名、無ければ既定)。
+- **読み取り課金**: 在席の購読は、メンバー数×書き込み(30 秒ごと)の分だけ読み取りが増える(5 人で約 600 回/時間)。ルールの `isMember` 判定の `get()` も書き込みごとに 1 回かかる。
+
+### crdtDocs の後始末
+
+`crdtDocs` の行は、シーンの削除・章の削除・プロジェクトの削除(`db/*.ts`)と、共有の停止・退出・アクセス失効(`sceneText.service: discardProjectCrdtState`)のときに削除する。開いている文書は `DocManager.discard` で以後 購読・送信・保存・ミラーをしなくなる(`Scene.content` は残る)。共有の停止の前には開いているシーンの本文をミラー・送信する(`flushOpenSceneDocs`)。

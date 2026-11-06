@@ -59,9 +59,13 @@ export const projectsDB = {
 				db.history,
 				db.progressLogs,
 				db.relationMaps,
-				db.memos
+				db.memos,
+				db.crdtDocs
 			],
 			async () => {
+				// 共同編集の状態(crdtDocs)も、プロジェクトのシーンの分だけ削除する
+				const sceneIds = await db.scenes.where('projectId').equals(id).primaryKeys();
+				await db.crdtDocs.bulkDelete(sceneIds);
 				await db.projects.delete(id);
 				await db.chapters.where('projectId').equals(id).delete();
 				await db.scenes.where('projectId').equals(id).delete();

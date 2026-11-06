@@ -58,6 +58,28 @@ export function chunkText(text: string, max: number = MAX_INSERT_CHUNK): string[
 }
 
 /**
+ * ytext の [index, index+deleteCount) を insert に置き換える(1 回の編集)。
+ * 巨大な挿入は複数のトランザクションに分ける。範囲は ytext の長さに収まっていること。
+ */
+export function applyEditToYText(ytext: Y.Text, edit: TextDiff, origin: unknown): void {
+	if (edit.deleteCount === 0 && edit.insert === '') return;
+	const doc = ytext.doc;
+	if (!doc) throw new Error('Y.Text が文書に属していません');
+
+	const chunks = edit.insert === '' ? [] : chunkText(edit.insert);
+	doc.transact(() => {
+		if (edit.deleteCount > 0) ytext.delete(edit.index, edit.deleteCount);
+		if (chunks.length > 0) ytext.insert(edit.index, chunks[0]);
+	}, origin);
+	let offset = chunks[0]?.length ?? 0;
+	for (const chunk of chunks.slice(1)) {
+		const at = edit.index + offset;
+		doc.transact(() => ytext.insert(at, chunk), origin);
+		offset += chunk.length;
+	}
+}
+
+/**
  * ytext の内容を oldText から newText へ変える差分を適用する(oldText は現在の ytext.toString() であること)。
  * 巨大な挿入は複数のトランザクションに分ける。変更があったら true。
  */
@@ -69,19 +91,6 @@ export function applyDiffToYText(
 ): boolean {
 	const diff = diffText(oldText, newText);
 	if (diff.deleteCount === 0 && diff.insert === '') return false;
-	const doc = ytext.doc;
-	if (!doc) throw new Error('Y.Text が文書に属していません');
-
-	const chunks = diff.insert === '' ? [] : chunkText(diff.insert);
-	doc.transact(() => {
-		if (diff.deleteCount > 0) ytext.delete(diff.index, diff.deleteCount);
-		if (chunks.length > 0) ytext.insert(diff.index, chunks[0]);
-	}, origin);
-	let offset = chunks[0]?.length ?? 0;
-	for (const chunk of chunks.slice(1)) {
-		const at = diff.index + offset;
-		doc.transact(() => ytext.insert(at, chunk), origin);
-		offset += chunk.length;
-	}
+	applyEditToYText(ytext, diff, origin);
 	return true;
 }

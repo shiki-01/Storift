@@ -21,6 +21,7 @@
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import ConflictBackups from '$lib/components/ui/ConflictBackups.svelte';
 	import AccessSettings from '$lib/components/ui/AccessSettings.svelte';
+	import DisplayNameSetting from '$lib/components/ui/DisplayNameSetting.svelte';
 	import AccessDiagnostics from '$lib/components/ui/AccessDiagnostics.svelte';
 	import { tourStore } from '$lib/tutorial/tour.svelte';
 	import NotificationSettings from '$lib/components/ui/NotificationSettings.svelte';
@@ -852,6 +853,9 @@
 
 		<!-- オーナー鍵・設定コード・Firebase ルール -->
 		<AccessSettings />
+
+		<!-- 共有時の表示名 -->
+		<DisplayNameSetting />
 
 		<!-- エディタ(自動保存) -->
 		<Card class="b:1px|solid|theme-border flex flex:column gap:1rem">

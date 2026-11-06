@@ -4,6 +4,7 @@
  */
 
 import { db } from '$lib/db';
+import { applySceneText, getSceneText, isCrdtScene } from '$lib/services/sceneText.service';
 import type { History, Chapter, Character, Plot, Scene, Worldbuilding } from '$lib/types';
 
 export interface TextDiff {
@@ -35,6 +36,9 @@ export interface RestorePoint {
 }
 
 class VersionService {
+	/** 直近の restoreFromPoint が失敗した理由(共同編集のシーンでオフラインのときなど。無ければ null) */
+	lastRestoreError: string | null = null;
+
 	/**
 	 * テキスト差分を計算(シンプルな行ベースdiff)
 	 */
@@ -222,6 +226,7 @@ class VersionService {
 	 * 復元ポイントからデータを復元
 	 */
 	async restoreFromPoint(restorePointId: string): Promise<boolean> {
+		this.lastRestoreError = null;
 		const restorePoint = this.getAllRestorePoints().find((p) => p.id === restorePointId);
 		if (!restorePoint) {
 			return false;
@@ -240,7 +245,30 @@ class VersionService {
 				case 'scene': {
 					const scene = await db.scenes.get(entityId);
 					if (scene) {
-						await db.scenes.update(entityId, snapshot as Partial<Scene>);
+						const restored = snapshot as Partial<Scene>;
+						if (typeof restored.content === 'string' && (await isCrdtScene(entityId))) {
+							// 共有プロジェクトのシーンの本文は共同編集(Y)が正。復元前の本文を履歴に残してから、
+							// 復元する本文を applySceneText で反映する(Scene.content はミラーが追随する)
+							const current = (await getSceneText(entityId)) ?? scene.content;
+							await db.history.add({
+								id: crypto.randomUUID(),
+								projectId: scene.projectId,
+								entityType: 'scene',
+								entityId,
+								snapshot: { ...scene, content: current },
+								changeType: 'update',
+								createdAt: Date.now()
+							});
+							const applied = await applySceneText(entityId, restored.content);
+							if (!applied.ok) throw new Error(applied.message);
+							// 本文と文字数以外(タイトルなど)は従来どおり戻す
+							const { content: _content, characterCount: _count, ...rest } = restored;
+							void _content;
+							void _count;
+							await db.scenes.update(entityId, rest);
+						} else {
+							await db.scenes.update(entityId, restored);
+						}
 					}
 					break;
 				}
@@ -288,6 +316,7 @@ class VersionService {
 			return true;
 		} catch (error) {
 			console.error('復元に失敗:', error);
+			this.lastRestoreError = error instanceof Error ? error.message : null;
 			return false;
 		}
 	}

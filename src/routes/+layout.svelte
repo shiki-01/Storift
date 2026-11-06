@@ -165,7 +165,13 @@
 				const guests = await initConnections();
 
 				// 同期システムは、主 Firebase の準備ができたとき、またはゲスト接続があるときに初期化する
-				if (primaryReady || guests > 0) await initializeSync();
+				if (primaryReady || guests > 0) {
+					await initializeSync();
+					// 共同編集: 前回オフラインで編集して閉じたシーンの未送信の更新を再送する(待たない)
+					void import('$lib/services/sceneText.service')
+						.then((m) => m.resumePendingSends())
+						.catch((error) => console.warn('Failed to resume pending CRDT sends:', error));
+				}
 			} catch (error) {
 				console.error('Failed to initialize sync:', error);
 				syncStore.status = 'offline';

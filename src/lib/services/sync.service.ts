@@ -91,7 +91,7 @@ import { debounceAsync } from '$lib/utils/debounce';
 import { measureSync, recordSyncMetric } from '$lib/utils/syncMetrics';
 import { Mutex, withTimeout, mapLimit } from '$lib/utils/asyncControl';
 import { classifyError, RetryGate } from '$lib/utils/syncErrors';
-import type { AccessMode, ConflictResolutionPolicy, History, Project } from '$lib/types';
+import type { AccessMode, ConflictResolutionPolicy, History, Project, Scene } from '$lib/types';
 import type { Unsubscribe } from 'firebase/firestore';
 
 interface PendingConflict {
@@ -723,6 +723,29 @@ async function isMovedByMigration(
 }
 
 /**
+ * 共同編集(CRDT)のシーンなら、現在の本文を履歴に退避し、復元する本文を applySceneText で反映する(true)。
+ * 共同編集のシーンでなければ何もしない(false)。反映できなければ理由つきで例外を投げる(何も書き換えない)。
+ */
+async function restoreSceneTextViaCrdt(
+	existing: SyncableEntity,
+	snapshot: SyncableEntity
+): Promise<boolean> {
+	const { applySceneText, getSceneText, isCrdtScene } = await import(
+		'$lib/services/sceneText.service'
+	);
+	if (!(await isCrdtScene(existing.id))) return false;
+	const scene = existing as Scene;
+	const content = (snapshot as Scene).content;
+	if (typeof content !== 'string') return false;
+	const current = (await getSceneText(scene.id)) ?? scene.content;
+	// 復元の前の本文を履歴に残す
+	await backupEntity('scenes', { ...scene, content: current }, 'conflict');
+	const result = await applySceneText(scene.id, content);
+	if (!result.ok) throw new Error(result.message);
+	return true;
+}
+
+/**
  * バックアップ(競合・他端末の削除で失われた版)を復元する。
  * 復元した版は新しい編集として扱い、他端末にも反映される。
  */
@@ -738,8 +761,12 @@ export async function restoreBackup(historyId: string): Promise<void> {
 	}
 
 	const existing = await tableOf(type).get(history.entityId);
+	// 共有プロジェクトのシーンの本文は共同編集(Y)が正。現在の本文を退避してから、復元する本文を Y に適用する
+	// (循環 import を避けるため動的に読み込む)
+	const restoredAsCrdt =
+		existing && type === 'scenes' && (await restoreSceneTextViaCrdt(existing, snapshot));
 	// 現在の版は、復元で上書きする前に退避する
-	if (existing) await backupEntity(type, existing, 'conflict');
+	if (existing && !restoredAsCrdt) await backupEntity(type, existing, 'conflict');
 
 	await tableOf(type).put({
 		...snapshot,
@@ -2238,6 +2265,10 @@ export async function revokeGuestAccess(pid: string): Promise<void> {
 		}
 		stopProjectRealtime(pid);
 		discardPendingForPid(pid);
+		// 共同編集の状態(crdtDocs)を捨てる(本文は Scene.content に残り、読み取り専用で見られる)。循環 import を避けて動的に読み込む
+		await import('$lib/services/sceneText.service')
+			.then((m) => m.discardProjectCrdtState(pid))
+			.catch((e) => console.warn('Failed to discard CRDT state:', e));
 		await refreshGuestFlags();
 		await refreshProjectStores();
 	} catch (error) {

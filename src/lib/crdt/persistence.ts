@@ -25,6 +25,11 @@ export const dexiePersistence: CrdtPersistence = {
 	}
 };
 
+/** 指定シーンの行を削除する(シーンの削除・共有の停止・退出・失効のとき) */
+export async function removeCrdtDocs(sceneIds: string[]): Promise<void> {
+	if (sceneIds.length > 0) await db.crdtDocs.bulkDelete(sceneIds);
+}
+
 /**
  * 指定ターゲットで CRDT が有効なシーン ID の集合(reconcile が content を比較対象から外すために使う)。
  * targetKey が違う行は数えない(共有の停止・付け替えのあとに古い行が content を固定し続けないため)。

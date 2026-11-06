@@ -135,6 +135,34 @@ stopCurrentProjectSync();
 
 ---
 
+### ✅ 2f. エディタとの結合(共同編集の編集時の挙動、段階3b)
+
+共有プロジェクト(`sharing.status === 'active'`、失効していない)のシーンを開くと、`openSceneDoc` で接続し、本文は `Y.Text` が正になる。コアは `crdt/editorBinding.ts`(DOM 非依存。アダプタ経由)、DOM とのアダプタは `crdt/domAdapter.ts`、`+page.svelte` は薄い接着。
+
+- **ローカル→Y**: `input` のたびに、DOM の直前の本文と今の本文の最小差分(`diffText`)を `local` origin で Y に入れる。DOM は書き換えない。貼り付け(`text/plain`)・ドロップ・補助入力バー・右クリックメニューの切り取り/貼り付けも同じ経路。
+- **IME**: 変換中(`compositionstart`〜`compositionend`)は DOM→Y も、リモート更新の DOM 反映も保留する。開始時のキャレット/選択を `Y.RelativePosition` で覚え、確定時に「確定した差分」をキャレット領域を基準に現在の Y の座標へ写して適用する(変換中に相手がキャレットより前へ挿入・削除しても、確定した文字は正しい位置に入る)。置き換える範囲の中身が変換中に変わっていたら、削除はせず挿入だけにする。その後、保留していたリモート更新を DOM に反映する。
+- **Y→DOM**: リモートなどの変更は `requestAnimationFrame` でまとめて `innerText` に書く。書く前の選択範囲は、保留中の変更(delta)を通して新しい座標へ写して復元する(`<br>`/`<div>` の改行の数え方は既存の `textRange` / `textOffsetAt` と同じ)。フレームの前にユーザーが入力した場合は、保留中のリモートの変更を通して位置を写してから Y に入れ、すぐ DOM を合わせる(リモートの変更を消さない)。
+- **viewer(読み取り専用)**: `contenteditable=false`。入力・貼り付け・ドロップは止め、書き込みは Y に届かない。リモート更新は反映する。
+- **undo/redo**: `Y.UndoManager`(対象は `local` origin だけ、`captureTimeout` 500ms)。`beforeinput`(`historyUndo`/`historyRedo`)、Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z、補助入力バーのボタンを UndoManager へ回す。他者の編集は戻さない。表示モードの切り替え(エディタ DOM の作り直し)では履歴を保つ。非共同編集のシーンは従来の `execCommand`。
+- **保存**: 共同編集中は従来の保存経路(`handleSave` の `scenesDB.update`・自動保存・30 秒の AutoSave・待ち時間の上限)を使わない。`Scene.content` へのミラーは 3a の仕組み。シーンの切り替え・ルートの離脱・`pagehide`・非表示では `handle.flush()`(永続化・ミラー・送信の試行)。シーンを切り替えたとき・エディタを閉じたときは `destroy()`(参照カウントを下げ、最後なら圧縮)。
+- **進捗**: `ytext` の変更のうち origin がリモート/復元でないもの(自分の入力・undo)の純増分を集計し、約 5 秒ごと・離脱時に `progressLogsDB.addProgress` へ記録する(従来の「保存ごとの増えた分のみ」と同じく、純増分が正のときだけ)。
+- **周辺機能**: 検索(共同編集の本文を検索)・一括置換(`applySceneText`)・Claude の編集の反映(開いているシーンは `editorStore.applyExternalText` → ハンドル、それ以外は `applySceneText`)・バージョン復元/同期バックアップの復元(復元前の本文を履歴に退避してから `applySceneText`)・執筆支援/校正(ストアの変更を差分として Y へ)。範囲メモはリモート由来の変更の 0.8 秒後に `resolveAnchor` で位置を更新し、見つからないものは既存の「孤立」表示のまま。
+- **フォールバック**: 接続できない(オフラインの初回、閲覧権限で共同編集の本文がまだ無い、権限なし)ときは従来の編集(`Scene.content`)で開き、ツールバーに「オフラインのため共同編集は再接続後に有効になります」などを控えめに出す(「再試行」で開き直せる。自動では切り替えない)。保存済みの状態があればオフラインでも共同編集のまま編集できる。後で共同編集に切り替わるとき、`Scene.content` と Y の本文が違えば 3a が履歴へ退避してから Y を採用する。
+
+#### 既知の制限
+
+- 本文は `innerText` との往復なので、ブラウザが末尾の改行を正規化するなど `innerText` が文字列と一致しないケースは、差分の取り込みが 1 文字ずれることがある(Chromium では Enter・Backspace を含む E2E で確認)。Safari・Firefox・各 IME の実機は未確認。
+- 変換中に相手が「同じ範囲」を編集した場合は、確定した文字だけを入れる(相手の編集は残る)。自動修正でキャレットから離れた場所が変わった場合は、差分の位置をキャレット領域からの距離で写すため、その間にリモートの編集があるとずれることがある(本文は壊さない)。
+- 他者のカーソル/選択範囲の表示は無い(段階 4)。
+- ドロップは `text/plain` だけを扱う(HTML・ファイルは無視)。ドラッグ元がエディタ内なら移動、Ctrl/Alt でコピー。
+- 一括置換・Claude の反映は、オフラインで保存済みの状態が無い/読み取り専用のシーンをスキップする(置換は結果にスキップ件数と理由を表示)。
+
+#### E2E
+
+`bun run test:e2e`(`tests/e2e/coedit.spec.mjs`)。Firebase Emulator(auth + firestore、`firestore.rules` を自動で読み込む)の中で `vite dev`(空きポート、`VITE_FIREBASE_EMULATOR=127.0.0.1:8080,127.0.0.1:9099`)を起動し、プリインストールの Chromium(Playwright)で 3 つのブラウザコンテキスト(オーナー A・編集ゲスト B・閲覧ゲスト C)を操作する。A/B の同時入力の収束、Enter/Backspace、undo が自分の編集だけを戻すこと、CDP の `Input.imeSetComposition` / `Input.insertText` による IME(変換中に相手が前方へ挿入)、viewer、在席表示、メンバー削除後の失効表示を確認する。`VITE_FIREBASE_EMULATOR` は未設定なら何も起きない(`firebase/emulator.ts`)。
+
+---
+
 ### ✅ 3. 自動保存のデバウンス処理
 
 **変更前:**

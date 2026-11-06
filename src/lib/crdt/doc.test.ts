@@ -94,6 +94,7 @@ class Device {
 	backups = 0;
 	denied = 0;
 	errors: string[] = [];
+	sceneDeleted = false;
 	onlineCallbacks = new Set<() => void>();
 	manager: DocManager;
 
@@ -112,7 +113,8 @@ class Device {
 			transport: server.transport(),
 			persistence,
 			resolveDb: async () => ({}) as Firestore,
-			getScene: async () => ({ content: this.content, projectId: 'p1' }),
+			getScene: async () =>
+				this.sceneDeleted ? undefined : { content: this.content, projectId: 'p1' },
 			mirrorContent: async (_id, text) => {
 				this.content = text;
 				this.mirrored.push(text);
@@ -447,5 +449,60 @@ describe('圧縮', () => {
 			.compact({} as Firestore, 'p1', 's1', { state: new Uint8Array(), baseRev: 0, deleteIds: [] });
 		expect(result).toEqual({ ok: false, reason: 'stale' });
 		expect(server.snapshot).toBe(before);
+	});
+});
+
+describe('discard(共有の停止・退出・失効、シーンの削除)', () => {
+	it('捨てた文書は、以後 送信・保存・ミラーをしない', async () => {
+		const server = new FakeServer();
+		const a = new Device(server, 'abc');
+		const h = await a.manager.openScene('s1', PROJECT());
+		a.rows.clear();
+		const mirrored = a.mirrored.length;
+		const pushes = server.pushCalls;
+
+		a.manager.discard('s1');
+		h.setText('abcd');
+		await h.flush();
+		await tick(5000);
+		expect(server.pushCalls).toBe(pushes);
+		expect(a.rows.size).toBe(0);
+		expect(a.mirrored.length).toBe(mirrored);
+
+		await h.destroy();
+		expect(a.rows.size).toBe(0);
+	});
+
+	it('捨てたあとに開き直すと、新しい文書になる(古いハンドルの破棄で壊れない)', async () => {
+		const server = new FakeServer();
+		const a = new Device(server, 'abc');
+		const old = await a.manager.openScene('s1', PROJECT());
+		a.manager.discard('s1');
+		const fresh = await a.manager.openScene('s1', PROJECT());
+		expect(fresh.ydoc).not.toBe(old.ydoc);
+		await old.destroy();
+		expect(a.manager.isOpen('s1')).toBe(true);
+		await fresh.destroy();
+	});
+
+	it('閉じるときにシーンが削除されていたら、crdtDocs の行を書き戻さない', async () => {
+		const server = new FakeServer();
+		const a = new Device(server, 'abc');
+		const h = await a.manager.openScene('s1', PROJECT());
+		h.setText('abcd');
+		a.rows.clear();
+		a.sceneDeleted = true;
+		await h.destroy();
+		expect(a.rows.size).toBe(0);
+	});
+
+	it('flushAll は開いている全シーンを送信する', async () => {
+		const server = new FakeServer();
+		const a = new Device(server, 'abc');
+		const h = await a.manager.openScene('s1', PROJECT());
+		h.setText('abcd');
+		await a.manager.flushAll();
+		expect(server.updates.size).toBeGreaterThan(0);
+		await h.destroy();
 	});
 });

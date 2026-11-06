@@ -1,9 +1,10 @@
 import * as Y from 'yjs';
 import type { Firestore } from 'firebase/firestore';
-import { historyDB, projectsDB, scenesDB } from '$lib/db';
+import { db, historyDB, projectsDB, scenesDB } from '$lib/db';
 import { getAuthInstanceSafe } from '$lib/firebase/config';
 import { getConnectionSession } from '$lib/firebase/connection';
 import { targetFromKey } from '$lib/firebase/sync';
+import { waitForTargetReady } from '$lib/firebase/targetReady';
 import { isGuestSharing, parseTargetKey } from '$lib/firebase/syncTarget';
 import {
 	CrdtOpenError,
@@ -12,7 +13,7 @@ import {
 	type OpenOptions,
 	type SceneDocHandle
 } from '$lib/crdt/doc';
-import { dexiePersistence } from '$lib/crdt/persistence';
+import { dexiePersistence, removeCrdtDocs } from '$lib/crdt/persistence';
 import { firestoreTransport } from '$lib/crdt/transport';
 import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 import { syncStore } from '$lib/stores/sync.svelte';
@@ -115,6 +116,8 @@ export async function openSceneDoc(
 ): Promise<SceneDocHandle> {
 	const project = await projectOfScene(sceneId);
 	if (!project) throw new CrdtOpenError('unavailable', 'シーンまたはプロジェクトが見つかりません');
+	// 起動直後は Firebase の初期化・ゲスト接続の登録が終わっていないことがあるので、少し待ってから開く
+	await waitForTargetReady(project.sharing);
 	return manager.openScene(sceneId, project, options);
 }
 
@@ -229,3 +232,16 @@ if (typeof window !== 'undefined') {
 
 /** 開いている全シーンの保存を今すぐ行う(離脱時など) */
 export const persistOpenScenes = () => manager.persistAll();
+
+/** 開いている全シーンの保存・ミラー・送信を今すぐ行う(共有の停止の前に最新の本文をそろえるとき) */
+export const flushOpenSceneDocs = () => manager.flushAll();
+
+/**
+ * プロジェクトの共同編集の状態を捨てる(共有の停止・退出・アクセス失効のとき)。
+ * 開いている文書は以後 通信・保存・ミラーをせず、crdtDocs の行も削除する。Scene.content はそのまま残る。
+ */
+export async function discardProjectCrdtState(projectId: string): Promise<void> {
+	const sceneIds = (await db.scenes.where('projectId').equals(projectId).primaryKeys()) as string[];
+	for (const sceneId of sceneIds) manager.discard(sceneId);
+	await removeCrdtDocs(sceneIds);
+}

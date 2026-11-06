@@ -30,6 +30,8 @@ import {
 } from '$lib/firebase/joinPolicy';
 import { removeBase, setBase } from '$lib/firebase/syncMeta';
 import { connectionIdOf, isRevokedSharing, sharedTargetKey } from '$lib/firebase/syncTarget';
+import { resolveDisplayName } from '$lib/crdt/presencePolicy';
+import { discardProjectCrdtState } from '$lib/services/sceneText.service';
 import { authStore } from '$lib/stores/auth.svelte';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { refreshAccessMode } from '$lib/services/access.service';
@@ -175,7 +177,12 @@ export async function executeJoin(
 				pid: invite.pid,
 				role: invite.role,
 				secret,
-				name: options.displayName?.trim() || undefined
+				// 参加時の名前: 指定 > 設定の表示名 > ゲスト-<uidの先頭4文字>
+				name: resolveDisplayName(
+					options.displayName || (await settingsDB.get()).displayName,
+					'editor',
+					uid
+				)
 			});
 		} catch (error) {
 			if (isPermissionDeniedError(error)) {
@@ -359,6 +366,8 @@ export async function leaveGuestProject(pid: string, mode: LeaveMode): Promise<v
 	stopProjectRealtime(pid);
 	const key = sharedTargetKey(pid, sharing.connectionId);
 	discardGuestTarget(pid, sharing.connectionId);
+	// 共同編集の状態(crdtDocs)は共有側のもの。退出したら捨てる(本文は Scene.content に残る)
+	await discardProjectCrdtState(pid).catch((e) => console.warn('Failed to discard CRDT state:', e));
 
 	if (mode === 'keep') {
 		await db.transaction('rw', db.projects, async () => {

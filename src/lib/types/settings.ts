@@ -50,6 +50,8 @@ export interface AppSettings {
 	ownerKey?: string;
 	/** 直近に判定できたアクセスモード(オフライン起動時のキャッシュ) */
 	accessMode?: AccessMode;
+	/** 共有プロジェクトで他のメンバーに見せる名前(参加時のメンバー一覧と在席表示に使う)。未設定ならオーナー/ゲスト-xxxx */
+	displayName?: string;
 	/** 初回の Firebase 設定の案内に答え済み(設定した、または同期なしで始めた) */
 	setupCompleted?: boolean;
 	/** チュートリアルの案内を閉じた、または終えた */

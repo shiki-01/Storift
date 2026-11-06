@@ -25,6 +25,7 @@ import {
 } from '$lib/firebase/syncMeta';
 import { isUnguessableProjectId, needsResume, sharedTargetKey } from '$lib/firebase/syncTarget';
 import { authStore } from '$lib/stores/auth.svelte';
+import { discardProjectCrdtState, flushOpenSceneDocs } from '$lib/services/sceneText.service';
 import {
 	downloadAllFromFirestore,
 	flushPendingChanges,
@@ -234,6 +235,8 @@ async function runStop(pid: string, uid: string): Promise<void> {
 	// 共有側が消えるので購読を止める
 	stopProjectRealtime(pid);
 
+	// 開いているシーンの本文(共同編集の状態)をミラー・送信してから、保留中の変更を共有側に送る
+	await flushOpenSceneDocs().catch((e) => console.warn('Failed to flush open scenes:', e));
 	// 保留中の変更を共有側に送り、他の参加者の編集もローカルに取り込む(書き戻す内容を最新にする)
 	await flushPendingChanges();
 	await pullSharedProject(pid);
@@ -254,6 +257,8 @@ async function runStop(pid: string, uid: string): Promise<void> {
 	}
 	await writeLocalSharing(pid, undefined);
 	saveSyncState(withoutTargetState(loadSyncState(), key));
+	// 共同編集の状態(crdtDocs)は共有側のものなので捨てる。本文は Scene.content に残っている
+	await discardProjectCrdtState(pid).catch((e) => console.warn('Failed to discard CRDT state:', e));
 
 	await queueChanges(unsynced.map(({ type, id }) => ({ type, id, action: 'update' as const })));
 	await restartProjectRealtime(pid);
@@ -274,6 +279,9 @@ export async function deleteProjectSharing(projectId: string): Promise<void> {
 
 	await exclusive(projectId, async () => {
 		stopProjectRealtime(projectId);
+		await discardProjectCrdtState(projectId).catch((e) =>
+			console.warn('Failed to discard CRDT state:', e)
+		);
 		const firestore = getFirestoreInstance();
 		await deleteSharedData(firestore, projectId);
 		await removePointerSharing(firestore, projectId);

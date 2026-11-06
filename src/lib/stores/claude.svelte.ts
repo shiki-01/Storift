@@ -14,6 +14,7 @@ import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 import { editorStore } from '$lib/stores/editor.svelte';
 import { scenesDB } from '$lib/db';
 import { queueChange } from '$lib/services/sync.service';
+import { applySceneText, getSceneText, isCrdtScene } from '$lib/services/sceneText.service';
 import {
 	attachClaude,
 	cancelClaude,
@@ -312,19 +313,32 @@ function isEditorOpenOn(sceneId: string): boolean {
 	return editorStore.currentScene?.id === sceneId && !!page.url?.pathname.endsWith('/editor');
 }
 
-/** シーンの本文を書き換える。開いているシーンはエディタ経由(自動保存される) */
+/**
+ * シーンの本文を書き換える。開いているシーンはエディタ経由(自動保存される。共同編集中は Y のハンドルへ)。
+ * 共有プロジェクトの開いていないシーンは applySceneText(最小差分を Y に適用して送信)で反映する。
+ */
 async function updateScene(
 	sceneId: string,
 	change: (content: string) => ReplaceResult
 ): Promise<ReplaceResult> {
 	const inEditor = isEditorOpenOn(sceneId);
-	const content = inEditor ? editorStore.content : (await scenesDB.getById(sceneId))?.content;
+	const crdt = !inEditor && (await isCrdtScene(sceneId));
+	const content = inEditor
+		? editorStore.content
+		: crdt
+			? await getSceneText(sceneId)
+			: (await scenesDB.getById(sceneId))?.content;
 	if (content == null) return { ok: false, reason: 'シーンが見つかりません' };
 	const result = change(content);
 	if (!result.ok) return result;
 
 	if (inEditor) {
-		editorStore.content = result.content;
+		if (!editorStore.applyExternalText(result.content)) {
+			return { ok: false, reason: 'このシーンは読み取り専用のため反映できません' };
+		}
+	} else if (crdt) {
+		const applied = await applySceneText(sceneId, result.content);
+		if (!applied.ok) return { ok: false, reason: applied.message };
 	} else {
 		await scenesDB.update(sceneId, { content: result.content });
 		await queueChange('scenes', sceneId, 'update');

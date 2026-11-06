@@ -32,3 +32,6 @@ vite.config.ts.timestamp-*
 firestore-debug.log
 *-debug.log
 .firebase/
+
+# Firebase Emulator
+*-debug.log

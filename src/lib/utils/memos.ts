@@ -125,6 +125,26 @@ export function resolveAnchor(
 	return span(near[0] ?? hits[0]);
 }
 
+/**
+ * 本文の変更(他者の編集など)のあと、範囲メモの位置を現在の本文に合わせ直す。
+ * resolveAnchor で見つかり、かつ位置が変わったものだけ新しい範囲を返す。
+ * 見つからないメモ(位置不明)は何も返さない: 既存の「孤立」表示のままにし、範囲は書き換えない。
+ */
+export function reanchorMemos(
+	text: string,
+	memos: Pick<Memo, 'id' | 'anchor'>[]
+): { id: string; anchor: MemoAnchor }[] {
+	const updates: { id: string; anchor: MemoAnchor }[] = [];
+	for (const memo of memos) {
+		if (!memo.anchor) continue;
+		const span = resolveAnchor(text, memo.anchor);
+		if (!span) continue;
+		if (span.start === memo.anchor.start && span.end === memo.anchor.end) continue;
+		updates.push({ id: memo.id, anchor: { ...memo.anchor, start: span.start, end: span.end } });
+	}
+	return updates;
+}
+
 function findAll(text: string, needle: string): number[] {
 	const out: number[] = [];
 	let at = text.indexOf(needle);

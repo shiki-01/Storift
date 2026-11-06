@@ -80,7 +80,7 @@
 				toast.success('復元しました');
 				await loadHistory();
 			} else {
-				toast.error('復元に失敗しました');
+				toast.error(versionService.lastRestoreError ?? '復元に失敗しました');
 			}
 		}
 	}

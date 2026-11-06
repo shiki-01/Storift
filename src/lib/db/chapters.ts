@@ -55,7 +55,10 @@ export const chaptersDB = {
 
 	async delete(id: string): Promise<void> {
 		const chapter = await db.chapters.get(id);
-		await db.transaction('rw', [db.chapters, db.scenes, db.projects], async () => {
+		await db.transaction('rw', [db.chapters, db.scenes, db.projects, db.crdtDocs], async () => {
+			// 共同編集の状態(crdtDocs)も、章のシーンの分だけ削除する
+			const sceneIds = await db.scenes.where('chapterId').equals(id).primaryKeys();
+			await db.crdtDocs.bulkDelete(sceneIds);
 			await db.chapters.delete(id);
 			await db.scenes.where('chapterId').equals(id).delete();
 		});

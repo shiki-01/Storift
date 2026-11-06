@@ -85,6 +85,8 @@ export const scenesDB = {
 	async delete(id: string): Promise<void> {
 		const scene = await db.scenes.get(id);
 		await db.scenes.delete(id);
+		// 共同編集の状態(crdtDocs)も不要になる
+		await db.crdtDocs.delete(id);
 		if (scene) {
 			await touchProject(scene.projectId);
 		}

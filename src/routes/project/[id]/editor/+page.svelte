@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
-	import { onDestroy, onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { beforeNavigate } from '$app/navigation';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
@@ -30,22 +30,31 @@
 	import ReferenceSheet from '$lib/components/mobile/ReferenceSheet.svelte';
 	import ProofreadSheet from '$lib/components/mobile/ProofreadSheet.svelte';
 	import { longpress } from '$lib/utils/longpress';
-	import { matchesShortcut, normalizeAutoSaveMs } from '$lib/utils/shortcuts';
+	import { historyActionOf, matchesShortcut, normalizeAutoSaveMs } from '$lib/utils/shortcuts';
 	import {
 		typewriterScroll,
 		ensureCaretVisible,
 		updateDimHighlight,
 		selectTextRange,
+		setHistoryHandler,
 		supportsHighlight,
 		textRange
 	} from '$lib/utils/editorInput';
+	import { CrdtOpenError, type SceneDocHandle } from '$lib/crdt/doc';
+	import { EditorBinding, type TextSelection } from '$lib/crdt/editorBinding';
+	import { createDomAdapter, type DomEditorAdapter } from '$lib/crdt/domAdapter';
+	import { trackLocalGrowth, type LocalGrowthTracker } from '$lib/crdt/progress';
+	import { presenceLabel } from '$lib/crdt/presencePolicy';
+	import { getSceneText, openSceneDoc } from '$lib/services/sceneText.service';
+	import { startPresence, type PresenceSession } from '$lib/services/presence.service';
+	import { presenceStore } from '$lib/stores/presence.svelte';
 	import {
 		createEditorContextMenu,
 		createChapterContextMenu,
 		createSceneContextMenu,
 		type ContextMenuItem
 	} from '$lib/utils/contextMenu';
-	import { makeAnchor, rangeTextOffsets, resolveAnchor } from '$lib/utils/memos';
+	import { makeAnchor, rangeTextOffsets, reanchorMemos, resolveAnchor } from '$lib/utils/memos';
 	import type {
 		Chapter,
 		Scene,
@@ -216,7 +225,8 @@
 				void openSearch();
 			} else if (matchesShortcut(e, shortcuts.save)) {
 				e.preventDefault();
-				if (editorStore.currentScene && editorStore.isDirty) void handleSave();
+				if (session) void session.handle.flush();
+				else if (editorStore.currentScene && editorStore.isDirty) void handleSave();
 			} else if (matchesShortcut(e, shortcuts.newChapter)) {
 				e.preventDefault();
 				if (!readOnly) isChapterModalOpen = true;
@@ -329,6 +339,8 @@
 
 	const handleSave = async () => {
 		if (readOnly) return;
+		// 共同編集のシーンの本文は Y が正(ミラーは共同編集側が行う)。従来の保存経路は使わない
+		if (collabActive) return;
 		if (!editorStore.currentScene || !editorStore.isDirty || editorStore.isSaving) return;
 
 		const sceneId = editorStore.currentScene.id;
@@ -376,6 +388,16 @@
 	// 離脱時の保存。保存中(isSaving)でも、その時点の本文を必ず書き込む。自動保存の設定にも依存しない
 	async function saveOnLeave() {
 		if (readOnly) return;
+		// 共同編集のシーン: Y の状態の永続化と、保留中の送信の試行
+		if (session) {
+			await recordProgress(session);
+			try {
+				await session.handle.flush();
+			} catch (error) {
+				console.error('Failed to flush collaborative scene on leave:', error);
+			}
+			return;
+		}
 		const scene = editorStore.currentScene;
 		if (!scene || !editorStore.isDirty) return;
 		const sceneId = scene.id;
@@ -401,6 +423,10 @@
 	onDestroy(() => {
 		clearSaveTimers();
 		void saveOnLeave();
+		// 共同編集のハンドルを手放す(参照カウントを下げ、最後なら保存・送信・圧縮をして閉じる)
+		const previous = detachSession();
+		if (previous) void closeSession(previous);
+		if (reanchorTimer) clearTimeout(reanchorTimer);
 	});
 
 	// 検索・置換はDBを直接書き換えるため、開く前に保存し、閉じたら画面側のデータを読み直す
@@ -449,6 +475,337 @@
 			typewriterScroll(editorScrollContainer, 0.35);
 		}
 	}
+
+	// ===== 共同編集(共有プロジェクトのシーン本文は Y.Text が正) =====
+	// off: 共同編集の対象ではない / connecting: 接続中(編集不可) / on: 共同編集中 /
+	// fallback: 接続できなかったので従来の編集(Scene.content)で扱う
+	type CollabState = 'off' | 'connecting' | 'on' | 'fallback';
+
+	interface CollabSession {
+		sceneId: string;
+		projectId: string;
+		handle: SceneDocHandle;
+		binding: EditorBinding;
+		adapter: DomEditorAdapter;
+		progress: LocalGrowthTracker;
+		cleanups: (() => void)[];
+	}
+
+	let collab = $state<CollabState>('off');
+	let collabNotice = $state('');
+	// 権限エラー(アクセス失効など)で、ハンドルが読み取り専用になった
+	let collabReadOnly = $state(false);
+	// 'on' / 'connecting' の間は従来の保存経路(handleSave・自動保存)を使わない
+	const collabActive = $derived(collab === 'on' || collab === 'connecting');
+	const editable = $derived(!readOnly && collab !== 'connecting' && !collabReadOnly);
+	const collabProject = $derived(
+		currentProjectStore.project?.sharing?.status === 'active' &&
+			!currentProjectStore.project.sharing.revokedAt
+	);
+
+	let session: CollabSession | null = null;
+	let collabTarget: string | null = null;
+	let collabToken = 0;
+	let progressTimer: ReturnType<typeof setTimeout> | null = null;
+	let reanchorTimer: ReturnType<typeof setTimeout> | null = null;
+	let dragSelection: TextSelection | null = null;
+
+	const PROGRESS_DELAY = 5000;
+	const REANCHOR_DELAY = 800;
+
+	const COLLAB_NOTICES: Partial<Record<CrdtOpenError['reason'], string>> = {
+		offline: 'オフラインのため共同編集は再接続後に有効になります',
+		'no-snapshot': '共同編集の本文はまだ作成されていません(編集権限のある人が開くと有効になります)',
+		denied: 'この本文を共同編集する権限がありません'
+	};
+
+	/** 開いているシーンを共同編集の対象にする(null なら従来どおり)。前のシーンのハンドルは閉じる */
+	async function switchCollab(sceneId: string | null) {
+		const token = ++collabToken;
+		collabTarget = sceneId;
+		const previous = detachSession();
+		collab = sceneId ? 'connecting' : 'off';
+		collabNotice = '';
+		collabReadOnly = false;
+		// 前のシーンの保存・送信・圧縮は待たずに、新しいシーンを開く
+		if (previous) void closeSession(previous);
+		if (!sceneId) return;
+
+		let handle: SceneDocHandle;
+		try {
+			handle = await openSceneDoc(sceneId);
+		} catch (error) {
+			if (token !== collabToken) return;
+			const reason = error instanceof CrdtOpenError ? error.reason : 'unavailable';
+			if (!(error instanceof CrdtOpenError)) console.error('Failed to open scene doc:', error);
+			collabNotice =
+				COLLAB_NOTICES[reason] ?? '共同編集を開始できなかったため、通常の編集で開きます';
+			collab = 'fallback';
+			return;
+		}
+		if (token !== collabToken) {
+			await handle.destroy().catch(() => undefined);
+			return;
+		}
+		startSession(sceneId, handle);
+	}
+
+	function startSession(sceneId: string, handle: SceneDocHandle) {
+		const adapter = createDomAdapter();
+		const binding = new EditorBinding({
+			doc: handle,
+			adapter,
+			onText: (text) => {
+				if (editorStore.currentScene?.id === sceneId) editorStore.setContentFromSource(text);
+			}
+		});
+		const progress = trackLocalGrowth(handle.ytext);
+		const next: CollabSession = {
+			sceneId,
+			projectId: currentProjectStore.project?.id ?? '',
+			handle,
+			binding,
+			adapter,
+			progress,
+			cleanups: [
+				handle.onLocalChange(() => scheduleProgress()),
+				handle.onRemoteChange(() => scheduleReanchor()),
+				handle.onReadOnlyChange((value) => (collabReadOnly = value))
+			]
+		};
+		session = next;
+		collabReadOnly = handle.readOnly;
+		editorStore.crdtSceneId = sceneId;
+		editorStore.setContentFromSource(handle.ytext.toString());
+		editorStore.isDirty = false;
+		// 元に戻す/やり直す(補助入力バー)も自分の編集だけを対象にした履歴へ
+		setHistoryHandler({ undo: () => binding.undo(), redo: () => binding.redo() });
+		editorStore.externalTextSink = (text) => binding.setExternalText(text);
+		collab = 'on';
+	}
+
+	/** 同期的に切り離す(以後の入力・保存の対象にしない)。閉じる処理は closeSession */
+	function detachSession(): CollabSession | null {
+		const current = session;
+		session = null;
+		editorStore.crdtSceneId = null;
+		editorStore.externalTextSink = null;
+		setHistoryHandler(null);
+		if (progressTimer) clearTimeout(progressTimer);
+		progressTimer = null;
+		if (!current) return null;
+		for (const cleanup of current.cleanups) cleanup();
+		current.binding.destroy();
+		return current;
+	}
+
+	async function closeSession(closing: CollabSession) {
+		try {
+			await recordProgress(closing);
+			closing.progress.dispose();
+			await closing.handle.flush();
+		} catch (error) {
+			console.error('Failed to flush collaborative scene:', error);
+		} finally {
+			await closing.handle
+				.destroy()
+				.catch((error) => console.error('Failed to close scene doc:', error));
+		}
+	}
+
+	/** 自分の入力(リモート由来を除く)の純増分を、今日の進捗へ記録する */
+	async function recordProgress(target: CollabSession | null) {
+		if (!target) return;
+		const delta = target.progress.take();
+		if (delta <= 0 || !target.projectId) return;
+		try {
+			await progressLogsDB.addProgress(
+				target.projectId,
+				getDateKey(Date.now()),
+				delta,
+				0,
+				target.sceneId
+			);
+			if (currentProjectStore.project?.id === target.projectId) todayWritten += delta;
+		} catch (error) {
+			// 進捗の記録に失敗しても、本文の保存には影響しない
+			console.error('Failed to record progress:', error);
+		}
+	}
+
+	function scheduleProgress() {
+		if (progressTimer) return;
+		progressTimer = setTimeout(() => {
+			progressTimer = null;
+			void recordProgress(session);
+		}, PROGRESS_DELAY);
+	}
+
+	/** リモート由来の変更のあと、範囲メモの位置を現在の本文に合わせ直す(見つからないものは孤立表示のまま) */
+	function scheduleReanchor() {
+		if (reanchorTimer) clearTimeout(reanchorTimer);
+		reanchorTimer = setTimeout(() => {
+			reanchorTimer = null;
+			void reanchorSceneMemos();
+		}, REANCHOR_DELAY);
+	}
+
+	async function reanchorSceneMemos() {
+		const current = session;
+		if (!current) return;
+		const targets = memoAnchors.filter((m) => m.sceneId === current.sceneId);
+		const updates = reanchorMemos(current.handle.ytext.toString(), targets);
+		if (updates.length === 0) return;
+		try {
+			for (const update of updates) await memosDB.update(update.id, { anchor: update.anchor });
+			editorStore.bumpMemos();
+		} catch (error) {
+			console.error('Failed to update memo anchors:', error);
+		}
+	}
+
+	async function retryCollab() {
+		if (collab !== 'fallback') return;
+		const sceneId = editorStore.currentScene?.id ?? null;
+		if (!sceneId) return;
+		// 通常の編集で入れた変更を先に保存してから、共同編集として開き直す
+		if (!(await flushSave())) {
+			toast.error('未保存の変更を保存できませんでした');
+			return;
+		}
+		await switchCollab(sceneId);
+	}
+
+	// 開いているシーンが共有プロジェクト(共有が有効)のものなら、共同編集として開く
+	$effect(() => {
+		const sceneId = editorStore.currentScene?.id ?? null;
+		const target = sceneId && collabProject ? sceneId : null;
+		untrack(() => {
+			if (target === collabTarget) return;
+			void switchCollab(target);
+		});
+	});
+
+	// 本文の DOM が(表示モードの切り替えなどで)作り直されたら、結合し直す
+	$effect(() => {
+		const element = editorDiv;
+		if (!element || collab !== 'on' || !session) return;
+		const current = session;
+		current.adapter.setRoot(element);
+		// 最初に必ず書き直して、Svelte が管理していた元のテキストノードを DOM から外す
+		current.adapter.setText(current.binding.text);
+		current.binding.resync();
+		return () => current.adapter.setRoot(null);
+	});
+
+	// 執筆支援・校正・Claude などが editorStore.content を書き換えたら、差分を Y へ反映する
+	$effect(() => {
+		const content = editorStore.content;
+		const sceneId = editorStore.currentScene?.id;
+		untrack(() => {
+			const current = session;
+			if (!current || current.sceneId !== sceneId) return;
+			if (content !== current.binding.text) {
+				if (!current.binding.setExternalText(content)) {
+					// 読み取り専用などで反映できない: ストアを Y の本文に戻す
+					editorStore.setContentFromSource(current.binding.text);
+				}
+			}
+			editorStore.isDirty = false;
+		});
+	});
+
+	function handleBeforeInput(e: InputEvent) {
+		if (session?.binding.handleBeforeInput(e.inputType)) e.preventDefault();
+	}
+
+	function handleCompositionStart() {
+		session?.binding.compositionStart();
+	}
+
+	function handleCompositionEnd() {
+		if (!session) return;
+		session.binding.compositionEnd();
+		onTyped();
+	}
+
+	// 元に戻す/やり直す: 共同編集のシーンでは自分の編集だけを戻す履歴へ
+	function handleEditorKeydown(e: KeyboardEvent) {
+		if (!session || e.isComposing) return;
+		const action = historyActionOf(e, settingsStore.settings.shortcuts);
+		if (!action) return;
+		e.preventDefault();
+		if (action === 'undo') session.binding.undo();
+		else session.binding.redo();
+		onTyped();
+	}
+
+	function handleDragStart() {
+		dragSelection = session?.adapter.getSelection() ?? null;
+	}
+
+	function handleDrop(e: DragEvent) {
+		if (!session) return;
+		e.preventDefault();
+		const moveFrom = dragSelection;
+		dragSelection = null;
+		if (readOnly || collabReadOnly) return;
+		const text = e.dataTransfer?.getData('text/plain') ?? '';
+		const index = session.adapter.indexFromPoint(e.clientX, e.clientY);
+		if (!text || index === null) return;
+		// Ctrl/Alt を押していればコピー、そうでなければ(このエディタ内からのドラッグは)移動
+		const copy = e.ctrlKey || e.altKey;
+		if (
+			session.binding.dropText(
+				text.replace(/\r\n?/g, '\n'),
+				index,
+				copy ? undefined : (moveFrom ?? undefined)
+			)
+		) {
+			onTyped();
+		}
+	}
+
+	// ===== 在席表示(誰がこのプロジェクトを開いているか) =====
+	let presenceSession: PresenceSession | null = null;
+	const presenceKey = $derived.by(() => {
+		const sharing = currentProjectStore.project?.sharing;
+		return sharing?.status === 'active' && !sharing.revokedAt
+			? `${currentProjectStore.project?.id}:${sharing.connectionId ?? ''}`
+			: '';
+	});
+
+	$effect(() => {
+		if (!presenceKey) return;
+		const project = untrack(() => currentProjectStore.project);
+		if (!project) return;
+		const sceneId = untrack(() => editorStore.currentScene?.id ?? null);
+		let cancelled = false;
+		let started: PresenceSession | null = null;
+		void startPresence(project, sceneId)
+			.then((created) => {
+				if (cancelled) void created?.stop();
+				else {
+					started = created;
+					presenceSession = created;
+					created?.setScene(untrack(() => editorStore.currentScene?.id ?? null));
+				}
+			})
+			.catch((error) => console.debug('Failed to start presence:', error));
+		return () => {
+			cancelled = true;
+			presenceSession = null;
+			void started?.stop();
+		};
+	});
+
+	$effect(() => {
+		presenceSession?.setScene(editorStore.currentScene?.id ?? null);
+	});
+
+	const otherMembers = $derived(presenceStore.others);
+	const presenceText = $derived(presenceLabel(otherMembers, 5));
+	const membersOnScene = (sceneId: string) => otherMembers.filter((m) => m.sceneId === sceneId);
 
 	// ===== メモ(執筆画面のサイドパネル・範囲メモ・本文の強調) =====
 	const MEMO_HIGHLIGHT = 'storift-memo';
@@ -565,6 +922,15 @@
 	// 未保存の変更があれば保存してから次の操作へ進む。未保存のまま残った場合は false
 	async function flushSave(): Promise<boolean> {
 		clearSaveTimers();
+		if (session) {
+			await recordProgress(session);
+			try {
+				await session.handle.flush();
+			} catch (error) {
+				console.error('Failed to flush collaborative scene:', error);
+			}
+			return true;
+		}
 		for (let attempt = 0; attempt < 3; attempt++) {
 			// 保存中なら完了を待つ(最大10秒)
 			for (let i = 0; i < 250 && editorStore.isSaving; i++) {
@@ -783,6 +1149,12 @@
 		}
 	}
 
+	// 複製する本文。共有プロジェクトでは、ミラー(Scene.content)より新しいことがある共同編集の本文を使う
+	async function currentContentOf(scene: Scene): Promise<string> {
+		if (!collabProject) return scene.content;
+		return (await getSceneText(scene.id)) ?? scene.content;
+	}
+
 	// 複製処理
 	async function handleDuplicateChapter(chapter: Chapter) {
 		if (readOnly || !currentProjectStore.project) return;
@@ -804,7 +1176,7 @@
 					chapterId: newChapter.id,
 					projectId: currentProjectStore.project.id,
 					title: scene.title,
-					content: scene.content
+					content: await currentContentOf(scene)
 				});
 				currentProjectStore.scenes = [...currentProjectStore.scenes, newScene];
 				await queueChange('scenes', newScene.id, 'create');
@@ -823,7 +1195,7 @@
 				chapterId: scene.chapterId,
 				projectId: currentProjectStore.project.id,
 				title: `${scene.title} (コピー)`,
-				content: scene.content
+				content: await currentContentOf(scene)
 			});
 
 			currentProjectStore.scenes = [...currentProjectStore.scenes, newScene];
@@ -948,6 +1320,12 @@
 	// contentEditable div用の入力ハンドラ
 	function handleEditorInput(e: Event) {
 		if (readOnly) return;
+		if (collabActive) {
+			// 共同編集: DOM の変化を Y へ反映する(変換中は保留される)。Y の本文がストアへ反映される
+			session?.binding.handleInput();
+			onTyped();
+			return;
+		}
 		const target = e.target as HTMLDivElement;
 		editorStore.content = target.innerText;
 		onTyped();
@@ -956,6 +1334,10 @@
 	// DOM 側の変更(切り取り・貼り付けなど)をストアへ反映する
 	function syncContentFromDom() {
 		if (readOnly) return;
+		if (session) {
+			session.binding.handleInput();
+			return;
+		}
 		if (editorDiv) editorStore.content = editorDiv.innerText;
 	}
 
@@ -964,6 +1346,12 @@
 		e.preventDefault();
 		if (readOnly) return;
 		const text = e.clipboardData?.getData('text/plain') ?? '';
+
+		if (collabActive) {
+			// 共同編集: 選択範囲をテキストで置き換える(Y に入れてから DOM に書く)
+			if (session?.binding.insertText(text.replace(/\r\n?/g, '\n'))) onTyped();
+			return;
+		}
 
 		// execCommand を使用してテキストを挿入（ブラウザのUndo履歴に記録される）
 		document.execCommand('insertText', false, text);
@@ -1048,6 +1436,8 @@
 
 	// contentを更新したときにdivの内容も更新
 	$effect(() => {
+		// 共同編集中は EditorBinding が DOM を書く
+		if (collab === 'on') return;
 		if (editorDiv && editorStore.content !== editorDiv.innerText) {
 			// カーソル位置を保存
 			const selection = window.getSelection();
@@ -1400,6 +1790,31 @@
 	}
 </script>
 
+{#snippet presenceChips()}
+	<span class="presence" role="status" aria-label={presenceText ?? ''} data-testid="presence">
+		<span class="presence-label">他 {otherMembers.length} 人が閲覧中:</span>
+		{#each otherMembers as member (member.uid)}
+			<span
+				class="presence-chip"
+				class:here={member.sceneId === editorStore.currentScene?.id}
+				style="--member-color: {member.color}"
+				title={member.sceneId === editorStore.currentScene?.id
+					? `${member.name}(このシーンを開いています)`
+					: member.name}
+			>
+				<span class="presence-chip-dot"></span>{member.name}
+			</span>
+		{/each}
+	</span>
+{/snippet}
+
+{#snippet collabNoticeView()}
+	<span class="collab-note" role="status" data-testid="collab-notice">
+		{collabNotice}
+		<button type="button" class="collab-retry" onclick={retryCollab}>再試行</button>
+	</span>
+{/snippet}
+
 {#snippet sceneList()}
 	<div class="scene-list">
 		<div class="scene-list-head">
@@ -1492,7 +1907,16 @@
 										aria-current={editorStore.currentScene?.id === scene.id ? 'true' : undefined}
 										onclick={() => handleSceneSelect(scene)}
 									>
-										<span class="scene-title">{scene.title}</span>
+										<span class="scene-title-row">
+											<span class="scene-title">{scene.title}</span>
+											{#each membersOnScene(scene.id) as member (member.uid)}
+												<span
+													class="presence-dot"
+													style="background: {member.color}"
+													title={`${member.name}が閲覧中`}
+												></span>
+											{/each}
+										</span>
 										<span class="scene-count">{scene.characterCount.toLocaleString()}文字</span>
 									</button>
 									<button
@@ -1569,6 +1993,14 @@
 								<span class="save-state" data-state={saveState} role="status"
 									>{saveLabels[saveState]}</span
 								>
+								{#if otherMembers.length > 0}
+									<span class="presence-mini" title={presenceText ?? ''}
+										>👥{otherMembers.length}</span
+									>
+								{/if}
+								{#if collab === 'fallback' && collabNotice}
+									<span class="presence-mini">{collabNotice}</span>
+								{/if}
 							</span>
 						{/if}
 					</button>
@@ -1684,6 +2116,9 @@
 							<span class="editor-count">
 								{editorStore.characterCount.toLocaleString()}<small>字</small>
 							</span>
+							{#if presenceText}
+								{@render presenceChips()}
+							{/if}
 							{#if goalRatio !== null}
 								<button
 									class="goal-btn"
@@ -1830,6 +2265,9 @@
 								</button>
 							{/if}
 							<div class="tool-sep"></div>
+							{#if collab === 'fallback' && collabNotice}
+								{@render collabNoticeView()}
+							{/if}
 							<span class="save-state font:12" data-state={saveState} role="status">
 								{saveLabels[saveState]}
 							</span>
@@ -1859,12 +2297,20 @@
 								<div
 									bind:this={editorDiv}
 									data-tour="editor-body"
-									contenteditable={readOnly ? 'false' : 'true'}
+									contenteditable={editable ? 'true' : 'false'}
 									role="textbox"
 									aria-label="エディタ"
 									aria-multiline="true"
+									aria-readonly={!editable}
 									tabindex="0"
 									oninput={handleEditorInput}
+									onbeforeinput={handleBeforeInput}
+									oncompositionstart={handleCompositionStart}
+									oncompositionend={handleCompositionEnd}
+									onkeydown={handleEditorKeydown}
+									ondragstart={handleDragStart}
+									ondragend={() => (dragSelection = null)}
+									ondrop={handleDrop}
 									oncontextmenu={handleContextMenu}
 									onpaste={handlePaste}
 									class="editor-text w:full min-h:600 border:none outline:none bg:editor-background fg:editor-text white-space:pre-wrap"
@@ -2943,6 +3389,75 @@
 		color: var(--color-text);
 		font: inherit;
 		text-align: left;
+		cursor: pointer;
+	}
+
+	.scene-title-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		max-width: 100%;
+		min-width: 0;
+	}
+
+	.presence {
+		display: inline-flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 6px;
+		font-size: 12px;
+		color: var(--color-text-secondary);
+	}
+
+	.presence-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 1px 8px;
+		border: 1px solid var(--color-border);
+		border-radius: 999px;
+		color: var(--color-text-secondary);
+	}
+
+	.presence-chip.here {
+		border-color: var(--member-color);
+		color: var(--color-text);
+		font-weight: 600;
+		background: color-mix(in srgb, var(--member-color) 14%, transparent);
+	}
+
+	.presence-chip-dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--member-color);
+	}
+
+	.presence-dot {
+		flex: none;
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+	}
+
+	.presence-mini {
+		font-size: 11px;
+		color: var(--color-text-secondary);
+	}
+
+	.collab-note {
+		font-size: 12px;
+		color: var(--color-text-secondary);
+	}
+
+	.collab-retry {
+		margin-left: 4px;
+		padding: 0 6px;
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		background: none;
+		color: inherit;
+		font-size: 11px;
 		cursor: pointer;
 	}
 

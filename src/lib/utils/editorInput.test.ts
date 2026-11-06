@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { buildInsertion } from './editorInput';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { buildInsertion, redo, setHistoryHandler, undo } from './editorInput';
 
 describe('buildInsertion', () => {
 	it('かぎ括弧は未選択ならカーソルを括弧の間に置く', () => {
@@ -52,5 +52,35 @@ describe('selectTextRange', () => {
 		document.body.appendChild(root);
 		expect(selectTextRange(root, 10, 12)).toBe(false);
 		root.remove();
+	});
+});
+
+describe('元に戻す/やり直す(共同編集用の差し替え)', () => {
+	afterEach(() => {
+		setHistoryHandler(null);
+		vi.restoreAllMocks();
+	});
+
+	it('ハンドラを登録すると、標準の履歴(execCommand)ではなくそちらを呼ぶ', () => {
+		const exec = vi.fn(() => true);
+		document.execCommand = exec;
+		const handler = { undo: vi.fn(), redo: vi.fn() };
+		setHistoryHandler(handler);
+		undo();
+		redo();
+		expect(handler.undo).toHaveBeenCalledOnce();
+		expect(handler.redo).toHaveBeenCalledOnce();
+		expect(exec).not.toHaveBeenCalled();
+	});
+
+	it('解除すれば従来どおり execCommand', () => {
+		const exec = vi.fn(() => true);
+		document.execCommand = exec;
+		setHistoryHandler({ undo: vi.fn(), redo: vi.fn() });
+		setHistoryHandler(null);
+		undo();
+		redo();
+		expect(exec).toHaveBeenCalledWith('undo');
+		expect(exec).toHaveBeenCalledWith('redo');
 	});
 });

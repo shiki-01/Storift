@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore';
 import type { Connection, FirebaseConfig } from '$lib/types';
 import { registerConnectionDb, unregisterConnectionDb } from './sync';
+import { connectEmulatorsIfConfigured } from './emulator';
 import { connectionAppName } from './syncTarget';
 
 /**
@@ -42,6 +43,8 @@ export function openHost(config: FirebaseConfig): HostHandle {
 		firestore = initializeFirestore(app, {
 			localCache: persistentLocalCache({ cacheSizeBytes: CACHE_SIZE_UNLIMITED })
 		});
+		// E2E 用: VITE_FIREBASE_EMULATOR が設定されているときだけエミュレータにつなぐ
+		connectEmulatorsIfConfigured(auth, firestore);
 	} catch {
 		// 既に初期化済み(ホットリロードなど)
 		firestore = getFirestore(app);

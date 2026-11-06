@@ -48,8 +48,10 @@
 		<section>
 			<h2>3. デスクトップ版の AI 連携</h2>
 			<p>
-				デスクトップ版の AI パネルは、利用者が設定で選んだプロバイダ(利用者の端末にインストールされた
-				Claude Code、端末内の Ollama、または利用者が設定した OpenAI 互換 API・Anthropic API・Gemini のサービス)を呼び出します。次の内容が扱われます。
+				デスクトップ版の AI
+				パネルは、利用者が設定で選んだプロバイダ(利用者の端末にインストールされた Claude
+				Code、端末内の Ollama、または利用者が設定した OpenAI 互換 API・Anthropic API・Gemini
+				のサービス)を呼び出します。次の内容が扱われます。
 			</p>
 			<ul>
 				<li>
@@ -58,20 +60,23 @@
 					に書き出されて、アプリのデータ領域内のワークスペースに保存されます。未保存の本文も含まれます。
 				</li>
 				<li>
-					Claude Code
-					を選んだ場合、Claude Code は回答に必要なファイルをワークスペースから読みます。読んだ内容は、利用者ご自身の Claude
+					Claude Code を選んだ場合、Claude Code
+					は回答に必要なファイルをワークスペースから読みます。読んだ内容は、利用者ご自身の Claude
 					アカウントを使って、Anthropic のサービスで処理されます。Anthropic
 					に送られた内容の扱いは、Anthropic の規約とプライバシーポリシーに従います。
 				</li>
 				<li>
-					OpenAI 互換 API を選んだ場合、質問と、AI がツールで読んだ原稿・設定資料などの一部が、利用者が設定した
-					Base URL のサービスに送られます。送られた内容の扱いは、そのサービスの規約とプライバシーポリシーに従います。Ollama
+					OpenAI 互換 API を選んだ場合、質問と、AI
+					がツールで読んだ原稿・設定資料などの一部が、利用者が設定した Base URL
+					のサービスに送られます。送られた内容の扱いは、そのサービスの規約とプライバシーポリシーに従います。Ollama
 					を選んだ場合は、設定した接続先(通常は端末内)に送られます。
 				</li>
 				<li>
-					Anthropic API を選んだ場合は Anthropic(api.anthropic.com)に、Gemini を選んだ場合は Google(generativelanguage.googleapis.com)に、質問と、AI
-					がツールで読んだ原稿・設定資料などの一部が送られます。Base URL
-					を変更した場合は、設定した URL のサービスに送られます。送られた内容の扱いは、各サービスの規約とプライバシーポリシーに従います。
+					Anthropic API を選んだ場合は Anthropic(api.anthropic.com)に、Gemini を選んだ場合は
+					Google(generativelanguage.googleapis.com)に、質問と、AI
+					がツールで読んだ原稿・設定資料などの一部が送られます。Base URL を変更した場合は、設定した
+					URL
+					のサービスに送られます。送られた内容の扱いは、各サービスの規約とプライバシーポリシーに従います。
 				</li>
 				<li>
 					API キーは、macOS・Windows では OS

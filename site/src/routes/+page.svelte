@@ -167,14 +167,16 @@
 			</p>
 			<h2>推敲の相談相手を、画面の横に。</h2>
 			<p>
-				Windows・macOS・Linux 向けのデスクトップ版では、執筆画面の横に AI
-				のパネルを開けます。Claude Code・OpenAI 互換 API・Anthropic API・Gemini・Ollama から選べます。表記ゆれや設定の食い違いを作品全体から探したり、選んだ一文について相談したりできます。
+				Windows・macOS・Linux 向けのデスクトップ版では、執筆画面の横に AI のパネルを開けます。Claude
+				Code・OpenAI 互換 API・Anthropic API・Gemini・Ollama
+				から選べます。表記ゆれや設定の食い違いを作品全体から探したり、選んだ一文について相談したりできます。
 			</p>
 			<p>
 				本文を書き換える案は差分で示され、反映するかどうかは一件ずつ自分で決めます。既定は「提案のみ」で、設定で選ばない限り原稿が書き換わることはありません。右の見本で押してみてください。
 			</p>
 			<p class="small">
-				Claude Code を使う場合は、Claude Code のインストールとログインが必要です。使用量と料金は、選んだサービスのご自身のアカウントに計上されます。
+				Claude Code を使う場合は、Claude Code
+				のインストールとログインが必要です。使用量と料金は、選んだサービスのご自身のアカウントに計上されます。
 			</p>
 			<div class="cta">
 				<a class="btn secondary" href={RELEASES_URL}>

@@ -9,13 +9,13 @@
 //! 出力は実行ごとにネイティブ側でも溜めておく。画面を再読み込みしてもプロセスは止めず、
 //! 戻ってきたフロントエンドが `claude_attach` でそこまでの出力を受け取り、続きを購読できる。
 
+use crate::mcp::{self, McpState};
+use crate::ollama::{self, OllamaState};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
-use crate::mcp::{self, McpState};
-use crate::ollama::{self, OllamaState};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -47,7 +47,14 @@ fn push_line(app: &AppHandle, log: &Mutex<RunLog>, request_id: &str, line: &str)
         }
         Err(_) => return,
     };
-    let _ = app.emit("claude://line", LineEvent { request_id, index, line });
+    let _ = app.emit(
+        "claude://line",
+        LineEvent {
+            request_id,
+            index,
+            line,
+        },
+    );
 }
 
 #[derive(Default)]
@@ -63,7 +70,10 @@ impl ClaudeState {
         if let Ok(mut runs) = self.runs.lock() {
             runs.retain(|_, log| {
                 log.lock()
-                    .map(|l| l.finished_at.is_none_or(|t| t.elapsed() < FINISHED_RETENTION))
+                    .map(|l| {
+                        l.finished_at
+                            .is_none_or(|t| t.elapsed() < FINISHED_RETENTION)
+                    })
                     .unwrap_or(false)
             });
         }
@@ -136,8 +146,8 @@ fn find_claude(custom: Option<&str>) -> Option<PathBuf> {
     }
 
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    if let Some(found) = crate::shell_env::path()
-        .and_then(|path| which::which_in("claude", Some(path), &cwd).ok())
+    if let Some(found) =
+        crate::shell_env::path().and_then(|path| which::which_in("claude", Some(path), &cwd).ok())
     {
         return Some(found);
     }
@@ -154,7 +164,10 @@ fn find_claude(custom: Option<&str>) -> Option<PathBuf> {
         PathBuf::from("/usr/local/bin/claude"),
     ];
     if cfg!(windows) {
-        candidates = vec![home.join(".local\\bin\\claude.exe"), home.join(".claude\\local\\claude.exe")];
+        candidates = vec![
+            home.join(".local\\bin\\claude.exe"),
+            home.join(".claude\\local\\claude.exe"),
+        ];
         if let Some(appdata) = std::env::var_os("APPDATA") {
             candidates.push(PathBuf::from(appdata).join("npm\\claude.cmd"));
         }
@@ -243,7 +256,10 @@ async fn auth_status(program: &Path) -> Option<bool> {
         .stdin(Stdio::null())
         .kill_on_drop(true)
         .output();
-    let out = tokio::time::timeout(std::time::Duration::from_secs(15), output).await.ok()?.ok()?;
+    let out = tokio::time::timeout(std::time::Duration::from_secs(15), output)
+        .await
+        .ok()?
+        .ok()?;
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
     json.get("loggedIn")?.as_bool()
 }
@@ -272,7 +288,8 @@ fn open_login_terminal(program: &str, dir: &Path) -> Result<(), String> {
         program.replace('\'', "'\\''")
     );
     std::fs::write(&script, body).map_err(|e| e.to_string())?;
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+        .map_err(|e| e.to_string())?;
     std::process::Command::new("open")
         .arg(&script)
         .spawn()
@@ -285,7 +302,9 @@ fn open_login_terminal(program: &str, _dir: &Path) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     // start で新しいコンソールを開き、終わっても閉じないよう /K で実行する
     std::process::Command::new("cmd")
-        .raw_arg(format!(r#"/C start "Claude Code login" cmd /K ""{program}" auth login""#))
+        .raw_arg(format!(
+            r#"/C start "Claude Code login" cmd /K ""{program}" auth login""#
+        ))
         .envs(crate::shell_env::get())
         .spawn()
         .map(|_| ())
@@ -362,8 +381,12 @@ fn write_private(path: &Path, body: &str) -> std::io::Result<()> {
 
 /// 前回の異常終了などで残った設定ファイルを消す(起動時)
 pub fn remove_stale_mcp_configs(app: &AppHandle) {
-    let Ok(dir) = crate::app_data_dir(app) else { return };
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(dir) = crate::app_data_dir(app) else {
+        return;
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let name = entry.file_name();
         let name = name.to_string_lossy();
@@ -376,7 +399,11 @@ pub fn remove_stale_mcp_configs(app: &AppHandle) {
 fn build_args(req: &SendRequest, mcp_config: &Path) -> Vec<String> {
     let mcp_tools = mcp::allowed_tool_names(req.edit_mode.as_deref());
     // 組み込みのツールは Web 系だけ。ファイルの読み書きは MCP のツールで行う
-    let builtin: Vec<&str> = if req.allow_web { WEB_TOOLS.to_vec() } else { Vec::new() };
+    let builtin: Vec<&str> = if req.allow_web {
+        WEB_TOOLS.to_vec()
+    } else {
+        Vec::new()
+    };
     let mut allowed: Vec<String> = mcp_tools;
     allowed.extend(builtin.iter().map(|s| s.to_string()));
     let mut args: Vec<String> = [
@@ -411,7 +438,11 @@ fn build_args(req: &SendRequest, mcp_config: &Path) -> Vec<String> {
         args.push("--model".into());
         args.push(model.into());
     }
-    if let Some(prompt) = req.append_system_prompt.as_deref().filter(|s| !s.is_empty()) {
+    if let Some(prompt) = req
+        .append_system_prompt
+        .as_deref()
+        .filter(|s| !s.is_empty())
+    {
         args.push("--append-system-prompt".into());
         args.push(prompt.into());
     }
@@ -427,7 +458,13 @@ pub async fn claude_send(
     request: SendRequest,
 ) -> Result<(), String> {
     if request.provider.as_deref() == Some("ollama") {
-        return send_ollama(app, state, mcp_state.inner().clone(), ollama_state.inner().clone(), request);
+        return send_ollama(
+            app,
+            state,
+            mcp_state.inner().clone(),
+            ollama_state.inner().clone(),
+            request,
+        );
     }
     let program = find_claude(request.claude_path.as_deref()).ok_or_else(|| {
         "claude コマンドが見つかりません。Claude Code をインストールするか、設定で実行ファイルを指定してください。"
@@ -435,7 +472,10 @@ pub async fn claude_send(
     })?;
     // 設定ファイル名に使うので、パスとして危険な文字を含む ID は受け付けない
     if request.request_id.is_empty()
-        || !request.request_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        || !request
+            .request_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
         return Err("requestId に使えない文字が含まれています".into());
     }
@@ -445,7 +485,12 @@ pub async fn claude_send(
     let config_path = mcp_config_path(&data_dir, &request.request_id);
     write_private(
         &config_path,
-        &mcp_config_json(&mcp_state.url(), mcp_state.token(), &request.request_id, request.edit_mode.as_deref()),
+        &mcp_config_json(
+            &mcp_state.url(),
+            mcp_state.token(),
+            &request.request_id,
+            request.edit_mode.as_deref(),
+        ),
     )
     .map_err(|e| format!("MCP 設定ファイルを書けません: {e}"))?;
 
@@ -532,7 +577,12 @@ pub async fn claude_send(
                 running.remove(&request_id);
             }
         }
-        let exit = ExitEvent { request_id, code: status.and_then(|s| s.code()), cancelled, stderr };
+        let exit = ExitEvent {
+            request_id,
+            code: status.and_then(|s| s.code()),
+            cancelled,
+            stderr,
+        };
         if let Ok(mut l) = log.lock() {
             l.exit = Some(exit.clone());
             l.finished_at = Some(Instant::now());
@@ -553,10 +603,18 @@ fn send_ollama(
 ) -> Result<(), String> {
     let (cancel_tx, cancel_rx) = oneshot::channel();
     let request_id = request.request_id.clone();
-    state.running.lock().map_err(|e| e.to_string())?.insert(request_id.clone(), cancel_tx);
+    state
+        .running
+        .lock()
+        .map_err(|e| e.to_string())?
+        .insert(request_id.clone(), cancel_tx);
     state.prune();
     let log = Arc::new(Mutex::new(RunLog::default()));
-    state.runs.lock().map_err(|e| e.to_string())?.insert(request_id.clone(), log.clone());
+    state
+        .runs
+        .lock()
+        .map_err(|e| e.to_string())?
+        .insert(request_id.clone(), log.clone());
 
     let params = ollama::Params {
         run_id: request_id.clone(),
@@ -571,7 +629,9 @@ fn send_ollama(
         let emit_app = app.clone();
         let emit_log = log.clone();
         let emit_id = request_id.clone();
-        let emit = move |event: serde_json::Value| push_line(&emit_app, &emit_log, &emit_id, &event.to_string());
+        let emit = move |event: serde_json::Value| {
+            push_line(&emit_app, &emit_log, &emit_id, &event.to_string())
+        };
         let mut cancelled = false;
         let result = tokio::select! {
             r = ollama::run(&mcp_state, &ollama_state, params, &emit) => Some(r),
@@ -587,7 +647,12 @@ fn send_ollama(
                 running.remove(&request_id);
             }
         }
-        let exit = ExitEvent { request_id, code, cancelled, stderr };
+        let exit = ExitEvent {
+            request_id,
+            code,
+            cancelled,
+            stderr,
+        };
         if let Ok(mut l) = log.lock() {
             l.exit = Some(exit.clone());
             l.finished_at = Some(Instant::now());
@@ -612,7 +677,12 @@ async fn kill_tree(child: &mut tokio::process::Child) {
 
 #[tauri::command]
 pub fn claude_cancel(state: State<'_, ClaudeState>, request_id: String) -> Result<(), String> {
-    if let Some(tx) = state.running.lock().map_err(|e| e.to_string())?.remove(&request_id) {
+    if let Some(tx) = state
+        .running
+        .lock()
+        .map_err(|e| e.to_string())?
+        .remove(&request_id)
+    {
         let _ = tx.send(());
     }
     Ok(())
@@ -624,7 +694,10 @@ pub fn claude_cancel(state: State<'_, ClaudeState>, request_id: String) -> Resul
 pub fn claude_attach(state: State<'_, ClaudeState>, request_id: String) -> Option<AttachResult> {
     let log = state.runs.lock().ok()?.get(&request_id)?.clone();
     let log = log.lock().ok()?;
-    Some(AttachResult { lines: log.lines.clone(), exit: log.exit.clone() })
+    Some(AttachResult {
+        lines: log.lines.clone(),
+        exit: log.exit.clone(),
+    })
 }
 
 /// 結果を受け取り終えた実行の記録を捨てる
@@ -668,7 +741,10 @@ mod tests {
         assert_eq!(value_of(&args, "--mcp-config"), "/tmp/mcp-r.json");
         assert!(!allowed.contains("WebSearch"));
         for tool in ["Read", "Glob", "Grep", "Edit", "Write", "Bash"] {
-            assert!(!allowed.split(',').any(|t| t == tool), "{tool} は許可しない");
+            assert!(
+                !allowed.split(',').any(|t| t == tool),
+                "{tool} は許可しない"
+            );
         }
         let resume = args.iter().position(|a| a == "--resume").unwrap();
         assert_eq!(args[resume + 1], "abc");
@@ -683,7 +759,11 @@ mod tests {
     fn args_list_storift_tools_by_edit_mode() {
         let cfg = Path::new("/tmp/mcp-r.json");
         for mode in [Some("confirm"), Some("auto")] {
-            let allowed = value_of(&build_args(&request(None, false, mode), cfg), "--allowedTools").to_string();
+            let allowed = value_of(
+                &build_args(&request(None, false, mode), cfg),
+                "--allowedTools",
+            )
+            .to_string();
             assert!(allowed.split(',').all(|t| t.starts_with("mcp__storift__")));
             assert!(allowed.contains("mcp__storift__propose_edit"));
             assert!(allowed.contains("mcp__storift__propose_create"));
@@ -691,7 +771,11 @@ mod tests {
             assert!(allowed.contains("mcp__storift__get_scene"));
         }
         for mode in [Some("suggest"), None] {
-            let allowed = value_of(&build_args(&request(None, false, mode), cfg), "--allowedTools").to_string();
+            let allowed = value_of(
+                &build_args(&request(None, false, mode), cfg),
+                "--allowedTools",
+            )
+            .to_string();
             assert!(!allowed.contains("propose_"));
             assert!(allowed.contains("mcp__storift__list_items"));
         }
@@ -708,23 +792,33 @@ mod tests {
 
     #[test]
     fn mcp_config_carries_token_and_run_headers() {
-        let json: serde_json::Value =
-            serde_json::from_str(&mcp_config_json("http://127.0.0.1:1/mcp", "tok", "run-1", Some("auto"))).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&mcp_config_json(
+            "http://127.0.0.1:1/mcp",
+            "tok",
+            "run-1",
+            Some("auto"),
+        ))
+        .unwrap();
         let server = &json["mcpServers"]["storift"];
         assert_eq!(server["type"], "http");
         assert_eq!(server["url"], "http://127.0.0.1:1/mcp");
         assert_eq!(server["headers"]["Authorization"], "Bearer tok");
         assert_eq!(server["headers"]["X-Storift-Run"], "run-1");
         assert_eq!(server["headers"]["X-Storift-Mode"], "auto");
-        let json: serde_json::Value = serde_json::from_str(&mcp_config_json("u", "t", "r", None)).unwrap();
-        assert_eq!(json["mcpServers"]["storift"]["headers"]["X-Storift-Mode"], "suggest");
+        let json: serde_json::Value =
+            serde_json::from_str(&mcp_config_json("u", "t", "r", None)).unwrap();
+        assert_eq!(
+            json["mcpServers"]["storift"]["headers"]["X-Storift-Mode"],
+            "suggest"
+        );
     }
 
     #[cfg(unix)]
     #[test]
     fn config_file_is_private() {
         use std::os::unix::fs::PermissionsExt;
-        let path = std::env::temp_dir().join(format!("storift-test-mcp-{}.json", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("storift-test-mcp-{}.json", std::process::id()));
         write_private(&path, "{}").unwrap();
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         std::fs::remove_file(&path).unwrap();

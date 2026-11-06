@@ -59,15 +59,15 @@
 		<section>
 			<h2>5. 第三者のサービス</h2>
 			<p>
-				本ソフトウェアは、Firebase、Google Fonts、Cloudflare、
-				および利用者が選んだ AI サービス(Claude Code、OpenAI 互換 API、Anthropic API、Gemini、Ollama など)
+				本ソフトウェアは、Firebase、Google Fonts、Cloudflare、 および利用者が選んだ AI
+				サービス(Claude Code、OpenAI 互換 API、Anthropic API、Gemini、Ollama など)
 				など、第三者が提供するサービスを利用します。これらのサービスは、それぞれの提供者の規約に従って利用してください。
 			</p>
 			<p>
 				Firebase の利用量と費用、AI サービスの利用量と料金(API
 				キーの管理を含む)は、利用者ご自身の責任で管理してください。Firebase の Blaze
-				プランへの切り替えや、AI
-				サービスのアカウント・API キーの利用によって発生した費用について、運営者は負担しません。
+				プランへの切り替えや、AI サービスのアカウント・API
+				キーの利用によって発生した費用について、運営者は負担しません。
 			</p>
 		</section>
 

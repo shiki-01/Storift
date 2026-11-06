@@ -1,5 +1,6 @@
 import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 import { db } from '$lib/db';
+import { projectForBackup, projectForRestore } from '$lib/firebase/syncTarget';
 import type { Project, Chapter, Scene, Character, Plot, Worldbuilding } from '$lib/types';
 import type { ProgressLog } from '$lib/types/progress';
 
@@ -43,7 +44,8 @@ export async function createFullBackup(): Promise<BackupData> {
 		const progressLogs = await db.progressLogs.where('projectId').equals(project.id).toArray();
 
 		backup.projects.push({
-			project,
+			// sharing(招待に使う秘密を含む)は載せない
+			project: projectForBackup(project) as Project,
 			chapters,
 			scenes,
 			characters,
@@ -73,7 +75,8 @@ export async function createProjectBackup(projectId: string): Promise<ProjectBac
 	const progressLogs = await db.progressLogs.where('projectId').equals(projectId).toArray();
 
 	return {
-		project,
+		// sharing(招待に使う秘密を含む)は載せない
+		project: projectForBackup(project) as Project,
 		chapters,
 		scenes,
 		characters,
@@ -159,8 +162,8 @@ export async function restoreFromBackup(data: BackupData): Promise<void> {
 			await db.progressLogs.where('projectId').equals(projectData.project.id).delete();
 		}
 
-		// データを復元
-		await db.projects.put(projectData.project);
+		// データを復元(バックアップ側の sharing は採用せず、端末に既にあるプロジェクトの共有の状態は保つ)
+		await db.projects.put(projectForRestore(projectData.project, existing) as Project);
 		await db.chapters.bulkPut(projectData.chapters as Chapter[]);
 		await db.scenes.bulkPut(projectData.scenes as Scene[]);
 		await db.characters.bulkPut(projectData.characters as Character[]);

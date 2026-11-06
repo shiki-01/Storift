@@ -12,7 +12,7 @@ import {
 	type Unsubscribe
 } from 'firebase/firestore';
 import type { Firestore } from 'firebase/firestore';
-import { getFirestoreInstance } from './index';
+import { getFirestoreInstance, getFirestoreInstanceSafe } from './index';
 import {
 	createTarget,
 	mirrorPidOf,
@@ -37,7 +37,7 @@ export type EntityType =
 
 let unsubscribers: Unsubscribe[] = [];
 
-// ゲスト接続(別の Firebase)の Firestore。段階2b-3 で接続を作るときに登録する
+// ゲスト接続(別の Firebase)の Firestore。接続を登録するとき(firebase/connection.ts)に登録する
 const connectionDbs = new Map<string, Firestore>();
 
 export function registerConnectionDb(connectionId: string, db: Firestore): void {
@@ -69,7 +69,9 @@ export function targetFromKey(key: string): SyncTarget | null {
 		const db = connectionDbs.get(ref.connectionId);
 		return db ? createTarget(ref, db) : null;
 	}
-	return createTarget(ref, getFirestoreInstance());
+	// 主 Firebase が未設定のときは null(ゲスト接続だけで動かしている場合)
+	const db = getFirestoreInstanceSafe();
+	return db ? createTarget(ref, db) : null;
 }
 
 /**

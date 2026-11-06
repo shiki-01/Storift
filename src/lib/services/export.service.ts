@@ -1,4 +1,5 @@
 import { db } from '$lib/db';
+import { projectForBackup } from '$lib/firebase/syncTarget';
 import type { Project } from '$lib/types/project';
 import type { Chapter } from '$lib/types/chapter';
 import type { Scene } from '$lib/types/scene';
@@ -437,7 +438,8 @@ export async function exportAsJson(projectId: string): Promise<void> {
 	const exportData = {
 		version: '1.0.0',
 		exportedAt: new Date().toISOString(),
-		project,
+		// sharing(招待に使う秘密を含む)は載せない
+		project: project ? projectForBackup(project) : project,
 		chapters,
 		scenes,
 		characters,
@@ -489,7 +491,8 @@ export async function exportAllProjects(): Promise<void> {
 		const progressLogs = await db.progressLogs.where('projectId').equals(project.id).toArray();
 
 		allData.projects.push({
-			project,
+			// sharing(招待に使う秘密を含む)は載せない
+			project: projectForBackup(project) as Project,
 			chapters,
 			scenes,
 			characters,

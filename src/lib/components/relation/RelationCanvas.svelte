@@ -16,6 +16,7 @@
 	import { v4 as uuidv4 } from 'uuid';
 	import { charactersDB, relationMapsDB } from '$lib/db';
 	import { queueChange } from '$lib/services/sync.service';
+	import { isReadOnlyProject } from '$lib/utils/readOnly';
 	import type { Character, RelationArrow, RelationCurve, RelationMap } from '$lib/types';
 	import {
 		RELATION_ARROWS,
@@ -368,6 +369,8 @@
 		characterId: string,
 		relationships: Character['relationships']
 	) {
+		// 閲覧専用(閲覧権限・アクセス権の失効)のプロジェクトでは、関係を書き換えない
+		if (isReadOnlyProject(projectId)) return;
 		await charactersDB.update(characterId, { relationships });
 		await queueChange('characters', characterId, 'update');
 	}

@@ -29,6 +29,12 @@ Service Worker と PWA の動作には HTTPS が必要です(`localhost` を除�
 
 Firebase の設定値はビルドに含めず、利用者が端末ごとに入力します。設定コードは Firebase の設定とオーナー鍵をまとめたもので、持つ人は全データにアクセスできるため、自分の端末にだけ貼ってください。旧ルール(認証済みなら全開放)のままでも同期は従来どおり動きますが、共有機能は使えません。
 
+### 招待リンク(共有)を使う場合
+
+- 招待リンクの `<base>` は、Web 版では配信しているドメイン(`location.origin`)、デスクトップ版では公開アプリの URL(既定 `https://app.storift.shiki-01.com`)です。自分のドメインで配信し、デスクトップ版でもそちらを使いたい場合は、`src/lib/firebase/invite.ts` の `PUBLIC_APP_URL` を書き換えてビルドしてください(定数 1 か所です)。
+- 招待された人(ゲスト)は、そのドメインのアプリから**ホストの Firebase に匿名認証で接続**します。ホストの Firebase の Authentication → 承認済みドメインに、**ゲストがアプリを開くドメイン**(自分で配信しているドメイン、公開版を使うならそのドメイン)を追加してください。ゲスト側に Firebase の設定は不要です。
+- 共有機能には新ルール(`firestore.rules`)が必要です。旧ルールのままでは、ゲストは参加できません([FIRESTORE_SETUP.md](FIRESTORE_SETUP.md))。
+
 ## 紹介サイト
 
 `site/` は独立した SvelteKit プロジェクトです。URL は環境変数 `PUBLIC_SITE_URL` と `PUBLIC_APP_URL` で変更します([SITE.md](SITE.md))。

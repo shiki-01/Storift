@@ -30,14 +30,14 @@ export const SETTINGS_CODE_ERROR_MESSAGES: Record<SettingsCodeError, string> = {
 	'missing-fields': '設定コードに必要な項目が足りません'
 };
 
-function toBase64Url(text: string): string {
+export function toBase64Url(text: string): string {
 	const bytes = new TextEncoder().encode(text);
 	let binary = '';
 	for (const b of bytes) binary += String.fromCharCode(b);
 	return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function fromBase64Url(encoded: string): string {
+export function fromBase64Url(encoded: string): string {
 	const base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
 	const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
 	const binary = atob(padded);
@@ -46,7 +46,7 @@ function fromBase64Url(encoded: string): string {
 }
 
 /** 余計なキーを落として 6 項目だけにそろえる */
-function pickConfig(config: FirebaseConfig): FirebaseConfig {
+export function pickConfig(config: FirebaseConfig): FirebaseConfig {
 	return {
 		apiKey: config.apiKey,
 		authDomain: config.authDomain,

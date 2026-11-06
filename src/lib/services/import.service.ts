@@ -1,5 +1,6 @@
 import { db } from '$lib/db';
 import { v4 as uuidv4 } from 'uuid';
+import { isGuestSharing } from '$lib/firebase/syncTarget';
 import type { Project, Chapter, Scene, Character, Plot, Worldbuilding } from '$lib/types';
 import type { ProgressLog } from '$lib/types/progress';
 
@@ -89,6 +90,11 @@ async function importSingleProject(data: ImportedProjectData): Promise<string | 
 		_firestoreId: undefined,
 		// 共有の状態(pid や秘密を含む)は別プロジェクトに持ち込まない
 		sharing: undefined,
+		// ゲストとして参加していたプロジェクトの書き出し(旧形式を含む)は、取り込んでも自分のクラウドへ複製しない
+		localOnly:
+			(data.project as Partial<Project>).localOnly ||
+			isGuestSharing((data.project as Partial<Project>).sharing) ||
+			undefined,
 		_version: 1
 	} as Project;
 

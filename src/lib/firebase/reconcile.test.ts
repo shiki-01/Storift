@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { reconcile } from './reconcile';
+import { reconcile, reconcileReadOnly } from './reconcile';
 
 const at = (updatedAt: number) => ({ updatedAt });
 
@@ -30,5 +30,24 @@ describe('reconcile', () => {
 	it('どちらも base 以降に変更されていなければ新しい方を採用する', () => {
 		expect(reconcile(at(5), at(8), 10)).toBe('apply-remote');
 		expect(reconcile(at(8), at(5), 10)).toBe('push-local');
+	});
+});
+
+describe('reconcileReadOnly(閲覧専用: リモートが常に勝つ)', () => {
+	it('版も内容も同じなら何もしない', () => {
+		expect(reconcileReadOnly(at(10), at(10), true)).toBe('skip');
+	});
+
+	it('ローカルが新しくても(混入した変更)、リモートを採用する', () => {
+		expect(reconcileReadOnly(at(30), at(10), false)).toBe('apply-remote');
+	});
+
+	it('版が同じでも内容が違えば(版を変えずに書き換えられた)リモートを採用する', () => {
+		expect(reconcileReadOnly(at(10), at(10), false)).toBe('apply-remote');
+	});
+
+	it('リモートが新しければ採用する', () => {
+		expect(reconcileReadOnly(at(5), at(10), false)).toBe('apply-remote');
+		expect(reconcileReadOnly(at(5), at(10), true)).toBe('apply-remote');
 	});
 });

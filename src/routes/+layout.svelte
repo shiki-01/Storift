@@ -12,6 +12,7 @@
 	import { syncStore } from '$lib/stores/sync.svelte';
 	import { initializeSync, stopSync } from '$lib/services/sync.service';
 	import { initAccessMode } from '$lib/services/access.service';
+	import { initConnections } from '$lib/services/connection.service';
 	import { settingsDB } from '$lib/db';
 	import { initializeFirebase, signInAnonymousUser, isFirebaseInitialized } from '$lib/firebase';
 	import { authStore } from '$lib/stores/auth.svelte';
@@ -123,42 +124,51 @@
 
 		// Firebaseと同期システムを初期化(非同期で実行)
 		(async () => {
+			// 主 Firebase。未設定・失敗しても、ゲスト接続の同期は別に動かす
+			let primaryReady = false;
 			try {
 				// Firebaseが既に初期化されている場合、設定チェックはスキップ
 				if (isFirebaseInitialized()) {
 					console.log('✅ Firebase already initialized');
-					// 同期システムは既に初期化されているはずだが、念のため確認
-					await initializeSync();
-					return;
-				}
-
-				// 保存されたFirebase設定を読み込み
-				const config = await settingsDB.getFirebaseConfig();
-
-				if (config) {
-					// Firebaseを初期化
-					initializeFirebase(config);
-
-					// 匿名ログイン
-					const user = await signInAnonymousUser();
-					authStore.user = user;
-					authStore.isInitialized = true;
-
-					console.log('✅ Firebase initialized on app load');
-
-					// アクセスモードのキャッシュを反映し、判定をバックグラウンドで始める(待たない)
-					await initAccessMode();
-
-					// Firebase初期化成功後に同期システムを初期化
-					await initializeSync();
+					primaryReady = true;
 				} else {
-					console.log('ℹ️ No Firebase config found, running in offline mode');
-					syncStore.status = 'offline';
+					// 保存されたFirebase設定を読み込み
+					const config = await settingsDB.getFirebaseConfig();
+
+					if (config) {
+						// Firebaseを初期化
+						initializeFirebase(config);
+
+						// 匿名ログイン
+						const user = await signInAnonymousUser();
+						authStore.user = user;
+						authStore.isInitialized = true;
+
+						console.log('✅ Firebase initialized on app load');
+
+						// アクセスモードのキャッシュを反映し、判定をバックグラウンドで始める(待たない)
+						await initAccessMode();
+						primaryReady = true;
+					} else {
+						console.log('ℹ️ No Firebase config found, running in offline mode');
+						syncStore.status = 'offline';
+					}
 				}
 			} catch (error) {
 				console.error('Failed to initialize Firebase/Sync:', error);
 				syncStore.status = 'offline';
 				// Firebaseなしでもアプリは動作する
+			}
+
+			try {
+				// ゲスト接続(招待された共有プロジェクトのホストの Firebase)を復元する。サインインは待たない
+				const guests = await initConnections();
+
+				// 同期システムは、主 Firebase の準備ができたとき、またはゲスト接続があるときに初期化する
+				if (primaryReady || guests > 0) await initializeSync();
+			} catch (error) {
+				console.error('Failed to initialize sync:', error);
+				syncStore.status = 'offline';
 			}
 		})();
 

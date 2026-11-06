@@ -10,6 +10,7 @@
 	import { chaptersDB, scenesDB, settingsDB, progressLogsDB, projectsDB, memosDB } from '$lib/db';
 	import { getDateKey } from '$lib/utils/dateUtils';
 	import { queueChange } from '$lib/services/sync.service';
+	import { filterReadOnlyMenu, isReadOnlyProject } from '$lib/utils/readOnly';
 	import { AutoSave, enableUnsavedWarning, enableVisibilityAutoSave } from '$lib/utils/autoSave';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
@@ -102,6 +103,10 @@
 	let renameValue = $state('');
 	let selectedChapterId = $state<string | null>(null);
 	let autoSave: AutoSave | null = null;
+
+	// 閲覧専用(閲覧権限、またはアクセス権の失効)。本文・章・シーンの編集の入口を無効にする。
+	// 同期層にも安全網があり、UI で止め損ねた変更もリモートには送られない
+	const readOnly = $derived(isReadOnlyProject(currentProjectStore.project?.id));
 
 	// Phase 2: UI状態管理
 	let showWritingAssistant = $state(false);
@@ -214,7 +219,7 @@
 				if (editorStore.currentScene && editorStore.isDirty) void handleSave();
 			} else if (matchesShortcut(e, shortcuts.newChapter)) {
 				e.preventDefault();
-				isChapterModalOpen = true;
+				if (!readOnly) isChapterModalOpen = true;
 			} else if (matchesShortcut(e, shortcuts.newScene)) {
 				e.preventDefault();
 				const chapterId =
@@ -273,7 +278,7 @@
 	});
 
 	const handleCreateChapter = async () => {
-		if (!newChapterTitle.trim() || !currentProjectStore.project) return;
+		if (readOnly || !newChapterTitle.trim() || !currentProjectStore.project) return;
 
 		try {
 			const chapter = await chaptersDB.create({
@@ -295,7 +300,9 @@
 	};
 
 	const handleCreateScene = async () => {
-		if (!newSceneTitle.trim() || !selectedChapterId || !currentProjectStore.project) return;
+		if (readOnly || !newSceneTitle.trim() || !selectedChapterId || !currentProjectStore.project) {
+			return;
+		}
 
 		try {
 			const scene = await scenesDB.create({
@@ -321,6 +328,7 @@
 	};
 
 	const handleSave = async () => {
+		if (readOnly) return;
 		if (!editorStore.currentScene || !editorStore.isDirty || editorStore.isSaving) return;
 
 		const sceneId = editorStore.currentScene.id;
@@ -367,6 +375,7 @@
 
 	// 離脱時の保存。保存中(isSaving)でも、その時点の本文を必ず書き込む。自動保存の設定にも依存しない
 	async function saveOnLeave() {
+		if (readOnly) return;
 		const scene = editorStore.currentScene;
 		if (!scene || !editorStore.isDirty) return;
 		const sceneId = scene.id;
@@ -582,6 +591,7 @@
 	}
 
 	function openSceneModal(chapterId: string) {
+		if (readOnly) return;
 		selectedChapterId = chapterId;
 		isSceneModalOpen = true;
 	}
@@ -595,7 +605,7 @@
 		e.stopPropagation();
 
 		const chapterIndex = currentProjectStore.chapters.findIndex((c) => c.id === chapter.id);
-		const items = createChapterContextMenu({
+		const menuItems = createChapterContextMenu({
 			chapter,
 			onRename: () => handleRenameChapter(chapter),
 			onDelete: () => handleDeleteChapter(chapter),
@@ -609,6 +619,8 @@
 			canMoveUp: chapterIndex > 0,
 			canMoveDown: chapterIndex < currentProjectStore.chapters.length - 1
 		});
+		const items = readOnly ? filterReadOnlyMenu(menuItems) : menuItems;
+		if (items.length === 0) return;
 
 		contextMenu = {
 			visible: true,
@@ -631,7 +643,7 @@
 		const chapterScenes = currentProjectStore.scenesByChapter.get(scene.chapterId) || [];
 		const sceneIndex = chapterScenes.findIndex((s) => s.id === scene.id);
 
-		const items = createSceneContextMenu({
+		const menuItems = createSceneContextMenu({
 			scene,
 			onOpen: () => handleSceneSelect(scene),
 			onRename: () => handleRenameScene(scene),
@@ -643,6 +655,7 @@
 			canMoveUp: sceneIndex > 0,
 			canMoveDown: sceneIndex < chapterScenes.length - 1
 		});
+		const items = readOnly ? filterReadOnlyMenu(menuItems) : menuItems;
 
 		contextMenu = {
 			visible: true,
@@ -670,7 +683,7 @@
 	}
 
 	const applyRename = async () => {
-		if (!renameValue.trim() || !contextMenu.targetId) return;
+		if (readOnly || !renameValue.trim() || !contextMenu.targetId) return;
 
 		try {
 			if (contextMenu.targetType === 'chapter') {
@@ -710,6 +723,7 @@
 
 	// 削除処理
 	async function handleDeleteChapter(chapter: Chapter) {
+		if (readOnly) return;
 		if (
 			!(await confirmDialog({
 				message: `章「${chapter.title}」とそのシーンを削除しますか？`,
@@ -747,6 +761,7 @@
 	}
 
 	async function handleDeleteScene(scene: Scene) {
+		if (readOnly) return;
 		if (
 			!(await confirmDialog({ message: `シーン「${scene.title}」を削除しますか？`, danger: true }))
 		)
@@ -770,7 +785,7 @@
 
 	// 複製処理
 	async function handleDuplicateChapter(chapter: Chapter) {
-		if (!currentProjectStore.project) return;
+		if (readOnly || !currentProjectStore.project) return;
 
 		try {
 			const newChapter = await chaptersDB.create({
@@ -801,7 +816,7 @@
 	}
 
 	async function handleDuplicateScene(scene: Scene) {
-		if (!currentProjectStore.project) return;
+		if (readOnly || !currentProjectStore.project) return;
 
 		try {
 			const newScene = await scenesDB.create({
@@ -822,6 +837,7 @@
 
 	// 移動処理
 	async function handleMoveChapter(chapter: Chapter, direction: 'up' | 'down') {
+		if (readOnly) return;
 		const chapters = [...currentProjectStore.chapters];
 		const index = chapters.findIndex((c) => c.id === chapter.id);
 		if (index === -1) return;
@@ -842,6 +858,7 @@
 	}
 
 	async function handleMoveScene(scene: Scene, direction: 'up' | 'down') {
+		if (readOnly) return;
 		const chapterScenes = [...(currentProjectStore.scenesByChapter.get(scene.chapterId) || [])];
 		const index = chapterScenes.findIndex((s) => s.id === scene.id);
 		if (index === -1) return;
@@ -930,6 +947,7 @@
 
 	// contentEditable div用の入力ハンドラ
 	function handleEditorInput(e: Event) {
+		if (readOnly) return;
 		const target = e.target as HTMLDivElement;
 		editorStore.content = target.innerText;
 		onTyped();
@@ -937,12 +955,14 @@
 
 	// DOM 側の変更(切り取り・貼り付けなど)をストアへ反映する
 	function syncContentFromDom() {
+		if (readOnly) return;
 		if (editorDiv) editorStore.content = editorDiv.innerText;
 	}
 
 	// 貼り付け時にプレーンテキストとして処理（Undo履歴を維持）
 	function handlePaste(e: ClipboardEvent) {
 		e.preventDefault();
+		if (readOnly) return;
 		const text = e.clipboardData?.getData('text/plain') ?? '';
 
 		// execCommand を使用してテキストを挿入（ブラウザのUndo履歴に記録される）
@@ -962,7 +982,7 @@
 		const selection = window.getSelection();
 		const hasSelection = selection ? selection.toString().length > 0 : false;
 
-		const items = createEditorContextMenu({
+		const menuItems = createEditorContextMenu({
 			scene: editorStore.currentScene,
 			chapter:
 				currentProjectStore.chapters.find((c) => c.id === editorStore.currentScene?.chapterId) ||
@@ -1015,6 +1035,7 @@
 			onVersionHistory: () => (showVersionManager = true),
 			onMemo: memoFromSelection
 		});
+		const items = readOnly ? filterReadOnlyMenu(menuItems) : menuItems;
 
 		contextMenu = {
 			visible: true,
@@ -1124,6 +1145,7 @@
 	let goalTarget = $state(2000);
 
 	function openGoalSheet() {
+		if (readOnly) return;
 		goalType = goal?.type ?? 'daily';
 		goalTarget = goal?.target ?? 2000;
 		showGoalSheet = true;
@@ -1131,7 +1153,7 @@
 
 	async function saveGoal() {
 		const project = currentProjectStore.project;
-		if (!project) return;
+		if (!project || readOnly) return;
 		const target = Math.max(100, Math.round(Number(goalTarget)) || 2000);
 		const settings = { ...project.settings, goal: { type: goalType, target } };
 		try {
@@ -1388,15 +1410,19 @@
 				aria-label="シーンを検索"
 				bind:value={sceneFilter}
 			/>
-			<button class="add-chapter" onclick={() => (isChapterModalOpen = true)} title="章を追加"
-				>＋ 章</button
-			>
+			{#if !readOnly}
+				<button class="add-chapter" onclick={() => (isChapterModalOpen = true)} title="章を追加"
+					>＋ 章</button
+				>
+			{/if}
 		</div>
 
 		{#if currentProjectStore.chapters.length === 0}
 			<div class="list-empty">
 				<p>章がまだありません</p>
-				<Button onclick={() => (isChapterModalOpen = true)}>最初の章を作成</Button>
+				{#if !readOnly}
+					<Button onclick={() => (isChapterModalOpen = true)}>最初の章を作成</Button>
+				{/if}
 			</div>
 		{/if}
 
@@ -1441,7 +1467,9 @@
 								>{allScenes.reduce((n, s) => n + s.characterCount, 0).toLocaleString()}字</span
 							>
 						</button>
-						<button class="mini" onclick={() => openSceneModal(chapter.id)}>＋ シーン</button>
+						{#if !readOnly}
+							<button class="mini" onclick={() => openSceneModal(chapter.id)}>＋ シーン</button>
+						{/if}
 						<button
 							class="more"
 							aria-label="章のメニュー"
@@ -1474,9 +1502,13 @@
 									>
 								</div>
 							{:else}
-								<button class="scene-empty" onclick={() => openSceneModal(chapter.id)}>
-									シーンがありません。<span class="link">作成する</span>
-								</button>
+								{#if readOnly}
+									<span class="scene-empty">シーンがありません</span>
+								{:else}
+									<button class="scene-empty" onclick={() => openSceneModal(chapter.id)}>
+										シーンがありません。<span class="link">作成する</span>
+									</button>
+								{/if}
 							{/each}
 						</div>
 					{/if}
@@ -1607,7 +1639,9 @@
 							: 'シーンを選択または作成してください'}
 					</p>
 					{#if currentProjectStore.chapters.length === 0}
-						<Button onclick={() => (isChapterModalOpen = true)}>最初の章を作成</Button>
+						{#if !readOnly}
+							<Button onclick={() => (isChapterModalOpen = true)}>最初の章を作成</Button>
+						{/if}
 					{:else if viewport.isMobile}
 						<Button onclick={() => (showSceneSheet = true)}>一覧を開く</Button>
 					{/if}
@@ -1714,6 +1748,7 @@
 							<button
 								class="tool"
 								onclick={() => (showWritingAssistant = true)}
+								disabled={readOnly}
 								aria-label="執筆支援"
 								title="執筆支援"
 							>
@@ -1739,6 +1774,7 @@
 							<button
 								class="tool"
 								onclick={() => (showVersionManager = true)}
+								disabled={readOnly}
 								aria-label="バージョン履歴"
 								title="バージョン履歴"
 							>
@@ -1823,7 +1859,7 @@
 								<div
 									bind:this={editorDiv}
 									data-tour="editor-body"
-									contenteditable="true"
+									contenteditable={readOnly ? 'false' : 'true'}
 									role="textbox"
 									aria-label="エディタ"
 									aria-multiline="true"
@@ -2029,7 +2065,9 @@
 <ProofreadSheet
 	bind:open={showProofread}
 	text={editorStore.content}
-	onChange={(next) => (editorStore.content = next)}
+	onChange={(next) => {
+		if (!readOnly) editorStore.content = next;
+	}}
 	onJump={jumpToText}
 />
 
@@ -2040,6 +2078,7 @@
 		show={showSearch}
 		onClose={closeSearch}
 		onOpenScene={openSceneById}
+		{readOnly}
 	/>
 {/if}
 
@@ -2089,13 +2128,15 @@
 		<button onclick={() => runAction(() => (showProofread = true))}>校正</button>
 		<button onclick={() => runAction(() => void openSearch())}>検索・置換</button>
 		<button onclick={() => runAction(() => (editorStore.focusMode = true))}>集中モード</button>
-		<button onclick={() => runAction(() => (showWritingAssistant = true))}
+		<button disabled={readOnly} onclick={() => runAction(() => (showWritingAssistant = true))}
 			>執筆支援(字下げ・ルビ)</button
 		>
 		<button onclick={() => runAction(() => (showExportModal = true))}>エクスポート</button>
 		<button onclick={() => runAction(() => (showPrintPreview = true))}>印刷プレビュー</button>
-		<button onclick={() => runAction(() => (showVersionManager = true))}>バージョン履歴</button>
-		{#if editorStore.currentScene}
+		<button disabled={readOnly} onclick={() => runAction(() => (showVersionManager = true))}
+			>バージョン履歴</button
+		>
+		{#if editorStore.currentScene && !readOnly}
 			<div class="actions-sep"></div>
 			<button onclick={() => runAction(() => handleRenameScene(editorStore.currentScene!))}
 				>シーン名を変更</button

@@ -390,8 +390,8 @@ export async function deleteSharedData(db: Firestore, pid: string): Promise<void
 	await commitOps(db, ops);
 
 	const rest: WriteOp[] = [];
-	// presence は本人しか削除できないルールなので、オーナーが消せるのは自分の分だけ。
-	// 他人の分は消せない(権限エラーは無視する。中身は在席情報だけで、メンバーでなくなれば読めない)
+	// presence はルールでオーナーも削除できる。旧ルールの Firebase など権限エラーのときは無視する
+	// (中身は在席情報だけで、メンバーでなくなれば読めない)
 	const presence = await readDocs(query(collection(db, `${base}/presence`)));
 	for (const id of presence.keys()) {
 		try {

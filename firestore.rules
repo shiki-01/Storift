@@ -156,7 +156,9 @@ service cloud.firestore {
 
     match /shared/{pid}/presence/{uid} {
       allow read: if isOwner() || isMember(pid);
-      allow write: if signedIn() && request.auth.uid == uid && (isOwner() || isMember(pid));
+      allow create, update: if signedIn() && request.auth.uid == uid && (isOwner() || isMember(pid));
+      // 本人に加えて、オーナーも削除できる(共有の停止・メンバー削除のあとに、他人の在席情報を片付けるため)
+      allow delete: if isOwner() || (signedIn() && request.auth.uid == uid && isMember(pid));
     }
 
     // ---------- 共有データ ----------

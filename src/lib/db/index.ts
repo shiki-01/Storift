@@ -11,3 +11,4 @@ export { historyDB } from './history';
 export { touchProject, touchChapter } from './utils';
 export { relationMapsDB } from './relationMaps';
 export { memosDB } from './memos';
+export { connectionsDB } from './connections';

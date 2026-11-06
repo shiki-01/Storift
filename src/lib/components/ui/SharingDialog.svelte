@@ -15,7 +15,15 @@
 		startSharing,
 		stopSharing
 	} from '$lib/services/sharing.service';
-	import { isUnguessableProjectId } from '$lib/firebase/syncTarget';
+	import { isRevokedSharing, isUnguessableProjectId } from '$lib/firebase/syncTarget';
+	import { buildInviteLink, inviteBase } from '$lib/firebase/invite';
+	import { inviteSecretFor } from '$lib/firebase/sharingInvite';
+	import { leaveGuestProject, type LeaveMode } from '$lib/services/join.service';
+	import { settingsDB } from '$lib/db';
+	import { isDesktop } from '$lib/desktop/platform';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
 	import type { SecretSpec, SharedMember } from '$lib/firebase/sharing';
 
 	interface Props {
@@ -46,6 +54,16 @@
 	let regenUsePassword = $state(false);
 	let regenPassword = $state('');
 
+	// 招待リンク
+	let inviteRole = $state<'viewer' | 'editor'>('viewer');
+	let inviteIncludeName = $state(false);
+	let inviteLink = $state('');
+	let invitePassword = $state(false);
+
+	// ゲストの退出
+	let leaveMode = $state<LeaveMode>('keep');
+	const isRevoked = $derived(isRevokedSharing(sharing));
+
 	let busy = $state(false);
 	let error = $state('');
 	let members = $state<SharedMember[]>([]);
@@ -67,6 +85,14 @@
 			return;
 		}
 		void loadMembers();
+	});
+
+	// 役割を変えた/閉じたら、作成済みのリンクは消す(秘密がリンクに残り続けないように)
+	$effect(() => {
+		void inviteRole;
+		void inviteIncludeName;
+		if (!isOpen) leaveMode = 'keep';
+		inviteLink = '';
 	});
 
 	async function loadMembers() {
@@ -151,6 +177,58 @@
 			await loadMembers();
 			toast.success('メンバーを削除しました');
 		}, 'メンバーの削除に失敗しました');
+
+	const copyInvite = async () => {
+		try {
+			await navigator.clipboard.writeText(inviteLink);
+			toast.success('招待リンクをコピーしました');
+		} catch {
+			toast.error('コピーできませんでした。リンクを選択してコピーしてください');
+		}
+	};
+
+	const handleCreateInvite = () =>
+		run(async () => {
+			if (!sharing || !project) return;
+			const secret = inviteSecretFor(sharing, inviteRole);
+			if (!secret) {
+				throw new Error(
+					'この端末には、この役割の秘密がありません。「秘密の再生成」で作り直してから招待してください'
+				);
+			}
+			const config = await settingsDB.getFirebaseConfig();
+			if (!config) throw new Error('Firebase の設定が見つかりません');
+			inviteLink = buildInviteLink(inviteBase(isDesktop(), location.origin), {
+				config,
+				pid: projectId,
+				role: inviteRole,
+				// パスワード方式の秘密はリンクに含めない
+				secret: secret.kind === 'token' ? secret.value : undefined,
+				nameHint: inviteIncludeName ? project.title : undefined
+			});
+			invitePassword = secret.kind === 'password';
+			await copyInvite();
+		}, '招待リンクの作成に失敗しました');
+
+	const handleLeave = () =>
+		run(async () => {
+			const keep = leaveMode === 'keep';
+			if (
+				!(await confirmDialog({
+					message: keep
+						? '共有から退出しますか?\nこの端末のコピーは残りますが、共有は解除され、どこにも同期されなくなります。再び参加するには新しい招待リンクが必要です。'
+						: '共有から退出し、この端末のコピーも削除しますか?\nこの操作は取り消せません。',
+					danger: !keep
+				}))
+			)
+				return;
+			await leaveGuestProject(projectId, leaveMode);
+			toast.success(
+				keep ? '共有から退出しました(コピーはローカルに残しました)' : '退出して削除しました'
+			);
+			isOpen = false;
+			if (page.url.pathname.startsWith('/project/') && !keep) await goto(resolve('/home'));
+		}, '共有からの退出に失敗しました');
 
 	const handleStop = () =>
 		run(async () => {
@@ -246,6 +324,31 @@
 						? '編集'
 						: '閲覧'})。
 				</p>
+				{#if isRevoked}
+					<p class="fg:theme-warning font:.875rem">
+						このプロジェクトへのアクセス権が無効です。ローカルのコピーは残ります。再参加するには、新しい招待リンクが必要です。
+					</p>
+				{/if}
+
+				<div class="flex flex:column gap:8 pt:8 bt:1px|solid|theme-border">
+					<span class="font-weight:500">共有から退出</span>
+					<p class="fg:theme-text-secondary font:.875rem">
+						退出すると、あなたの参加が取り消されます。この端末のコピーをどうするか選べます。
+					</p>
+					<label class="flex ai:center gap:8">
+						<input type="radio" bind:group={leaveMode} value="keep" />
+						<span>コピーを残す(共有を解除してローカル専用にする。どこにも同期されません)</span>
+					</label>
+					<label class="flex ai:center gap:8">
+						<input type="radio" bind:group={leaveMode} value="delete" />
+						<span>コピーも削除する</span>
+					</label>
+					<div>
+						<Button variant="danger" size="sm" disabled={busy} onclick={handleLeave}
+							>共有から退出</Button
+						>
+					</div>
+				</div>
 			{:else if sharing.status === 'migrating'}
 				<!-- 移行中 -->
 				<p class="font:.875rem">
@@ -289,6 +392,46 @@
 							onclick={() => handleVisibility('link')}>リンクで閲覧可能</Button
 						>
 					</div>
+				</div>
+
+				<div class="flex flex:column gap:8">
+					<span class="font-weight:500">招待リンク</span>
+					<div class="flex gap:16">
+						<label class="flex ai:center gap:4">
+							<input type="radio" bind:group={inviteRole} value="viewer" />閲覧
+						</label>
+						<label class="flex ai:center gap:4">
+							<input type="radio" bind:group={inviteRole} value="editor" />編集
+						</label>
+					</div>
+					<label class="flex ai:center gap:8">
+						<input type="checkbox" bind:checked={inviteIncludeName} />
+						<span>プロジェクト名をリンクに含める(リンクを見た人に名前が分かります)</span>
+					</label>
+					<div>
+						<Button size="sm" disabled={busy} onclick={handleCreateInvite}>招待リンクを作成</Button>
+					</div>
+					{#if inviteLink}
+						<textarea
+							readonly
+							rows="3"
+							class="w:full p:8 b:1px|solid|theme-border r:6 font:.75rem"
+							aria-label="招待リンク"
+							value={inviteLink}
+							onfocus={(e) => (e.currentTarget as HTMLTextAreaElement).select()}
+						></textarea>
+						<div>
+							<Button variant="secondary" size="sm" onclick={copyInvite}>コピー</Button>
+						</div>
+						{#if invitePassword}
+							<p class="fg:theme-warning font:.875rem">
+								パスワードはリンクに含まれていません。パスワードは別途伝えてください。
+							</p>
+						{/if}
+					{/if}
+					<p class="fg:theme-text-secondary font:.75rem">
+						リンクを知っている人は誰でも参加できます(パスワード方式の場合は、パスワードも必要です)。リンクが漏れたら、下の「秘密の再生成」で秘密を作り直してください。再生成すると以前のリンクは使えなくなり、新しいリンクが必要です。参加済みのメンバーは自動では失効しないので、必要なら一覧から削除してください。
+					</p>
 				</div>
 
 				<div class="flex flex:column gap:8">

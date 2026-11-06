@@ -31,3 +31,15 @@ export function reconcile(
 	if (localChanged) return 'push-local';
 	return newest;
 }
+
+/**
+ * 読み取り専用のプロジェクト(閲覧権限・アクセス権の失効)の突き合わせ。リモートが常に勝つ。
+ * 版が同じで内容も同じなら何もしない。ローカルが書き換わっていた(混入した)場合は、リモートで上書きする。
+ */
+export function reconcileReadOnly(
+	local: Timestamped,
+	remote: Timestamped,
+	sameContent: boolean
+): Extract<ReconcileAction, 'skip' | 'apply-remote'> {
+	return local.updatedAt === remote.updatedAt && sameContent ? 'skip' : 'apply-remote';
+}

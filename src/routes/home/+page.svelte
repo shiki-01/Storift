@@ -11,6 +11,8 @@
 	import { tourStore } from '$lib/tutorial/tour.svelte';
 	import { queueChange } from '$lib/services/sync.service';
 	import { deleteProjectSharing } from '$lib/services/sharing.service';
+	import { leaveGuestProject } from '$lib/services/join.service';
+	import JoinPanel from '$lib/components/ui/JoinPanel.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
@@ -24,6 +26,7 @@
 	let isCreateModalOpen = $state(false);
 	let isRenameModalOpen = $state(false);
 	let isSharingOpen = $state(false);
+	let isJoinOpen = $state(false);
 	let sharingProjectId = $state('');
 	let newProjectTitle = $state('');
 	let newProjectDescription = $state('');
@@ -194,6 +197,25 @@
 
 	// 削除処理
 	async function handleDeleteProject(project: Project) {
+		// ゲストとして参加しているプロジェクトは、共有から退出してこの端末のコピーを削除する(共有側のデータは消さない)
+		if (project.sharing && project.sharing.role !== 'owner') {
+			if (
+				!(await confirmDialog({
+					message: `プロジェクト「${project.title}」は他の人から共有されています。共有から退出し、この端末のコピーを削除しますか?\nこの操作は取り消せません(共有側のデータは削除されません)。`,
+					danger: true
+				}))
+			)
+				return;
+			try {
+				await leaveGuestProject(project.id, 'delete');
+				projectsStore.projects = projectsStore.projects.filter((p) => p.id !== project.id);
+			} catch (error) {
+				console.error('Failed to leave shared project:', error);
+				toast.error(error instanceof Error ? error.message : '共有からの退出に失敗しました');
+			}
+			return;
+		}
+
 		if (
 			!(await confirmDialog({
 				message: project.sharing
@@ -329,6 +351,7 @@
 				aria-label="作品を検索"
 				oninput={handleSearchInput}
 			/>
+			<Button variant="secondary" onclick={() => (isJoinOpen = true)}>共有リンクから参加</Button>
 			<Button data-tour="home-new-project" onclick={() => (isCreateModalOpen = true)}>
 				＋ 新しい作品
 			</Button>
@@ -462,6 +485,13 @@
 			</Button>
 		</div>
 	</form>
+</Modal>
+
+<!-- 共有リンクから参加(デスクトップ版・Web 版とも、貼り付けた招待リンクを同じ処理で扱う) -->
+<Modal bind:isOpen={isJoinOpen} title="共有リンクから参加" size="medium">
+	{#if isJoinOpen}
+		<JoinPanel onJoined={() => void loadProjects()} onClose={() => (isJoinOpen = false)} />
+	{/if}
 </Modal>
 
 <!-- 共有ダイアログ -->

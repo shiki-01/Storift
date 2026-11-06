@@ -4,6 +4,7 @@
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { plotsDB } from '$lib/db';
 	import { queueChange } from '$lib/services/sync.service';
+	import { filterReadOnlyMenu, isReadOnlyProject } from '$lib/utils/readOnly';
 	import type { Plot } from '$lib/types';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -12,6 +13,9 @@
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
 	import { createPlotContextMenu, type ContextMenuItem } from '$lib/utils/contextMenu';
 	import { onMount } from 'svelte';
+
+	// 閲覧専用(閲覧権限、またはアクセス権の失効)。編集・追加・削除の入口を無効にする。同期層にも安全網がある
+	const readOnly = $derived(isReadOnlyProject(currentProjectStore.project?.id));
 
 	let plots = $state<Plot[]>([]);
 	let isLoading = $state(true);
@@ -97,6 +101,7 @@
 	};
 
 	const openCreateModal = () => {
+		if (readOnly) return;
 		formData = {
 			title: '',
 			type: 'scene',
@@ -120,6 +125,7 @@
 	}
 
 	const handleCreate = async () => {
+		if (readOnly) return;
 		if (!currentProjectStore.project || !formData.title.trim()) return;
 
 		const plot = await plotsDB.create({
@@ -137,6 +143,7 @@
 	};
 
 	const handleUpdate = async () => {
+		if (readOnly) return;
 		if (!editingPlot) return;
 
 		await plotsDB.update(editingPlot.id, {
@@ -156,6 +163,7 @@
 	};
 
 	async function handleDelete(id: string) {
+		if (readOnly) return;
 		if (!(await confirmDialog({ message: 'このプロットを削除しますか?', danger: true }))) return;
 		await plotsDB.delete(id);
 		// 同期キューに追加
@@ -164,6 +172,7 @@
 	}
 
 	async function handleStatusChange(plot: Plot, newStatus: Plot['status']) {
+		if (readOnly) return;
 		const previousStatus = plot.status;
 		plots = plots.map((p) => (p.id === plot.id ? { ...p, status: newStatus } : p));
 
@@ -204,11 +213,13 @@
 		e.preventDefault();
 		e.stopPropagation();
 
-		const items = createPlotContextMenu({
+		const menuItems = createPlotContextMenu({
 			onEdit: () => openEditModal(plot),
 			onDuplicate: () => handleDuplicatePlot(plot),
 			onDelete: () => handleDelete(plot.id)
 		});
+		const items = readOnly ? filterReadOnlyMenu(menuItems) : menuItems;
+		if (items.length === 0) return;
 
 		contextMenu = {
 			visible: true,
@@ -221,7 +232,7 @@
 
 	// 複製処理
 	async function handleDuplicatePlot(plot: Plot) {
-		if (!currentProjectStore.project) return;
+		if (readOnly || !currentProjectStore.project) return;
 
 		try {
 			const newPlot = await plotsDB.create({
@@ -270,6 +281,7 @@
 					</div>
 					<Button
 						class="px:16 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
+						disabled={readOnly}
 						onclick={openCreateModal}
 					>
 						+ 新規プロット
@@ -346,10 +358,11 @@
 													class={`flex:1 ${actionButtonClass()}`}
 													onclick={() => openEditModal(plot)}
 												>
-													編集
+													{readOnly ? '表示' : '編集'}
 												</button>
 												<button
 													class={actionButtonClass('danger')}
+													disabled={readOnly}
 													onclick={() => handleDelete(plot.id)}
 												>
 													削除
@@ -358,6 +371,7 @@
 											{#if status !== 'revised'}
 												<button
 													class={`w:full ${actionButtonClass('success')}`}
+													disabled={readOnly}
 													onclick={() => {
 														const statuses: Plot['status'][] = [
 															'idea',
@@ -415,10 +429,11 @@
 											</div>
 											<div class="flex gap:8">
 												<button class={actionButtonClass()} onclick={() => openEditModal(plot)}
-													>編集</button
+													>{readOnly ? '表示' : '編集'}</button
 												>
 												<button
 													class={actionButtonClass('danger')}
+													disabled={readOnly}
 													onclick={() => handleDelete(plot.id)}>削除</button
 												>
 											</div>
@@ -438,6 +453,7 @@
 						<p class="fg:theme-text-secondary font:18">プロットがまだありません</p>
 						<Button
 							class="px:20 py:12 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:10 font:14"
+							disabled={readOnly}
 							onclick={openCreateModal}
 						>
 							最初のプロットを作成
@@ -494,7 +510,7 @@
 
 <!-- 編集モーダル -->
 <Modal bind:isOpen={showEditModal} title="プロット編集">
-	<div class="flex flex:column gap:16">
+	<fieldset disabled={readOnly} class="flex flex:column gap:16 b:0 p:0 m:0 min-w:0">
 		<Input label="タイトル" bind:value={formData.title} placeholder="プロット名を入力" />
 
 		<div>
@@ -539,7 +555,7 @@
 				class="w:full h:48 b:1|solid|theme-border bg:theme-background r:8 cursor:pointer"
 			/>
 		</div>
-	</div>
+	</fieldset>
 
 	{#snippet footer()}
 		<div class="flex gap:12">
@@ -551,7 +567,7 @@
 			<Button
 				class="px:20 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
 				onclick={handleUpdate}
-				disabled={!formData.title.trim()}
+				disabled={readOnly || !formData.title.trim()}
 			>
 				更新
 			</Button>

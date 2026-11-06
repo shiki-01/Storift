@@ -1,6 +1,6 @@
 # 共有機能の Firestore ルール設計メモ(段階 2a)
 
-データ配置のクライアント実装(段階 2b-2)は末尾の「データ配置の実装(ポインタ方式)」を参照。
+データ配置のクライアント実装(段階 2b-2)は「データ配置の実装(ポインタ方式)」、招待リンク・ゲスト接続・権限の反映(段階 2b-3)は末尾の「招待リンク・ゲスト接続(段階 2b-3)」を参照。
 
 `firestore.rules` は、従来の「認証済みなら全開放」から request.auth.uid ベースの厳格モードに置き換わった(破壊的変更)。
 認証は匿名認証のまま。ルールテストは `bun run test:rules`(Firebase Emulator 使用、`tests/rules/`)。
@@ -23,18 +23,18 @@ shared/{pid}/{type}/{id}[/{sub}/...]   type = projects, chapters, scenes, charac
 
 ## 権限表
 
-| パス                                | read                   | create                                                            | update   | delete             |
-| ----------------------------------- | ---------------------- | ----------------------------------------------------------------- | -------- | ------------------ |
-| 従来 6 コレクション                 | オーナー               | オーナー                                                          | オーナー | オーナー           |
-| `_config/ownerKey`                  | 常に拒否               | 未存在かつ同一 batch の `owners/{uid}` の key と一致              | オーナー | オーナー           |
-| `owners/{uid}`                      | オーナー / 自分        | 自分の uid かつ key が現在の ownerKey と一致(または bootstrap)    | 拒否     | オーナー           |
-| `shared/{pid}` (get)                | オーナー/メンバー/link | オーナー                                                          | オーナー | オーナー           |
-| `shared/{pid}` (list)               | オーナーのみ           | -                                                                 | -        | -                  |
-| `secrets/{role}`                    | 常に拒否               | オーナー                                                          | オーナー | オーナー           |
-| `members/{uid}`                     | 自分 / オーナー        | 自分の uid + 正しい secret + hasOnly(role,secret,joinedAt,name)   | オーナー | 自分 / オーナー    |
-| `presence/{uid}`                    | メンバー / オーナー    | 自分の uid かつメンバーまたはオーナー(update/delete も同様)       | 同左     | 同左               |
-| `shared/{pid}/{type}/{id}`          | オーナー/メンバー/link | オーナー or editor、`projectId == pid`(projects 型は `id == pid`) | 同左     | オーナー or editor |
-| `shared/{pid}/{type}/{id}/{sub}/**` | オーナー/メンバー/link | オーナー or editor                                                | 同左     | 同左               |
+| パス                                | read                   | create                                                            | update   | delete                                 |
+| ----------------------------------- | ---------------------- | ----------------------------------------------------------------- | -------- | -------------------------------------- |
+| 従来 6 コレクション                 | オーナー               | オーナー                                                          | オーナー | オーナー                               |
+| `_config/ownerKey`                  | 常に拒否               | 未存在かつ同一 batch の `owners/{uid}` の key と一致              | オーナー | オーナー                               |
+| `owners/{uid}`                      | オーナー / 自分        | 自分の uid かつ key が現在の ownerKey と一致(または bootstrap)    | 拒否     | オーナー                               |
+| `shared/{pid}` (get)                | オーナー/メンバー/link | オーナー                                                          | オーナー | オーナー                               |
+| `shared/{pid}` (list)               | オーナーのみ           | -                                                                 | -        | -                                      |
+| `secrets/{role}`                    | 常に拒否               | オーナー                                                          | オーナー | オーナー                               |
+| `members/{uid}`                     | 自分 / オーナー        | 自分の uid + 正しい secret + hasOnly(role,secret,joinedAt,name)   | オーナー | 自分 / オーナー                        |
+| `presence/{uid}`                    | メンバー / オーナー    | 自分の uid かつメンバーまたはオーナー                             | 同左     | **オーナー** / 自分の uid かつメンバー |
+| `shared/{pid}/{type}/{id}`          | オーナー/メンバー/link | オーナー or editor、`projectId == pid`(projects 型は `id == pid`) | 同左     | オーナー or editor                     |
+| `shared/{pid}/{type}/{id}/{sub}/**` | オーナー/メンバー/link | オーナー or editor                                                | 同左     | 同左                                   |
 
 未認証、および上記以外のパスはすべて拒否。
 
@@ -71,6 +71,7 @@ shared/{pid}/{type}/{id}[/{sub}/...]   type = projects, chapters, scenes, charac
 - link 公開ではメタの列挙と全データの read が誰にでも可能(URL を知らなくても、PJ ID が分かれば読める)。
 - ネスト(updates/crdt)文書にはスキーマ検証(projectId 等)をしていない。
 - presence の内容(フィールド)は検証していない。
+- presence の delete は、段階 2b-3 でオーナーも可にした(共有の停止・メンバー削除のあとに他人の在席情報を片付けるため)。create / update は従来どおり本人のみ。
 
 ## データ配置の実装(ポインタ方式、段階 2b-2)
 
@@ -107,7 +108,7 @@ shared/{pid}/{type}/{id}        子要素。projectId == pid(元々子要素が�
 ### ルールとの突き合わせで分かったこと(ルールは変更していない)
 
 - `shared/{pid}/secrets` は list もできない(`read: if false`)ため、全削除では役割名(viewer / editor)を指定して削除する。
-- `shared/{pid}/presence/{uid}` の write は本人のみのため、**オーナーは他人の presence 文書を削除できない**。共有の停止・削除のあとも、他人の presence 文書が残る(在席情報だけで、メンバーでなくなれば読めない)。必要ならルールで「オーナーは削除可」にすること。
+- (段階 2b-2 時点)`shared/{pid}/presence/{uid}` の write は本人のみのため、オーナーは他人の presence 文書を削除できず、共有の停止・削除のあとも残った。段階 2b-3 でルールを「オーナーは delete 可」に変更し、全削除で他人の分も消せるようになった(旧ルールの Firebase では権限エラーになるため、全削除は権限エラーを無視して続ける)。
 - projects 型の共有側コピーにも `projectId == pid` が要るため、コピーに `projectId` を足している(ゲスト側で読むときは無視すること)。
 - 共有側の更新ログ(`scenes/{id}/updates|crdt`)は、全削除時にシーンごとに 2 回の一覧取得で消す(将来それらを使い始めたとき、シーン数が多いと読み取りが増える)。
 
@@ -115,3 +116,64 @@ shared/{pid}/{type}/{id}        子要素。projectId == pid(元々子要素が�
 
 - 実 Firestore・複数端末での動作(Emulator テストとユニットテストのみ)。
 - メンバーの削除(失効)は、同じ秘密で再参加できる。再参加させないなら秘密の再生成も必要。
+
+## 招待リンク・ゲスト接続(段階 2b-3)
+
+招待された人(ゲスト)は、自分の Firebase とは別の「ホストの Firebase」へ接続する。ゲストは自分の Firebase 設定を持たなくてもよい。**ゲストのプロジェクトは、ゲストの主 Firebase には絶対に同期しない**(他人のデータをゲストのクラウドへ複製しない)。ルールの変更は presence の delete(上記)のみ。
+
+### 招待リンク(`firebase/invite.ts`)
+
+形式: `<base>/join#<payload>`。payload = base64url(JSON `{v:1, f:<Firebase設定6項目>, p:<pid>, r:'viewer'|'editor', s?:<秘密>, n?:<名前ヒント>}`)。
+
+- `<base>`: Web 版は `location.origin`、デスクトップ版(Tauri)は公開アプリの URL(`invite.ts` の `PUBLIC_APP_URL`、既定 `https://app.storift.shiki-01.com`)。デスクトップ版で受け取ったリンクも、ホームの「共有リンクから参加」に貼り付けて同じ処理で参加する。
+- `s`(秘密)は**トークン方式のときだけ**入れる。パスワード方式ではリンクに秘密を入れず、受け取った人が入力する。方式はオーナー側の `ProjectSharing.secretKinds`(`token` / `password`)に記録する。記録のない旧データは、生成トークンの形(43 文字の base64url)ならトークン、そうでなければパスワードとみなす(迷うときはパスワード側に倒し、誤ってパスワードをリンクに載せない)。
+- `n`(プロジェクト名ヒント)は既定では含めない(発行時のチェックで含める)。
+- フラグメントはサーバーへ送られない。`/join` は読み取り後すぐ `replaceState` で URL・履歴から消す。デコードは不正入力で例外を投げず、`{ok:false, error}` を返す(日本語メッセージあり)。
+- 注意: リンクを知る人は誰でも参加できる(パスワード方式はパスワードも必要)。漏れたら秘密を再生成する。再生成後は新しいリンクが必要で、**参加済みのメンバーは自動では失効しない**ので、必要ならメンバーを削除する。
+
+### 参加フロー(`services/join.service.ts`、Firestore 操作は `firebase/join.ts`)
+
+1. リンクを読む(`prepareJoin`)。主 Firebase の設定とリンクの設定を比較(projectId と apiKey が一致するか。`firebase/joinPolicy.ts` の `decideJoinRoute`):
+   - 同じで、この端末のアクセスモードが `owner`: 「この Firebase のオーナー端末です。プロジェクトは通常の同期で開けます」と案内し、参加しない。
+   - 同じで `legacy`(旧ルール): 共有に必要な新ルールが未適用と案内して止める。
+   - 同じで `needs-owner`: 主 Firebase のインスタンスをゲストとして使う(`connectionId` なし)。
+   - 同じだが判定できていない(`unknown`): 誤ってオーナー端末に参加しないよう、判定し直したうえでなお不明なら止める。
+   - 別の Firebase(または主 Firebase 未設定): ホストへ接続する。名前付きアプリ `storift-conn-<hash>`(ホストごとに 1 つ)を初期化し、匿名サインインする。
+   - ローカルに同じ ID のプロジェクトがある場合: この端末でオーナーのもの、ゲスト以外の通常のプロジェクトは参加しない(データを混ぜない)。ゲストとして参加済み(再参加)・退出してローカル専用にしたコピーは再利用する。
+2. `shared/{pid}/members/{uid}` を `{role, secret, joinedAt, name?}` で作成(`joinSharedProject`)。ルールが `secrets/{role}` と照合する。既にメンバーなら何も書かず、すでに持っている役割を使う(メンバーの更新はオーナーのみ。役割を変えるにはオーナーがメンバーを削除する)。
+3. `shared/{pid}` のメタ、`shared/{pid}/projects/{pid}`(プロジェクトのコピー)、全子要素を取得(`fetchSharedSnapshot`)。コピーの `projectId`(ルール用)と `sharing`(ホスト視点)は採用しない。
+4. ローカル(Dexie)へ保存。プロジェクト ID = pid。`sharing: {pid, role, connectionId?, visibility, status: 'active', startedAt}`(secrets なし)。再参加は既存を再利用して、リモート優先でマージする(内容が違うローカルの版は履歴へ退避)。取得した版は同期の基準(base)として記録する。
+5. 拒否の原因は日本語に分類する(`classifyJoinError`)。`permission-denied` は「パスワードが違う、または招待が無効です」。ただし旧ルールの Firebase でも同じ `permission-denied` になるため、拒否されたら `owners/{自分のuid}` を読んで旧ルールか判別し(`diagnoseDenied`)、旧ルールならルール未適用の案内にする。サインインの失敗(匿名認証が無効・承認済みドメイン未登録)や通信エラーも別の文言にする。
+
+### 接続の保存と起動時の復元
+
+Dexie スキーマ v4 で `connections` テーブル(`id, pid, status`)を追加(テーブルの追加のみで、既存データは変更しない)。`{id, firebaseConfig, pid, role, name?, status: 'active'|'revoked', createdAt, lastSyncAt?}`。`id` は (ホストの projectId・apiKey, pid) から決まる安定した値で、再参加で同じ接続を使い回す。端末ごとの情報で、同期の対象外。
+
+起動時にバックグラウンドで active な接続ごとに Firebase アプリを初期化して `registerConnectionDb` する(`services/connection.service.ts`)。サインインは起動をブロックしない。認証状態は IndexedDB に永続化されるため、オフライン起動でも維持される。同期が実際に必要になったとき(取得・送信・購読)にサインインの完了を待ち、新規サインインできない(オフライン等)ときはその接続を飛ばす。
+
+### ゲスト同期
+
+- 差分取得・realtime(開いているプロジェクト)・アップロードを、2b-2 の SyncTarget(connectionId つきのキー `{connectionId}:shared/{pid}`)で動かす。排他(Mutex)・バックオフ・進捗・診断は既存のものを共用する。
+- **主 Firebase の同期設定とは独立**: 主が未設定・同期無効・オーナー未登録でも、ゲストの同期は動く。送れない行き先(未登録の接続など)の変更はキューに残し、送れるものだけを送る。
+- **主 Firebase からの除外**: ゲストのプロジェクト(接続あり・なし)と退出後のローカル専用のコピーは、プロジェクト文書も子要素も、主 Firebase へ送らず、主 Firebase からも取り込まない(取得の除外、キューに積まない、送信直前の確認の 3 段)。
+- ゲストは最上位のポインタ・共有側のプロジェクトのコピーを書かない(オーナーだけが書く)。このため、ホストでのタイトル変更などはゲストへ自動では反映されない(参加時のコピーのまま。子要素は同期される)。
+
+### 権限の反映
+
+- viewer: アップロードしない。UI は読み取り専用(`utils/readOnly.ts` の `isReadOnlyProject`)。同期層の安全網として、キューに積まず、送信直前にも捨て、取得ではリモートが常に勝つ(混入したローカルの変更は履歴へ退避して上書き。ローカルにしか無いものも退避して取り除く)。
+- editor: 通常どおり編集・送信。共有ダイアログにはオーナー操作を出さない(退出のみ)。
+- 失効: permission-denied(メンバー削除・秘密無効・共有停止)を、送信・取得・購読のいずれかで検知したら、ローカルの `sharing.revokedAt` を立て、接続を `revoked` にして同期を止める。バナー「このプロジェクトへのアクセス権が無効です。ローカルのコピーは残ります」を表示し、読み取り専用になる。ローカルは削除しない。再参加(新しい招待リンク)で復帰できる。link 公開のプロジェクトでは、メンバーでなくなっても読み取りは続く(書き込みで検知される)。
+- 退出: `members/{自分のuid}` と自分の presence を削除し、ローカルのコピーは「残す(共有解除して `localOnly`。どこにも同期しない)」か「削除」を選ぶ。通信できず退出できなかったときは、ローカルには何もしない。
+
+### バックアップ・エクスポート
+
+JSON のバックアップ/エクスポート(`backup.service.ts`、`export.service.ts`)は `project.sharing`(`secrets` を含む)を載せない。ゲストのプロジェクトは `localOnly` を付けて出力し、復元・取り込みしても自分のクラウドへ複製されないようにする。復元では、バックアップ側の `sharing` は採用せず、端末に既にある同じ ID のプロジェクトの共有の状態・`localOnly` は保つ。
+
+### 検証済み(Emulator、`tests/rules/join-client.test.ts`)
+
+正しいトークン/パスワードで参加でき、誤った秘密・存在しない pid・viewer の秘密で editor を名乗る場合は拒否される。参加後の取得、viewer の書き込み拒否、editor の書き込み成功、退出、オーナーによるメンバー削除後に permission-denied になること、旧ルールの判別。
+
+### 未検証
+
+- 実 Firestore・実機(複数端末、デスクトップ版)での動作。ホスト Firebase の承認済みドメイン・匿名認証の有効化が必要(FIRESTORE_SETUP.md)。
+- ブラウザでの UI(閲覧専用の網羅性は、本文・章/シーン・人物・プロット・世界観・検索置換の主要な入口のみ。バージョン履歴の復元や Claude パネルからの編集などは UI では止めておらず、同期層の安全網で共有側とは食い違わない)。

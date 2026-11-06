@@ -97,11 +97,13 @@ export function targetKeyForEntity(
 
 /**
  * 共有側にもコピーを書く(ミラー)対象か。主 Firebase の共有中プロジェクトの文書だけ。
- * ゲスト接続(connectionId あり)のプロジェクトは最上位にポインタを持たない。
+ * ゲスト(role が owner 以外)のプロジェクトは最上位にポインタを持たない。
  */
 export function mirrorPidOf(project: { sharing?: ProjectSharing }): string | null {
 	const sharing = project.sharing;
-	return isSharedStatus(sharing) && !sharing.connectionId ? sharing.pid : null;
+	return isSharedStatus(sharing) && !sharing.connectionId && sharing.role === 'owner'
+		? sharing.pid
+		: null;
 }
 
 /** 共有側のコピー用に sharing.secrets を取り除いたプロジェクト(元は変更しない) */
@@ -160,4 +162,112 @@ export function withoutSharedChildren<T extends { id: string }>(
 		const projectId = (r as { projectId?: unknown }).projectId;
 		return typeof projectId !== 'string' || !excludePids.has(projectId);
 	});
+}
+
+// ---------- ゲスト(招待で参加した共有プロジェクト) ----------
+
+/** ゲスト(owner 以外)として参加している共有か。接続先が主 Firebase でもゲスト接続でも true */
+export function isGuestSharing(sharing: ProjectSharing | undefined): sharing is ProjectSharing {
+	return !!sharing && sharing.role !== 'owner';
+}
+
+/** ゲストで、アクセス権が無効になったことを検知済みか */
+export function isRevokedSharing(sharing: ProjectSharing | undefined): boolean {
+	return isGuestSharing(sharing) && sharing.revokedAt !== undefined;
+}
+
+/**
+ * 読み取り専用か(閲覧権限、またはアクセス権が無効)。
+ * 同期層の安全網でもあり、これが true のプロジェクトは何も送信せず、取得ではリモートが常に勝つ。
+ */
+export function isReadOnlySharing(sharing: ProjectSharing | undefined): boolean {
+	return isGuestSharing(sharing) && (sharing.role === 'viewer' || sharing.revokedAt !== undefined);
+}
+
+/**
+ * 主 Firebase(自分のクラウド)の同期対象から外すプロジェクトか。
+ * ゲストとして参加したもの(他人のデータ)と、退出後にローカルだけに残したもの。
+ * 該当するプロジェクトの文書(ポインタ)と子要素は、主 Firebase へ送らず、主 Firebase からも取り込まない。
+ */
+export function isExcludedFromPrimary(
+	project: { sharing?: ProjectSharing; localOnly?: boolean } | undefined
+): boolean {
+	return !!project && (!!project.localOnly || isGuestSharing(project.sharing));
+}
+
+/** 主 Firebase の取得で、子要素を扱わないプロジェクトの ID(共有中、またはローカル専用) */
+export function primaryExcludedIds(
+	projects: readonly { id: string; sharing?: ProjectSharing; localOnly?: boolean }[]
+): Set<string> {
+	return new Set(
+		projects.filter((p) => isSharedStatus(p.sharing) || isExcludedFromPrimary(p)).map((p) => p.id)
+	);
+}
+
+/** ターゲットのキーが指すプロジェクトの ID(shared のときのみ) */
+export function pidOfTargetKey(key: string): string | undefined {
+	return parseTargetKey(key)?.pid;
+}
+
+// ---------- ゲスト接続の識別 ----------
+
+type HostConfig = { apiKey: string; projectId: string };
+
+/** 文字列の非暗号学的ハッシュ(cyrb53)を 14 桁の 16 進にしたもの。識別子用で、秘密の保護には使わない */
+export function shortHash(text: string): string {
+	let h1 = 0xdeadbeef;
+	let h2 = 0x41c6ce57;
+	for (let i = 0; i < text.length; i++) {
+		const ch = text.charCodeAt(i);
+		h1 = Math.imul(h1 ^ ch, 2654435761);
+		h2 = Math.imul(h2 ^ ch, 1597334677);
+	}
+	h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+	h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+	const n = 4294967296 * (2097151 & h2) + (h1 >>> 0);
+	return n.toString(16).padStart(14, '0');
+}
+
+/** 同じ Firebase か(projectId と apiKey が一致) */
+export function isSameFirebase(a: HostConfig, b: HostConfig): boolean {
+	return a.projectId === b.projectId && a.apiKey === b.apiKey;
+}
+
+/** ホストの Firebase ごとの名前付きアプリ名。同じホストの接続(プロジェクト違い)は 1 つのアプリを共有する */
+export function connectionAppName(config: HostConfig): string {
+	return `storift-conn-${shortHash(`${config.projectId}|${config.apiKey}`)}`;
+}
+
+/** ゲスト接続の ID。(ホストの Firebase, pid) から決まり、再参加で同じ値になる。キーに使えるよう `:` `/` を含まない */
+export function connectionIdOf(config: HostConfig, pid: string): string {
+	return `c${shortHash(`${config.projectId}|${config.apiKey}|${pid}`)}`;
+}
+
+// ---------- バックアップ・エクスポート ----------
+
+/**
+ * バックアップ/エクスポートに載せるプロジェクト。
+ * sharing は含めない(secrets=招待に使う秘密の漏えい防止。pid・接続の状態は別の端末・別の保存先に持ち込めない)。
+ * ゲストとして参加したプロジェクトは、復元しても自分のクラウドへ複製されないよう localOnly にする。
+ */
+export function projectForBackup<T extends { sharing?: ProjectSharing; localOnly?: boolean }>(
+	project: T
+): Omit<T, 'sharing'> {
+	const { sharing, ...rest } = project;
+	return isGuestSharing(sharing) ? { ...rest, localOnly: true } : rest;
+}
+
+/**
+ * 復元で書き込むプロジェクト。バックアップ側の sharing は採用しない(古いバックアップに secrets が入っていても使わない)。
+ * 同じ ID のプロジェクトが端末に既にあるときは、その共有の状態・ローカル専用の指定を保つ
+ * (復元で共有が外れたり、ローカル専用のものがクラウドへ送られたりしないため)。
+ */
+export function projectForRestore<T extends { sharing?: ProjectSharing; localOnly?: boolean }>(
+	incoming: T,
+	existing: { sharing?: ProjectSharing; localOnly?: boolean } | undefined
+): Omit<T, 'sharing'> & { sharing?: ProjectSharing } {
+	const next: Omit<T, 'sharing'> & { sharing?: ProjectSharing } = projectForBackup(incoming);
+	if (existing?.sharing) next.sharing = existing.sharing;
+	if (existing?.localOnly) next.localOnly = true;
+	return next;
 }

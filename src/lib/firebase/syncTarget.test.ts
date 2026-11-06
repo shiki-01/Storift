@@ -4,12 +4,23 @@ import { classifyLocalOnly, planDownload } from './syncPlan';
 import {
 	PRIMARY_KEY,
 	collectionPathOf,
+	connectionAppName,
+	connectionIdOf,
 	docPathOf,
 	effectiveTargetKey,
+	isExcludedFromPrimary,
+	isGuestSharing,
+	isReadOnlySharing,
+	isRevokedSharing,
+	isSameFirebase,
 	isUnguessableProjectId,
 	mirrorPidOf,
 	needsResume,
 	parseTargetKey,
+	pidOfTargetKey,
+	primaryExcludedIds,
+	projectForBackup,
+	projectForRestore,
 	sharedProjectCopyPath,
 	sharedRef,
 	sharedTargetKey,
@@ -234,5 +245,146 @@ describe('pid にしてよいプロジェクト ID', () => {
 		expect(isUnguessableProjectId('sample-project-v1')).toBe(false);
 		expect(isUnguessableProjectId('')).toBe(false);
 		expect(isUnguessableProjectId('1'.repeat(36))).toBe(false);
+	});
+});
+
+describe('ゲスト(招待で参加した共有)', () => {
+	const guest = (over: Partial<ProjectSharing> = {}) =>
+		sharing({ role: 'viewer', connectionId: 'c1', ...over });
+
+	it('ゲストの判定: owner 以外が対象で、接続の有無は問わない', () => {
+		expect(isGuestSharing(sharing())).toBe(false);
+		expect(isGuestSharing(undefined)).toBe(false);
+		expect(isGuestSharing(guest())).toBe(true);
+		expect(isGuestSharing(sharing({ role: 'editor' }))).toBe(true);
+	});
+
+	it('読み取り専用: 閲覧権限、または失効。編集者(有効)とオーナーは対象外', () => {
+		expect(isReadOnlySharing(guest())).toBe(true);
+		expect(isReadOnlySharing(guest({ role: 'editor' }))).toBe(false);
+		expect(isReadOnlySharing(guest({ role: 'editor', revokedAt: 5 }))).toBe(true);
+		expect(isRevokedSharing(guest({ role: 'editor', revokedAt: 5 }))).toBe(true);
+		expect(isReadOnlySharing(sharing())).toBe(false);
+		expect(isReadOnlySharing(sharing({ revokedAt: 5 }))).toBe(false);
+		expect(isReadOnlySharing(undefined)).toBe(false);
+	});
+
+	it('主 Firebase の対象から除外: ゲストとローカル専用だけ', () => {
+		expect(isExcludedFromPrimary({ sharing: guest() })).toBe(true);
+		expect(isExcludedFromPrimary({ sharing: guest({ role: 'editor' }) })).toBe(true);
+		expect(isExcludedFromPrimary({ localOnly: true })).toBe(true);
+		expect(isExcludedFromPrimary({ sharing: sharing() })).toBe(false);
+		expect(isExcludedFromPrimary({})).toBe(false);
+		expect(isExcludedFromPrimary(undefined)).toBe(false);
+	});
+
+	it('主 Firebase の取得で子要素を除外する ID に、ゲスト(接続あり)・ローカル専用・オーナーの共有中が入る', () => {
+		const ids = primaryExcludedIds([
+			{ id: 'plain' },
+			{ id: 'owner', sharing: sharing() },
+			{ id: 'guest', sharing: guest() },
+			{ id: 'guest2', sharing: guest({ connectionId: undefined, role: 'editor' }) },
+			{ id: 'local', localOnly: true }
+		]);
+		expect([...ids].sort()).toEqual(['guest', 'guest2', 'local', 'owner']);
+	});
+
+	it('ゲストのプロジェクトの子要素は、主 Firebase の取得結果から外れる(withoutSharedChildren との組み合わせ)', () => {
+		const remotes = [
+			{ id: 'a', projectId: 'guest' },
+			{ id: 'b', projectId: 'plain' }
+		];
+		const excluded = primaryExcludedIds([{ id: 'guest', sharing: guest() }, { id: 'plain' }]);
+		expect(withoutSharedChildren(remotes, excluded).map((r) => r.id)).toEqual(['b']);
+	});
+
+	it('ゲストの子要素の行き先は接続つきの shared。主 Firebase のキーにならない', () => {
+		const project = { sharing: guest() };
+		expect(targetKeyForProject(project)).toBe(sharedTargetKey(PID, 'c1'));
+		expect(targetKeyForEntity('scenes', project)).toBe(`c1:shared/${PID}`);
+		expect(targetKeyForEntity('scenes', project)).not.toBe(PRIMARY_KEY);
+		// 接続なしのゲスト(主 Firebase のインスタンスを使う)
+		expect(targetKeyForProject({ sharing: guest({ connectionId: undefined }) })).toBe(
+			`shared/${PID}`
+		);
+	});
+
+	it('ゲストのプロジェクトは共有側のコピーへミラーしない(オーナーだけ)', () => {
+		expect(mirrorPidOf({ sharing: sharing() })).toBe(PID);
+		expect(mirrorPidOf({ sharing: guest({ connectionId: undefined, role: 'editor' }) })).toBeNull();
+		expect(mirrorPidOf({ sharing: guest() })).toBeNull();
+	});
+
+	it('接続のキーを持つ pending は、プロジェクトが共有でなくなっても付け替えない', () => {
+		const key = sharedTargetKey(PID, 'c1');
+		expect(effectiveTargetKey(key, () => ({ sharing: undefined }))).toBe(key);
+		expect(pidOfTargetKey(key)).toBe(PID);
+		expect(pidOfTargetKey(PRIMARY_KEY)).toBeUndefined();
+	});
+});
+
+describe('ゲスト接続の識別', () => {
+	const config = { apiKey: 'k1', projectId: 'host-a' };
+
+	it('接続 ID は (ホスト, pid) で決まり、安定していてキーに使える', () => {
+		const id = connectionIdOf(config, PID);
+		expect(connectionIdOf(config, PID)).toBe(id);
+		expect(connectionIdOf(config, 'other')).not.toBe(id);
+		expect(connectionIdOf({ ...config, projectId: 'host-b' }, PID)).not.toBe(id);
+		expect(id).toMatch(/^c[0-9a-f]{14}$/);
+		// ターゲットのキーとして往復できる
+		expect(parseTargetKey(sharedTargetKey(PID, id))).toMatchObject({ connectionId: id, pid: PID });
+	});
+
+	it('アプリ名はホストごと(pid が違っても同じホストなら同じ)', () => {
+		expect(connectionAppName(config)).toMatch(/^storift-conn-[0-9a-f]{14}$/);
+		expect(connectionAppName(config)).toBe(connectionAppName({ ...config }));
+		expect(connectionAppName(config)).not.toBe(connectionAppName({ ...config, projectId: 'x' }));
+	});
+
+	it('同じ Firebase の判定は projectId と apiKey の一致', () => {
+		expect(isSameFirebase(config, { ...config })).toBe(true);
+		expect(isSameFirebase(config, { ...config, apiKey: 'k2' })).toBe(false);
+		expect(isSameFirebase(config, { ...config, projectId: 'host-b' })).toBe(false);
+	});
+});
+
+describe('バックアップ・エクスポート', () => {
+	const base: { id: string; title: string; sharing?: ProjectSharing; localOnly?: boolean } = {
+		id: 'p',
+		title: 't'
+	};
+
+	it('sharing(secrets を含む)を載せない', () => {
+		const out = projectForBackup({
+			...base,
+			sharing: sharing({ secrets: { viewer: 'v', editor: 'e' } })
+		});
+		expect('sharing' in out).toBe(false);
+		expect(JSON.stringify(out)).not.toContain('secrets');
+	});
+
+	it('ゲストのプロジェクトは localOnly にして、復元してもクラウドへ複製されないようにする', () => {
+		expect(projectForBackup({ ...base, sharing: sharing({ role: 'editor' }) })).toMatchObject({
+			localOnly: true
+		});
+		expect(projectForBackup({ ...base, sharing: sharing() })).not.toHaveProperty('localOnly');
+		expect(projectForBackup({ ...base })).toEqual(base);
+	});
+
+	it('復元: バックアップ側の sharing は採用しない', () => {
+		const out = projectForRestore(
+			{ ...base, sharing: sharing({ secrets: { viewer: 'old' } }) },
+			undefined
+		);
+		expect(out.sharing).toBeUndefined();
+		expect(JSON.stringify(out)).not.toContain('old');
+	});
+
+	it('復元: 端末に既にある共有の状態・ローカル専用の指定は保つ', () => {
+		const existing = sharing({ secrets: { viewer: 'now' } });
+		expect(projectForRestore({ ...base }, { sharing: existing }).sharing).toBe(existing);
+		expect(projectForRestore({ ...base }, { localOnly: true })).toMatchObject({ localOnly: true });
+		expect(projectForRestore({ ...base }, {})).toEqual(base);
 	});
 });

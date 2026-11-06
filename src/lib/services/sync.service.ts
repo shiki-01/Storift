@@ -1,6 +1,7 @@
 import type { Table } from 'dexie';
 import {
 	db,
+	connectionsDB,
 	historyDB,
 	projectsDB,
 	chaptersDB,
@@ -22,7 +23,15 @@ import {
 	type SyncableEntity
 } from '$lib/firebase/sync';
 import { prepareConflictData, type ConflictData } from '$lib/firebase/conflict';
-import { reconcile, type ReconcileAction } from '$lib/firebase/reconcile';
+import { reconcile, reconcileReadOnly, type ReconcileAction } from '$lib/firebase/reconcile';
+import { isFirebaseInitialized } from '$lib/firebase/config';
+import {
+	awaitConnectionReady,
+	hasRegisteredConnections,
+	isConnectionRegistered,
+	unregisterConnection
+} from '$lib/firebase/connection';
+import { isPermissionDeniedError } from '$lib/firebase/joinPolicy';
 import {
 	getBase,
 	setBase,
@@ -38,13 +47,20 @@ import {
 	targetOf,
 	getTargetState,
 	withTargetState,
+	withoutTargetState,
 	type PendingChange
 } from '$lib/firebase/syncMeta';
 import {
 	PRIMARY_KEY,
 	effectiveTargetKey,
+	isExcludedFromPrimary,
+	isGuestSharing,
+	isReadOnlySharing,
+	isRevokedSharing,
 	isSharedStatus,
 	parseTargetKey,
+	pidOfTargetKey,
+	primaryExcludedIds,
 	sharedTargetKey,
 	targetKeyForEntity,
 	targetKeyForProject,
@@ -128,7 +144,7 @@ type SyncKind = 'upload' | 'download';
 const changeKey = pendingKey;
 
 // 未アップロードの変更(再読み込みで失われないよう localStorage にも保存する)。キーは type/id
-let pendingChanges = new Map<string, PendingChange>(
+const pendingChanges = new Map<string, PendingChange>(
 	loadPendingChanges().map((c) => [changeKey(c), c])
 );
 // アップロード処理中の変更(リアルタイム同期で巻き戻されないよう保護する)
@@ -160,6 +176,8 @@ let syncInterval: number | null = null;
 let visibilityHandler: (() => void) | null = null;
 let unsubscribeNetwork: (() => void) | null = null;
 let isInitialized = false;
+// 定期同期・復帰時の取得などの仕組みを起動済みか(Firebase 未設定のまま isInitialized だけ立てた場合は false)
+let syncLoopsStarted = false;
 let initPromise: Promise<void> | null = null;
 let initPromiseGeneration = 0;
 // stopSync で増やし、停止後に初期化の続きが走らないようにする
@@ -193,6 +211,64 @@ async function getPolicy(): Promise<ConflictResolutionPolicy> {
 function settledStatus(): 'synced' | 'conflict' {
 	return pendingConflicts.length > 0 ? 'conflict' : 'synced';
 }
+
+// ---------- ゲスト(招待で参加した共有プロジェクト) ----------
+// ゲストのプロジェクトは、ホストの Firebase(ゲスト接続)または主 Firebase のインスタンス(接続なし)の
+// shared/{pid} とだけ同期する。主 Firebase の同期設定(未設定・無効・オーナー未登録)とは独立して動く。
+
+// ゲストとして主 Firebase のインスタンスを使うプロジェクトの数(接続を持たないゲスト)。起動時と参加・退出で更新する
+let primaryGuestCount = 0;
+
+/** 主 Firebase とは独立して動かすゲスト同期があるか */
+function hasGuestWork(): boolean {
+	return hasRegisteredConnections() || primaryGuestCount > 0;
+}
+
+async function refreshGuestFlags(): Promise<void> {
+	const projects = await db.projects.toArray();
+	primaryGuestCount = projects.filter(
+		(p) => isGuestSharing(p.sharing) && !p.sharing.connectionId && !isRevokedSharing(p.sharing)
+	).length;
+}
+
+/** このターゲットへ今、送信・取得できるか(送れないものはキューに残す) */
+function isTargetUsable(key: string): boolean {
+	const ref = parseTargetKey(key);
+	if (!ref) return false;
+	if (ref.connectionId) return isConnectionRegistered(ref.connectionId);
+	if (!isFirebaseInitialized()) return false;
+	// 最上位はオーナー未登録の間は使えない。主 Firebase の shared は、ゲストの分もあるので権限はサーバー側に任せる
+	return ref.kind === 'primary' ? !isAccessBlocked() : true;
+}
+
+function hasProcessablePending(): boolean {
+	for (const change of pendingChanges.values()) {
+		if (isTargetUsable(targetOf(change))) return true;
+	}
+	return false;
+}
+
+/** ターゲットが読み取り専用(閲覧権限・失効)のゲストのプロジェクトか */
+async function isReadOnlyTarget(key: string): Promise<boolean> {
+	const pid = pidOfTargetKey(key);
+	if (!pid) return false;
+	return isReadOnlySharing((await db.projects.get(pid))?.sharing);
+}
+
+// 削除された「主 Firebase に送らないプロジェクト」(ゲスト・ローカル専用)の ID。
+// 削除後は sharing を引けないため、削除の行き先の解決(主 Firebase への削除を積まない)に使う
+const EXCLUDED_PROJECT_CACHE_MAX = 500;
+const deletedExcludedProjects = new Set<string>();
+db.projects.hook('deleting', (primKey, obj) => {
+	if (!isExcludedFromPrimary(obj)) return;
+	const id = String(primKey);
+	deletedExcludedProjects.delete(id);
+	deletedExcludedProjects.add(id);
+	if (deletedExcludedProjects.size > EXCLUDED_PROJECT_CACHE_MAX) {
+		const oldest = deletedExcludedProjects.values().next().value;
+		if (oldest !== undefined) deletedExcludedProjects.delete(oldest);
+	}
+});
 
 /** 処理の開始を記録する(並行して走っても isSyncing が正確になる) */
 function beginActivity(): void {
@@ -290,7 +366,7 @@ async function backupEntity(
 
 const META_KEYS = new Set(['updatedAt', '_version', 'syncedAt']);
 
-function contentDiffers(a: SyncableEntity, b: SyncableEntity): boolean {
+export function contentDiffers(a: SyncableEntity, b: SyncableEntity): boolean {
 	const strip = (e: SyncableEntity) =>
 		JSON.stringify(
 			Object.entries(e)
@@ -409,8 +485,21 @@ async function decideRemote(
 	remote: SyncableEntity,
 	local: SyncableEntity | undefined,
 	policy: ConflictResolutionPolicy,
-	target: string
+	target: string,
+	readOnly = false
 ): Promise<RemoteDecision> {
+	// 読み取り専用(閲覧権限・失効)は、競合ポリシーに関わらずリモートが勝つ。混入したローカルの変更は退避して上書きする
+	if (readOnly) {
+		if (!local) return 'write';
+		const differs = contentDiffers(local, remote);
+		if (reconcileReadOnly(local, remote, !differs) === 'skip') {
+			setBase(type, remote.id, remote.updatedAt, target);
+			return 'none';
+		}
+		if (differs) await backupEntity(type, local, 'conflict');
+		return 'write';
+	}
+
 	if (!local) {
 		// この端末で削除済みでアップロード待ちのものは復活させない
 		if (findPending(type, remote.id, target)?.action === 'delete') return 'none';
@@ -462,12 +551,13 @@ async function reconcileBatch(
 	if (remotes.length === 0) return false;
 	const table = tableOf(type);
 	const locals = await table.bulkGet(remotes.map((r) => r.id));
+	const readOnly = await isReadOnlyTarget(target);
 
 	const writes: { remote: SyncableEntity; seen: SyncableEntity | undefined }[] = [];
 	const pushes: PendingChange[] = [];
 	const results = await mapLimit(remotes, RECONCILE_CONCURRENCY, async (remote, i) => {
 		const local = locals[i];
-		const decision = await decideRemote(type, remote, local, policy, target);
+		const decision = await decideRemote(type, remote, local, policy, target, readOnly);
 		if (decision === 'write') writes.push({ remote, seen: local });
 		else if (decision === 'push') pushes.push({ type, id: remote.id, action: 'update', target });
 	});
@@ -563,8 +653,9 @@ async function applyRemoteDeletion(
 	// 共有の移行中に起きる削除(最上位の子要素の削除・共有側の全削除)は、データの移動であって削除ではない
 	if (await isMovedByMigration(type, local, target)) return false;
 
+	// 読み取り専用のゲストは、ローカルの編集を理由に削除を拒まない(リモートが勝つ。退避はこの下で行う)
 	const base = getBase(type, id, target);
-	if (base !== undefined && local.updatedAt > base) {
+	if (base !== undefined && local.updatedAt > base && !(await isReadOnlyTarget(target))) {
 		enqueueAndSchedule({ type, id, action: 'update', target });
 		return false;
 	}
@@ -669,7 +760,7 @@ function refreshFromRemoteIfNeeded(): void {
 
 /** 溜まった変更を送る(バックオフ中・再試行不可のエラー中は何もしない) */
 function flushPendingIfNeeded(): void {
-	if (pendingChanges.size === 0) return;
+	if (!hasProcessablePending()) return;
 	if (!gates.upload.canRun(Date.now())) return;
 	void processPendingChanges();
 }
@@ -730,7 +821,8 @@ function isAccessBlocked(): boolean {
  */
 export function applyAccessMode(mode: AccessMode | null): void {
 	if (mode === 'needs-owner') {
-		stopCurrentProjectSync();
+		// ゲストのプロジェクトの購読は、主 Firebase のアクセス状態に関係なく続ける
+		if (!isGuestSharing(currentProjectStore.project?.sharing)) stopCurrentProjectSync();
 		for (const kind of ['upload', 'download'] as const) {
 			const timer = retryTimers[kind];
 			if (timer) clearTimeout(timer);
@@ -801,22 +893,26 @@ export function initializeSync(): Promise<void> {
 
 async function doInitializeSync(): Promise<void> {
 	const generation = initGeneration;
-	const { isFirebaseInitialized } = await import('$lib/firebase');
+	await refreshGuestFlags();
 	if (generation !== initGeneration) return;
+	const guestWork = hasGuestWork();
 
-	if (!isFirebaseInitialized()) {
+	if (!isFirebaseInitialized() && !guestWork) {
 		console.log('ℹ️ Firebase not configured, sync system will not be initialized');
 		syncStore.status = 'offline';
-		isInitialized = true; // 初期化済みフラグを立てて再実行を防ぐ
+		syncLoopsStarted = false;
+		isInitialized = true; // 初期化済みフラグを立てて再実行を防ぐ(ゲスト接続が増えたら notifyConnectionsChanged で解除する)
 		return;
 	}
 
-	// 新ルールでオーナー未登録なら、同期を始めない(isInitialized は立てず、登録後に改めて初期化する)
-	if (isAccessBlocked()) {
-		console.log('⏸️ Owner registration required, sync system will not be initialized');
+	// 新ルールでオーナー未登録なら、同期を始めない(isInitialized は立てず、登録後に改めて初期化する)。
+	// ゲストの同期があるときは、主 Firebase の分だけを止めて続ける
+	if (isFirebaseInitialized() && isAccessBlocked()) {
+		console.log('⏸️ Owner registration required, primary sync is paused');
 		applyAccessMode('needs-owner');
-		return;
+		if (!guestWork) return;
 	}
+	syncLoopsStarted = true;
 
 	console.log('🚀 Initializing sync system...');
 	resetGates();
@@ -910,6 +1006,7 @@ export function stopSync(): void {
 	}
 	flushSyncMeta();
 	isInitialized = false;
+	syncLoopsStarted = false;
 	console.log('🛑 Sync system stopped');
 }
 
@@ -964,9 +1061,10 @@ for (const type of PROJECT_SCOPED_TYPES) {
 }
 
 /**
- * 変更の行き先(ターゲットのキー)を決める。
- * - projects 型: 常に primary(ポインタ文書)
- * - 子要素: 所属プロジェクトの共有状態(共有中なら shared、そうでなければ primary)
+ * 変更の行き先(ターゲットのキー)を決める。行き先が無い(積まない)場合は空配列。
+ * - projects 型: 常に primary(ポインタ文書)。ただしゲストのプロジェクトとローカル専用のものは積まない
+ * - 子要素: 所属プロジェクトの共有状態(共有中なら shared、そうでなければ primary)。
+ *   読み取り専用(閲覧権限・失効)のゲスト、ローカル専用のプロジェクトは積まない(同期層の安全網)
  * - 削除でエンティティが既にローカルに無い場合: 削除時に覚えた所属プロジェクトから決める。
  *   それも分からなければ、primary と、ローカルの共有中プロジェクトすべてへ送る(存在しない文書の削除は無害)
  */
@@ -975,7 +1073,11 @@ async function resolveQueueTargets(
 	id: string,
 	action: 'create' | 'update' | 'delete'
 ): Promise<string[]> {
-	if (type === 'projects') return [PRIMARY_KEY];
+	if (type === 'projects') {
+		const project = await db.projects.get(id);
+		const excluded = project ? isExcludedFromPrimary(project) : deletedExcludedProjects.has(id);
+		return excluded ? [] : [PRIMARY_KEY];
+	}
 
 	let projectId: string | undefined;
 	const local = (await tableOf(type).get(id)) as { projectId?: string } | undefined;
@@ -987,12 +1089,15 @@ async function resolveQueueTargets(
 
 	if (projectId) {
 		const project = await db.projects.get(projectId);
+		if (!project && deletedExcludedProjects.has(projectId)) return [];
+		if (project?.localOnly || isReadOnlySharing(project?.sharing)) return [];
 		return [targetKeyForEntity(type, project)];
 	}
 	if (action !== 'delete') return [PRIMARY_KEY];
 
 	const keys = new Set<string>([PRIMARY_KEY]);
 	for (const project of await db.projects.toArray()) {
+		if (isReadOnlySharing(project.sharing)) continue;
 		const key = targetKeyForProject(project);
 		if (key !== PRIMARY_KEY) keys.add(key);
 	}
@@ -1001,8 +1106,7 @@ async function resolveQueueTargets(
 
 async function scheduleSyncIfReady(): Promise<void> {
 	try {
-		const { isFirebaseInitialized } = await import('$lib/firebase');
-		if (navigator.onLine && isFirebaseInitialized()) {
+		if (navigator.onLine && (isFirebaseInitialized() || hasGuestWork())) {
 			// デバウンス処理で同期（連続した変更をまとめる）
 			scheduleProcess();
 		} else {
@@ -1026,10 +1130,9 @@ function throwIfCancelled(ctx: RunContext): void {
  * ペンディング中の変更を処理
  */
 async function processPendingChanges(): Promise<void> {
-	// 新ルールでオーナー未登録の間は送らない(変更はキューに残る)
-	if (isAccessBlocked()) return;
-	// await より前に同期的にロックを取る(二重起動を防ぐ)。ロック中に積まれた変更は終了後に再予約される
-	if (isProcessing || pendingChanges.size === 0) return;
+	// await より前に同期的にロックを取る(二重起動を防ぐ)。ロック中に積まれた変更は終了後に再予約される。
+	// 送れない行き先(Firebase 未設定・オーナー未登録・未登録のゲスト接続)の変更はキューに残し、送れるものだけ送る
+	if (isProcessing || !hasProcessablePending()) return;
 	// バックオフ中・再試行不可のエラー中は送らない(変更はキューに残る)
 	if (!gates.upload.canRun(Date.now())) return;
 	isProcessing = true;
@@ -1042,28 +1145,20 @@ async function processPendingChanges(): Promise<void> {
 	}
 
 	// 処理中に追加された変更があれば続けて処理する
-	if (pendingChanges.size > 0 && gates.upload.canRun(Date.now()) && !runErrors.upload) {
+	if (hasProcessablePending() && gates.upload.canRun(Date.now()) && !runErrors.upload) {
 		scheduleProcess();
 	}
 }
 
 async function runUpload(): Promise<void> {
-	if (pendingChanges.size === 0) return;
-
-	// Firebaseが初期化されていない場合はスキップ
-	const { isFirebaseInitialized } = await import('$lib/firebase');
-	if (!isFirebaseInitialized()) {
-		console.warn('⚠️ Firebase not initialized, skipping sync');
-		return;
-	}
-
-	// ロック待ちの間に積まれた変更も含めて、ここで取り出す
-	const changes = [...pendingChanges.values()];
+	// ロック待ちの間に積まれた変更も含めて、ここで取り出す(送れない行き先のものはキューに残す)
+	const changes = [...pendingChanges.values()].filter((c) => isTargetUsable(targetOf(c)));
+	if (changes.length === 0) return;
 	console.log(`📤 Processing ${changes.length} pending change(s)...`);
 
 	beginActivity();
 	setProgress('upload', 0, changes.length);
-	pendingChanges = new Map();
+	for (const change of changes) pendingChanges.delete(changeKey(change));
 	inFlight = new Map(changes.map((c) => [changeKey(c), c]));
 	persistPending();
 
@@ -1131,7 +1226,40 @@ async function resolveUploadTarget(
 		const project = ref?.pid && !ref.connectionId ? await db.projects.get(ref.pid) : undefined;
 		key = effectiveTargetKey(stored, () => project);
 	}
+	// ゲスト接続は、匿名サインインの完了を待つ(オフラインで新規にサインインできない場合は送らず残す)
+	const connectionId = parseTargetKey(key)?.connectionId;
+	if (connectionId) {
+		try {
+			await awaitConnectionReady(connectionId);
+		} catch (error) {
+			console.warn(`Guest connection not ready (${connectionId}):`, error);
+			return null;
+		}
+	}
 	return targetFromKey(key);
+}
+
+/**
+ * 送ってはいけない変更か(同期層の安全網。UI で止め損ねた変更や、権限が変わる前に積まれた変更を送らない)。
+ * - 読み取り専用(閲覧権限・失効)のゲストのプロジェクト宛て
+ * - 主 Firebase 宛てで、ゲストのプロジェクト・ローカル専用のもの(他人のデータを自分のクラウドへ複製しない)
+ */
+async function mustNotUpload(
+	change: PendingChange,
+	target: SyncTarget,
+	local: SyncableEntity | undefined
+): Promise<boolean> {
+	if (await isReadOnlyTarget(target.key)) return true;
+	if (target.kind !== 'primary') return false;
+
+	const projectId =
+		change.type === 'projects'
+			? change.id
+			: ((local as { projectId?: string } | undefined)?.projectId ??
+				deletedProjectOf.get(change.id));
+	if (!projectId) return false;
+	const project = await db.projects.get(projectId);
+	return project ? isExcludedFromPrimary(project) : deletedExcludedProjects.has(projectId);
 }
 
 /**
@@ -1199,6 +1327,11 @@ async function uploadChanges(
 						target
 					);
 				} catch (error) {
+					// ゲストのプロジェクトでの権限エラーは、アクセス権の失効として扱う(他のターゲットの送信は続ける)
+					if (await handleGuestDenied(target, error)) {
+						for (const op of targetOps) completed.add(changeKey(op.change));
+						continue outer;
+					}
 					// このバッチは全件失敗(原子的)。以降は同じ原因で失敗する可能性が高いので打ち切る
 					errors.push(error);
 					break outer;
@@ -1235,12 +1368,15 @@ async function prepareUpload(
 
 	if (action === 'delete') {
 		const target = await resolveUploadTarget(change, undefined);
-		return target ? { kind: 'delete', change, target } : 'defer';
+		if (!target) return 'defer';
+		if (await mustNotUpload(change, target, undefined)) return null;
+		return { kind: 'delete', change, target };
 	}
 
 	const local = await tableOf(type).get(id);
 	const target = await resolveUploadTarget(change, local);
 	if (!target) return 'defer';
+	if (await mustNotUpload(change, target, local)) return null;
 	if (!local) {
 		// ローカルに無い create/update は、リモートにも無いと確認できた場合だけキューから外す。
 		// 確認できない場合(通信エラー等)は例外のまま伝播し、変更はキューに残る。
@@ -1344,32 +1480,64 @@ async function applyRealtimeRemovals(
 export async function startCurrentProjectSync(projectId: string): Promise<void> {
 	console.log(`🚀 Starting realtime sync for project: ${projectId}`);
 
-	// 設定で同期が無効化されているか確認
-	const { settingsDB } = await import('$lib/db');
-	const settings = await settingsDB.get();
+	const project = await db.projects.get(projectId);
+	// ゲストのプロジェクトは、主 Firebase の設定(同期の有効・無効、オーナー登録)とは独立して購読する
+	const guest = isGuestSharing(project?.sharing);
 
-	if (!settings.syncEnabled) {
-		console.log('⏭️ Sync is disabled in settings, skipping project sync');
-		return;
-	}
+	if (guest) {
+		if (isRevokedSharing(project?.sharing)) {
+			stopCurrentProjectSync();
+			console.log('⏭️ Guest access is revoked, skipping project sync');
+			return;
+		}
+		const connectionId = project?.sharing?.connectionId;
+		if (connectionId) {
+			if (!isConnectionRegistered(connectionId)) {
+				console.warn('⚠️ Guest connection not registered, skipping project sync');
+				return;
+			}
+			try {
+				await awaitConnectionReady(connectionId);
+			} catch (error) {
+				console.warn('⚠️ Guest connection not ready, skipping project sync:', error);
+				return;
+			}
+		} else if (!isFirebaseInitialized()) {
+			console.warn('⚠️ Firebase not initialized, skipping project sync');
+			return;
+		}
+	} else {
+		// 設定で同期が無効化されているか確認
+		const { settingsDB } = await import('$lib/db');
+		const settings = await settingsDB.get();
 
-	// Firebaseが初期化されているか確認
-	const { isFirebaseInitialized } = await import('$lib/firebase');
-	if (!isFirebaseInitialized()) {
-		console.warn('⚠️ Firebase not initialized, skipping project sync');
-		return;
-	}
+		if (!settings.syncEnabled) {
+			console.log('⏭️ Sync is disabled in settings, skipping project sync');
+			return;
+		}
 
-	if (isAccessBlocked()) {
-		console.warn('⏸️ Owner registration required, skipping project sync');
-		return;
+		// Firebaseが初期化されているか確認
+		if (!isFirebaseInitialized()) {
+			console.warn('⚠️ Firebase not initialized, skipping project sync');
+			return;
+		}
+
+		if (isAccessBlocked()) {
+			console.warn('⏸️ Owner registration required, skipping project sync');
+			return;
+		}
 	}
 
 	// 既存の監視を停止
 	stopCurrentProjectSync();
 
+	// ローカル専用(ゲストから退出して残したコピー)はどこにも同期しない
+	if (project?.localOnly) {
+		console.log('⏭️ Project is local-only, skipping project sync');
+		return;
+	}
+
 	// 共有中のプロジェクトは shared/{pid} を購読する(停止の移行中は共有側が消えるので購読しない)
-	const project = await db.projects.get(projectId);
 	if (project?.sharing?.status === 'migrating' && project.sharing.migration === 'stop') {
 		console.log('⏸️ Sharing is being stopped, skipping realtime sync');
 		return;
@@ -1389,6 +1557,11 @@ export async function startCurrentProjectSync(projectId: string): Promise<void> 
 			},
 			(error) => {
 				console.error(`${type} realtime sync error:`, error);
+				// ゲストの権限エラーはアクセス権の失効として扱う(全体のエラーにはしない)
+				if (guest && isPermissionDeniedError(error)) {
+					void revokeGuestAccess(projectId);
+					return;
+				}
 				syncStore.error = error.message;
 			},
 			projectId,
@@ -1416,11 +1589,16 @@ export function stopCurrentProjectSync(): void {
  * 現在のプロジェクトの全データを同期(ローカルの内容をそのままアップロード)
  */
 export async function syncCurrentProject(projectId: string): Promise<void> {
-	if (isAccessBlocked()) throw new Error(NEEDS_OWNER_MESSAGE);
+	const guestProject = await projectsDB.getById(projectId);
+	// 読み取り専用(閲覧権限・失効)・ローカル専用は何も送らない
+	if (guestProject?.localOnly || isReadOnlySharing(guestProject?.sharing)) return;
+	if (!isGuestSharing(guestProject?.sharing) && isAccessBlocked()) {
+		throw new Error(NEEDS_OWNER_MESSAGE);
+	}
 	beginActivity();
 
 	try {
-		const project = await projectsDB.getById(projectId);
+		const project = guestProject;
 		const childKey = targetKeyForProject(project);
 		const childTarget = targetFromKey(childKey);
 		if (!childTarget) throw new Error(`送信先を利用できません(${childKey})`);
@@ -1432,7 +1610,8 @@ export async function syncCurrentProject(projectId: string): Promise<void> {
 			setBase(type, entity.id, entity.updatedAt, key);
 		};
 
-		if (project) await upload('projects', project);
+		// プロジェクト文書(ポインタ)は主 Firebase のもの。ゲストのプロジェクトは送らない
+		if (project && !isExcludedFromPrimary(project)) await upload('projects', project);
 
 		for (const chapter of await chaptersDB.getByProjectId(projectId)) {
 			await upload('chapters', chapter);
@@ -1473,8 +1652,14 @@ interface DownloadScope {
 	target: SyncTarget;
 	/** shared のとき、対象プロジェクトの ID */
 	pid?: string;
-	/** primary のとき、子要素を除外するプロジェクト(共有中。子要素は shared 側にある) */
+	/** primary のとき、子要素を除外するプロジェクト(共有中・ゲスト・ローカル専用。子要素は shared 側または端末内にだけある) */
 	excludePids: ReadonlySet<string>;
+	/** primary の projects 型で、扱わない文書の ID(ゲストのプロジェクト・ローカル専用。ポインタは primary にない/送らない) */
+	excludeProjectDocs?: ReadonlySet<string>;
+	/** ゲストのプロジェクト(取得で権限エラーになったら、失効として扱う) */
+	guest?: boolean;
+	/** 読み取り専用(閲覧権限)。ローカルにしか無いものはアップロードせず、リモートに合わせて取り除く */
+	readOnly?: boolean;
 }
 
 /** 取得の対象で、ローカルにあるものの主キー(リモートに無い＝削除/未アップロードの判定の母集団) */
@@ -1482,6 +1667,10 @@ async function localIdsInScope(type: EntityType, scope: DownloadScope): Promise<
 	const table = tableOf(type);
 	if (scope.pid) {
 		return (await table.where('projectId').equals(scope.pid).primaryKeys()) as string[];
+	}
+	if (type === 'projects' && scope.excludeProjectDocs && scope.excludeProjectDocs.size > 0) {
+		const ids = (await table.toCollection().primaryKeys()) as string[];
+		return ids.filter((id) => !scope.excludeProjectDocs!.has(id));
 	}
 	if (type !== 'projects' && scope.excludePids.size > 0) {
 		return (await table
@@ -1494,6 +1683,9 @@ async function localIdsInScope(type: EntityType, scope: DownloadScope): Promise<
 
 async function localCountInScope(type: EntityType, scope: DownloadScope): Promise<number> {
 	if (scope.pid) return tableOf(type).where('projectId').equals(scope.pid).count();
+	if (type === 'projects' && scope.excludeProjectDocs && scope.excludeProjectDocs.size > 0) {
+		return Math.max(0, (await tableOf(type).count()) - scope.excludeProjectDocs.size);
+	}
 	if (type !== 'projects' && scope.excludePids.size > 0) {
 		return tableOf(type)
 			.where('projectId')
@@ -1501,6 +1693,16 @@ async function localCountInScope(type: EntityType, scope: DownloadScope): Promis
 			.count();
 	}
 	return tableOf(type).count();
+}
+
+/** 読み取り専用のゲストで、リモートに無いローカルのデータを退避してから取り除く */
+async function discardLocalOnly(type: EntityType, id: string, target: string): Promise<boolean> {
+	const local = await tableOf(type).get(id);
+	if (!local) return false;
+	await backupEntity(type, local, 'remote-delete');
+	await tableOf(type).delete(id);
+	removeBase(type, id, target);
+	return true;
 }
 
 /**
@@ -1529,6 +1731,10 @@ async function downloadType(
 		// primary に残っている、共有中プロジェクトの子要素(古い端末が書いたものなど)は取り込まない
 		if (!scope.pid && type !== 'projects') {
 			remotes = withoutSharedChildren(remotes, scope.excludePids);
+		}
+		// ゲストのプロジェクト・ローカル専用のものと同じ ID の文書は、主 Firebase から取り込まない
+		if (!scope.pid && type === 'projects' && scope.excludeProjectDocs?.size) {
+			remotes = remotes.filter((r) => !scope.excludeProjectDocs!.has(r.id));
 		}
 		fetched = remotes.length;
 		progress.total += remotes.length;
@@ -1559,9 +1765,16 @@ async function downloadType(
 			for (const id of removals) {
 				if (await applyRemoteDeletion(type, id, scope.key)) changed = true;
 			}
-			enqueueManyAndSchedule(
-				uploads.map((id) => ({ type, id, action: 'create' as const, target: scope.key }))
-			);
+			if (scope.readOnly) {
+				// 閲覧権限: ローカルにしか無いもの(混入した変更)は送らず、リモートに合わせて取り除く
+				for (const id of uploads) {
+					if (await discardLocalOnly(type, id, scope.key)) changed = true;
+				}
+			} else {
+				enqueueManyAndSchedule(
+					uploads.map((id) => ({ type, id, action: 'create' as const, target: scope.key }))
+				);
+			}
 		} else {
 			skipped = Math.max(0, (await localCountInScope(type, scope)) - remotes.length);
 		}
@@ -1590,7 +1803,7 @@ export function downloadAllFromFirestore(
 	options: { trigger?: DownloadTrigger } = {}
 ): Promise<void> {
 	const trigger = options.trigger ?? 'periodic';
-	if (isAccessBlocked()) {
+	if (isAccessBlocked() && !hasGuestWork()) {
 		// 手動の完全同期は、成功したように見せず理由を返す
 		if (trigger === 'manual-full') return Promise.reject(new Error(NEEDS_OWNER_MESSAGE));
 		return Promise.resolve();
@@ -1674,6 +1887,8 @@ async function downloadAllTypes(
 	const progress = { done: 0, total: 0 };
 	const changedTypes = new Set<EntityType>();
 	const errors: unknown[] = [];
+	// 取得で権限エラーになったゲストのプロジェクト(アクセス権の失効として扱い、全体のエラーにはしない)
+	const deniedGuests = new Set<string>();
 
 	/** 1つのターゲットの1種類を取得する。成功した型を succeeded に入れる */
 	const runType = async (
@@ -1688,129 +1903,188 @@ async function downloadAllTypes(
 			succeeded.add(type);
 			addCount(result.fetched);
 		} catch (error) {
-			errors.push(error);
+			if (scope.guest && scope.pid && isPermissionDeniedError(error)) deniedGuests.add(scope.pid);
+			else errors.push(error);
 		}
 	};
 
-	// ---- primary: プロジェクト(ポインタ文書)を先に処理し、続けて共有中でない子要素を並列に処理する
-	const primaryState = getTargetState(state, PRIMARY_KEY);
-	const projectCount = await tableOf('projects').count();
-	const projectPlan = planDownload({
-		now: startedAt,
-		trigger,
-		types: ['projects'],
-		lastFullSyncAt: primaryState.lastFullSyncAt,
-		lastSyncTimes: primaryState.lastSyncTimes,
-		localCounts: { projects: projectCount }
-	}).projects;
-	const primarySucceeded = new Set<EntityType>();
-	const primaryScope: DownloadScope = {
-		key: PRIMARY_KEY,
-		target: targetFromKey(PRIMARY_KEY)!,
-		excludePids: new Set()
-	};
-	await runType('projects', projectPlan, primaryScope, primarySucceeded);
-
-	let sharedPlans: { scope: DownloadScope; plan: Record<EntityType, TypePlan> }[] = [];
-	const primaryPlans = new Map<EntityType, TypePlan>();
-	if (primarySucceeded.has('projects')) {
-		// 取得したポインタ文書の sharing が反映されたあとのローカルのプロジェクトから、共有中のものを決める
-		const projects = await db.projects.toArray();
-		const excludePids = new Set(projects.filter((p) => isSharedStatus(p.sharing)).map((p) => p.id));
-		const scopedPrimary: DownloadScope = { ...primaryScope, excludePids };
-
+	/** 共有ターゲット(オーナーの shared、またはゲストのプロジェクト)の全子要素を取得し、同期状態を記録する。全型が成功したら true */
+	const runSharedScope = async (scope: DownloadScope): Promise<boolean> => {
+		const targetState = getTargetState(state, scope.key);
 		const counts = await Promise.all(
-			PROJECT_SCOPED_TYPES.map((type) => localCountInScope(type, scopedPrimary))
+			PROJECT_SCOPED_TYPES.map((type) => localCountInScope(type, scope))
 		);
 		const plan = planDownload({
 			now: startedAt,
 			trigger,
 			types: PROJECT_SCOPED_TYPES,
-			lastFullSyncAt: primaryState.lastFullSyncAt,
-			lastSyncTimes: primaryState.lastSyncTimes,
+			lastFullSyncAt: targetState.lastFullSyncAt,
+			lastSyncTimes: targetState.lastSyncTimes,
 			localCounts: Object.fromEntries(PROJECT_SCOPED_TYPES.map((t, i) => [t, counts[i]]))
-		});
-		for (const type of PROJECT_SCOPED_TYPES) primaryPlans.set(type, plan[type]);
+		}) as Record<EntityType, TypePlan>;
 
-		// 共有中のプロジェクト(主 Firebase のオーナー分。停止の移行中は共有側が消えるので除く)の shared ターゲット
-		sharedPlans = [];
-		for (const project of projects) {
-			const sharing = project.sharing;
-			if (!isSharedStatus(sharing) || sharing.connectionId) continue;
-			if (sharing.status === 'migrating' && sharing.migration === 'stop') continue;
-			const key = sharedTargetKey(sharing.pid);
-			const target = targetFromKey(key);
-			if (!target) continue;
-			const scope: DownloadScope = { key, target, pid: sharing.pid, excludePids: new Set() };
-			const targetState = getTargetState(state, key);
-			const sharedCounts = await Promise.all(
-				PROJECT_SCOPED_TYPES.map((type) => localCountInScope(type, scope))
+		const succeeded = new Set<EntityType>();
+		await Promise.all(
+			PROJECT_SCOPED_TYPES.map((type) => runType(type, plan[type], scope, succeeded))
+		);
+		if (scope.guest && scope.pid && deniedGuests.has(scope.pid)) return false;
+
+		if (!ctx.cancelled && succeeded.size > 0) {
+			const current = getTargetState(state, scope.key);
+			const lastSyncTimes = { ...current.lastSyncTimes };
+			for (const type of succeeded) lastSyncTimes[type] = startedAt;
+			const fullDone = PROJECT_SCOPED_TYPES.every(
+				(t) => succeeded.has(t) && plan[t].mode === 'full'
 			);
-			sharedPlans.push({
-				scope,
-				plan: planDownload({
-					now: startedAt,
-					trigger,
-					types: PROJECT_SCOPED_TYPES,
-					lastFullSyncAt: targetState.lastFullSyncAt,
-					lastSyncTimes: targetState.lastSyncTimes,
-					localCounts: Object.fromEntries(PROJECT_SCOPED_TYPES.map((t, i) => [t, sharedCounts[i]]))
-				}) as Record<EntityType, TypePlan>
+			state = withTargetState(state, scope.key, {
+				lastFullSyncAt: fullDone ? startedAt : current.lastFullSyncAt,
+				lastSyncTimes
 			});
 		}
+		return succeeded.size === PROJECT_SCOPED_TYPES.length;
+	};
 
-		await Promise.all([
-			...PROJECT_SCOPED_TYPES.map((type) =>
-				runType(type, primaryPlans.get(type)!, scopedPrimary, primarySucceeded)
-			),
-			// 共有中のプロジェクトは数が少ないので順に処理する(型は並列)
-			(async () => {
-				for (const { scope, plan: sp } of sharedPlans) {
-					const succeeded = new Set<EntityType>();
-					await Promise.all(
-						PROJECT_SCOPED_TYPES.map((type) => runType(type, sp[type], scope, succeeded))
-					);
-					if (!ctx.cancelled && succeeded.size > 0) {
-						const current = getTargetState(state, scope.key);
-						const lastSyncTimes = { ...current.lastSyncTimes };
-						for (const type of succeeded) lastSyncTimes[type] = startedAt;
-						const fullDone = PROJECT_SCOPED_TYPES.every(
-							(t) => succeeded.has(t) && sp[t].mode === 'full'
-						);
-						state = withTargetState(state, scope.key, {
-							lastFullSyncAt: fullDone ? startedAt : current.lastFullSyncAt,
-							lastSyncTimes
-						});
-					}
-				}
-			})()
-		]);
+	const initialProjects = await db.projects.toArray();
+	const guestProjects = initialProjects.filter((p) => isGuestSharing(p.sharing));
+	// ゲストのプロジェクト(失効済みを含む)のターゲット。同期状態の掃除で消さない
+	const guestKeys = new Set(
+		guestProjects.map((p) => sharedTargetKey(p.sharing!.pid, p.sharing!.connectionId))
+	);
 
-		// 共有でなくなったターゲットの状態を取り除く
-		const live = new Set(sharedPlans.map((p) => p.scope.key));
-		for (const key of Object.keys(state.targets)) {
-			if (!live.has(key) && !parseTargetKey(key)?.connectionId) {
-				state = {
-					...state,
-					targets: Object.fromEntries(Object.entries(state.targets).filter(([k]) => k !== key))
-				};
+	// ---- primary: プロジェクト(ポインタ文書)を先に処理し、続けて共有中でない子要素を並列に処理する。
+	// Firebase 未設定・オーナー未登録のときは行わない(ゲストの同期だけを行う)
+	const primarySucceeded = new Set<EntityType>();
+	const primaryPlans = new Map<EntityType, TypePlan>();
+	const primaryState = getTargetState(state, PRIMARY_KEY);
+	let projectPlan: TypePlan = { mode: 'full' };
+
+	if (isFirebaseInitialized() && !isAccessBlocked()) {
+		// ゲストのプロジェクト・ローカル専用の文書は、主 Firebase の取得・突き合わせの対象にしない
+		const excludeProjectDocs = new Set(
+			initialProjects.filter((p) => isExcludedFromPrimary(p)).map((p) => p.id)
+		);
+		const primaryScope: DownloadScope = {
+			key: PRIMARY_KEY,
+			target: targetFromKey(PRIMARY_KEY)!,
+			excludePids: new Set(),
+			excludeProjectDocs
+		};
+		projectPlan = planDownload({
+			now: startedAt,
+			trigger,
+			types: ['projects'],
+			lastFullSyncAt: primaryState.lastFullSyncAt,
+			lastSyncTimes: primaryState.lastSyncTimes,
+			localCounts: { projects: await localCountInScope('projects', primaryScope) }
+		}).projects;
+		await runType('projects', projectPlan, primaryScope, primarySucceeded);
+
+		if (primarySucceeded.has('projects')) {
+			// 取得したポインタ文書の sharing が反映されたあとのローカルのプロジェクトから、共有中のものを決める
+			const projects = await db.projects.toArray();
+			const excludePids = primaryExcludedIds(projects);
+			const scopedPrimary: DownloadScope = { ...primaryScope, excludePids };
+
+			const counts = await Promise.all(
+				PROJECT_SCOPED_TYPES.map((type) => localCountInScope(type, scopedPrimary))
+			);
+			const plan = planDownload({
+				now: startedAt,
+				trigger,
+				types: PROJECT_SCOPED_TYPES,
+				lastFullSyncAt: primaryState.lastFullSyncAt,
+				lastSyncTimes: primaryState.lastSyncTimes,
+				localCounts: Object.fromEntries(PROJECT_SCOPED_TYPES.map((t, i) => [t, counts[i]]))
+			});
+			for (const type of PROJECT_SCOPED_TYPES) primaryPlans.set(type, plan[type]);
+
+			// 共有中のプロジェクト(主 Firebase のオーナー分。停止の移行中は共有側が消えるので除く)の shared ターゲット
+			const ownerScopes: DownloadScope[] = [];
+			for (const project of projects) {
+				const sharing = project.sharing;
+				if (!isSharedStatus(sharing) || sharing.connectionId || sharing.role !== 'owner') continue;
+				if (sharing.status === 'migrating' && sharing.migration === 'stop') continue;
+				const key = sharedTargetKey(sharing.pid);
+				const target = targetFromKey(key);
+				if (!target) continue;
+				ownerScopes.push({ key, target, pid: sharing.pid, excludePids: new Set() });
 			}
+
+			await Promise.all([
+				...PROJECT_SCOPED_TYPES.map((type) =>
+					runType(type, primaryPlans.get(type)!, scopedPrimary, primarySucceeded)
+				),
+				// 共有中のプロジェクトは数が少ないので順に処理する(型は並列)
+				(async () => {
+					for (const scope of ownerScopes) await runSharedScope(scope);
+				})()
+			]);
+
+			// 共有でなくなったターゲットの状態を取り除く(ゲスト接続・ゲストのプロジェクトのものは残す)
+			const live = new Set(ownerScopes.map((scope) => scope.key));
+			for (const key of Object.keys(state.targets)) {
+				if (!live.has(key) && !guestKeys.has(key) && !parseTargetKey(key)?.connectionId) {
+					state = {
+						...state,
+						targets: Object.fromEntries(Object.entries(state.targets).filter(([k]) => k !== key))
+					};
+				}
+			}
+		}
+
+		// 成功した型の取得時刻を記録する(取得開始時刻。次回は安全マージンを引いて使う)
+		if (!ctx.cancelled && primarySucceeded.size > 0) {
+			const lastSyncTimes = { ...primaryState.lastSyncTimes };
+			for (const type of primarySucceeded) lastSyncTimes[type] = startedAt;
+			const fullDone = ENTITY_TYPES.every(
+				(t) =>
+					primarySucceeded.has(t) &&
+					(t === 'projects' ? projectPlan : primaryPlans.get(t)!).mode === 'full'
+			);
+			state = withTargetState(state, PRIMARY_KEY, {
+				lastFullSyncAt: fullDone ? startedAt : primaryState.lastFullSyncAt,
+				lastSyncTimes
+			});
 		}
 	}
 
-	// 成功した型の取得時刻を記録する(取得開始時刻。次回は安全マージンを引いて使う)
-	if (!ctx.cancelled && primarySucceeded.size > 0) {
-		const lastSyncTimes = { ...primaryState.lastSyncTimes };
-		for (const type of primarySucceeded) lastSyncTimes[type] = startedAt;
-		const fullDone = ENTITY_TYPES.every(
-			(t) =>
-				primarySucceeded.has(t) &&
-				(t === 'projects' ? projectPlan : primaryPlans.get(t)!).mode === 'full'
-		);
-		state = withTargetState(state, PRIMARY_KEY, {
-			lastFullSyncAt: fullDone ? startedAt : primaryState.lastFullSyncAt,
-			lastSyncTimes
+	// ---- ゲスト: 主 Firebase の同期設定とは独立して、各プロジェクトの接続先の shared/{pid} を取得する。
+	// 失効済み・接続が使えないもの(未登録・オフラインでサインインできない)は飛ばす
+	for (const project of guestProjects) {
+		const sharing = project.sharing!;
+		if (ctx.cancelled) break;
+		if (isRevokedSharing(sharing) || !isSharedStatus(sharing)) continue;
+
+		const key = sharedTargetKey(sharing.pid, sharing.connectionId);
+		if (sharing.connectionId) {
+			if (!isConnectionRegistered(sharing.connectionId)) continue;
+			try {
+				await awaitConnectionReady(sharing.connectionId);
+			} catch (error) {
+				console.warn(`Guest connection not ready (${sharing.connectionId}):`, error);
+				continue;
+			}
+		} else if (!isFirebaseInitialized()) {
+			continue;
+		}
+		const target = targetFromKey(key);
+		if (!target) continue;
+
+		const complete = await runSharedScope({
+			key,
+			target,
+			pid: sharing.pid,
+			excludePids: new Set(),
+			guest: true,
+			readOnly: sharing.role === 'viewer'
 		});
+		if (deniedGuests.has(sharing.pid)) {
+			await revokeGuestAccess(sharing.pid);
+		} else if (complete && sharing.connectionId) {
+			connectionsDB
+				.update(sharing.connectionId, { lastSyncAt: startedAt })
+				.catch((error) => console.warn('Failed to record connection sync time:', error));
+		}
 	}
 	saveSyncState(state);
 
@@ -1882,6 +2156,97 @@ export async function pullSharedProject(pid: string): Promise<void> {
 			endActivity();
 		}
 	});
+}
+
+// ---------- ゲスト接続の管理(join.service / connection.service 向け) ----------
+
+/** 権限エラーが、ゲストのプロジェクトでのアクセス権の失効なら、失効として処理して true を返す */
+async function handleGuestDenied(
+	target: { kind: string; pid?: string },
+	error: unknown
+): Promise<boolean> {
+	if (!isPermissionDeniedError(error) || target.kind !== 'shared' || !target.pid) return false;
+	const project = await db.projects.get(target.pid);
+	if (!isGuestSharing(project?.sharing)) return false;
+	await revokeGuestAccess(target.pid);
+	return true;
+}
+
+const revoking = new Set<string>();
+
+/**
+ * ゲストのアクセス権が無効になった(メンバー削除・秘密無効・共有停止)ときの処理。
+ * 接続を revoked にして同期を止める。ローカルのコピーは削除しない(読み取り専用になり、再参加で復帰できる)。
+ */
+export async function revokeGuestAccess(pid: string): Promise<void> {
+	if (revoking.has(pid)) return;
+	revoking.add(pid);
+	try {
+		const revokedAt = Date.now();
+		const connectionId = await db.transaction('rw', db.projects, async () => {
+			const project = await db.projects.get(pid);
+			if (!project || !isGuestSharing(project.sharing) || project.sharing.revokedAt !== undefined) {
+				return null;
+			}
+			await db.projects.put({ ...project, sharing: { ...project.sharing, revokedAt } });
+			return project.sharing.connectionId ?? '';
+		});
+		if (connectionId === null) return;
+
+		console.warn(`🚫 Guest access revoked for project ${pid}`);
+		if (connectionId) {
+			await connectionsDB.update(connectionId, { status: 'revoked' });
+			unregisterConnection(connectionId);
+		}
+		stopProjectRealtime(pid);
+		discardPendingForPid(pid);
+		await refreshGuestFlags();
+		await refreshProjectStores();
+	} catch (error) {
+		console.error(`Failed to revoke guest access for ${pid}:`, error);
+	} finally {
+		revoking.delete(pid);
+	}
+}
+
+/** ゲストの状態(接続なしのゲストの有無)を数え直す。退出のあとなどに呼ぶ */
+export const refreshGuestState = refreshGuestFlags;
+
+/** そのプロジェクトの共有ターゲット宛ての送信待ちを捨てる(ローカルの内容は残す。再参加時は突き合わせで再送される) */
+function discardPendingForPid(pid: string): void {
+	let removed = false;
+	for (const [key, change] of [...pendingChanges]) {
+		if (pidOfTargetKey(targetOf(change)) === pid) {
+			pendingChanges.delete(key);
+			removed = true;
+		}
+	}
+	if (removed) persistPending();
+}
+
+/** 参加・退出のあとの後始末(ターゲットの送信待ちと同期状態を捨てる)。ローカルのデータは触らない */
+export function discardGuestTarget(pid: string, connectionId?: string): void {
+	discardPendingForPid(pid);
+	saveSyncState(withoutTargetState(loadSyncState(), sharedTargetKey(pid, connectionId)));
+}
+
+/**
+ * ゲスト接続が増えた/減った/復帰したときに呼ぶ。
+ * 同期システムが未起動(Firebase 未設定のまま)なら起動し、起動済みなら取得を始める。開いているプロジェクトの購読もやり直す。
+ */
+export async function notifyConnectionsChanged(): Promise<void> {
+	await refreshGuestFlags();
+	if (!isInitialized || !syncLoopsStarted) {
+		isInitialized = false;
+		await initializeSync();
+	} else if (navigator.onLine) {
+		void downloadAllFromFirestore().catch((err) =>
+			console.warn('Download after join failed:', err)
+		);
+		flushPendingIfNeeded();
+	}
+	const current = currentProjectStore.project;
+	if (current && isGuestSharing(current.sharing)) await startCurrentProjectSync(current.id);
 }
 
 /** 開いているプロジェクトが pid なら、リアルタイム同期をやり直す(共有の開始・停止で購読先が変わるため) */

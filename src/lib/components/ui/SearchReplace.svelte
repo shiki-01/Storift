@@ -12,9 +12,11 @@
 		onClose: () => void;
 		/** 結果のシーンをタップしたとき */
 		onOpenScene?: (sceneId: string) => void;
+		/** 読み取り専用(閲覧権限など)のプロジェクトでは置換を使えない */
+		readOnly?: boolean;
 	}
 
-	let { projectId, show, onClose, onOpenScene }: Props = $props();
+	let { projectId, show, onClose, onOpenScene, readOnly = false }: Props = $props();
 
 	let searchQuery = $state('');
 	let replaceWith = $state('');
@@ -79,7 +81,7 @@
 	}
 
 	async function handleReplace() {
-		if (!searchQuery) return;
+		if (readOnly || !searchQuery) return;
 		const total = searchResults.reduce((n, r) => n + r.matches, 0);
 		const ok = await confirmDialog({
 			title: '一括置換',
@@ -137,7 +139,7 @@
 		</label>
 		{#if regexError}<p class="error" role="alert">{regexError}</p>{/if}
 
-		{#if showReplace}
+		{#if showReplace && !readOnly}
 			<label class="field">
 				<span>置換後</span>
 				<input type="text" bind:value={replaceWith} placeholder="置換後のテキスト" />
@@ -161,14 +163,16 @@
 			<label><input type="checkbox" bind:checked={caseSensitive} />大文字小文字を区別</label>
 			<label><input type="checkbox" bind:checked={wholeWord} />単語単位</label>
 			<label><input type="checkbox" bind:checked={useRegex} />正規表現</label>
-			<label><input type="checkbox" bind:checked={showReplace} />置換</label>
+			{#if !readOnly}
+				<label><input type="checkbox" bind:checked={showReplace} />置換</label>
+			{/if}
 		</div>
 
 		<div class="actions">
 			<button class="primary" onclick={handleSearch} disabled={isSearching || !searchQuery}>
 				{isSearching ? '検索中...' : '検索'}
 			</button>
-			{#if showReplace}
+			{#if showReplace && !readOnly}
 				<button
 					class="danger"
 					onclick={handleReplace}

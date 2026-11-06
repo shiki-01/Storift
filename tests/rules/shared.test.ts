@@ -311,6 +311,21 @@ describe('presence', () => {
 		await assertFails(setDoc(doc(dbOf(env, 'editor2'), path('editor2')), { t: 1 }));
 	});
 
+	it('delete は本人とオーナー。他のメンバー・非メンバーは拒否', async () => {
+		await seed(env, { [path('editor1')]: { t: 1 }, [path('viewer1')]: { t: 1 } });
+		await assertFails(deleteDoc(doc(dbOf(env, 'viewer1'), path('editor1'))));
+		await assertFails(deleteDoc(doc(dbOf(env, 'stranger'), path('editor1'))));
+		await assertSucceeds(deleteDoc(doc(dbOf(env, 'editor1'), path('editor1'))));
+		// オーナーは他人の presence を削除できる(共有の停止・メンバー削除後の片付け)
+		await assertSucceeds(deleteDoc(doc(dbOf(env, 'owner1'), path('viewer1'))));
+	});
+
+	it('メンバーでなくなった(members を削除された)uid は自分の presence も消せない', async () => {
+		await seed(env, { [`shared/${PID}/presence/ghost`]: { t: 1 } });
+		await assertFails(deleteDoc(doc(dbOf(env, 'ghost'), `shared/${PID}/presence/ghost`)));
+		await assertSucceeds(deleteDoc(doc(dbOf(env, 'owner1'), `shared/${PID}/presence/ghost`)));
+	});
+
 	it('read はメンバーとオーナー', async () => {
 		await seed(env, { [path('editor1')]: { t: 1 } });
 		await assertSucceeds(getDoc(doc(dbOf(env, 'viewer1'), path('editor1'))));

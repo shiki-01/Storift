@@ -175,6 +175,11 @@ export async function startSharing(projectId: string, options: StartSharingOptio
 					visibility: options.visibility,
 					status: 'migrating',
 					secrets: { viewer, editor },
+					// 方式を記録する(招待リンクにトークンだけを含めるため)
+					secretKinds: {
+						viewer: options.viewerSecret?.type === 'password' ? 'password' : 'token',
+						editor: options.editorSecret?.type === 'password' ? 'password' : 'token'
+					},
 					startedAt: Date.now(),
 					migration: 'start'
 				},
@@ -263,7 +268,8 @@ async function runStop(pid: string, uid: string): Promise<void> {
  */
 export async function deleteProjectSharing(projectId: string): Promise<void> {
 	const project = await db.projects.get(projectId);
-	if (!project?.sharing || project.sharing.connectionId) return;
+	// ゲストのプロジェクト(接続あり・なし)は共有側を削除しない(それはオーナーの操作)
+	if (!project?.sharing || project.sharing.connectionId || project.sharing.role !== 'owner') return;
 	requireOwner();
 
 	await exclusive(projectId, async () => {
@@ -355,7 +361,14 @@ export async function regenerateSecret(
 	return exclusive(projectId, async () => {
 		const { sharing } = await requireActiveOwner(projectId);
 		const value = resolveSecret(spec);
-		const next: ProjectSharing = { ...sharing, secrets: { ...sharing.secrets, [role]: value } };
+		const next: ProjectSharing = {
+			...sharing,
+			secrets: { ...sharing.secrets, [role]: value },
+			secretKinds: {
+				...sharing.secretKinds,
+				[role]: spec?.type === 'password' ? 'password' : 'token'
+			}
+		};
 		const firestore = getFirestoreInstance();
 		// 秘密はクライアントから読み戻せないので、ローカルに先に保存する(保存前に落ちて新しい値を失うのを避ける)
 		await writeLocalSharing(projectId, next);

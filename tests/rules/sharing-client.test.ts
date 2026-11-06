@@ -343,8 +343,8 @@ describe('stopSharing', () => {
 		expect(await idsOf('worldbuilding')).toEqual(['w1']);
 		expect((await dataOf('scenes/s1'))?.projectId).toBe(PID);
 
-		// 他人の presence はルール上オーナーでも消せないので残る(それ以外は空)
-		expect(await allSharedPaths()).toEqual(['presence/viewer1']);
+		// 他人の presence もオーナーは削除できる(ルール変更済み)ので、shared 配下は空になる
+		expect(await allSharedPaths()).toEqual([]);
 		expect(await idsOf(`shared/${PID}/scenes/s1/updates`)).toEqual([]);
 		expect(await idsOf(`shared/${PID}/scenes/s1/crdt`)).toEqual([]);
 

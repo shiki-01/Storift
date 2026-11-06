@@ -10,3 +10,4 @@ export * from './settings';
 export * from './preview';
 export * from './relationMap';
 export * from './memo';
+export * from './connection';

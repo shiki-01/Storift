@@ -15,8 +15,8 @@ let auth: Auth | null = null;
 
 export function initializeFirebase(config: FirebaseConfig): void {
 	try {
-		// 既に初期化されている場合はスキップ
-		if (getApps().length > 0) {
+		// 既に初期化されている場合はスキップ(ゲスト接続の名前付きアプリは数えない: 先に作られていても主 Firebase を初期化できるように)
+		if (getApps().some((existing) => existing.name === '[DEFAULT]')) {
 			console.log('⚠️ Firebase already initialized');
 			return;
 		}

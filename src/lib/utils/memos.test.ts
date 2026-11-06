@@ -135,7 +135,7 @@ describe('範囲', () => {
 	});
 });
 
-describe('Claude への依頼文', () => {
+describe('AI への依頼文', () => {
 	it('番号付きで、シーン名と引用を添える', () => {
 		const prompt = buildTodoPrompt([
 			{ text: '年齢を決める', sceneTitle: '第一章', quote: '彼は十七歳だった' },

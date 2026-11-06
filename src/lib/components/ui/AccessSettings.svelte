@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import Button from './Button.svelte';
-	import Card from './Card.svelte';
+	import SettingsCard from '$lib/components/settings/SettingsCard.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { authStore } from '$lib/stores/auth.svelte';
 	import { isFirebaseInitialized } from '$lib/firebase/config';
@@ -69,8 +69,7 @@
 
 {#if isFirebaseInitialized()}
 	{#if mode === 'needs-owner'}
-		<Card class="b:1px|solid|theme-warning flex flex:column gap:1rem">
-			<h2 class="font:bold">設定コードの入力</h2>
+		<SettingsCard title="設定コードの入力" tone="warning">
 			<p class="font:.875rem">{authStore.accessMessage}</p>
 			<p class="fg:theme-text-secondary font:.875rem">
 				オーナー端末の「設定コード」カードで表示したコードを貼り付けて、適用してください。この端末の同期が自動で始まります。
@@ -89,16 +88,14 @@
 					{applying ? '適用中...' : '適用'}
 				</Button>
 			</div>
-		</Card>
+		</SettingsCard>
 	{/if}
 
 	{#if mode === 'owner'}
-		<Card class="b:1px|solid|theme-border flex flex:column gap:1rem">
-			<h2 class="font:bold">設定コード</h2>
-			<p class="fg:theme-text-secondary font:.875rem">
-				自分の別の端末で同じ Firebase に接続するときに、Firebase Console
-				の設定値の代わりに貼り付けるコードです。
-			</p>
+		<SettingsCard
+			title="設定コード"
+			description="自分の別の端末で同じ Firebase に接続するときに、Firebase Console の設定値の代わりに貼り付けるコードです。"
+		>
 			<div
 				class="px:1rem py:.75rem r:6px b:1px|solid|theme-warning"
 				style="background-color: color-mix(in srgb, var(--color-warning) 10%, transparent);"
@@ -129,11 +126,10 @@
 					設定コードを作成できません(この端末にオーナー鍵が保存されていません)。
 				</p>
 			{/if}
-		</Card>
+		</SettingsCard>
 	{/if}
 
-	<Card class="b:1px|solid|theme-border flex flex:column gap:1rem">
-		<h2 class="font:bold">Firebase ルール</h2>
+	<SettingsCard title="Firebase ルール">
 		<p class="font:.875rem">現在のモード: <strong>{modeLabel}</strong></p>
 
 		{#if mode === 'legacy'}
@@ -161,5 +157,5 @@
 				>ルールをコピー</Button
 			>
 		</div>
-	</Card>
+	</SettingsCard>
 {/if}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { APP_URL, RELEASES_URL } from '$lib/config';
+	import Logo from '$lib/Logo.svelte';
 	import Icon from '$lib/Icon.svelte';
 	import type { IconName } from '$lib/icons';
 
@@ -29,13 +30,7 @@
 
 <nav class="rail" aria-label="メイン">
 	<a class="rail-mark" href="/" aria-label="Storift ホーム">
-		<svg viewBox="0 0 36 32" width="26" height="24" aria-hidden="true">
-			<path
-				d="M28.27.47a1.6 1.6 0 0 1 2.27 0l4.22 4.22a1.6 1.6 0 0 1 0 2.27L20.02 21.71a1.6 1.6 0 0 1-.82.44l-5.28 1.06a1.6 1.6 0 0 1-1.89-1.89l1.06-5.28c.06-.3.21-.58.43-.8z"
-				fill="currentColor"
-			/>
-			<path d="M.7 27h33.74M.7 30.43h33.74" stroke="currentColor" stroke-width="1.4" />
-		</svg>
+		<Logo variant="mark" size={26} title="" />
 	</a>
 
 	<div class="rail-group" bind:this={groupEl}>

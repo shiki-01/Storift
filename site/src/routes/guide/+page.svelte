@@ -81,7 +81,7 @@
 			<dd>SmartScreen の警告が出たら「詳細情報」から「実行」を選びます。</dd>
 		</dl>
 		<p>
-			Claude Code のパネルを使うには、Claude Code
+			AI のパネルは、設定の「AI」でプロバイダを選んで使います。Claude Code を選ぶ場合は、Claude Code
 			をインストールしてログインしておきます。ログインしていないときは、パネルにログインの案内が出ます。
 		</p>
 	</section>

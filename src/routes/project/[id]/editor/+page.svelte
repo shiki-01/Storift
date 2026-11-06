@@ -73,14 +73,14 @@
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import { getSystemFontName, systemFontToCss } from '$lib/utils/fonts';
 	import MemoPanel from '$lib/components/memo/MemoPanel.svelte';
-	import { claudeStore } from '$lib/stores/claude.svelte';
+	import { aiStore } from '$lib/stores/ai.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 
 	let isChapterModalOpen = $state(false);
 
-	// デスクトップ版(Tauri)だけ、本文の横に Claude Code のパネルを出せる
+	// デスクトップ版(Tauri)だけ、本文の横に AI パネルを出せる
 	const desktop = isDesktop();
 	// シーンを切り替えた時だけ、本文を軽くフェードインさせる
 	let lastAnimatedSceneId: string | null = null;
@@ -99,16 +99,14 @@
 		);
 	});
 
-	let showClaude = $derived(
-		desktop && claudeStore.open && !viewport.isMobile && !editorStore.focusMode
-	);
-	// メモパネルは Claude パネルと同じ位置に出す(Claude が開いているときは Claude を優先)
+	let showAi = $derived(desktop && aiStore.open && !viewport.isMobile && !editorStore.focusMode);
+	// メモパネルは AI パネルと同じ位置に出す(AI が開いているときは AI を優先)
 	let showMemo = $derived(
-		editorStore.memoOpen && !showClaude && !viewport.isMobile && !editorStore.focusMode
+		editorStore.memoOpen && !showAi && !viewport.isMobile && !editorStore.focusMode
 	);
-	// Claude パネルが開いたら、メモパネルは閉じる(どちらか一方だけ出す)
+	// AI パネルが開いたら、メモパネルは閉じる(どちらか一方だけ出す)
 	$effect(() => {
-		if (desktop && claudeStore.open && editorStore.memoOpen) editorStore.memoOpen = false;
+		if (desktop && aiStore.open && editorStore.memoOpen) editorStore.memoOpen = false;
 	});
 	let isSceneModalOpen = $state(false);
 	let isRenameModalOpen = $state(false);
@@ -712,7 +710,7 @@
 		return () => current.adapter.setRoot(null);
 	});
 
-	// 執筆支援・校正・Claude などが editorStore.content を書き換えたら、差分を Y へ反映する
+	// 執筆支援・校正・AI などが editorStore.content を書き換えたら、差分を Y へ反映する
 	$effect(() => {
 		const content = editorStore.content;
 		const sceneId = editorStore.currentScene?.id;
@@ -898,9 +896,9 @@
 	// 本文の強調に使う、この作品のメモ(範囲があるものだけ)
 	let memoAnchors = $state<Memo[]>([]);
 
-	// パネルは Claude パネルと同じ位置に出すので、Claude は閉じる
+	// パネルは AI パネルと同じ位置に出すので、AI は閉じる
 	function openMemoPanel(draft: MemoDraft | null = null) {
-		if (desktop) claudeStore.open = false;
+		if (desktop) aiStore.open = false;
 		editorStore.requestMemo(draft);
 	}
 
@@ -2407,13 +2405,13 @@
 							{#if desktop}
 								<div class="tool-sep"></div>
 								<button
-									class="tool tool--claude"
-									class:on={claudeStore.open}
-									aria-pressed={claudeStore.open}
-									data-tour="editor-claude"
-									onclick={() => claudeStore.toggle()}
-									aria-label="Claude Code パネル (Ctrl+Shift+L)"
-									title="Claude Code パネル (Ctrl+Shift+L)"
+									class="tool tool--ai"
+									class:on={aiStore.open}
+									aria-pressed={aiStore.open}
+									data-tour="editor-ai"
+									onclick={() => aiStore.toggle()}
+									aria-label="AI パネル (Ctrl+Shift+L)"
+									title="AI パネル (Ctrl+Shift+L)"
 								>
 									<Icon name="sparkles" class="w:20px" />
 								</button>
@@ -2430,7 +2428,7 @@
 				</div>
 			{/if}
 
-			<!-- エディタ & プレビューエリア(デスクトップ版は右に Claude パネル) -->
+			<!-- エディタ & プレビューエリア(デスクトップ版は右に AI パネル) -->
 			<div class="editor-workspace">
 				<div class="editor-panels flex-grow:1 flex overflow:hidden">
 					<!-- エディタ -->
@@ -2525,10 +2523,10 @@
 						</div>
 					{/if}
 				</div>
-				{#if showClaude}
-					<!-- Claude パネルはプロジェクト全体のレイアウト側に出す -->
+				{#if showAi}
+					<!-- AI パネルはプロジェクト全体のレイアウト側に出す -->
 				{:else if showMemo && currentProjectStore.project}
-					<div class="claude-slot" transition:slide={{ axis: 'x', duration: 220 }}>
+					<div class="ai-slot" transition:slide={{ axis: 'x', duration: 220 }}>
 						<MemoPanel
 							projectId={currentProjectStore.project.id}
 							onJump={jumpToMemo}
@@ -3096,14 +3094,14 @@
 		min-height: 0;
 	}
 
-	.claude-slot {
+	.ai-slot {
 		flex: none;
 		display: flex;
 		min-height: 0;
 	}
 
 	/* 開いている間は藍の地で、押した状態だと分かるようにする */
-	.tool--claude.on {
+	.tool--ai.on {
 		background: var(--selected);
 	}
 
@@ -3124,7 +3122,8 @@
 		flex: none;
 		display: flex;
 		align-items: center;
-		height: 52px;
+		box-sizing: border-box;
+		height: var(--editor-header-height);
 		padding: 0 12px 0 8px;
 		background: var(--color-background);
 		border-bottom: 1px solid var(--color-border);

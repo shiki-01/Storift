@@ -1,7 +1,12 @@
 /**
  * 同期処理の計測。直近の記録をメモリに保持し、console にも出す(設定画面の「同期診断」で表示する)
  */
-export type SyncMetricKind = 'processPendingChanges' | 'download' | 'applyRealtime';
+export type SyncMetricKind =
+	| 'processPendingChanges'
+	| 'download'
+	| 'applyRealtime'
+	/** 内容が同一の競合を自動で解決した(label に種類と理由)。durationMs は 0 */
+	| 'conflictAutoResolved';
 
 export interface SyncMetric {
 	kind: SyncMetricKind;

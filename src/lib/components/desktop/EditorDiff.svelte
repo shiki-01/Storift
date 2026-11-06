@@ -1,6 +1,6 @@
 <script lang="ts">
 	/**
-	 * エディタ上に、Claude の変更を色付きで表示する(インライン差分)。
+	 * エディタ上に、AI の変更を色付きで表示する(インライン差分)。
 	 *
 	 * - 反映済みで未確認の変更: 追加した文字を緑、消えた文字はその位置に赤い取り消し線の札で示す
 	 * - 未反映の提案: 消える文字を赤(取り消し線)、入る文字はその位置に緑の札で示す
@@ -10,7 +10,7 @@
 	 */
 	import { onMount } from 'svelte';
 	import { fly } from 'svelte/transition';
-	import { claudeStore, type EditorEdit } from '$lib/stores/claude.svelte';
+	import { aiStore, type EditorEdit } from '$lib/stores/ai.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
 	import {
 		appliedDecoration,
@@ -107,7 +107,7 @@
 		frame = 0;
 		const root = editorRoot();
 		const content = editorStore.content;
-		const entries = root ? claudeStore.editorEdits : [];
+		const entries = root ? aiStore.editorEdits : [];
 		const add: Range[] = [];
 		const del: Range[] = [];
 		const next: Placed[] = [];
@@ -155,14 +155,13 @@
 	// 変更の一覧・状態・本文が変わったら描き直す(エディタ側の DOM 更新の後に測るため次のフレームで)
 	$effect(() => {
 		void editorStore.content;
-		for (const { edit } of claudeStore.editorEdits)
-			void [edit.status, edit.reviewed, edit.appliedAt];
+		for (const { edit } of aiStore.editorEdits) void [edit.status, edit.reviewed, edit.appliedAt];
 		schedule();
 	});
 
 	// 履歴から開いたときなど、まだシーンとファイルの対応が無ければ作る
 	$effect(() => {
-		if (editorStore.currentScene) void claudeStore.refreshSceneFiles();
+		if (editorStore.currentScene) void aiStore.refreshSceneFiles();
 	});
 
 	function inside(b: Box, x: number, y: number, pad = 4): boolean {
@@ -231,10 +230,10 @@
 	async function act(item: Placed, action: 'keep' | 'revert' | 'apply' | 'reject') {
 		const { edit } = item.entry;
 		closeCard();
-		if (action === 'keep') claudeStore.keepEdit(edit);
-		else if (action === 'revert') await claudeStore.revertEdit(edit);
-		else if (action === 'apply') await claudeStore.applyEdit(edit);
-		else claudeStore.rejectEdit(edit);
+		if (action === 'keep') aiStore.keepEdit(edit);
+		else if (action === 'revert') await aiStore.revertEdit(edit);
+		else if (action === 'apply') await aiStore.applyEdit(edit);
+		else aiStore.rejectEdit(edit);
 	}
 
 	let activeItem = $derived(placed.find((p) => p.key === active) ?? null);
@@ -352,18 +351,16 @@
 			</button>
 		</span>
 		{#if appliedCount}
-			<button class="bar-btn" onclick={() => claudeStore.forEditorEdits('revert')}
+			<button class="bar-btn" onclick={() => aiStore.forEditorEdits('revert')}
 				>すべて元に戻す</button
 			>
-			<button class="bar-btn primary" onclick={() => claudeStore.forEditorEdits('keep')}
+			<button class="bar-btn primary" onclick={() => aiStore.forEditorEdits('keep')}
 				>すべて保持</button
 			>
 		{/if}
 		{#if pendingCount}
-			<button class="bar-btn" onclick={() => claudeStore.forEditorEdits('reject')}
-				>すべて却下</button
-			>
-			<button class="bar-btn primary" onclick={() => claudeStore.forEditorEdits('apply')}
+			<button class="bar-btn" onclick={() => aiStore.forEditorEdits('reject')}>すべて却下</button>
+			<button class="bar-btn primary" onclick={() => aiStore.forEditorEdits('apply')}
 				>すべて反映</button
 			>
 		{/if}

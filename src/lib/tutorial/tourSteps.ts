@@ -101,13 +101,13 @@ export const TOUR_STEPS: TourStep[] = [
 		optional: true
 	},
 	{
-		id: 'toolbar-claude',
-		title: 'Claude Code と連携する',
+		id: 'toolbar-ai',
+		title: 'AI と連携する',
 		body: [
-			'デスクトップ版では、Claude Code に本文の相談や推敲を依頼できます。',
-			'メモの todo を Claude Code に依頼することもできます。'
+			'デスクトップ版では、AI に本文の相談や推敲を依頼できます。',
+			'メモの todo を AI に依頼することもできます。'
 		],
-		target: '[data-tour="editor-claude"]',
+		target: '[data-tour="editor-ai"]',
 		optional: true,
 		when: 'desktop'
 	},
@@ -190,7 +190,7 @@ export const TOUR_STEPS: TourStep[] = [
 			'テーマを選ぶと、画面の配色が変わります。',
 			'テーマエディタでは自分の配色を作成し、書き出しや読み込みができます。'
 		],
-		route: () => '/settings',
+		route: () => '/settings#appearance',
 		target: '[data-tour="settings-theme"]'
 	},
 	{
@@ -201,6 +201,7 @@ export const TOUR_STEPS: TourStep[] = [
 			'Firebase は Google のクラウドサービスです。データはご自身の Firebase に保存され、運営者が内容を見ることはできません。',
 			'設定と管理は自己責任で行ってください。設定値は他人に教えないでください。手順は紹介サイトのガイドを参照してください。'
 		],
+		route: () => '/settings#sync',
 		target: '[data-tour="settings-sync"]',
 		link: {
 			label: 'Firebase 設定ガイドを開く',
@@ -215,7 +216,7 @@ export const TOUR_STEPS: TourStep[] = [
 			'サイトデータを削除すると消えるため、定期的に全データをエクスポートしてバックアップしてください。'
 		],
 		// 完了(ホーム)から戻ったときにも設定画面を開く
-		route: () => '/settings',
+		route: () => '/settings#data',
 		target: '[data-tour="settings-backup"]'
 	},
 	{

@@ -1,6 +1,5 @@
 <script lang="ts">
 	import '../app.css';
-	import { logo } from '$lib/assets/logo';
 	import { onMount } from 'svelte';
 	import { page, updated } from '$app/state';
 	import { resolve } from '$app/paths';
@@ -21,12 +20,12 @@
 	import { registerServiceWorker, checkForUpdate } from '$lib/utils/sw-register';
 	import { initializeErrorHandler } from '$lib/utils/errorHandler';
 	import SyncStatus from '$lib/components/ui/SyncStatus.svelte';
+	import Logo from '$lib/components/ui/Logo.svelte';
 	import ToastHost from '$lib/components/ui/ToastHost.svelte';
 	import ConflictHost from '$lib/components/ui/ConflictHost.svelte';
 	import TourOverlay from '$lib/components/tutorial/TourOverlay.svelte';
-	import { themes, themeStore } from '$lib/stores/theme.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
-	import { claudeStore } from '$lib/stores/claude.svelte';
+	import { aiStore } from '$lib/stores/ai.svelte';
 	import { updaterStore } from '$lib/stores/updater.svelte';
 	import TitleBar from '$lib/components/desktop/TitleBar.svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
@@ -37,14 +36,14 @@
 
 	let { children } = $props();
 
-	// デスクトップ版(Tauri)だけ、Claude Code のパネル(執筆画面)と自前のタイトルバーを使う
+	// デスクトップ版(Tauri)だけ、AI パネル(執筆画面)と自前のタイトルバーを使う
 	const desktop = isDesktop();
 
 	function onGlobalKeydown(e: KeyboardEvent) {
 		// Ctrl(Cmd)+Shift+L でパネルの開閉
 		if (desktop && (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'l') {
 			e.preventDefault();
-			claudeStore.toggle();
+			aiStore.toggle();
 		}
 	}
 
@@ -239,8 +238,7 @@
 							<span class="header-title">{sectionLabel ?? ''}</span>
 						{:else}
 							<a href={resolve('/home')} class="header-logo" aria-label="ホーム">
-								<!-- eslint-disable-next-line svelte/no-at-html-tags -- 固定の SVG ロゴ(色のみ可変) -->
-								{@html logo(themes[themeStore.theme.id].colors.text)}
+								<Logo variant="full" size={20} title="Storift" />
 							</a>
 							<span class="flex:1"></span>
 						{/if}
@@ -376,7 +374,6 @@
 
 	.header-logo {
 		display: flex;
-		width: 88px;
 	}
 
 	.header-link {

@@ -1,12 +1,12 @@
 /**
- * メモの純粋な処理(タグ・範囲の再アンカー・絞り込み・Claude への依頼文)と、
+ * メモの純粋な処理(タグ・範囲の再アンカー・絞り込み・AI への依頼文)と、
  * 旧 localStorage 形式からの移行変換。永続化は $lib/db/memos.ts が担当する。
  */
 import type { Memo, MemoAnchor } from '$lib/types';
 
 /** 既定のタグ(候補として常に出す) */
 export const DEFAULT_MEMO_TAGS = ['todo', 'アイデア', '伏線', '要確認'];
-/** Claude への依頼の対象になるタグ */
+/** AI への依頼の対象になるタグ */
 export const TODO_TAG = 'todo';
 /** 範囲メモの引用として保存する最大文字数 */
 export const MEMO_QUOTE_MAX = 200;
@@ -217,7 +217,7 @@ export interface TodoEntry {
 const TODO_LEAD =
 	'以下の TODO を順に対応してください。本文の修正が必要なものは編集提案として出してください。対応した項目は番号で報告してください。';
 
-/** Claude に送る TODO の依頼文。番号付きで、シーン名と本文の引用を添える */
+/** AI に送る TODO の依頼文。番号付きで、シーン名と本文の引用を添える */
 export function buildTodoPrompt(entries: TodoEntry[]): string {
 	const items = entries.map((entry, i) => {
 		const [first, ...rest] = entry.text.trim().split('\n');

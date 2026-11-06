@@ -1,6 +1,6 @@
 <script lang="ts">
 	/**
-	 * 作品のメモ。執筆画面の右側(デスクトップ版は Claude パネルと同じ位置)と、
+	 * 作品のメモ。執筆画面の右側(デスクトップ版は AI パネルと同じ位置)と、
 	 * スマホの参照シートのメモタブで使う。範囲メモは本文の選択から作られ、一覧から本文の位置へ戻れる。
 	 */
 	import { tick } from 'svelte';
@@ -8,7 +8,7 @@
 	import { memosDB } from '$lib/db';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
-	import { claudeStore } from '$lib/stores/claude.svelte';
+	import { aiStore } from '$lib/stores/ai.svelte';
 	import { confirmDialog, toast } from '$lib/stores/toast.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
 	import type { Memo } from '$lib/types';
@@ -36,7 +36,7 @@
 
 	let { projectId, onJump, onClose, onToPlot, sheet = false }: Props = $props();
 
-	// Claude への依頼はデスクトップ版だけ
+	// AI への依頼はデスクトップ版だけ
 	const desktop = isDesktop();
 
 	let memos = $state<Memo[]>([]);
@@ -179,12 +179,12 @@
 		editorStore.bumpMemos();
 	}
 
-	/** 未完了の TODO を番号付きの依頼文にして、Claude パネルで送る */
+	/** 未完了の TODO を番号付きの依頼文にして、AI パネルで送る */
 	async function requestTodos() {
 		const targets = openTodos;
 		if (targets.length === 0) return;
-		if (claudeStore.isRunning) {
-			toast.info('Claude が回答中です。終わってから依頼してください');
+		if (aiStore.isRunning) {
+			toast.info('AI が回答中です。終わってから依頼してください');
 			return;
 		}
 		const prompt = buildTodoPrompt(
@@ -204,9 +204,9 @@
 		}
 		editorStore.bumpMemos();
 		editorStore.memoOpen = false;
-		claudeStore.open = true;
+		aiStore.open = true;
 		// 完了チェックはユーザーが行うので、送っただけでは完了にしない
-		void claudeStore.send(prompt, { quote: null });
+		void aiStore.send(prompt, { quote: null });
 	}
 
 	function onDraftKeydown(e: KeyboardEvent) {
@@ -326,9 +326,9 @@
 				type="button"
 				class="primary wide"
 				onclick={requestTodos}
-				disabled={claudeStore.isRunning}
+				disabled={aiStore.isRunning}
 			>
-				todo を Claude に依頼({openTodos.length}件)
+				todo を AI に依頼({openTodos.length}件)
 			</button>
 		</div>
 	{/if}

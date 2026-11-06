@@ -18,6 +18,8 @@
 	<meta property="og:title" content={fullTitle} />
 	<meta property="og:description" content={description} />
 	<meta property="og:url" content={url} />
-	<meta property="og:image" content={`${SITE_URL}/favicon/icon-512.png`} />
-	<meta name="twitter:card" content="summary" />
+	<meta property="og:image" content={`${SITE_URL}/og.png`} />
+	<meta property="og:image:width" content="1200" />
+	<meta property="og:image:height" content="630" />
+	<meta name="twitter:card" content="summary_large_image" />
 </svelte:head>

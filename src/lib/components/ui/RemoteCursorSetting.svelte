@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import Card from './Card.svelte';
+	import SettingsCard from '$lib/components/settings/SettingsCard.svelte';
+	import SettingsRow from '$lib/components/settings/SettingsRow.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { settingsDB } from '$lib/db';
 	import { settingsStore } from '$lib/stores/settings.svelte';
@@ -31,13 +32,15 @@
 	}
 </script>
 
-<Card class="b:1px|solid|theme-border flex flex:column gap:1rem">
-	<h2 class="font:bold">共同編集のカーソル表示</h2>
-	<label class="flex ai:center gap:.5rem cursor:pointer">
-		<input type="checkbox" checked={enabled} onchange={toggle} />
-		<span>他の人のカーソルを表示</span>
-	</label>
-	<p class="fg:theme-text-secondary font:.875rem">
-		共有プロジェクトで同じシーンを開いている人のカーソルと選択範囲を、本文に色付きで表示します。オフにすると、通信量を抑えるため自分のカーソルも他の人に送りません(誰がどのシーンを開いているかの表示は変わりません)。この設定はこの端末だけに保存されます。
-	</p>
-</Card>
+<SettingsCard
+	title="共同編集のカーソル表示"
+	description="共有プロジェクトで同じシーンを開いている人のカーソルを表示するかを選びます。"
+>
+	<SettingsRow
+		label="他の人のカーソルを表示"
+		labelFor="showRemoteCursors"
+		description="カーソルと選択範囲を本文に色付きで表示します。オフにすると、通信量を抑えるため自分のカーソルも他の人に送りません(誰がどのシーンを開いているかの表示は変わりません)。この端末だけの設定です。"
+	>
+		<input id="showRemoteCursors" type="checkbox" checked={enabled} onchange={toggle} />
+	</SettingsRow>
+</SettingsCard>

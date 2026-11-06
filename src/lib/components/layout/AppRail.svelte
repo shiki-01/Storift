@@ -5,6 +5,7 @@
 	import { syncStore } from '$lib/stores/sync.svelte';
 	import { railContext } from '$lib/stores/railContext.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
+	import Logo from '$lib/components/ui/Logo.svelte';
 	import { formatRelativeTime } from '$lib/utils/dateUtils';
 	import { projectNavItems, navIcons } from './nav';
 
@@ -96,13 +97,7 @@
 			goto(resolve('/home'));
 		}}
 	>
-		<svg viewBox="0 0 36 32" width="26" height="24" aria-hidden="true">
-			<path
-				d="M28.27.47a1.6 1.6 0 0 1 2.27 0l4.22 4.22a1.6 1.6 0 0 1 0 2.27L20.02 21.71a1.6 1.6 0 0 1-.82.44l-5.28 1.06a1.6 1.6 0 0 1-1.89-1.89l1.06-5.28c.06-.3.21-.58.43-.8z"
-				fill="currentColor"
-			/>
-			<path d="M.7 27h33.74M.7 30.43h33.74" stroke="currentColor" stroke-width="1.4" />
-		</svg>
+		<Logo size={26} />
 	</a>
 
 	<div class="rail-group rail-main" bind:this={groupEl}>

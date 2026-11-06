@@ -220,7 +220,7 @@
 
 	let firstRun = true;
 	$effect(() => {
-		// 同期の取り込みや Claude の編集で、ストアが差し替わった時に読み直す
+		// 同期の取り込みや AI の編集で、ストアが差し替わった時に読み直す
 		void dataChange.revision('chapters');
 		void currentProjectStore.scenes;
 		void currentProjectStore.chapters;

@@ -1,12 +1,12 @@
 <script lang="ts">
 	import Icon from '$lib/Icon.svelte';
 
-	// デスクトップ版の Claude Code パネルで、編集案を差分として確かめる場面の再現。ボタンは実際に押せる
+	// デスクトップ版の AI パネルで、編集案を差分として確かめる場面の再現。ボタンは実際に押せる
 	let state = $state<'pending' | 'applied' | 'rejected'>('pending');
 </script>
 
 <div class="panel">
-	<p class="head"><Icon name="claude" size={15} />Claude Code<span>提案のみ</span></p>
+	<p class="head"><Icon name="ai" size={15} />AI<span>提案のみ</span></p>
 	<p class="q">祖母の台詞、もう少し間を置きたい</p>
 	<p class="a">
 		読点の位置を「もう」の後ろへ移すと、言い淀む間が生まれます。次のように直す案です。

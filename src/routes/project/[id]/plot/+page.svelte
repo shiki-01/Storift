@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ClaudeToggle from '$lib/components/desktop/ClaudeToggle.svelte';
+	import AiToggle from '$lib/components/desktop/AiToggle.svelte';
 	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { plotsDB } from '$lib/db';
@@ -96,7 +96,7 @@
 		plots = await plotsDB.getByProjectId(currentProjectStore.project.id);
 	};
 
-	// Claude など画面の外で書き換わったら、読み直す(読み込み表示は出さない)
+	// AI など画面の外で書き換わったら、読み直す(読み込み表示は出さない)
 	let seenRevision = dataChange.revision('plots');
 	$effect(() => {
 		const revision = dataChange.revision('plots');
@@ -282,7 +282,7 @@
 					<p class="font:14 fg:theme-text-secondary mt:8">作品の構成を計画・管理します</p>
 				</div>
 				<div class="flex flex-wrap:wrap ai:center gap:12 max-w:100%">
-					<ClaudeToggle />
+					<AiToggle />
 					<div
 						class="flex bg:theme-surface b:1px|solid|theme-border r:10 p:6 gap:8"
 						data-tour="plot-view-toggle"

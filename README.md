@@ -1,8 +1,15 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="static/brand/storift-logo-light.svg">
+    <img src="static/brand/storift-logo.svg" alt="Storift" height="56">
+  </picture>
+</p>
+
 # Storift
 
 小説を書くための、ひとつの場所。
 
-執筆・プロット・キャラクター・設定資料・進捗を、作品ごとにまとめて管理する小説執筆アプリです。ブラウザで動き、オフラインでも書けます。デスクトップ版では、Claude Code をサイドパネルから使えます。
+執筆・プロット・キャラクター・設定資料・進捗を、作品ごとにまとめて管理する小説執筆アプリです。ブラウザで動き、オフラインでも書けます。デスクトップ版では、AI(Claude Code・OpenAI 互換 API・Anthropic API・Gemini・Ollama)をサイドパネルから使えます。
 
 - サイト: <https://storift.shiki-01.com>
 - エディタ(Web 版): <https://app.storift.shiki-01.com>
@@ -19,13 +26,13 @@
 - **オフライン対応(PWA)**: 一度開けば通信なしで起動し、原稿は端末内(IndexedDB)に保存されます。
 - **複数端末の同期**: 利用者自身の Firebase プロジェクトを設定して同期します。データの保管先を自分で管理できます。
 - **共有と共同編集**: 作品ごとに招待リンクを発行して共有します(閲覧／編集の権限、パスワード任意)。共有した作品の本文は、複数人で同時に編集できます(同じシーンを開いている人のカーソルと選択範囲も、名前つきの色で本文に表示されます。設定でオフにできます)。サーバーは利用者自身の Firebase のままで、権限は Firestore のセキュリティルールで制御します。
-- **Claude Code 連携(デスクトップ版)**: 原稿を Markdown としてワークスペースに書き出し、`claude -p` で校正・矛盾チェック・質問・書き換えを行います。本文の変更は差分で確認してから反映できます。
+- **AI 連携(デスクトップ版)**: プロバイダ(Claude Code・OpenAI 互換 API・Anthropic API・Gemini・Ollama)を選び、アプリのツール経由で原稿を読んで、校正・矛盾チェック・質問・書き換えを行います。本文の変更は差分で確認してから反映できます。
 
 ## データの扱い
 
 - 原稿は端末内(IndexedDB)に保存されます。Storift の運営するサーバーには送信されません。
 - Firebase の設定は任意です。設定した場合のみ、利用者自身の Firebase(Firestore)にも保存されます。
-- デスクトップ版の Claude Code 連携では、質問のたびに原稿の一部が Claude に送られます。利用にはインストール済みでログイン済みの Claude Code が必要で、利用料金・使用量はそのアカウントに計上されます。
+- デスクトップ版の AI 連携では、質問のたびに原稿の一部が、選んだプロバイダ(Claude Code / OpenAI 互換 / Anthropic / Gemini / Ollama。Claude Code と Anthropic API なら Anthropic、Gemini なら Google、OpenAI 互換 API なら設定したサービス、Ollama なら設定した接続先)に送られます。Claude Code を使うにはインストール済みでログイン済みの Claude Code が必要で、利用料金・使用量はそのアカウントに計上されます。API キーは OS のキーチェーンに保存します(キーチェーンを使えない環境では端末内に平文で保存します)。
 
 ## 使い方
 
@@ -65,7 +72,7 @@ SvelteKit / Svelte 5 / TypeScript / Master CSS / Dexie(IndexedDB) / Firebase(Fir
 
 | ファイル                                                           | 内容                                |
 | ------------------------------------------------------------------ | ----------------------------------- |
-| [docs/DESKTOP.md](docs/DESKTOP.md)                                 | デスクトップ版と Claude Code 連携   |
+| [docs/DESKTOP.md](docs/DESKTOP.md)                                 | デスクトップ版と AI 連携            |
 | [docs/PWA.md](docs/PWA.md)                                         | オフライン対応と自動更新            |
 | [docs/FIRESTORE_SETUP.md](docs/FIRESTORE_SETUP.md)                 | Firestore の設定とセキュリティ      |
 | [docs/SYNC_OPTIMIZATION.md](docs/SYNC_OPTIMIZATION.md)             | 同期の仕組みと最適化                |

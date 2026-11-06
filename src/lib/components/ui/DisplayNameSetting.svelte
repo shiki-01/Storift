@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Button from './Button.svelte';
-	import Card from './Card.svelte';
+	import SettingsCard from '$lib/components/settings/SettingsCard.svelte';
+	import SettingsRow from '$lib/components/settings/SettingsRow.svelte';
 	import Input from './Input.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { settingsDB } from '$lib/db';
@@ -37,15 +38,20 @@
 	}
 </script>
 
-<Card class="b:1px|solid|theme-border flex flex:column gap:1rem">
-	<h2 class="font:bold">共有時の表示名</h2>
-	<p class="fg:theme-text-secondary font:.875rem">
-		共有プロジェクトで他のメンバーに表示される名前です。未設定のときは、オーナーは「オーナー」、ゲストは「ゲスト-xxxx」になります。参加時に使われる名前は、参加した時点のものです。
-	</p>
-	<Input bind:value={name} placeholder="例: 山田" ariaLabel="共有時の表示名" />
-	<div>
-		<Button onclick={save} disabled={saving || name.trim() === saved}>
-			{saving ? '保存中...' : '保存'}
-		</Button>
-	</div>
-</Card>
+<SettingsCard
+	title="共有時の表示名"
+	description="共有プロジェクトで他のメンバーに表示される名前です。"
+>
+	<SettingsRow
+		stacked
+		label="表示名"
+		description="未設定のときは、オーナーは「オーナー」、ゲストは「ゲスト-xxxx」になります。参加時に使われる名前は、参加した時点のものです。"
+	>
+		<Input bind:value={name} placeholder="例: 山田" ariaLabel="共有時の表示名" />
+		<div>
+			<Button onclick={save} disabled={saving || name.trim() === saved}>
+				{saving ? '保存中...' : '保存'}
+			</Button>
+		</div>
+	</SettingsRow>
+</SettingsCard>

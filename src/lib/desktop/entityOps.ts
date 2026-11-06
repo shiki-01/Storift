@@ -1,5 +1,5 @@
 /**
- * Claude の propose_create / propose_delete が行う、項目の新規追加・削除・復元の DB 操作。
+ * AI の propose_create / propose_delete が行う、項目の新規追加・削除・復元の DB 操作。
  *
  * 追加は既存の *DB.create、削除は *DB.delete を使う。キャラクターを削除したときは、
  * 他のキャラクターの関係と相関図の配置・線の見た目から、そのキャラクターへの参照を取り除く

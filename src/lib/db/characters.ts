@@ -1,7 +1,7 @@
 import { db } from './schema';
 import type { Character, CharacterCreateInput } from '$lib/types';
 import { v4 as uuidv4 } from 'uuid';
-import { touchProject } from './utils';
+import { isUnchanged, touchProject } from './utils';
 import { historyDB } from './history';
 
 export const charactersDB = {
@@ -40,6 +40,8 @@ export const charactersDB = {
 
 	async update(id: string, changes: Partial<Character>): Promise<void> {
 		const character = await db.characters.get(id);
+		// 内容が変わらない更新では updatedAt を進めない(他端末との不要な競合を避ける)
+		if (isUnchanged(character, changes)) return;
 		await db.characters.update(id, {
 			...changes,
 			updatedAt: Date.now(),

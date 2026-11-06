@@ -10,7 +10,7 @@ export const icons = {
 	home: '<path d="M4 6.5h6l2 2h8V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M4 6.5V6a2 2 0 0 1 2-2h3l2 2.5"/>',
 	settings:
 		'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
-	claude:
+	ai:
 		'<path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/>',
 	vertical: '<path d="M17 4v16M12 4v16M7 4v9"/>',
 	offline:

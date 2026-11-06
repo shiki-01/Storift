@@ -2,7 +2,7 @@
 	"name": "storift",
 	"private": true,
 	"license": "MIT",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
@@ -17,12 +17,15 @@
 		"test:ui": "vitest --ui",
 		"test:coverage": "vitest --coverage",
 		"tauri": "tauri",
+		"icons": "node scripts/build-icons.mjs",
 		"desktop:dev": "tauri dev",
 		"desktop:build": "tauri build",
 		"test:rules": "firebase emulators:exec --only firestore --project demo-storift \"vitest run --config vitest.rules.config.ts\"",
 		"test:e2e": "firebase emulators:exec --only auth,firestore --project demo-storift \"node tests/e2e/coedit.spec.mjs\"",
 		"test:e2e:mobile": "node tests/e2e/mobile-header.spec.mjs",
-		"test:e2e:preview": "node tests/e2e/preview.spec.mjs"
+		"test:e2e:preview": "node tests/e2e/preview.spec.mjs",
+		"test:e2e:settings": "node tests/e2e/settings.spec.mjs",
+		"test:e2e:ai-header": "node tests/e2e/ai-header.spec.mjs"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^1.4.0",
@@ -62,6 +65,7 @@
 		"@master/css.vite": "2.0.0-rc.69",
 		"@master/normal.css": "^3.2.0",
 		"@tauri-apps/api": "^2",
+		"@tauri-apps/plugin-http": "^2.8.3",
 		"@tauri-apps/plugin-opener": "^2",
 		"@tauri-apps/plugin-process": "^2.4.0",
 		"@tauri-apps/plugin-updater": "^2.14.1",

@@ -1,22 +1,98 @@
 # デスクトップ版(Tauri)
 
-Storift を macOS / Windows / Linux のデスクトップアプリとして動かし、Claude Code をサイドパネルで使えるようにしたもの。
+Storift を macOS / Windows / Linux のデスクトップアプリとして動かし、AI(Claude Code・OpenAI 互換 API・Anthropic API・Gemini・Ollama)をサイドパネルで使えるようにしたもの。
 
 ## 構成
 
-| 場所                                            | 役割                                                                     |
-| ----------------------------------------------- | ------------------------------------------------------------------------ |
-| `src-tauri/`                                    | Tauri v2 のネイティブ側(Rust)                                            |
-| `src-tauri/src/claude.rs`                       | `claude -p` の起動・出力の中継・中断                                     |
-| `src-tauri/src/mcp.rs`                          | Claude Code が呼ぶ MCP サーバー(127.0.0.1)。呼び出しをフロントへ中継する |
-| `src-tauri/src/workspace.rs`                    | 原稿の書き出し先(ワークスペース)へのファイル同期                         |
-| `src-tauri/src/shell_env.rs`                    | ログインシェルの環境変数(PATH など)の取り込み                            |
-| `src/lib/desktop/`                              | フロントエンドからネイティブ側の呼び出し、原稿の Markdown 化、出力の解釈 |
-| `src/lib/desktop/mcp.ts`                        | MCP ツール(storift)の処理。IndexedDB を読み、編集案を回答に記録する      |
-| `src/lib/stores/claude.svelte.ts`               | パネルの状態・会話・設定                                                 |
-| `src/lib/components/desktop/ClaudePanel.svelte` | サイドパネルの UI                                                        |
+| 場所                                           | 役割                                                                                                                          |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `src-tauri/`                                   | Tauri v2 のネイティブ側(Rust)                                                                                                 |
+| `src-tauri/src/claude.rs`                      | `claude -p` の起動・出力の中継・中断                                                                                          |
+| `src-tauri/src/mcp.rs`                         | Claude Code が呼ぶ MCP サーバー(127.0.0.1)。呼び出しをフロントへ中継する。ツール定義を TS へ渡す `ai_tool_definitions` もここ |
+| `src-tauri/src/secrets.rs`                     | API キーの保管(`secret_set` / `secret_get` / `secret_delete`)。macOS / Windows は OS のキーチェーン                           |
+| `src-tauri/src/workspace.rs`                   | 原稿の書き出し先(ワークスペース)へのファイル同期                                                                              |
+| `src-tauri/src/shell_env.rs`                   | ログインシェルの環境変数(PATH など)の取り込み                                                                                 |
+| `src/lib/desktop/`                             | フロントエンドからネイティブ側の呼び出し、原稿の Markdown 化、出力の解釈                                                      |
+| `src/lib/desktop/mcp.ts`                       | MCP ツール(storift)の処理。IndexedDB を読み、編集案を回答に記録する                                                           |
+| `src/lib/ai/`                                  | AI プロバイダの抽象(型・登録簿・設定の移行・API キーの保管・HTTP 系の共通基盤・各プロバイダ)                                  |
+| `src/lib/stores/ai.svelte.ts`                  | パネルの状態・会話・設定                                                                                                      |
+| `src/lib/components/desktop/AiPanel.svelte`    | サイドパネルの UI                                                                                                             |
+| `src/lib/components/settings/AiSection.svelte` | 設定の「AI」(プロバイダの選択と各設定)                                                                                        |
 
 フロントエンドは Web 版と同じ SvelteKit のコードで、Tauri から起動したときだけ `adapter-static` で静的ファイルとして書き出してアプリに同梱する(`svelte.config.js` が `TAURI_ENV_PLATFORM` を見て切り替える)。Service Worker はデスクトップ版では登録しない。
+
+## AI プロバイダ
+
+設定の「AI」の先頭でプロバイダを選ぶ(カードに、必要なものと送信先が出る)。**選んだプロバイダに、質問と原稿の一部(AI がツールで読んだ範囲)が送られる。**
+
+設定カードの並び順は、Claude Code・OpenAI 互換 API・Anthropic API・Gemini・Ollama(`providers/index.ts` の登録順)。
+
+### 対応プロバイダ
+
+| プロバイダ      | 必要なもの                                   | 送信先                                                               | ツール使用 | Web 検索 | キーの保存場所                                         |
+| --------------- | -------------------------------------------- | -------------------------------------------------------------------- | ---------- | -------- | ------------------------------------------------------ |
+| Claude Code     | Claude Code のインストールとログイン         | Anthropic(Claude Code 経由)                                          | 使える     | 使える   | なし(Claude Code のログインを使う)                     |
+| OpenAI 互換 API | API キー(ローカルのサーバーでは不要)とモデル | 設定した Base URL のサービス                                         | 使える     | 使えない | OS のキーチェーン(`openai-compatible:<プリセット ID>`) |
+| Anthropic API   | Anthropic の API キーとモデル名              | `api.anthropic.com`(Base URL を変えたら設定中の URL)                 | 使える     | 使えない | OS のキーチェーン(`anthropic:api-key`)                 |
+| Gemini          | Google AI Studio の API キーとモデル名       | `generativelanguage.googleapis.com`(Base URL を変えたら設定中の URL) | 使える     | 使えない | OS のキーチェーン(`gemini:api-key`)                    |
+| Ollama          | Ollama とツール呼び出しに対応したモデル      | この端末(設定した接続先)                                             | 使える     | 使えない | なし                                                   |
+
+キーチェーンを使えない環境(Linux など)では、キーは端末内の localStorage に平文で保存される(後述)。Claude Code と Ollama は Rust(`claude.rs` / `ollama.rs`)で、OpenAI 互換 API・Anthropic API・Gemini は TypeScript(`src/lib/ai/providers/`)で実行する。
+
+### 構成(`src/lib/ai/`)
+
+- `types.ts`: `AiProvider`(id・表示名・説明・必要なもの・送信先・設定スキーマ・`capabilities { webSearch, resume, tools }`・`run(request, emit, signal)`・`status()`・`listModels?()`・`testConnection?()`)と `AiSettings`。
+- `registry.ts`: プロバイダの登録簿。`providers/index.ts` が組み込みの 5 つを上の並び順で登録する。新しいプロバイダは、実装を `providers/` に足し、`providers/index.ts` に登録し、設定フォームを `components/settings/ai/` に足す。
+- `settings.ts`: 設定の既定値・読み込み・旧形式からの移行(後述)。
+- `secrets.ts`: API キーの保管(後述)。
+- `http/`: HTTP 系プロバイダの共通基盤。`agent.ts`(エージェントのループ)・`sse.ts`(SSE パーサー)・`errors.ts`(エラーの分類)・`url.ts`(接続先の検証)・`abort.ts`(中断とタイムアウト)・`fetch.ts`(`tauri-plugin-http` の fetch)。
+- `providers/`: `claudeCode.ts` と `ollama.ts` は Rust を呼ぶ既存の経路を包むアダプタ(挙動は変えない)。`openaiCompatible.ts` / `openaiChat.ts` / `openaiPresets.ts` が OpenAI 互換 API、`anthropic.ts` / `anthropicChat.ts` が Anthropic API、`gemini.ts` / `geminiChat.ts` / `geminiSchema.ts` が Gemini。
+
+画面(ストアとパネル)は、プロバイダの違いを意識せず `provider.run` を呼ぶ。出力は Claude Code の `stream-json` と同じ形の行(`system/init`・`stream_event`・`assistant`・`result`)で、`applyStreamLine` がそのまま畳み込む。ツール名は `mcp__storift__<名前>` に揃える。
+
+### 設定と移行
+
+設定は localStorage の `storift:ai-settings`(パネルは `storift:ai-panel`、会話は `storift:ai-chats`)。形は `{ provider, editMode, claudeCode: { model, claudePath, allowWeb }, ollama: { url, model }, openaiCompatible: { baseUrl, model, presetId }, anthropic: { baseUrl, model, maxTokens }, gemini: { baseUrl, model, maxOutputTokens? } }`。`maxTokens` の既定は 8192、`maxOutputTokens` は未設定ならリクエストに含めない。モデルは既定値を持たず、未選択なら送信前にエラーで選択を促す。API キーは含めない。
+
+以前の `storift:claude-*` キーと、旧形式の設定(`provider: 'claude'` とフラットな項目)は、読み込み時に新キー・新形式へ移す(新キーが無いときだけ。旧キーは消さずに残す)。
+
+### HTTP 系プロバイダ(OpenAI 互換 API)
+
+- エージェントのループは TypeScript で回す(`http/agent.ts`)。モデルの応答をストリームで受け、ツール呼び出しを集め、mcp.ts の `callTool` を直接呼んで結果を履歴に足し、次のステップへ進む(最大 12 ステップ)。MCP のトランスポートは経由しない。
+- ツール定義は Rust の `tool_definitions` を Tauri コマンド `ai_tool_definitions(mode, allow_web)` で受け取り、プロバイダごとの形式(OpenAI は `tools: [{type: 'function', function}]`)へ変換する。
+- `POST {baseUrl}/chat/completions`(`stream: true`、`tool_choice: 'auto'`)。SSE を行単位で読み、`delta.content` と `delta.tool_calls`(index ごとに引数の断片を結合)を集める。`[DONE]` かストリームの終わりで 1 ステップを終える。`stream` を無視して JSON で返すサーバーにも対応する。
+- 1 リクエストのタイムアウトは 600 秒。`AbortSignal` で中断でき、パネルの「中断」で止まる。
+- エラーは HTTP ステータスで分類して日本語にする(401/403 は認証、404 は URL とモデル、429 はレート制限、5xx はサービス側)。API キーはメッセージに含めない。
+- 会話の履歴はメモリ上で持つ(セッション ID は `openai-<runId>`)。アプリを再起動すると、モデル側は新しい会話になる(Ollama と同じ)。
+- プリセット: OpenAI / OpenRouter / LM Studio(ローカル) / Groq / DeepSeek / Mistral / カスタム。Base URL とモデル名の例が入る。モデルは `GET {baseUrl}/models` の一覧から選ぶか、直接入力する。「接続テスト」で一覧の取得を試し、成功・失敗の理由を日本語で見せる。
+- 画面を再読み込みすると、実行中の HTTP 系の回答は途中で止まる(Claude Code と Ollama はネイティブ側で動くため、再読み込み後も受け取り直せる)。
+
+### Anthropic API
+
+- `POST {baseUrl}/v1/messages`(既定 `https://api.anthropic.com`、`stream: true`)。ヘッダーは `x-api-key`・`anthropic-version: 2023-06-01`・`content-type: application/json`。`max_tokens`(必須)は設定、`system` はトップレベルの文字列、`tools` は `{name, description, input_schema}`。
+- SSE の `content_block_start`(`text` / `tool_use`)・`content_block_delta`(`text_delta`、`input_json_delta` の `partial_json` を結合)・`message_delta`(`stop_reason`)・`message_stop`・`ping`・`error` を処理する。`stop_reason` が `max_tokens` のときは、最大トークン数を増やすよう案内するエラーにする。
+- assistant の `content` ブロック(`text` と `tool_use`)はそのまま履歴に残し、ツールの結果は次の user メッセージの `tool_result` ブロック(`tool_use_id`・`content`・失敗時は `is_error`)に 1 つにまとめて返す。システムプロンプトは履歴に入れず、リクエストごとに `system` で送る。
+- モデル一覧は `GET {baseUrl}/v1/models?limit=100`(`has_more` なら `after_id` で続きを取る)。取得できなければモデル名を手入力する。`claude-sonnet-5-5` などは入力欄の候補としてだけ使い、既定値にはしない。
+- エラー: 401/403 は認証、404 はモデル、400 は `invalid_request_error` の理由を短縮して添える、429 は `retry-after` があれば待ち時間、529 は過負荷、その他の 5xx は障害。
+
+### Gemini
+
+- `POST {baseUrl}/v1beta/models/{model}:streamGenerateContent?alt=sse`(既定 `https://generativelanguage.googleapis.com`)。API キーはヘッダー `x-goog-api-key` だけで送り、URL には付けない。ボディは `systemInstruction`・`contents`・`tools: [{functionDeclarations}]`・`toolConfig: {functionCallingConfig: {mode: 'AUTO'}}`、設定があれば `generationConfig.maxOutputTokens`。
+- ツールのスキーマは `geminiSchema.ts`(純粋関数)で OpenAPI のサブセットに変換する。許可する項目(`type`・`description`・`enum`・`items`・`properties`・`required`・`minimum` など)だけを残し、`additionalProperties`・`default`・`examples` などを再帰的に除く。`type` の配列と `anyOf` / `oneOf` は先頭の候補に単純化する。引数のないツールは `parameters` を省き、`properties` を持たない object(`propose_create` の `fields`)は JSON 文字列を受ける string にして、返ってきた引数を実行前に `restoreGeminiArgs` でオブジェクトに戻す。
+- SSE の各 `data:` の `candidates[0].content.parts` を順に処理する。`text` は差分として流し(`thought: true` は表示しない)、`functionCall` はオブジェクト引数のままツール呼び出しにする。`finishReason`(`MAX_TOKENS`・`SAFETY`・`MALFORMED_FUNCTION_CALL` など)と `promptFeedback.blockReason` は日本語のエラーにする。
+- 応答の `parts` は `thoughtSignature` などの未知の項目も含めて、受け取ったまま `role: 'model'` として履歴に残す。ツールの結果は `role: 'user'` の `parts: [{functionResponse: {name, response: {result: "<text>"}}}]`(複数のツールは 1 メッセージの複数 parts)で返す。API が `functionCall.id` を返したときは、同じ `id` を `functionResponse` にも付ける。
+- モデル一覧は `GET {baseUrl}/v1beta/models?pageSize=100`(`nextPageToken` があれば続きを取る)のうち、`supportedGenerationMethods` に `generateContent` を含むものだけ(`models/` 接頭辞は除く)。
+- エラー: 400 は `INVALID_ARGUMENT`、ただし `API_KEY_INVALID` は認証として扱う。403 は認証、404 はモデル、429 は `RESOURCE_EXHAUSTED`(利用上限)、5xx は障害。
+
+### 通信の制限
+
+HTTP 通信は `tauri-plugin-http`(Rust 側から送るので CORS の影響を受けない)。`src-tauri/capabilities/default.json` の `http:default` のスコープで、送れる先を `https://**` と `http://localhost:*/**`・`http://127.0.0.1:*/**`・`http://[::1]:*/**` に限る。TS 側(`http/url.ts`)でも、https か localhost 系の http 以外の Base URL を拒否する。リダイレクトは追わない(キーを別のホストへ送らないため)。
+
+### API キーの保管
+
+- macOS / Windows: Rust の `secret_set` / `secret_get` / `secret_delete`(`keyring` crate)で OS のキーチェーンに保存する。項目名は「プロバイダ ID:識別子」(OpenAI 互換ではプリセット ID、Anthropic と Gemini では `api-key`)。
+- Linux など: キーチェーンの依存(libdbus 等)を避けるため使わず、Rust は `"unsupported"` を返す。TS 側は localStorage(`storift:ai-secret:…`)に**平文で**保存し、設定画面にその旨を表示する。
+- キーは常に「そのプロバイダの識別子」で取り出し、そのプロバイダの Base URL にだけ送る(プロバイダを切り替えても、他のプロバイダのキーは送られない)。ログに出さない。エクスポート・バックアップ・Firestore 同期の対象にしない(これらは IndexedDB のデータだけを扱う)。設定画面では伏せ字で入力し、表示の切り替えと削除ができる。保存済みのキーは画面に読み戻さない。
 
 ## Ollama(ローカル LLM)
 
@@ -26,14 +102,14 @@ Storift を macOS / Windows / Linux のデスクトップアプリとして動�
 - 会話の履歴はメモリ上で持つ(アプリを再起動すると新しい会話になる)。Web 検索は使えない。
 - 文脈の長さは `num_ctx` 16384 を指定している。
 
-## Claude Code パネル
+## AI パネル
 
-ヘッダーの「Claude」ボタンか `Ctrl(Cmd)+Shift+L` で開閉する。
+ヘッダーの「AI」ボタンか `Ctrl(Cmd)+Shift+L` で開閉する。ヘッダーの高さは、執筆のツールバーと共通の CSS 変数 `--editor-header-height`(`src/app.css`)で揃えている。入力欄の下(編集モードの隣)に、使っているプロバイダとモデル(例: `Anthropic API・claude-sonnet-5-5`。モデル未選択なら名前だけ)を小さく出す(`describeActiveModel`)。以下は Claude Code を選んだときの仕組みを中心に書く(本文の編集・エディタ上の差分表示は、どのプロバイダでも共通)。
 
-### 仕組み
+### Claude Code の仕組み
 
 1. 送信のたびに `claude -p --output-format stream-json` を起動し、プロンプトを標準入力で渡す。作業ディレクトリは空のフォルダで、原稿の写しは置かない。
-2. Claude は作品や本文を読むために、アプリの MCP サーバー(サーバー名 `storift`、127.0.0.1 の Streamable HTTP)のツールを呼ぶ。Claude Code には起動のたびにトークン入りの一時的な設定ファイル(0600)を渡し、実行が終わると消す。
+2. Claude Code は作品や本文を読むために、アプリの MCP サーバー(サーバー名 `storift`、127.0.0.1 の Streamable HTTP)のツールを呼ぶ。Claude Code には起動のたびにトークン入りの一時的な設定ファイル(0600)を渡し、実行が終わると消す。
 3. Rust 側は呼び出しを Tauri のイベント `mcp://request` でフロントへ渡し、フロントが IndexedDB を読んで `mcp_respond` で返す(`src/lib/desktop/mcp.ts`)。データの正本は IndexedDB なので、未保存の本文も今の内容で返せる。応答が 30 秒ないとタイムアウトする。
 4. 出力を 1 行ずつパネルへ流し、逐次表示する。会話は Claude Code のセッション ID(`--resume`)で続く。
 
@@ -57,7 +133,7 @@ Storift を macOS / Windows / Linux のデスクトップアプリとして動�
 
 ### 本文の編集
 
-パネルの「設定」→「本文の編集」で 3 段階を選ぶ。
+設定の「AI」→「本文の編集」で 3 段階を選ぶ(プロバイダ共通)。
 
 | 設定                   | 動き                                                                                                                                               |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -84,13 +160,13 @@ Storift を macOS / Windows / Linux のデスクトップアプリとして動�
 - 開いているシーンの変更は「本文で表示」で、エディタ上の該当箇所を選択して見せる。
 - 元に戻すときは、反映した位置と直前の文を覚えておき、同じ場所を戻す(削除だけの編集も戻せる)。
 
-仕組み: 編集を許可しているときは、Claude に MCP ツール `propose_edit`(`kind`・`id`・`old`・`new`)で編集案を出すよう指示する(`src/lib/desktop/edits.ts` の `EDIT_INSTRUCTIONS`)。アプリは呼び出しを受けると、対象があるか・編集できる種類か・`old` が本文中にちょうど 1 回現れるか・編集できない部分(見出しや箇条書きの情報)が変わらないかを先に確かめる。通ったものだけを回答の編集案として記録し、「差分を確認して反映」なら承認待ちに、「自動で反映」ならその場で書き換える。失敗したときは理由を Claude に返すので、直して出し直せる。開いているシーンはエディタ経由で書き換えるので通常どおり自動保存され、それ以外は DB を直接更新して同期キューに積む。どちらも既存の変更履歴に残る。過去の回答に書かれた `<storift-edit>` は、履歴の表示にだけ使う。
+仕組み: 編集を許可しているときは、AI に MCP ツール `propose_edit`(`kind`・`id`・`old`・`new`)で編集案を出すよう指示する(`src/lib/desktop/edits.ts` の `EDIT_INSTRUCTIONS`)。アプリは呼び出しを受けると、対象があるか・編集できる種類か・`old` が本文中にちょうど 1 回現れるか・編集できない部分(見出しや箇条書きの情報)が変わらないかを先に確かめる。通ったものだけを回答の編集案として記録し、「差分を確認して反映」なら承認待ちに、「自動で反映」ならその場で書き換える。失敗したときは理由を AI に返すので、直して出し直せる。開いているシーンはエディタ経由で書き換えるので通常どおり自動保存され、それ以外は DB を直接更新して同期キューに積む。どちらも既存の変更履歴に残る。過去の回答に書かれた `<storift-edit>` は、履歴の表示にだけ使う。
 
 Claude Code 自体にはファイルの書き換え(`Edit` / `Write`)も `Bash` も許可していない。本文と項目を書き換えるのは常にアプリ側で、対象は本文のシーンと下の表の項目(履歴を除く)。
 
 ### 本文以外の編集
 
-本文のシーンに加えて、次の項目も `propose_edit` で編集できる。項目は `kind`(`characters` など)と `id` で指定する。`get_item` は項目ごとのファイルと同じ Markdown を返すので、Claude は見出しや節の名前を確かめてから `old` を書ける。
+本文のシーンに加えて、次の項目も `propose_edit` で編集できる。項目は `kind`(`characters` など)と `id` で指定する。`get_item` は項目ごとのファイルと同じ Markdown を返すので、AI は見出しや節の名前を確かめてから `old` を書ける。
 
 | ファイル                   | 編集できるフィールド(`## 見出し`の節)          | 編集できない部分                 | 保存先 / 同期                        |
 | -------------------------- | ---------------------------------------------- | -------------------------------- | ------------------------------------ |
@@ -126,20 +202,20 @@ Claude Code 自体にはファイルの書き換え(`Edit` / `Write`)も `Bash` 
 
 ### 反映の挙動
 
-- 「すべて反映」「すべて元に戻す」「すべて却下」は、1 件が例外になっても残りを続ける。反映の失敗は `failed` と理由が編集案に残る。実行中は二重に実行できず、パネルのボタンも押せない(`claudeStore.busy`)。
+- 「すべて反映」「すべて元に戻す」「すべて却下」は、1 件が例外になっても残りを続ける。反映の失敗は `failed` と理由が編集案に残る。実行中は二重に実行できず、パネルのボタンも押せない(`aiStore.busy`)。
 - 提案時の検証と反映・取り消しは、対象 1 件だけを DB から読む(`src/lib/desktop/workspace.ts` の `loadEntity` など)。「すべて反映」は同じ対象への編集をまとめて 1 回の読み書きにし、同期キューへの登録も最後に 1 回だけ行う。
 - 同じ対象にまだ反映していない編集案があるときは、提案時にそれらを反映した状態に対して `old` を確かめる(先行の提案で消える文は指定できず、先行の提案が入れる文には依存できる)。依存する編集を先に反映しようとすると失敗し、反映済みの別の編集と重なって失敗した場合はその旨を理由に添える。
 
 ### トークンについて
 
-- Claude が読むのは MCP の読み取りツールで必要になった分だけ。一覧は id と題名だけで、本文は `get_scene` で区切って読む。
+- AI が読むのは MCP の読み取りツールで必要になった分だけ。一覧は id と題名だけで、本文は `get_scene` で区切って読む。
 - 1 回の送信ごとに `claude -p --resume` を起動する。Claude Code のシステムプロンプトとツール定義は毎回送られるが、プロンプトキャッシュに乗るため、2 回目以降はほとんどがキャッシュ読み込みとして計上される。
 - ユーザー設定の MCP サーバー・スキルは読み込まず(`--strict-mcp-config` と `--disable-slash-commands`)、使えるツールはアプリの storift のツールと、許可したときの Web 検索だけに絞る。手元の計測では、MCP やプラグインを多く入れた環境で 1 回の API 呼び出しあたりの固定分が約 45k トークンから約 6〜9k トークンに減った。
 - 会話を作品ごとに分けているので、別の作品の履歴を読み直すことがない。長くなったら「新規」で会話を切り替える。
 
 ### 必要なもの
 
-Claude Code がインストール済みで、ログインしていること。
+Claude Code を使う場合は、Claude Code がインストール済みで、ログインしていること(他のプロバイダに必要なものは上の表を参照)。
 
 ```sh
 # macOS / Linux
@@ -150,7 +226,7 @@ irm https://claude.ai/install.ps1 | iex
 
 インストール後、ターミナルで `claude auth login`(または `claude` を起動して `/login`)でログインする。ログイン情報はディレクトリごとではなくユーザー単位(`~/.claude`、macOS はキーチェーン)で共有されるので、どのフォルダで行ってもアプリから使える。
 
-ログインしていない・ログインが切れている(`OAuth session expired` など)ときは、パネルに案内と「ログインする(ターミナルを開く)」ボタンが出る。押すと OS のターミナル(macOS: ターミナル.app、Windows: コマンドプロンプト、Linux: 入っている端末)で `claude auth login` が開く。ログイン後にもう一度送信すればよい。デスクトップから起動したアプリはシェルの PATH を持たないため、起動時にログインシェルから環境変数を読み込み、さらに `~/.local/bin` などのよくある場所を探す。見つからない場合はパネルの「設定」で実行ファイルの場所を指定できる。
+ログインしていない・ログインが切れている(`OAuth session expired` など)ときは、パネルに案内と「ログインする(ターミナルを開く)」ボタンが出る。押すと OS のターミナル(macOS: ターミナル.app、Windows: コマンドプロンプト、Linux: 入っている端末)で `claude auth login` が開く。ログイン後にもう一度送信すればよい。デスクトップから起動したアプリはシェルの PATH を持たないため、起動時にログインシェルから環境変数を読み込み、さらに `~/.local/bin` などのよくある場所を探す。見つからない場合は設定の「AI」で実行ファイルの場所を指定できる。
 
 ## 開発
 
@@ -216,4 +292,4 @@ Apple Developer ID による署名・公証はしていない。macOS 版はア�
 
 - MCP 方式より前に始めた会話は、開き直すと Claude Code 側の続きを引き継がない。表示される過去の回答はそのまま残り、次の送信から新しいセッションで始まる。
 - データ(IndexedDB)は Web 版とは別に、アプリ内に保存される。端末間・Web 版との共有は既存の Firebase 同期を使う。デスクトップ版のオリジン(`tauri://localhost` / `http://tauri.localhost`)で Firebase 認証が通らない場合は、Firebase コンソールの承認済みドメインに `tauri.localhost` を追加する。
-- Claude Code の利用料金・使用量は、ログインしている Claude のアカウントに計上される。
+- Claude Code の利用料金・使用量は、ログインしている Claude のアカウントに計上される。OpenAI 互換 API・Anthropic API・Gemini の料金は、設定した API キーのアカウントに計上される。

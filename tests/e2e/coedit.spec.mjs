@@ -774,7 +774,7 @@ async function main() {
 				);
 
 				// 設定画面でオフにして、エディタへ戻る
-				await guest.page.goto(`${base}/settings`);
+				await guest.page.goto(`${base}/settings#sharing`);
 				const toggle = guest.page.getByLabel('他の人のカーソルを表示');
 				await toggle.waitFor({ timeout: 30_000 });
 				assert(await toggle.isChecked(), '既定はオン');
@@ -817,7 +817,7 @@ async function main() {
 				);
 
 				// 戻すと、また表示される
-				await guest.page.goto(`${base}/settings`);
+				await guest.page.goto(`${base}/settings#sharing`);
 				const toggle2 = guest.page.getByLabel('他の人のカーソルを表示');
 				await toggle2.waitFor({ timeout: 30_000 });
 				assert(!(await toggle2.isChecked()), 'オフが保存されている');

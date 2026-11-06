@@ -12,6 +12,7 @@
 		SETTINGS_CODE_ERROR_MESSAGES
 	} from '$lib/firebase/settingsCode';
 	import Button from '$lib/components/ui/Button.svelte';
+	import Logo from '$lib/components/ui/Logo.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import { isValidFirebaseConfig } from '$lib/utils/validation';
@@ -178,6 +179,7 @@
 <div class="h:100% overflow-y:auto bg:theme-background flex ai:start jc:center p:24">
 	<div class="max-w:600 w:full">
 		<Card padding="lg">
+			<div class="m:0|0|16|0"><Logo variant="full" size={28} title="Storift" /></div>
 			<h2 class="font:24 font-weight:600 m:0|0|8|0">Firebase初期設定(任意)</h2>
 			<p class="font:14 fg:theme-text-secondary m:0|0|24|0">
 				複数の端末で作品を同期したい場合だけ設定します。設定しなくても、作品はこの端末に保存されて使えます。あとから設定画面でも設定できます。

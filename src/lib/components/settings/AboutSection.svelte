@@ -36,9 +36,9 @@
 		{#if isDesktop()}
 			<UpdateSettings />
 		{:else}
-			<p>Storift v{__APP_VERSION__}</p>
-			<p class="font:.875rem">ビルド: {buildVersion}</p>
-			<p class="font:.875rem">
+			<p class="selectable">Storift v{__APP_VERSION__}</p>
+			<p class="font:.875rem selectable">ビルド: {buildVersion}</p>
+			<p class="font:.875rem selectable">
 				オフライン対応: {swVersion
 					? `有効 (${swVersion})`
 					: '未有効(初回の読み込み後に有効になります)'}

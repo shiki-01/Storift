@@ -71,7 +71,7 @@
 						更新日時: {dateTime(localUpdatedAt)}
 					</p>
 					{#if summary.diffs.length > 0}
-						<div class="bg:theme-surface p:12 r:6 max-h:300 overflow-y:auto">
+						<div class="bg:theme-surface p:12 r:6 max-h:300 overflow-y:auto selectable">
 							{#each summary.diffs as diff (diff.key)}
 								<div class="mb:12">
 									<div class="font:12 font-weight:600 fg:theme-text-secondary mb:4">
@@ -97,7 +97,7 @@
 						更新日時: {dateTime(remoteUpdatedAt)}
 					</p>
 					{#if summary.diffs.length > 0}
-						<div class="bg:theme-surface p:12 r:6 max-h:300 overflow-y:auto">
+						<div class="bg:theme-surface p:12 r:6 max-h:300 overflow-y:auto selectable">
 							{#each summary.diffs as diff (diff.key)}
 								<div class="mb:12">
 									<div class="font:12 font-weight:600 fg:theme-text-secondary mb:4">
@@ -128,12 +128,12 @@
 
 			<details class="mt:12 font:11 fg:theme-text-secondary">
 				<summary class="cursor:pointer">詳細(開発者向け)</summary>
-				<p class="mt:4">
+				<p class="mt:4 selectable">
 					ID: {(conflictData.local as { id?: string }).id ?? ''} / この端末 syncedAt: {syncedAtOf(
 						conflictData.local
 					) ?? '-'} updatedAt: {localUpdatedAt ?? '-'}
 				</p>
-				<p>
+				<p class="selectable">
 					他の端末 syncedAt: {syncedAtOf(conflictData.remote) ?? '-'} updatedAt: {remoteUpdatedAt ??
 						'-'}
 				</p>

@@ -2,7 +2,7 @@
 	"name": "storift",
 	"private": true,
 	"license": "MIT",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
@@ -25,7 +25,14 @@
 		"test:e2e:mobile": "node tests/e2e/mobile-header.spec.mjs",
 		"test:e2e:preview": "node tests/e2e/preview.spec.mjs",
 		"test:e2e:settings": "node tests/e2e/settings.spec.mjs",
-		"test:e2e:ai-header": "node tests/e2e/ai-header.spec.mjs"
+		"test:e2e:ai-header": "node tests/e2e/ai-header.spec.mjs",
+		"test:e2e:ai-select": "node tests/e2e/ai-select.spec.mjs",
+		"test:e2e:user-select": "node tests/e2e/user-select.spec.mjs",
+		"test:e2e:scrollbar": "node tests/e2e/scrollbar.spec.mjs",
+		"test:e2e:progress": "node tests/e2e/progress.spec.mjs",
+		"test:e2e:plot": "node tests/e2e/plot.spec.mjs",
+		"test:e2e:characters": "node tests/e2e/characters.spec.mjs",
+		"test:e2e:worldbuilding": "node tests/e2e/worldbuilding.spec.mjs"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^1.4.0",
@@ -86,5 +93,5 @@
 		"uuid": "^13.0.0",
 		"yjs": "^13.6.33"
 	},
-	"packageManager": "pnpm@10.14.0+sha512.ad27a79641b49c3e481a16a805baa71817a04bbe06a38d17e60e2eaee83f6a146c6a688125f5792e48dd5ba30e7da52a5cda4c3992b9ccf333f9ce223af84748"
+	"packageManager": "bun@1.4.4"
 }

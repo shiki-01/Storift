@@ -38,6 +38,9 @@ let version = $state<string | null>(null);
 let notes = $state<string | null>(null);
 /** ダウンロードの進み具合(0〜1)。サイズが分からなければ null */
 let progress = $state<number | null>(null);
+/** ダウンロード済みと全体のバイト数。サイズが分からなければ total は null */
+let receivedBytes = $state(0);
+let totalBytes = $state<number | null>(null);
 let error = $state<string | null>(null);
 let lastChecked = $state<number | null>(null);
 let autoCheck = $state(loadAutoCheck());
@@ -64,6 +67,12 @@ export const updaterStore = {
 	},
 	get progress() {
 		return progress;
+	},
+	get receivedBytes() {
+		return receivedBytes;
+	},
+	get totalBytes() {
+		return totalBytes;
 	},
 	get error() {
 		return error;
@@ -132,6 +141,8 @@ export const updaterStore = {
 		if (!pending || status === 'downloading') return;
 		status = 'downloading';
 		progress = null;
+		receivedBytes = 0;
+		totalBytes = null;
 		error = null;
 		try {
 			let total = 0;
@@ -140,8 +151,10 @@ export const updaterStore = {
 				if (event.event === 'Started') {
 					total = event.data.contentLength ?? 0;
 					progress = total ? 0 : null;
+					totalBytes = total || null;
 				} else if (event.event === 'Progress') {
 					received += event.data.chunkLength;
+					receivedBytes = received;
 					if (total) progress = Math.min(1, received / total);
 				} else if (event.event === 'Finished') {
 					progress = 1;

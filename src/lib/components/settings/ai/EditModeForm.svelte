@@ -1,14 +1,8 @@
 <script lang="ts">
-	// 設定「AI」: 本文の編集の扱い(プロバイダ共通)とワークスペース
+	// 設定「AI」: 本文の編集の扱い(プロバイダ共通)と、旧ワークスペースのフォルダ
 	import { onMount } from 'svelte';
-	import { aiStore, EDIT_MODE_LABELS, type EditMode } from '$lib/stores/ai.svelte';
+	import { aiStore, EDIT_MODE_HINTS, EDIT_MODE_LABELS, type EditMode } from '$lib/stores/ai.svelte';
 	import { getWorkspacePath, openWorkspace } from '$lib/desktop/ai';
-
-	const EDIT_MODE_HINTS: Record<EditMode, string> = {
-		suggest: '修正案を文章で示すだけで、本文は書き換えません。',
-		confirm: '編集案を差分で確認し、1 件ずつ(または「すべて反映」で)反映します。',
-		auto: '回答が終わると本文を書き換えます。変更は本文上に色付きで残り、後から保持・元に戻すを選べます。'
-	};
 
 	let workspacePath = $state('');
 
@@ -35,10 +29,17 @@
 
 <div class="workspace">
 	<p class="hint">
-		原稿は送信のたびに <code>{workspacePath || 'workspace'}</code> へ Markdown で書き出され(未保存の本文も含む)、Claude
-		Code はそこを読み取り専用で参照します(Ollama や API 経由のプロバイダではアプリのツール経由で読みます)。本文の書き換えは「本文の編集」の設定に従い、アプリが行います。
+		原稿のファイルは、Claude Code に渡しません。Claude Code
+		は空の作業フォルダで動き、作品の本文や設定資料は、アプリのツール(MCP)を通して必要な分だけ読みます(Ollama
+		や API
+		経由のプロバイダも同じツールを使います)。本文の書き換えは「本文の編集」の設定に従い、アプリが行います。
 	</p>
-	<button class="ghost" onclick={() => openWorkspace()}>ワークスペースを開く</button>
+	<p class="hint">
+		以前の版が書き出した原稿の写しが残っていることがあります(場所: <code
+			>{workspacePath || 'workspace'}</code
+		>)。今の版は、このフォルダを読み書きしません。
+	</p>
+	<button class="ghost" onclick={() => openWorkspace()}>以前の書き出しフォルダを開く</button>
 </div>
 
 <style>

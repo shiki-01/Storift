@@ -106,7 +106,7 @@
 	});
 </script>
 
-<div class="settings-scroll">
+<div class="settings-scroll scroll-stable">
 	<div class="settings-page">
 		<h1 class="settings-title">設定</h1>
 

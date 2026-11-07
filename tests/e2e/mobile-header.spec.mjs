@@ -373,6 +373,57 @@ async function main() {
 			`caret.center=${tw.center} target=${target} bar.bottom=${tw.barBottom}`
 		);
 		await cr.context.close();
+
+		// ---------- 保存状態の幅(状態が変わっても右側のボタンの位置が動かない) ----------
+		console.log('[モバイル: 保存状態の幅]');
+		const sv = await openEditor(browser, base, true);
+		const saveWidths = {};
+		for (const state of ['saved', 'saving', 'dirty', 'error']) {
+			if (state === 'error') {
+				await sv.page.evaluate(async () => {
+					const { scenesDB } = await import('/src/lib/db/index.ts');
+					const { editorStore } = await import('/src/lib/stores/editor.svelte.ts');
+					scenesDB.update = async () => {
+						throw new Error('E2E: 保存の失敗');
+					};
+					editorStore.isSaving = false;
+					editorStore.isDirty = true;
+				});
+			} else {
+				await sv.page.evaluate(async (state) => {
+					const { editorStore } = await import('/src/lib/stores/editor.svelte.ts');
+					editorStore.isSaving = state === 'saving';
+					editorStore.isDirty = state === 'dirty';
+				}, state);
+			}
+			await sv.page
+				.locator(`.m-title-sub .save-state[data-state="${state}"]`)
+				.waitFor({ timeout: 15_000 });
+			saveWidths[state] = await sv.page.evaluate(() => {
+				const save = document.querySelector('.m-title-sub .save-state');
+				const buttons = [...document.querySelectorAll('.m-bar > .m-btn')];
+				return {
+					width: save.getBoundingClientRect().width,
+					buttonLefts: buttons.map((b) => b.getBoundingClientRect().left),
+					title: document.querySelector('.m-title').getBoundingClientRect().width
+				};
+			});
+		}
+		console.log(`  ${JSON.stringify(saveWidths)}`);
+		const svStates = Object.keys(saveWidths);
+		check(
+			'全ての状態で保存表示の幅が同じ',
+			svStates.every((k) => saveWidths[k].width === saveWidths.saved.width),
+			svStates.map((k) => saveWidths[k].width).join(' / ')
+		);
+		check(
+			'全ての状態で右側のボタンの left が変わらない',
+			svStates.every(
+				(k) =>
+					JSON.stringify(saveWidths[k].buttonLefts) === JSON.stringify(saveWidths.saved.buttonLefts)
+			)
+		);
+		await sv.context.close();
 	} finally {
 		await browser.close();
 		vite.stop();

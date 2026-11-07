@@ -1,42 +1,31 @@
 # Firestore セットアップガイド
 
-## 重要な変更
+## 概要
 
-このアプリは**共有コレクション方式**を使用しています。
-同じFirebase設定を使用するすべてのブラウザ・端末で、データがリアルタイムに同期されます。
+このアプリは、自分の Firebase(Firestore)に作品を保存して、複数の端末で同期できます。同期は任意で、設定しなくても全機能を使えます。
+
+- 同期できるのは、**オーナー登録した端末**です。新ルール(`firestore.rules`)の Firebase では、最初に接続した端末が自動でオーナーになり、2 台目以降は、オーナー端末の「設定コード」を貼り付けて登録します(下記「オーナー鍵と設定コード」)。Firebase の設定値を知っているだけの端末は、データにアクセスできません。
+- 旧ルール(認証済みなら全開放)のままの Firebase では、従来どおり、同じ設定値を入力した端末どうしで同期できます。**新ルールの適用は任意です。**適用しなくても同期は使えます。共有・共同編集(招待リンク)を使うときだけ、新ルールが必要です。
+- 新ルールの適用で、既存のデータは消えません。ただし、適用した時点で、オーナー登録のない端末は同期できなくなります(下記)。
 
 ## データ構造
 
+権限とデータ配置の正本は [SHARING_RULES.md](SHARING_RULES.md) です。要約は次のとおりです。
+
 ```
-projects/
-  {projectId}/
-    - id
-    - title
-    - description
-    - createdAt
-    - updatedAt
-    - syncedAt
-    - _lastModifiedBy
-
-chapters/
-  {chapterId}/
-    - id
-    - projectId
-    - title
-    - ...
-
-scenes/
-  {sceneId}/
-    - id
-    - chapterId
-    - projectId
-    - content
-    - ...
+projects / chapters / scenes / characters / plots / worldbuilding   従来コレクション(任意ネスト含む)。オーナーのみ
+owners/{uid}                      オーナー端末の登録 {key}
+_config/ownerKey                  オーナー鍵 {key}(クライアントは読めない)
+shared/{projectId}                共有メタ {visibility, name, ...}
+shared/{projectId}/secrets/{role}      招待の秘密(クライアントは読めない)
+shared/{projectId}/members/{uid}       参加者
+shared/{projectId}/presence/{uid}      在席情報・カーソル
+shared/{projectId}/{type}/{id}[/...]   共有中の作品の本文・設定など(type は従来の 6 コレクション)
 ```
 
-ユーザー別の分離はなく、同じ Firebase に接続した**オーナー端末**は全データにアクセスできます(オーナーの仕組みは下記)。
-
-共有機能(段階2以降)用に、`shared/{projectId}/...`(参加者 `members`・在席情報 `presence` を含む)、`owners/{uid}`、`_config/ownerKey` も使います。権限の詳細は [SHARING_RULES.md](SHARING_RULES.md) を参照してください。
+- 従来の 6 コレクションは、作品の種類ごとの最上位コレクションで、各文書に `id`・`projectId`・`updatedAt` などを持ちます。シーン本文の共同編集用の更新ログ(CRDT)は、シーン文書の下位コレクションに置かれます。
+- ユーザー別の分離はなく、オーナー登録した端末は全データにアクセスできます。
+- 共有中の作品は、`projects/{projectId}` に「ポインタ」だけを残し、子要素は `shared/{projectId}/...` に置きます(招待したゲストはここだけを読み書きできます)。
 
 ## セキュリティルールの設定
 
@@ -96,10 +85,10 @@ Firebase Consoleで以下の手順を実行してください:
 
 ## 動作確認
 
-1. ChromeとEdgeで同じFirebase設定を入力
-2. 両方とも「保存して開始」をクリック
-3. 片方のブラウザでプロジェクトを作成
-4. もう片方のブラウザに即座に表示されることを確認
+1. 1 台目(ChromeなどのFirebase設定を入力した端末)で「保存して開始」をクリック(新ルールなら、この端末がオーナーになる)
+2. 設定 →「設定コード」で表示したコードをコピーする
+3. 2 台目(別の端末やブラウザ)で、初回画面の一括貼り付け欄に設定コードを貼り付ける(旧ルールのままなら、同じ Firebase 設定の 6 項目で足りる)
+4. 片方でプロジェクトを作成し、もう片方に表示されることを確認
 
 ## トラブルシューティング
 
@@ -121,10 +110,11 @@ Firebase Consoleで以下の手順を実行してください:
 
 ### リアルタイム同期の仕組み
 
-1. `setupRealtimeSync()` が `onSnapshot()` でコレクション全体を監視
-2. Firestoreで変更があると即座にコールバックが呼ばれる
-3. ローカルのIndexedDBとStoreを更新
-4. UIが自動的に再レンダリング
+1. 開いている作品だけを `onSnapshot()` で監視する(`startCurrentProjectSync`)。一覧用の作品の監視はグローバルに 1 本
+2. それ以外のデータは、タブ表示・オンライン復帰・定期の差分取得(`updatedAt` の条件付き)で取り込む
+3. 取得した内容はローカルの IndexedDB に反映し、UI が自動で再描画される
+
+読み取りの回数を抑える工夫の詳細は [SYNC_OPTIMIZATION.md](SYNC_OPTIMIZATION.md) を参照してください。
 
 ### オフライン対応
 

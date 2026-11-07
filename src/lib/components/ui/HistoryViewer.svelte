@@ -81,7 +81,9 @@
 					</div>
 
 					{#if selectedHistory?.id === history.id}
-						<div class="bg:theme-surface p:12 r:6 font:12 white-space:pre-wrap overflow-x:auto">
+						<div
+							class="bg:theme-surface p:12 r:6 font:12 white-space:pre-wrap overflow-x:auto selectable"
+						>
 							{JSON.stringify(history.snapshot, null, 2)}
 						</div>
 					{:else}

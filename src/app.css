@@ -123,6 +123,54 @@ body {
 	outline-offset: 2px;
 }
 
+/* ===== テキスト選択 =====
+ * アプリの操作部品(ナビ・ボタン・ラベル・見出し・バッジなど)は選択できないのを既定にする。
+ * 本文や、コピーしたくなる情報(入力欄・AI の回答・エラー文・ID・コードなど)は .selectable で選択できるようにする。
+ * 対応表は docs/UI_GUIDELINES.md。user-select の auto は親が none だと none になるので、選択可の領域は明示する。 */
+body {
+	-webkit-user-select: none;
+	user-select: none;
+	/* iOS の長押しメニュー(リンク・画像のプレビュー)は、選択できない領域では出さない */
+	-webkit-touch-callout: none;
+}
+
+/* 既定の auto は computed に「親に従う」としか出ないので、全要素で親の値を明示的に引き継ぐ。
+ * base レイヤーなので、Master CSS のユーティリティや各コンポーネントの指定が優先される。 */
+@layer base {
+	* {
+		-webkit-user-select: inherit;
+		user-select: inherit;
+	}
+}
+
+input,
+textarea,
+select,
+[contenteditable]:not([contenteditable='false']),
+pre,
+code,
+[role='alert'],
+.selectable {
+	-webkit-user-select: text;
+	user-select: text;
+	-webkit-touch-callout: default;
+}
+
+/* 選択可の領域の中でも、操作部品そのものは選択させない(ダブルクリックで文字が反転するのを防ぐ) */
+.selectable button,
+[role='alert'] button,
+.selectable [role='button'],
+.selectable summary {
+	-webkit-user-select: none;
+	user-select: none;
+}
+
+img,
+svg {
+	-webkit-user-select: none;
+	user-select: none;
+}
+
 * {
 	scrollbar-width: thin;
 	scrollbar-color: color-mix(in srgb, var(--color-text) 18%, transparent) transparent;
@@ -296,5 +344,34 @@ body {
 
 	input[type='file']::file-selector-button:hover {
 		background: var(--color-surface);
+	}
+}
+
+/* ===== インラインのアイコン =====
+ * Icon.svelte のラッパーに付けて使う。大きさは周囲の文字(font-size)に合わせる。 */
+.ico {
+	display: inline-flex;
+	flex: none;
+	width: 1em;
+	height: 1em;
+}
+
+.ico svg {
+	width: 100%;
+	height: 100%;
+}
+
+/* ===== スクロールバーの有無で位置がずれないようにする =====
+ * このアプリは html/body ではなく、各ページの縦スクロールのコンテナがスクロールする。
+ * それらに付けて、スクロールが無いページでもスクロールバー分の幅を確保し、全ページで内容の位置を揃える。
+ * オーバーレイのスクロールバー(macOS・モバイル)は幅 0 なので余白は増えない。
+ * html には付けない(スクロールしないのに右端に空きができる)。 */
+.scroll-stable {
+	scrollbar-gutter: stable;
+}
+
+@supports not (scrollbar-gutter: stable) {
+	.scroll-stable {
+		overflow-y: scroll;
 	}
 }

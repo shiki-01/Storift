@@ -22,6 +22,8 @@ export default defineConfig({
 		}
 	},
 	resolve: {
+		// コンポーネントのテストでは Svelte のクライアント向けビルドを使う(mount が必要)
+		conditions: ['browser'],
 		alias: {
 			$lib: resolve(__dirname, './src/lib'),
 			// テストでは $app/state を stub に向ける(page はテストごとに差し替える)

@@ -3,40 +3,76 @@
 	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { plotsDB } from '$lib/db';
-	import { queueChange } from '$lib/services/sync.service';
+	import { queueChange, queueChanges } from '$lib/services/sync.service';
 	import { filterReadOnlyMenu, isReadOnlyProject } from '$lib/utils/readOnly';
+	import { sortByOrder } from '$lib/utils/ordering';
+	import { ALL_PLOTS, applyPlotChanges, planPlotMove } from '$lib/utils/plotOrdering';
+	import { formatDate } from '$lib/utils/dateUtils';
 	import type { Plot } from '$lib/types';
-	import Modal from '$lib/components/ui/Modal.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import Input from '$lib/components/ui/Input.svelte';
-	import Card from '$lib/components/ui/Card.svelte';
+	import Icon from '$lib/components/ui/Icon.svelte';
+	import Select from '$lib/components/ui/Select.svelte';
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
+	import MasterDetail from '$lib/components/items/MasterDetail.svelte';
+	import ItemDetail from '$lib/components/items/ItemDetail.svelte';
+	import ItemSection from '$lib/components/items/ItemSection.svelte';
+	import SortableList from '$lib/components/items/SortableList.svelte';
+	import PlotCard from '$lib/components/plot/PlotCard.svelte';
 	import { createPlotContextMenu, type ContextMenuItem } from '$lib/utils/contextMenu';
 	import { onMount, untrack } from 'svelte';
 	import { dataChange } from '$lib/stores/dataChange.svelte';
 
-	// 閲覧専用(閲覧権限、またはアクセス権の失効)。編集・追加・削除の入口を無効にする。同期層にも安全網がある
+	// 閲覧専用(閲覧権限、またはアクセス権の失効)。編集・追加・削除・並べ替えの入口を出さない。同期層にも安全網がある
 	const readOnly = $derived(isReadOnlyProject(currentProjectStore.project?.id));
+
+	const NEW = 'new';
+	const STATUSES: Plot['status'][] = ['idea', 'planned', 'written', 'revised'];
+	const STATUS_LABELS: Record<Plot['status'], string> = {
+		idea: 'アイデア',
+		planned: '計画中',
+		written: '執筆済み',
+		revised: '推敲済み'
+	};
+	const TYPE_LABELS: Record<Plot['type'], string> = {
+		scene: 'シーン',
+		chapter: '章',
+		arc: 'アーク'
+	};
+	const statusOptions = STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }));
+	const typeOptions = (Object.keys(TYPE_LABELS) as Plot['type'][]).map((value) => ({
+		value,
+		label: TYPE_LABELS[value]
+	}));
+	const typeFilterOptions = [{ value: 'all', label: 'すべての種類' }, ...typeOptions];
+	const statusFilterOptions = [{ value: 'all', label: 'すべての状態' }, ...statusOptions];
+	const sortOptions = [
+		{ value: 'manual', label: '手動順' },
+		{ value: 'updated', label: '更新日が新しい順' }
+	];
+
+	type ViewMode = 'board' | 'timeline';
+	const VIEW_KEY = 'storift:plot-view';
 
 	let plots = $state<Plot[]>([]);
 	let isLoading = $state(true);
-	type ViewMode = 'board' | 'timeline';
+	let loadError = $state<string | null>(null);
 	let viewMode = $state<ViewMode>('board');
-	let showCreateModal = $state(false);
-	let showEditModal = $state(false);
-	let editingPlot = $state<Plot | null>(null);
 
-	// コンテキストメニュー
-	let contextMenu = $state<{
-		visible: boolean;
-		x: number;
-		y: number;
-		items: ContextMenuItem[];
-		targetPlot?: Plot;
-	}>({ visible: false, x: 0, y: 0, items: [] });
+	let query = $state('');
+	let typeFilter = $state('all');
+	let statusFilter = $state('all');
+	let sortMode = $state('manual');
+	/** スマホでは、種類・並びの選択を畳んでおく(縦の場所を本文に使う) */
+	let filtersOpen = $state(false);
 
-	// フォーム状態
-	let formData = $state({
+	let md = $state<MasterDetail>();
+	let wide = $state(true);
+	let selectedId = $state<string | null>(null);
+	let editing = $state(false);
+	let saving = $state(false);
+	let wantEdit: string | null = null;
+
+	let form = $state({
 		title: '',
 		type: 'scene' as Plot['type'],
 		status: 'idea' as Plot['status'],
@@ -44,52 +80,64 @@
 		color: '#33507a'
 	});
 
-	function viewToggleClass(mode: ViewMode): string {
-		return [
-			'px:16 py:8 r:8 font:13 transition:all|.2s|ease b:1px|solid|theme-border',
-			viewMode === mode
-				? 'bg:theme-surface fg:theme-primary'
-				: 'bg:theme-background fg:theme-text-secondary hover:bg:theme-surface'
-		].join(' ');
-	}
+	const creating = $derived(selectedId === NEW);
+	const selectedPlot = $derived(plots.find((p) => p.id === selectedId));
 
-	function actionButtonClass(
-		variant: 'default' | 'secondary' | 'success' | 'danger' = 'default'
-	): string {
-		const base =
-			'px:12 py:8 r:6 b:1px|solid|theme-border bg:theme-background transition:all|.2s|ease';
-		const variants = {
-			default: 'fg:theme-text hover:bg:theme-surface hover:fg:theme-primary',
-			secondary: 'fg:theme-text-secondary hover:bg:theme-surface',
-			success: 'fg:theme-success hover:bg:theme-surface',
-			danger: 'fg:theme-error hover:bg:theme-error hover:fg:theme-background'
-		} as const;
-		return `${base} ${variants[variant]}`;
-	}
+	/** 絞り込み中は一覧の並びが全体の並びと一致しないので、並べ替えを止める */
+	const filtering = $derived(
+		query.trim() !== '' ||
+			typeFilter !== 'all' ||
+			(viewMode === 'timeline' && statusFilter !== 'all')
+	);
+	const canSort = $derived(!readOnly && sortMode === 'manual' && !filtering);
 
-	const textareaBaseClass =
-		'w:full px:12 py:10 b:1|solid|theme-border bg:theme-background r:8 outline:none focus:border-color:theme-primary transition:all|.2s font-family:inherit fg:theme-text';
-
-	const fieldBaseClass =
-		'px:12 py:10 b:1|solid|theme-border bg:theme-background fg:theme-text r:8 outline:none focus:border-color:theme-primary transition:all|.2s';
-
-	// ステータスグループ
-	const statusGroups: Record<Plot['status'], { label: string; badgeClass: string }> = {
-		idea: { label: 'アイデア', badgeClass: 'bg:theme-surface fg:theme-info' },
-		planned: { label: '計画中', badgeClass: 'bg:theme-surface fg:theme-secondary' },
-		written: { label: '執筆済み', badgeClass: 'bg:theme-surface fg:theme-success' },
-		revised: { label: '推敲済み', badgeClass: 'bg:theme-surface fg:theme-primary' }
-	};
-
-	const typeLabels = {
-		scene: 'シーン',
-		chapter: '章',
-		arc: 'アーク'
-	};
-
-	onMount(async () => {
-		await loadPlots();
+	const visible = $derived.by(() => {
+		const q = query.trim().toLowerCase();
+		const list = plots.filter(
+			(p) =>
+				(typeFilter === 'all' || p.type === typeFilter) &&
+				(viewMode !== 'timeline' || statusFilter === 'all' || p.status === statusFilter) &&
+				(!q || p.title.toLowerCase().includes(q) || p.content.toLowerCase().includes(q))
+		);
+		return sortMode === 'updated' ? [...list].sort((a, b) => b.updatedAt - a.updatedAt) : list;
 	});
+
+	const columns = $derived(
+		STATUSES.map((status) => ({ status, items: visible.filter((p) => p.status === status) }))
+	);
+
+	const dirty = $derived.by(() => {
+		if (!editing) return false;
+		if (creating) return form.title.trim() !== '' || form.content.trim() !== '';
+		const p = selectedPlot;
+		if (!p) return false;
+		return (
+			form.title !== p.title ||
+			form.type !== p.type ||
+			form.status !== p.status ||
+			form.content !== p.content ||
+			form.color !== p.color
+		);
+	});
+
+	onMount(() => {
+		try {
+			const saved = localStorage.getItem(VIEW_KEY);
+			if (saved === 'board' || saved === 'timeline') viewMode = saved;
+		} catch {
+			// ストレージが使えない環境
+		}
+		void loadPlots();
+	});
+
+	function setView(mode: ViewMode) {
+		viewMode = mode;
+		try {
+			localStorage.setItem(VIEW_KEY, mode);
+		} catch {
+			// ストレージが使えない環境
+		}
+	}
 
 	const refreshPlots = async () => {
 		if (!currentProjectStore.project) return;
@@ -108,489 +156,570 @@
 	const loadPlots = async () => {
 		if (!currentProjectStore.project) return;
 		isLoading = true;
+		loadError = null;
 		try {
 			plots = await plotsDB.getByProjectId(currentProjectStore.project.id);
+		} catch (error) {
+			console.error('Failed to load plots:', error);
+			loadError = 'プロットを読み込めませんでした';
 		} finally {
 			isLoading = false;
 		}
 	};
 
-	const openCreateModal = () => {
-		if (readOnly) return;
-		formData = {
-			title: '',
-			type: 'scene',
-			status: 'idea',
-			content: '',
-			color: '#33507a'
-		};
-		showCreateModal = true;
-	};
+	/* ---------- 選択と編集 ---------- */
 
-	function openEditModal(plot: Plot) {
-		editingPlot = plot;
-		formData = {
-			title: plot.title,
-			type: plot.type,
-			status: plot.status,
-			content: plot.content,
-			color: plot.color
-		};
-		showEditModal = true;
+	function resetForm(status: Plot['status'] = 'idea') {
+		form = { title: '', type: 'scene', status, content: '', color: '#33507a' };
 	}
 
-	const handleCreate = async () => {
-		if (readOnly) return;
-		if (!currentProjectStore.project || !formData.title.trim()) return;
-
-		const plot = await plotsDB.create({
-			projectId: currentProjectStore.project.id,
-			title: formData.title,
-			type: formData.type,
-			status: formData.status
-		});
-
-		// 同期キューに追加
-		await queueChange('plots', plot.id, 'create');
-
-		await loadPlots();
-		showCreateModal = false;
-	};
-
-	const handleUpdate = async () => {
-		if (readOnly) return;
-		if (!editingPlot) return;
-
-		await plotsDB.update(editingPlot.id, {
-			title: formData.title,
-			type: formData.type,
-			status: formData.status,
-			content: formData.content,
-			color: formData.color
-		});
-
-		// 同期キューに追加
-		await queueChange('plots', editingPlot.id, 'update');
-
-		await loadPlots();
-		showEditModal = false;
-		editingPlot = null;
-	};
-
-	async function handleDelete(id: string) {
-		if (readOnly) return;
-		if (!(await confirmDialog({ message: 'このプロットを削除しますか?', danger: true }))) return;
-		await plotsDB.delete(id);
-		// 同期キューに追加
-		await queueChange('plots', id, 'delete');
-		await loadPlots();
+	function loadForm(p: Plot) {
+		form = { title: p.title, type: p.type, status: p.status, content: p.content, color: p.color };
 	}
 
-	async function handleStatusChange(plot: Plot, newStatus: Plot['status']) {
-		if (readOnly) return;
-		const previousStatus = plot.status;
-		plots = plots.map((p) => (p.id === plot.id ? { ...p, status: newStatus } : p));
-
-		try {
-			await plotsDB.update(plot.id, { status: newStatus });
-			await queueChange('plots', plot.id, 'update');
-			// 確認ダイアログの代わりに、すぐ元に戻せるようにする
-			toast.info(`「${plot.title}」のステータスを変更しました`, {
-				action: {
-					label: '元に戻す',
-					onClick: () => void handleStatusChange({ ...plot, status: newStatus }, previousStatus)
+	// 選択が変わったら、閲覧ビューに戻す(新規は編集フォーム。「編集」から開いた場合はそのまま編集)
+	$effect(() => {
+		const id = selectedId;
+		untrack(() => {
+			if (id === NEW) {
+				editing = true;
+				return;
+			}
+			if (id !== null && id === wantEdit) {
+				const p = plots.find((x) => x.id === id);
+				if (p) {
+					loadForm(p);
+					editing = true;
+					wantEdit = null;
+					return;
 				}
-			});
+			}
+			editing = false;
+		});
+	});
+
+	const guard = {
+		dirty: () => dirty,
+		confirm: () =>
+			confirmDialog({
+				title: '未保存の変更',
+				message: '保存していない変更があります。破棄して移動しますか?',
+				confirmText: '破棄して移動',
+				danger: true
+			})
+	};
+
+	async function openPlot(id: string) {
+		await md?.open(id);
+	}
+
+	async function startCreate(status: Plot['status'] = 'idea') {
+		if (readOnly) return;
+		if (creating) {
+			form.status = status;
+			return;
+		}
+		resetForm(status);
+		await md?.open(NEW);
+	}
+
+	async function startEdit(p: Plot) {
+		if (readOnly) {
+			await openPlot(p.id);
+			return;
+		}
+		if (selectedId === p.id) {
+			loadForm(p);
+			editing = true;
+			return;
+		}
+		wantEdit = p.id;
+		if (!(await md?.open(p.id))) wantEdit = null;
+	}
+
+	async function cancelEdit() {
+		if (dirty && !(await guard.confirm())) return;
+		if (creating) {
+			await md?.close();
+			return;
+		}
+		editing = false;
+	}
+
+	async function handleSave() {
+		if (readOnly || saving) return;
+		const project = currentProjectStore.project;
+		if (!project || !form.title.trim()) return;
+		saving = true;
+		try {
+			if (creating) {
+				const plot = await plotsDB.create({
+					projectId: project.id,
+					title: form.title.trim(),
+					type: form.type,
+					status: form.status
+				});
+				await plotsDB.update(plot.id, { content: form.content, color: form.color });
+				await queueChange('plots', plot.id, 'create');
+				await refreshPlots();
+				md?.replace(plot.id);
+			} else if (selectedPlot) {
+				const id = selectedPlot.id;
+				await plotsDB.update(id, {
+					title: form.title.trim(),
+					type: form.type,
+					content: form.content,
+					color: form.color
+				});
+				// 状態が変わったら、移した先の列の末尾に置く(order と status を同じ更新で書く)
+				if (form.status !== selectedPlot.status) {
+					await plotsDB.moveTo(id, Number.MAX_SAFE_INTEGER, form.status);
+				}
+				await queueChange('plots', id, 'update');
+				await refreshPlots();
+				editing = false;
+			}
 		} catch (error) {
-			console.error('Failed to update plot status:', error);
-			plots = plots.map((p) => (p.id === plot.id ? { ...p, status: previousStatus } : p));
-			toast.error('ステータスの更新に失敗しました');
+			console.error('Failed to save plot:', error);
+			toast.error('プロットの保存に失敗しました');
 		} finally {
-			await loadPlots();
+			saving = false;
 		}
 	}
 
-	let plotQuery = $state('');
-	let visiblePlots = $derived.by(() => {
-		const q = plotQuery.trim().toLowerCase();
-		if (!q) return plots;
-		return plots.filter(
-			(p) => p.title.toLowerCase().includes(q) || p.content.toLowerCase().includes(q)
-		);
-	});
-
-	function getPlotsByStatus(status: Plot['status']) {
-		return visiblePlots.filter((p) => p.status === status);
+	async function handleDelete(p: Plot) {
+		if (readOnly) return;
+		if (!(await confirmDialog({ message: `「${p.title}」を削除しますか?`, danger: true }))) return;
+		await plotsDB.delete(p.id);
+		await queueChange('plots', p.id, 'delete');
+		if (selectedId === p.id) {
+			editing = false;
+			md?.replace(null);
+		}
+		await refreshPlots();
 	}
 
-	// コンテキストメニュー - プロット
-	function handlePlotContextMenu(e: MouseEvent, plot: Plot) {
-		e.preventDefault();
-		e.stopPropagation();
-
-		const menuItems = createPlotContextMenu({
-			onEdit: () => openEditModal(plot),
-			onDuplicate: () => handleDuplicatePlot(plot),
-			onDelete: () => handleDelete(plot.id)
-		});
-		const items = readOnly ? filterReadOnlyMenu(menuItems) : menuItems;
-		if (items.length === 0) return;
-
-		contextMenu = {
-			visible: true,
-			x: e.clientX,
-			y: e.clientY,
-			items,
-			targetPlot: plot
-		};
-	}
-
-	// 複製処理
-	async function handleDuplicatePlot(plot: Plot) {
+	async function handleDuplicate(p: Plot) {
 		if (readOnly || !currentProjectStore.project) return;
-
 		try {
-			const newPlot = await plotsDB.create({
+			const copy = await plotsDB.create({
 				projectId: currentProjectStore.project.id,
-				title: `${plot.title} (コピー)`,
-				type: plot.type,
-				status: plot.status
+				title: `${p.title} (コピー)`,
+				type: p.type,
+				status: p.status
 			});
-
-			await plotsDB.update(newPlot.id, {
-				content: plot.content,
-				color: plot.color
-			});
-
-			await queueChange('plots', newPlot.id, 'create');
-			await loadPlots();
+			await plotsDB.update(copy.id, { content: p.content, color: p.color });
+			await queueChange('plots', copy.id, 'create');
+			// 元のプロットのすぐ後ろに置く
+			const column = plots.filter((x) => x.status === p.status);
+			const written = await plotsDB.moveTo(
+				copy.id,
+				column.findIndex((x) => x.id === p.id) + 1,
+				p.status
+			);
+			if (written.length)
+				await queueChanges(written.map((id) => ({ type: 'plots', id, action: 'update' })));
+			await refreshPlots();
 		} catch (error) {
 			console.error('Failed to duplicate plot:', error);
 			toast.error('プロットの複製に失敗しました');
 		}
 	}
+
+	/* ---------- 並べ替え・状態の変更 ---------- */
+
+	async function persistMoves(ids: string[]) {
+		if (ids.length) await queueChanges(ids.map((id) => ({ type: 'plots', id, action: 'update' })));
+	}
+
+	/** 状態を変えたことを知らせ、すぐ元に戻せるようにする(確認ダイアログの代わり) */
+	function announceStatus(before: Plot, status: Plot['status']) {
+		toast.info(`「${before.title}」を「${STATUS_LABELS[status]}」に変更しました`, {
+			action: {
+				label: '元に戻す',
+				onClick: () => void restorePlot(before)
+			}
+		});
+	}
+
+	async function restorePlot(before: Plot) {
+		if (readOnly) return;
+		try {
+			await plotsDB.update(before.id, { status: before.status, order: before.order });
+			await persistMoves([before.id]);
+		} catch (error) {
+			console.error('Failed to restore plot:', error);
+			toast.error('元に戻せませんでした');
+		} finally {
+			await refreshPlots();
+		}
+	}
+
+	/** ドラッグ・キーボード・移動ボタンでの並べ替え。listKey は移動先の列(ボード)。タイムラインでは空 */
+	async function handleMove(id: string, toIndex: number, listKey: string) {
+		if (!canSort) return;
+		const before = plots.find((p) => p.id === id);
+		if (!before) return;
+		const group = viewMode === 'timeline' ? ALL_PLOTS : (listKey as Plot['status']);
+		const changes = planPlotMove(plots, id, toIndex, group);
+		if (changes.length === 0) return;
+		const previous = plots;
+		// 先に画面へ反映する(保存を待たずに、置いた場所に収まって見えるように)
+		plots = sortByOrder(applyPlotChanges(plots, changes));
+		try {
+			await persistMoves(await plotsDB.moveTo(id, toIndex, group));
+			const moved = changes.find((c) => c.id === id)?.changes.status;
+			if (moved && moved !== before.status) announceStatus(before, moved);
+		} catch (error) {
+			console.error('Failed to move plot:', error);
+			plots = previous;
+			toast.error('並べ替えに失敗しました');
+		} finally {
+			await refreshPlots();
+		}
+	}
+
+	/** 状態を選び直す(メニュー・詳細から)。移した先の列の末尾に置く */
+	async function handleStatusChange(plot: Plot, status: Plot['status']) {
+		if (readOnly || plot.status === status) return;
+		const before = plots.find((p) => p.id === plot.id) ?? plot;
+		const changes = planPlotMove(plots, plot.id, Number.MAX_SAFE_INTEGER, status);
+		const previous = plots;
+		plots = sortByOrder(applyPlotChanges(plots, changes));
+		try {
+			await persistMoves(await plotsDB.moveTo(plot.id, Number.MAX_SAFE_INTEGER, status));
+			announceStatus(before, status);
+		} catch (error) {
+			console.error('Failed to update plot status:', error);
+			plots = previous;
+			toast.error('ステータスの更新に失敗しました');
+		} finally {
+			await refreshPlots();
+		}
+	}
+
+	/* ---------- 右クリックメニュー ---------- */
+
+	let contextMenu = $state<{ visible: boolean; x: number; y: number; items: ContextMenuItem[] }>({
+		visible: false,
+		x: 0,
+		y: 0,
+		items: []
+	});
+
+	function handlePlotContextMenu(e: MouseEvent, plot: Plot) {
+		e.preventDefault();
+		e.stopPropagation();
+		const menuItems = createPlotContextMenu({
+			onEdit: () => void startEdit(plot),
+			onDuplicate: () => void handleDuplicate(plot),
+			onDelete: () => void handleDelete(plot)
+		});
+		const items = readOnly ? filterReadOnlyMenu(menuItems) : menuItems;
+		if (items.length === 0) return;
+		contextMenu = { visible: true, x: e.clientX, y: e.clientY, items };
+	}
+
+	function clearFilters() {
+		query = '';
+		typeFilter = 'all';
+		statusFilter = 'all';
+	}
 </script>
 
-<div class="flex w:100% h:100% bg:theme-background fg:theme-text">
-	<div class="flex-grow:1 flex flex:column min-w:0 min-h:0">
-		<header class="bg:theme-background border-bottom:1|solid|theme-border">
-			<div
-				class="page-header max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 jc:space-between ai:center"
-			>
-				<div>
-					<h1 class="font:26 font-weight:600 m:0 fg:theme-text">プロット管理</h1>
-					<p class="font:14 fg:theme-text-secondary mt:8">作品の構成を計画・管理します</p>
-				</div>
-				<div class="flex flex-wrap:wrap ai:center gap:12 max-w:100%">
-					<AiToggle />
-					<div
-						class="flex bg:theme-surface b:1px|solid|theme-border r:10 p:6 gap:8"
-						data-tour="plot-view-toggle"
-					>
-						<button class={viewToggleClass('board')} onclick={() => (viewMode = 'board')}>
-							ボード
-						</button>
-						<button class={viewToggleClass('timeline')} onclick={() => (viewMode = 'timeline')}>
-							タイムライン
-						</button>
-					</div>
-					<Button
-						class="px:16 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
-						disabled={readOnly}
-						onclick={openCreateModal}
-					>
-						+ 新規プロット
-					</Button>
-				</div>
-			</div>
-		</header>
+{#snippet card(
+	p: Plot,
+	variant: 'board' | 'timeline',
+	ctx: import('$lib/components/items/SortableList.svelte').ItemContext,
+	numberLabel?: number
+)}
+	<PlotCard
+		plot={p}
+		{variant}
+		selected={selectedId === p.id}
+		{readOnly}
+		number={numberLabel}
+		last={variant === 'timeline' && ctx.index === ctx.count - 1}
+		handle={canSort && variant === 'board' ? ctx.handle : undefined}
+		typeLabel={TYPE_LABELS[p.type]}
+		statusLabel={STATUS_LABELS[p.status]}
+		{statusOptions}
+		sortable={canSort}
+		canMoveUp={ctx.canMoveUp}
+		canMoveDown={ctx.canMoveDown}
+		onopen={() => void openPlot(p.id)}
+		onstatus={(s) => void handleStatusChange(p, s)}
+		onmoveup={ctx.moveUp}
+		onmovedown={ctx.moveDown}
+		onduplicate={() => void handleDuplicate(p)}
+		ondelete={() => void handleDelete(p)}
+		oncontextmenu={(e) => handlePlotContextMenu(e, p)}
+	/>
+{/snippet}
 
-		<main class="flex-grow:1 overflow-y:auto">
-			<div class="page-body max-w:1280 mx:auto w:100% px:24 py:24 flex flex:column gap:24">
-				<input
-					class="plot-search"
-					type="search"
-					placeholder="タイトル・内容で検索..."
-					aria-label="プロットを検索"
-					bind:value={plotQuery}
-				/>
+<div class="plot-page" class:detail-full={selectedId !== null && !wide}>
+	<header class="page-head">
+		<div class="heading">
+			<h1>プロット</h1>
+			{#if !isLoading && plots.length > 0}<span class="total">{plots.length} 件</span>{/if}
+		</div>
+		<div class="head-actions">
+			<AiToggle />
+			<div class="seg" role="group" aria-label="表示の切り替え" data-tour="plot-view-toggle">
+				<button type="button" aria-pressed={viewMode === 'board'} onclick={() => setView('board')}>
+					<Icon name="layout-columns" class="ico" />ボード
+				</button>
+				<button
+					type="button"
+					aria-pressed={viewMode === 'timeline'}
+					onclick={() => setView('timeline')}
+				>
+					<Icon name="timeline-event" class="ico" />タイムライン
+				</button>
+			</div>
+			<Button disabled={readOnly} onclick={() => void startCreate()} data-testid="plot-new">
+				<Icon name="plus" class="ico" />新規プロット
+			</Button>
+		</div>
+	</header>
+
+	{#if plots.length > 0 || isLoading}
+		<div class="toolbar">
+			<input
+				class="search"
+				type="search"
+				placeholder="タイトル・内容で検索"
+				aria-label="プロットを検索"
+				bind:value={query}
+			/>
+			<button
+				type="button"
+				class="filter-toggle"
+				aria-expanded={filtersOpen}
+				aria-controls="plot-filters"
+				aria-label="絞り込みと並び順"
+				class:active={filtersOpen || typeFilter !== 'all' || sortMode !== 'manual'}
+				onclick={() => (filtersOpen = !filtersOpen)}
+			>
+				<Icon name="adjustments" class="ico" />
+			</button>
+			<div class="filters" id="plot-filters" class:open={filtersOpen}>
+				<Select options={typeFilterOptions} bind:value={typeFilter} aria-label="種類で絞り込み" />
+				{#if viewMode === 'timeline'}
+					<Select
+						options={statusFilterOptions}
+						bind:value={statusFilter}
+						aria-label="状態で絞り込み"
+					/>
+				{/if}
+				<Select options={sortOptions} bind:value={sortMode} aria-label="並び順" />
+			</div>
+			{#if !readOnly && !canSort && plots.length > 1}
+				<p class="hint" role="note">並べ替えは、絞り込みを外して「手動順」にすると使えます</p>
+			{/if}
+		</div>
+	{/if}
+
+	<div class="main">
+		<MasterDetail
+			bind:this={md}
+			bind:selectedId
+			bind:wide
+			ready={!isLoading}
+			exists={(id) => id === NEW || plots.some((p) => p.id === id)}
+			listLayout="fill"
+			wideMin={960}
+			detailTitle={creating ? '新規プロット' : (selectedPlot?.title ?? 'プロット')}
+			{guard}
+		>
+			{#snippet list()}
 				{#if isLoading}
-					<div class="flex flex:column gap:16">
-						<div class="h:140 bg:theme-surface b:1px|solid|theme-border r:12 animate:pulse"></div>
-						<div class="h:140 bg:theme-surface b:1px|solid|theme-border r:12 animate:pulse"></div>
-						<div class="h:140 bg:theme-surface b:1px|solid|theme-border r:12 animate:pulse"></div>
-					</div>
-				{:else if viewMode === 'board'}
-					<div
-						class="grid gap:16 grid-template-columns:repeat(2,minmax(0,1fr))@md grid-template-columns:repeat(4,minmax(0,1fr))@xl"
-					>
-						{#each Object.entries(statusGroups) as [status, config] (status)}
-							<div class="flex flex:column gap:12">
-								<div class="flex ai:center jc:space-between">
-									<h3 class="font:18 font-weight:600 fg:theme-text">{config.label}</h3>
-									<span
-										class="px:10 py:4 r:999 b:1px|solid|theme-border bg:theme-background font:12 fg:theme-text-secondary"
-									>
-										{getPlotsByStatus(status as Plot['status']).length}
-									</span>
-								</div>
-								<div
-									class="flex flex:column gap:12 min-h:420 p:12 bg:theme-surface b:1px|solid|theme-border r:12"
-								>
-									{#each getPlotsByStatus(status as Plot['status']) as plot (plot.id)}
-										<Card
-											padding="sm"
-											hoverable={true}
-											class="flex flex:column gap:12"
-											oncontextmenu={(e) => handlePlotContextMenu(e, plot)}
-										>
-											<div class="flex jc:space-between ai:start">
-												<div class="flex ai:center gap:8">
-													<div
-														class="w:12 h:12 r:full"
-														style="background-color: {plot.color}"
-													></div>
-													<span
-														class="px:8 py:4 r:6 bg:theme-background b:1px|solid|theme-border font:12 fg:theme-text-secondary"
-													>
-														{typeLabels[plot.type]}
-													</span>
-												</div>
-											</div>
-											<button
-												class="font:16 font-weight:600 text-align:left bg:transparent b:none fg:theme-text hover:fg:theme-primary"
-												onclick={() => openEditModal(plot)}
-											>
-												{plot.title}
-											</button>
-											{#if plot.content}
-												<p class="font:14 fg:theme-text-secondary line-clamp:3">
-													{plot.content}
-												</p>
-											{/if}
-											<div class="flex gap:8">
-												<button
-													class={`flex:1 ${actionButtonClass()}`}
-													onclick={() => openEditModal(plot)}
-												>
-													{readOnly ? '表示' : '編集'}
-												</button>
-												<button
-													class={actionButtonClass('danger')}
-													disabled={readOnly}
-													onclick={() => handleDelete(plot.id)}
-												>
-													削除
-												</button>
-											</div>
-											{#if status !== 'revised'}
-												<button
-													class={`w:full ${actionButtonClass('success')}`}
-													disabled={readOnly}
-													onclick={() => {
-														const statuses: Plot['status'][] = [
-															'idea',
-															'planned',
-															'written',
-															'revised'
-														];
-														const currentIndex = statuses.indexOf(plot.status);
-														if (currentIndex < statuses.length - 1) {
-															handleStatusChange(plot, statuses[currentIndex + 1]);
-														}
-													}}
-												>
-													次へ →
-												</button>
-											{/if}
-										</Card>
-									{:else}
-										<p class="fg:theme-text-secondary text-align:center py:24 font:14">
-											まだプロットがありません
-										</p>
-									{/each}
-								</div>
+					<div class="board skeleton" aria-busy="true" aria-label="読み込み中">
+						{#each STATUSES as s (s)}
+							<div class="col">
+								<div class="sk sk-head"></div>
+								<div class="sk sk-card"></div>
+								<div class="sk sk-card"></div>
 							</div>
 						{/each}
 					</div>
-				{:else}
-					<div class="flex flex:column gap:16">
-						{#each visiblePlots as plot (plot.id)}
-							<Card
-								oncontextmenu={(e) => handlePlotContextMenu(e, plot)}
-								class="flex flex:column gap:16"
+				{:else if loadError}
+					<div class="state" role="alert">
+						<p>{loadError}</p>
+						<Button variant="secondary" onclick={() => void loadPlots()}>再読み込み</Button>
+					</div>
+				{:else if plots.length === 0}
+					<div class="state empty">
+						<p class="state-title">プロットはまだありません</p>
+						{#if readOnly}
+							<p class="state-text">この作品のプロットは、閲覧のみできます。</p>
+						{:else}
+							<p class="state-text">
+								章やシーンの流れ、思いついたアイデアをカードにして、「アイデア」から「推敲済み」まで状態ごとに整理できます。
+							</p>
+							<Button onclick={() => void startCreate()}>
+								<Icon name="plus" class="ico" />最初のプロットを作成
+							</Button>
+						{/if}
+					</div>
+				{:else if visible.length === 0}
+					<div class="state">
+						<p class="state-title">条件に合うプロットがありません</p>
+						<Button variant="secondary" onclick={clearFilters}>絞り込みを外す</Button>
+					</div>
+				{:else if viewMode === 'board'}
+					<div class="board" data-testid="plot-board">
+						{#each columns as col (col.status)}
+							<section
+								class="col"
+								data-testid="plot-column"
+								data-status={col.status}
+								aria-label="{STATUS_LABELS[col.status]}の列"
 							>
-								<div class="flex gap:16">
-									<div
-										class="w:4 r:2 flex-shrink:0 bg:theme-border"
-										style="background-color: {plot.color}"
-									></div>
-									<div class="flex:1">
-										<div class="flex jc:space-between ai:start mb:12">
-											<div>
-												<div class="flex ai:center gap:8 mb:8">
-													<span
-														class="px:12 py:6 r:6 bg:theme-background b:1px|solid|theme-border font:14 fg:theme-text-secondary"
-													>
-														{typeLabels[plot.type]}
-													</span>
-													<span
-														class={`px:12 py:6 r:6 font:14 ${statusGroups[plot.status].badgeClass}`}
-													>
-														{statusGroups[plot.status].label}
-													</span>
-												</div>
-												<h3 class="font:20 font-weight:600 fg:theme-text">{plot.title}</h3>
-											</div>
-											<div class="flex gap:8">
-												<button class={actionButtonClass()} onclick={() => openEditModal(plot)}
-													>{readOnly ? '表示' : '編集'}</button
-												>
-												<button
-													class={actionButtonClass('danger')}
-													disabled={readOnly}
-													onclick={() => handleDelete(plot.id)}>削除</button
-												>
-											</div>
-										</div>
-										{#if plot.content}
-											<p class="fg:theme-text font:16 white-space:pre-wrap">{plot.content}</p>
-										{/if}
-									</div>
+								<header class="col-head">
+									<h2>{STATUS_LABELS[col.status]}</h2>
+									<span class="count" aria-label="{col.items.length} 件">{col.items.length}</span>
+									<span class="spacer"></span>
+									{#if !readOnly}
+										<button
+											type="button"
+											class="add"
+											aria-label="{STATUS_LABELS[col.status]}にプロットを追加"
+											onclick={() => void startCreate(col.status)}
+										>
+											<Icon name="plus" class="ico" />
+										</button>
+									{/if}
+								</header>
+								<div class="col-body scroll-stable">
+									<SortableList
+										items={col.items}
+										disabled={!canSort}
+										listKey={col.status}
+										group="plot-board"
+										label="{STATUS_LABELS[col.status]}のプロット"
+										inlineHandle={false}
+										class="col-list"
+										onmove={handleMove}
+									>
+										{#snippet item(p, ctx)}
+											{@render card(p, 'board', ctx)}
+										{/snippet}
+									</SortableList>
 								</div>
-							</Card>
+							</section>
 						{/each}
 					</div>
-				{/if}
-
-				{#if plots.length === 0 && !isLoading}
-					<div class="flex flex:column ai:center jc:center h:400 gap:16">
-						<p class="fg:theme-text-secondary font:18">プロットがまだありません</p>
-						<Button
-							class="px:20 py:12 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:10 font:14"
-							disabled={readOnly}
-							onclick={openCreateModal}
-						>
-							最初のプロットを作成
-						</Button>
+				{:else}
+					<div class="timeline scroll-stable" data-testid="plot-timeline">
+						<div class="timeline-inner">
+							<SortableList
+								items={visible}
+								disabled={!canSort}
+								listKey=""
+								label="プロットのタイムライン"
+								onmove={handleMove}
+							>
+								{#snippet item(p, ctx)}
+									{@render card(p, 'timeline', ctx, ctx.index + 1)}
+								{/snippet}
+							</SortableList>
+						</div>
 					</div>
 				{/if}
-			</div>
-		</main>
+			{/snippet}
+
+			{#snippet detail()}
+				{#if creating || selectedPlot}
+					<ItemDetail
+						heading={creating ? form.title : (selectedPlot?.title ?? '')}
+						{editing}
+						{creating}
+						{readOnly}
+						canSave={form.title.trim() !== ''}
+						{saving}
+						onedit={() => selectedPlot && void startEdit(selectedPlot)}
+						onsave={() => void handleSave()}
+						oncancel={() => void cancelEdit()}
+						ondelete={selectedPlot ? () => void handleDelete(selectedPlot) : undefined}
+					>
+						{#snippet badges()}
+							{#if selectedPlot}
+								<span class="tag">{TYPE_LABELS[selectedPlot.type]}</span>
+								{#if readOnly}
+									<span class="tag status">{STATUS_LABELS[selectedPlot.status]}</span>
+								{:else}
+									<Select
+										size="sm"
+										options={statusOptions}
+										value={selectedPlot.status}
+										aria-label="状態を変更"
+										onchange={(v) =>
+											selectedPlot && void handleStatusChange(selectedPlot, v as Plot['status'])}
+									/>
+								{/if}
+							{/if}
+						{/snippet}
+						{#snippet body()}
+							{#if selectedPlot}
+								<ItemSection
+									title="内容"
+									text={selectedPlot.content}
+									emptyText="本文はまだありません。「編集」から書き始められます。"
+								/>
+							{/if}
+						{/snippet}
+						{#snippet footnote()}
+							{#if selectedPlot}
+								<span class="selectable">
+									更新 {formatDate(selectedPlot.updatedAt)} ・ 作成 {formatDate(
+										selectedPlot.createdAt
+									)}
+								</span>
+							{/if}
+						{/snippet}
+						{#snippet fields()}
+							<div class="field">
+								<label for="plot-title">タイトル</label>
+								<input
+									id="plot-title"
+									type="text"
+									bind:value={form.title}
+									placeholder="プロット名を入力"
+									maxlength="200"
+								/>
+							</div>
+							<div class="field-row">
+								<div class="field">
+									<label for="plot-type">種類</label>
+									<Select id="plot-type" options={typeOptions} bind:value={form.type} />
+								</div>
+								<div class="field">
+									<label for="plot-status">状態</label>
+									<Select id="plot-status" options={statusOptions} bind:value={form.status} />
+								</div>
+							</div>
+							<div class="field">
+								<label for="plot-content">内容</label>
+								<textarea
+									id="plot-content"
+									bind:value={form.content}
+									rows="10"
+									placeholder="プロットの詳細を入力"
+								></textarea>
+							</div>
+							<div class="field">
+								<label for="plot-color">カラー</label>
+								<input id="plot-color" type="color" bind:value={form.color} class="color" />
+							</div>
+						{/snippet}
+					</ItemDetail>
+				{/if}
+			{/snippet}
+		</MasterDetail>
 	</div>
 </div>
 
-<!-- 新規作成モーダル -->
-<Modal bind:isOpen={showCreateModal} title="新規プロット作成">
-	<div class="flex flex:column gap:16">
-		<Input label="タイトル" bind:value={formData.title} placeholder="プロット名を入力" />
-
-		<div>
-			<label for="type-select" class="block mb:8 font:14 font:semibold">種類</label>
-			<select id="type-select" bind:value={formData.type} class={`w:full ${fieldBaseClass}`}>
-				<option value="scene">シーン</option>
-				<option value="chapter">章</option>
-				<option value="arc">アーク</option>
-			</select>
-		</div>
-
-		<div>
-			<label for="status-select" class="block mb:8 font:14 font:semibold">ステータス</label>
-			<select id="status-select" bind:value={formData.status} class={`w:full ${fieldBaseClass}`}>
-				<option value="idea">アイデア</option>
-				<option value="planned">計画中</option>
-				<option value="written">執筆済み</option>
-				<option value="revised">推敲済み</option>
-			</select>
-		</div>
-	</div>
-
-	{#snippet footer()}
-		<div class="flex gap:12">
-			<Button
-				variant="ghost"
-				class={actionButtonClass('secondary')}
-				onclick={() => (showCreateModal = false)}>キャンセル</Button
-			>
-			<Button
-				class="px:20 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
-				onclick={handleCreate}
-				disabled={!formData.title.trim()}
-			>
-				作成
-			</Button>
-		</div>
-	{/snippet}
-</Modal>
-
-<!-- 編集モーダル -->
-<Modal bind:isOpen={showEditModal} title="プロット編集">
-	<fieldset disabled={readOnly} class="flex flex:column gap:16 b:0 p:0 m:0 min-w:0">
-		<Input label="タイトル" bind:value={formData.title} placeholder="プロット名を入力" />
-
-		<div>
-			<label for="edit-type-select" class="block mb:8 font:14 font:semibold">種類</label>
-			<select id="edit-type-select" bind:value={formData.type} class={`w:full ${fieldBaseClass}`}>
-				<option value="scene">シーン</option>
-				<option value="chapter">章</option>
-				<option value="arc">アーク</option>
-			</select>
-		</div>
-
-		<div>
-			<label for="edit-status-select" class="block mb:8 font:14 font:semibold">ステータス</label>
-			<select
-				id="edit-status-select"
-				bind:value={formData.status}
-				class={`w:full ${fieldBaseClass}`}
-			>
-				<option value="idea">アイデア</option>
-				<option value="planned">計画中</option>
-				<option value="written">執筆済み</option>
-				<option value="revised">推敲済み</option>
-			</select>
-		</div>
-
-		<div>
-			<label for="edit-content" class="block mb:8 font:14 font:semibold">内容</label>
-			<textarea
-				id="edit-content"
-				bind:value={formData.content}
-				class={`${textareaBaseClass} min-h:200 resize:vertical`}
-				placeholder="プロットの詳細を入力..."
-			></textarea>
-		</div>
-
-		<div>
-			<label for="edit-color" class="block mb:8 font:14 font:semibold">カラー</label>
-			<input
-				id="edit-color"
-				type="color"
-				bind:value={formData.color}
-				class="w:full h:48 b:1|solid|theme-border bg:theme-background r:8 cursor:pointer"
-			/>
-		</div>
-	</fieldset>
-
-	{#snippet footer()}
-		<div class="flex gap:12">
-			<Button
-				variant="ghost"
-				class={actionButtonClass('secondary')}
-				onclick={() => (showEditModal = false)}>キャンセル</Button
-			>
-			<Button
-				class="px:20 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
-				onclick={handleUpdate}
-				disabled={readOnly || !formData.title.trim()}
-			>
-				更新
-			</Button>
-		</div>
-	{/snippet}
-</Modal>
-
-<!-- コンテキストメニュー -->
 <ContextMenu
 	visible={contextMenu.visible}
 	x={contextMenu.x}
@@ -600,52 +729,510 @@
 />
 
 <style>
-	.line-clamp\:3 {
-		display: -webkit-box;
-		-webkit-line-clamp: 3;
-		line-clamp: 3;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
+	.plot-page {
+		display: flex;
+		flex-direction: column;
+		width: 100%;
+		height: 100%;
+		min-height: 0;
+		background: var(--color-background);
+		color: var(--color-text);
 	}
 
-	.plot-search {
+	.page-head {
+		position: relative;
+		display: flex;
+		flex: none;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px 16px;
+		padding: 20px 24px 12px;
+	}
+
+	.heading {
+		display: flex;
+		align-items: baseline;
+		gap: 12px;
+		min-width: 0;
+	}
+
+	h1 {
+		margin: 0;
+		font-size: 22px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+	}
+
+	.total {
+		font-size: 13px;
+		color: var(--color-text-secondary);
+	}
+
+	.head-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 10px;
+		min-width: 0;
+	}
+
+	.head-actions :global(.ico),
+	.col-head :global(.ico),
+	.seg :global(.ico),
+	.state :global(.ico) {
+		display: inline-flex;
+		flex: none;
+		width: 16px;
+		height: 16px;
+	}
+
+	.head-actions :global(.ico svg),
+	.col-head :global(.ico svg),
+	.seg :global(.ico svg),
+	.state :global(.ico svg) {
 		width: 100%;
-		max-width: 480px;
-		padding: 10px 12px;
+		height: 100%;
+	}
+
+	/* 表示の切り替え(ボード / タイムライン) */
+	.seg {
+		display: inline-flex;
+		padding: 3px;
+		gap: 2px;
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		background: var(--color-surface);
+	}
+
+	.seg button {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 30px;
+		padding: 0 12px;
+		border: 0;
+		border-radius: 7px;
+		background: transparent;
+		color: var(--color-text-secondary);
+		font: inherit;
+		font-size: 13px;
+		white-space: nowrap;
+		cursor: pointer;
+		transition:
+			background-color 0.15s,
+			color 0.15s;
+	}
+
+	.seg button:hover {
+		color: var(--color-text);
+	}
+
+	.seg button[aria-pressed='true'] {
+		background: var(--color-background);
+		color: var(--color-primary);
+		box-shadow: 0 0 0 1px var(--color-border);
+	}
+
+	.toolbar {
+		display: flex;
+		flex: none;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 10px 12px;
+		padding: 0 24px 14px;
+	}
+
+	.search {
+		flex: 0 1 18rem;
+		min-width: 10rem;
+		height: 36px;
+		padding: 0 12px;
+		font-size: 13.5px;
+	}
+
+	.filters {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		min-width: 0;
+	}
+
+	.filters :global(.select) {
+		width: auto;
+		min-width: 9.5rem;
+	}
+
+	.filter-toggle {
+		display: none;
+		align-items: center;
+		justify-content: center;
+		width: 44px;
+		height: 44px;
+		padding: 0;
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
 		background: var(--color-background);
-		color: var(--color-text);
-		font-size: 16px;
-		font-family: inherit;
+		color: var(--color-text-secondary);
+		cursor: pointer;
 	}
 
-	.page-header :global(button) {
-		white-space: nowrap;
+	.filter-toggle.active {
+		border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+		background: var(--selected);
+		color: var(--color-primary);
+	}
+
+	.filter-toggle :global(.ico) {
+		display: inline-flex;
+		width: 18px;
+		height: 18px;
+	}
+
+	.filter-toggle :global(.ico svg) {
+		width: 100%;
+		height: 100%;
+	}
+
+	.hint {
+		margin: 0;
+		font-size: 12px;
+		color: var(--color-text-secondary);
+	}
+
+	/* 狭いとき、詳細は全画面。上の見出しと検索は隠す */
+	.plot-page.detail-full .page-head,
+	.plot-page.detail-full .toolbar {
+		display: none;
+	}
+
+	.plot-page.detail-full .main {
+		border-top: 0;
+	}
+
+	.main {
+		flex: 1;
+		min-height: 0;
+		border-top: 1px solid var(--color-border);
+	}
+
+	/* ボード: 状態ごとの列を横に並べる。列は十分な幅を保ち、はみ出す分は横にスクロールする */
+	.board {
+		display: flex;
+		flex: 1;
+		align-items: stretch;
+		gap: 16px;
+		min-height: 0;
+		padding: 16px 24px 20px;
+		overflow-x: auto;
+		overflow-y: hidden;
+		scroll-snap-type: x proximity;
+		scroll-padding-inline: 24px;
+	}
+
+	.col {
+		display: flex;
+		flex: 0 0 auto;
+		flex-direction: column;
+		box-sizing: border-box;
+		width: clamp(280px, 22vw, 340px);
+		min-width: 280px;
+		max-width: 340px;
+		min-height: 0;
+		border: 1px solid var(--color-border);
+		border-radius: 12px;
+		background: color-mix(in srgb, var(--color-surface) 55%, var(--color-background));
+		scroll-snap-align: start;
+	}
+
+	.col-head {
+		display: flex;
+		flex: none;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 10px 6px 14px;
+	}
+
+	.col-head h2 {
+		margin: 0;
+		font-size: 14px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+	}
+
+	.count {
+		min-width: 20px;
+		height: 20px;
+		padding: 0 6px;
+		box-sizing: border-box;
+		border-radius: 10px;
+		background: var(--color-surface);
+		color: var(--color-text-secondary);
+		font-size: 12px;
+		line-height: 20px;
+		text-align: center;
+	}
+
+	.spacer {
+		flex: 1;
+	}
+
+	.add {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		padding: 0;
+		border: 0;
+		border-radius: 7px;
+		background: transparent;
+		color: var(--color-text-secondary);
+		cursor: pointer;
+	}
+
+	.add:hover {
+		background: var(--hover);
+		color: var(--color-primary);
+	}
+
+	.col-body {
+		flex: 1;
+		min-height: 0;
+		padding: 4px 10px 12px;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+	}
+
+	.col-body :global(.sortable) {
+		min-height: 64px;
+		--sortable-gap: 10px;
+	}
+
+	/* ドラッグ中は、横スクロールのスナップを止める(自動スクロールと喧嘩しないように) */
+	:global(html.sortable-dragging) .board {
+		scroll-snap-type: none;
+	}
+
+	/* タイムライン */
+	.timeline {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+	}
+
+	.timeline-inner {
+		max-width: 52rem;
+		margin: 0 auto;
+		padding: 20px 24px 40px;
+	}
+
+	.timeline-inner :global(.sortable) {
+		--sortable-gap: 12px;
+	}
+
+	/* 空・エラー・絞り込み結果なし */
+	.state {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 14px;
+		padding: 48px 24px;
+		color: var(--color-text-secondary);
+		text-align: center;
+	}
+
+	.state p {
+		margin: 0;
+	}
+
+	.state-title {
+		font-size: 17px;
+		font-weight: 600;
+		color: var(--color-text);
+	}
+
+	.state-text {
+		max-width: 28rem;
+		font-size: 14px;
+		line-height: 1.8;
+	}
+
+	/* 読み込み中 */
+	.skeleton {
+		pointer-events: none;
+	}
+
+	.sk {
+		border-radius: 10px;
+		background: var(--color-surface);
+		animation: pulse 1.4s ease-in-out infinite;
+	}
+
+	.sk-head {
+		height: 20px;
+		margin: 14px 14px 8px;
+		width: 40%;
+	}
+
+	.sk-card {
+		height: 96px;
+		margin: 10px;
+	}
+
+	@keyframes pulse {
+		50% {
+			opacity: 0.5;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.sk {
+			animation: none;
+		}
+	}
+
+	/* 詳細(閲覧のバッジ・編集フォーム) */
+	.tag {
+		display: inline-flex;
+		align-items: center;
+		height: 24px;
+		padding: 0 10px;
+		border: 1px solid var(--color-border);
+		border-radius: 7px;
+		background: var(--color-surface);
+		color: var(--color-text-secondary);
+		font-size: 12.5px;
+	}
+
+	.tag.status {
+		border-color: color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
+		color: var(--color-primary);
+	}
+
+	.field {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		gap: 6px;
+		min-width: 0;
+	}
+
+	.field label {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--color-text-secondary);
+	}
+
+	.field input[type='text'],
+	.field textarea {
+		width: 100%;
+		box-sizing: border-box;
+		font-size: 16px;
+	}
+
+	.field textarea {
+		min-height: 14rem;
+		line-height: 1.8;
+		resize: vertical;
+	}
+
+	.field-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 16px;
+	}
+
+	.field-row .field {
+		flex: 1 1 10rem;
+	}
+
+	.color {
+		width: 4rem;
+		height: 36px;
+		padding: 2px;
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		background: var(--color-background);
+		cursor: pointer;
 	}
 
 	@media (max-width: 768px) {
-		.page-header {
-			padding: 12px 16px;
+		.page-head {
+			padding: 12px 16px 8px;
 		}
 
-		.page-header h1 {
-			font-size: 20px;
+		/* 見出しは上のヘッダーに出ているので、ここでは読み上げ用だけにする */
+		.heading {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			margin: -1px;
+			overflow: hidden;
+			clip: rect(0, 0, 0, 0);
 		}
 
-		.page-body {
-			padding: 12px 16px 24px;
+		.head-actions {
+			width: 100%;
+		}
+
+		.seg {
+			flex: 1;
+		}
+
+		.seg button {
+			flex: 1;
+			justify-content: center;
+			padding: 0 8px;
+		}
+
+		.toolbar {
+			padding: 0 16px 10px;
+		}
+
+		.search {
+			flex: 1 1 0;
+			min-width: 0;
+			height: 44px;
+		}
+
+		.filter-toggle {
+			display: inline-flex;
+		}
+
+		.filters {
+			display: none;
+			flex: 1 1 100%;
+		}
+
+		.filters.open {
+			display: flex;
+		}
+
+		.filters :global(.select) {
 			min-width: 0;
 		}
 
-		.page-body > :global(*) {
-			min-width: 0;
-			max-width: 100%;
+		.filters > :global(*) {
+			flex: 1 1 8rem;
 		}
 
-		.page-header > :global(*) {
-			min-width: 0;
-			max-width: 100%;
+		/* 1 列が画面幅の約 85%。次の列がのぞくので、横にスクロールできると分かる */
+		.board {
+			padding: 12px 16px 16px;
+			scroll-snap-type: x mandatory;
+			scroll-padding-inline: 16px;
+		}
+
+		.col {
+			width: 85%;
+			max-width: 340px;
+		}
+
+		.timeline-inner {
+			padding: 14px 16px 32px;
 		}
 	}
 </style>

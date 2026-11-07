@@ -365,7 +365,7 @@
 							/>
 						{/if}
 						<div class="main">
-							<p class="text">{memo.text}</p>
+							<p class="text selectable">{memo.text}</p>
 							{#if memo.anchor}
 								<button
 									type="button"

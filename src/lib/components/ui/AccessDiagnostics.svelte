@@ -37,7 +37,7 @@
 		</Button>
 	</div>
 	{#if items.length > 0}
-		<ul class="flex flex:column gap:.25rem mt:8 font:13 list-style:none p:0">
+		<ul class="flex flex:column gap:.25rem mt:8 font:13 list-style:none p:0 selectable">
 			{#each items as item (item.id)}
 				<li>
 					<span class="font:bold {statusClass[item.status]}">[{statusLabel[item.status]}]</span>

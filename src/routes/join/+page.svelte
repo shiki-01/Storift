@@ -34,7 +34,7 @@
 	<meta name="referrer" content="no-referrer" />
 </svelte:head>
 
-<div class="join-page">
+<div class="join-page scroll-stable">
 	<h1>共有プロジェクトに参加</h1>
 	{#if ready}
 		<JoinPanel {initialText} />

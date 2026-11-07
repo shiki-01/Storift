@@ -249,7 +249,7 @@
 			</div>
 
 			<!-- 差分表示 -->
-			<div class="diff-content p:16 bg:theme-surface r:8 overflow:auto max-h:500">
+			<div class="diff-content p:16 bg:theme-surface r:8 overflow:auto max-h:500 selectable">
 				<!-- eslint-disable-next-line svelte/no-at-html-tags -- renderDiffAsHtml でエスケープ済み -->
 				{@html getDiffHtml()}
 			</div>

@@ -35,7 +35,7 @@
 	};
 </script>
 
-<div class="h:100% overflow-y:auto flex ai:center jc:center bg:theme-surface p:24">
+<div class="h:100% overflow-y:auto scroll-stable flex ai:center jc:center bg:theme-surface p:24">
 	<div class="max-w:600 w:full bg:theme-background r:16 p:32">
 		<!-- エラーアイコン -->
 		<div class="text-align:center mb:24">
@@ -57,11 +57,11 @@
 					エラーが発生しました
 				{/if}
 			</h1>
-			<p class="font:16 fg:theme-text-secondary">エラーコード: {errorStatus}</p>
+			<p class="font:16 fg:theme-text-secondary selectable">エラーコード: {errorStatus}</p>
 		</div>
 
 		<!-- エラーメッセージ -->
-		<div class="bg:theme-surface rounded:8 p:16 mb:24">
+		<div class="bg:theme-surface rounded:8 p:16 mb:24 selectable">
 			<p class="font:14 fg:theme-text-secondary white-space:pre-wrap">
 				{errorMessage}
 			</p>

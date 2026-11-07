@@ -1,12 +1,14 @@
 /**
- * Claude Code に読ませるため、全プロジェクトを Markdown に書き出す。
+ * 全プロジェクトを Markdown に書き出す処理と、MCP のツールが使う読み出しの補助。
  *
- * 書き出し先はデスクトップアプリのデータディレクトリ内の workspace/ で、
- * Claude Code はそこを作業ディレクトリとして起動する(src-tauri/src/workspace.rs)。
- * ファイルはアプリ → ディスクの一方向で、ディスク側の変更はアプリに戻らない。
+ * 書き出し先はデスクトップアプリのデータディレクトリ内の workspace/ だが、
+ * 現在の Claude Code 連携は書き出しを使わない(syncWorkspace の呼び出し元は無い。
+ * Claude Code は空の claude-cwd で動き、原稿は MCP のツール経由で読む。src-tauri/src/claude.rs)。
+ * 書き出す場合も、ファイルはアプリ → ディスクの一方向で、ディスク側の変更はアプリに戻らない。
  */
 import { db, memosDB } from '$lib/db';
 import type { Table } from 'dexie';
+import { sortByOrder, type Orderable } from '$lib/utils/ordering';
 import type {
 	Chapter,
 	Character,
@@ -140,9 +142,10 @@ function scenePathOf(chapterDir: string, index: number, scene: Scene): string {
 	return `${chapterDir}/${pad(index)}_${safeName(scene.title)}.md`;
 }
 
-/** 書き出す順に並べた項目(プロットは order、メモは作成順、進捗は日付順) */
+/** 書き出す順に並べた項目(プロット・人物・設定資料は手動順(order)、メモは作成順、進捗は日付順) */
 function sortedItems<K extends EntityKind>(kind: K, items: EntityMap[K][]): EntityMap[K][] {
-	if (kind === 'plots') return byOrder(items as unknown as Plot[]) as unknown as EntityMap[K][];
+	if (kind === 'plots' || kind === 'characters' || kind === 'worldbuilding')
+		return sortByOrder(items as unknown as Orderable[]) as unknown as EntityMap[K][];
 	if (kind === 'memos')
 		return [...(items as unknown as Memo[])].sort(
 			(a, b) => a.createdAt - b.createdAt
@@ -233,7 +236,7 @@ function worldbuildingMarkdown(project: Project, items: Worldbuilding[]): string
 
 function plotMarkdown(project: Project, plots: Plot[]): string {
 	const lines = [`# プロット(${project.title})\n`];
-	for (const p of byOrder(plots)) {
+	for (const p of sortByOrder(plots)) {
 		lines.push(`## ${p.title}\n`);
 		lines.push(`- 種類: ${PLOT_TYPE_LABELS[p.type] ?? p.type}`);
 		lines.push(`- 状態: ${PLOT_STATUS_LABELS[p.status] ?? p.status}\n`);
@@ -318,9 +321,9 @@ export function buildWorkspace(
 			});
 		});
 
-		const characters = charactersByProject.get(project.id) ?? [];
-		const plots = plotsByProject.get(project.id) ?? [];
-		const world = worldByProject.get(project.id) ?? [];
+		const characters = sortByOrder(charactersByProject.get(project.id) ?? []);
+		const plots = sortByOrder(plotsByProject.get(project.id) ?? []);
+		const world = sortByOrder(worldByProject.get(project.id) ?? []);
 		if (characters.length)
 			files.push({
 				path: `${dir}/キャラクター.md`,
@@ -336,9 +339,17 @@ export function buildWorkspace(
 				path: `${dir}/メモ.md`,
 				content: memosMarkdown(project, memos, sceneTitles)
 			});
-		addEntityFiles(entityDirOf(dir, 'characters'), 'characters', characters);
-		addEntityFiles(entityDirOf(dir, 'worldbuilding'), 'worldbuilding', world);
-		addEntityFiles(entityDirOf(dir, 'plots'), 'plots', byOrder(plots));
+		addEntityFiles(
+			entityDirOf(dir, 'characters'),
+			'characters',
+			sortedItems('characters', characters)
+		);
+		addEntityFiles(
+			entityDirOf(dir, 'worldbuilding'),
+			'worldbuilding',
+			sortedItems('worldbuilding', world)
+		);
+		addEntityFiles(entityDirOf(dir, 'plots'), 'plots', sortedItems('plots', plots));
 		addEntityFiles(entityDirOf(dir, 'memos'), 'memos', sortedItems('memos', memos));
 		addEntityFiles(
 			entityDirOf(dir, 'progressLogs'),

@@ -71,6 +71,7 @@
 	} from '$lib/types';
 	import { defaultPreviewSettings } from '$lib/types';
 	import Icon from '$lib/components/ui/Icon.svelte';
+	import SaveState from '$lib/components/ui/SaveState.svelte';
 	import { getSystemFontName, systemFontToCss } from '$lib/utils/fonts';
 	import MemoPanel from '$lib/components/memo/MemoPanel.svelte';
 	import { aiStore } from '$lib/stores/ai.svelte';
@@ -1612,12 +1613,6 @@
 	let saveState = $derived<'saving' | 'dirty' | 'error' | 'saved'>(
 		editorStore.isSaving ? 'saving' : saveFailed ? 'error' : editorStore.isDirty ? 'dirty' : 'saved'
 	);
-	const saveLabels = {
-		saving: '保存中',
-		dirty: '未保存',
-		error: '保存失敗',
-		saved: '保存済み'
-	} as const;
 
 	// 目標(1日あたり or 全体)に対する達成率
 	let goal = $derived(currentProjectStore.project?.settings?.goal);
@@ -2092,7 +2087,7 @@
 	<!-- サイドバー(デスクトップ/タブレット) -->
 	{#if !viewport.isMobile && !editorStore.focusMode}
 		<aside class="editor-sidebar" aria-label="章・シーン一覧" data-tour="editor-scene-list">
-			<div class="editor-sidebar-scroll">
+			<div class="editor-sidebar-scroll scroll-stable">
 				{@render sceneList()}
 			</div>
 		</aside>
@@ -2133,12 +2128,10 @@
 										label={`${goal?.type === 'total' ? '全体' : '今日'} ${goalDone.toLocaleString()} / ${goal?.target.toLocaleString()}字`}
 									/>
 								{/if}
-								<span class="save-state" data-state={saveState} role="status"
-									>{saveLabels[saveState]}</span
-								>
+								<SaveState state={saveState} />
 								{#if otherMembers.length > 0}
 									<span class="presence-mini" title={presenceText ?? ''}
-										>👥{otherMembers.length}</span
+										><Icon name="users" class="presence-icon" />{otherMembers.length}</span
 									>
 								{/if}
 								{#if collab === 'fallback' && collabNotice}
@@ -2420,9 +2413,7 @@
 							{#if collab === 'fallback' && collabNotice}
 								{@render collabNoticeView()}
 							{/if}
-							<span class="save-state font:12" data-state={saveState} role="status">
-								{saveLabels[saveState]}
-							</span>
+							<SaveState state={saveState} />
 						</div>
 					</div>
 				</div>
@@ -2439,7 +2430,7 @@
 							ontouchstart={markUserScroll}
 							ontouchmove={markUserScroll}
 							onwheel={markUserScroll}
-							class="editor-panel editor-panel--editor overflow-y:auto bg:editor-background {effectiveViewMode ===
+							class="editor-panel editor-panel--editor scroll-stable overflow-y:auto bg:editor-background {effectiveViewMode ===
 							'split'
 								? 'w:50%'
 								: 'w:100%'} transition:width|0.3s"
@@ -3258,7 +3249,7 @@
 
 	.seg-tool.on {
 		background: var(--color-background);
-		color: var(--color-text);
+		color: var(--color-primary);
 		box-shadow: 0 0 0 1px var(--color-border);
 	}
 
@@ -3294,46 +3285,6 @@
 		background-color: color-mix(in srgb, var(--color-accent) 16%, transparent);
 		text-decoration-line: underline;
 		text-decoration-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
-	}
-
-	/* ===== 保存状態 ===== */
-	.save-state {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		color: var(--color-text-secondary);
-		white-space: nowrap;
-	}
-
-	.save-state::before {
-		content: '';
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background: var(--color-success);
-	}
-
-	.save-state[data-state='dirty']::before {
-		background: var(--color-warning);
-	}
-
-	.save-state[data-state='saving']::before {
-		background: var(--color-info);
-		animation: pulse 1s ease-in-out infinite;
-	}
-
-	.save-state[data-state='error'] {
-		color: var(--color-error);
-	}
-
-	.save-state[data-state='error']::before {
-		background: var(--color-error);
-	}
-
-	@keyframes pulse {
-		50% {
-			opacity: 0.3;
-		}
 	}
 
 	/* ===== 章・シーン一覧(サイドバー/シート共通) ===== */
@@ -3613,8 +3564,18 @@
 	}
 
 	.presence-mini {
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
 		font-size: 11px;
 		color: var(--color-text-secondary);
+	}
+
+	.presence-mini :global(.presence-icon),
+	.presence-mini :global(.presence-icon svg) {
+		display: flex;
+		width: 12px;
+		height: 12px;
 	}
 
 	.collab-note {
@@ -3806,6 +3767,10 @@
 		line-height: 1.2;
 		color: var(--color-text-secondary);
 		white-space: nowrap;
+	}
+
+	.m-title-sub :global(.save-state) {
+		font-size: 11px;
 	}
 
 	.ellipsis {

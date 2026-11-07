@@ -3,101 +3,158 @@
 	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { charactersDB } from '$lib/db';
-	import { queueChange } from '$lib/services/sync.service';
+	import { queueChange, queueChanges } from '$lib/services/sync.service';
 	import { filterReadOnlyMenu, isReadOnlyProject } from '$lib/utils/readOnly';
+	import { sortByOrder } from '$lib/utils/ordering';
+	import {
+		applyOrderUpdates,
+		avatarTone,
+		canReorderCharacters,
+		characterSummary,
+		initialOf,
+		planCharacterMove,
+		visibleCharacters,
+		type CharacterSort
+	} from '$lib/utils/characterList';
+	import { formatDate } from '$lib/utils/dateUtils';
 	import type { Character } from '$lib/types';
-	import Modal from '$lib/components/ui/Modal.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import Input from '$lib/components/ui/Input.svelte';
-	import Card from '$lib/components/ui/Card.svelte';
+	import Icon from '$lib/components/ui/Icon.svelte';
+	import Select from '$lib/components/ui/Select.svelte';
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
 	import RelationCanvas from '$lib/components/relation/RelationCanvas.svelte';
+	import MasterDetail from '$lib/components/items/MasterDetail.svelte';
+	import ItemDetail from '$lib/components/items/ItemDetail.svelte';
+	import ItemSection from '$lib/components/items/ItemSection.svelte';
+	import ItemRow, { type RowMenuItem } from '$lib/components/items/ItemRow.svelte';
+	import ItemsPageHead from '$lib/components/items/ItemsPageHead.svelte';
+	import ItemPlaceholder from '$lib/components/items/ItemPlaceholder.svelte';
+	import IconBadge from '$lib/components/items/IconBadge.svelte';
+	import SortableList, { type ItemContext } from '$lib/components/items/SortableList.svelte';
 	import { createCharacterContextMenu, type ContextMenuItem } from '$lib/utils/contextMenu';
-	import { onMount, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { dataChange } from '$lib/stores/dataChange.svelte';
 
-	// 閲覧専用(閲覧権限、またはアクセス権の失効)。編集・追加・削除の入口を無効にする。同期層にも安全網がある
+	// 閲覧専用(閲覧権限、またはアクセス権の失効)。編集・追加・削除・並べ替えの入口を出さない。同期層にも安全網がある
 	const readOnly = $derived(isReadOnlyProject(currentProjectStore.project?.id));
+
+	const NEW = 'new';
+	type ViewMode = 'list' | 'graph';
+
+	const sortOptions = [
+		{ value: 'manual', label: '手動順' },
+		{ value: 'name', label: '名前順' },
+		{ value: 'updated', label: '更新日が新しい順' }
+	];
+
+	interface RelationRow {
+		/** 入力欄の識別用(並びが変わっても入力中の欄を保つ) */
+		key: number;
+		characterId: string;
+		relation: string;
+	}
+
+	interface FormState {
+		name: string;
+		role: string;
+		/** 入力欄の文字列(空なら年齢なし) */
+		age: string;
+		gender: string;
+		appearance: string;
+		personality: string;
+		background: string;
+		relationships: RelationRow[];
+	}
 
 	let characters = $state<Character[]>([]);
 	let isLoading = $state(true);
-	let characterQuery = $state('');
-	let visibleCharacters = $derived.by(() => {
-		const q = characterQuery.trim().toLowerCase();
-		if (!q) return characters;
-		return characters.filter((c) =>
-			[c.name, c.role, c.personality, c.appearance, c.background].some((t) =>
-				t?.toLowerCase().includes(q)
-			)
-		);
-	});
-	let showCreateModal = $state(false);
-	let showEditModal = $state(false);
-	let showRelationModal = $state(false);
-	let editingCharacter = $state<Character | null>(null);
-	let selectedCharacter = $state<Character | null>(null);
-	type ViewMode = 'grid' | 'list' | 'graph';
-	let viewMode = $state<ViewMode>('grid');
+	let loadError = $state<string | null>(null);
+	let viewMode = $state<ViewMode>('list');
 
-	function viewToggleClass(mode: ViewMode): string {
-		return [
-			'px:16 py:8 r:8 font:13 transition:all|.2s|ease b:1px|solid|theme-border',
-			viewMode === mode
-				? 'bg:theme-surface fg:theme-primary'
-				: 'bg:theme-background fg:theme-text-secondary hover:bg:theme-surface'
-		].join(' ');
+	let query = $state('');
+	let sortMode = $state('manual');
+
+	let md = $state<MasterDetail>();
+	let wide = $state(true);
+	let selectedId = $state<string | null>(null);
+	let editing = $state(false);
+	let saving = $state(false);
+	let wantEdit: string | null = null;
+	let relationKey = 0;
+
+	function emptyForm(): FormState {
+		return {
+			name: '',
+			role: '',
+			age: '',
+			gender: '',
+			appearance: '',
+			personality: '',
+			background: '',
+			relationships: []
+		};
 	}
 
-	function actionButtonClass(variant: 'default' | 'secondary' | 'danger' = 'default'): string {
-		const base =
-			'px:12 py:8 r:6 b:1px|solid|theme-border bg:theme-background transition:all|.2s|ease';
-		const variants = {
-			default: 'fg:theme-text',
-			secondary: 'fg:theme.secondary',
-			danger: 'fg:theme-error hover:bg:theme-error hover:fg:theme-background'
-		} as const;
-		return `${base} ${variants[variant]}`;
+	function formOf(c: Character): FormState {
+		return {
+			name: c.name,
+			role: c.role,
+			age: c.age === undefined || c.age === null ? '' : String(c.age),
+			gender: c.gender ?? '',
+			appearance: c.appearance,
+			personality: c.personality,
+			background: c.background,
+			relationships: c.relationships.map((r) => ({
+				key: relationKey++,
+				characterId: r.characterId,
+				relation: r.relation
+			}))
+		};
 	}
 
-	const textareaBaseClass =
-		'w:full px:12 py:10 b:1|solid|theme-border bg:theme-background r:8 outline:none focus:border-color:theme-primary transition:all|.2s font-family:inherit fg:theme-text';
+	/** 未保存の判定用。入力欄の識別子(key)は含めない */
+	function snapshot(f: FormState): string {
+		return JSON.stringify([
+			f.name,
+			f.role,
+			f.age,
+			f.gender,
+			f.appearance,
+			f.personality,
+			f.background,
+			f.relationships.map((r) => [r.characterId, r.relation])
+		]);
+	}
 
-	const fieldBaseClass =
-		'px:12 py:10 b:1|solid|theme-border bg:theme-background fg:theme-text r:8 outline:none focus:border-color:theme-primary transition:all|.2s';
+	let form = $state<FormState>(emptyForm());
 
-	// コンテキストメニュー
-	let contextMenu = $state<{
-		visible: boolean;
-		x: number;
-		y: number;
-		items: ContextMenuItem[];
-		targetCharacter?: Character;
-	}>({ visible: false, x: 0, y: 0, items: [] });
+	const creating = $derived(selectedId === NEW);
+	const selectedCharacter = $derived(characters.find((c) => c.id === selectedId));
 
-	// フォーム状態
-	let formData = $state({
-		name: '',
-		role: '',
-		age: undefined as number | undefined,
-		gender: '',
-		appearance: '',
-		personality: '',
-		background: ''
+	const visible = $derived(
+		visibleCharacters(characters, { query, sort: sortMode as CharacterSort })
+	);
+	/** 絞り込み・並び替え中は、一覧の並びが全体の手動順と一致しないので、並べ替えを止める */
+	const canSort = $derived(
+		canReorderCharacters({ readOnly, sort: sortMode as CharacterSort, query })
+	);
+
+	const dirty = $derived.by(() => {
+		if (!editing) return false;
+		const base = creating ? emptyForm() : selectedCharacter ? formOf(selectedCharacter) : null;
+		return base !== null && snapshot(form) !== snapshot(base);
 	});
 
-	onMount(async () => {
-		await loadCharacters();
-	});
+	/** 関係の相手に選べる人物(自分以外) */
+	const relationTargets = $derived(
+		characters
+			.filter((c) => c.id !== selectedId)
+			.map((c) => ({ value: c.id, label: c.name || '無題' }))
+	);
 
-	const loadCharacters = async () => {
-		if (!currentProjectStore.project) return;
-		isLoading = true;
-		try {
-			characters = await charactersDB.getByProjectId(currentProjectStore.project.id);
-		} finally {
-			isLoading = false;
-		}
-	};
+	onMount(() => {
+		void loadCharacters();
+	});
 
 	const refreshCharacters = async () => {
 		if (!currentProjectStore.project) return;
@@ -113,651 +170,672 @@
 		untrack(() => void refreshCharacters());
 	});
 
-	const openCreateModal = () => {
-		if (readOnly) return;
-		formData = {
-			name: '',
-			role: '',
-			age: undefined,
-			gender: '',
-			appearance: '',
-			personality: '',
-			background: ''
-		};
-		showCreateModal = true;
+	const loadCharacters = async () => {
+		if (!currentProjectStore.project) return;
+		isLoading = true;
+		loadError = null;
+		try {
+			characters = await charactersDB.getByProjectId(currentProjectStore.project.id);
+		} catch (error) {
+			console.error('Failed to load characters:', error);
+			loadError = '人物を読み込めませんでした';
+		} finally {
+			isLoading = false;
+		}
 	};
 
-	function openEditModal(character: Character) {
-		editingCharacter = character;
-		formData = {
-			name: character.name,
-			role: character.role,
-			age: character.age,
-			gender: character.gender || '',
-			appearance: character.appearance,
-			personality: character.personality,
-			background: character.background
-		};
-		showEditModal = true;
+	/* ---------- 選択と編集 ---------- */
+
+	// 選択が変わったら、閲覧ビューに戻す(新規は編集フォーム。「編集」から開いた場合はそのまま編集)
+	$effect(() => {
+		const id = selectedId;
+		untrack(() => {
+			if (id === NEW) {
+				editing = true;
+				return;
+			}
+			if (id !== null && id === wantEdit) {
+				const c = characters.find((x) => x.id === id);
+				if (c) {
+					form = formOf(c);
+					editing = true;
+					wantEdit = null;
+					return;
+				}
+			}
+			editing = false;
+		});
+	});
+
+	const guard = {
+		dirty: () => dirty,
+		confirm: () =>
+			confirmDialog({
+				title: '未保存の変更',
+				message: '保存していない変更があります。破棄して移動しますか?',
+				confirmText: '破棄して移動',
+				danger: true
+			})
+	};
+
+	async function openCharacter(id: string) {
+		await md?.open(id);
 	}
 
-	function openRelationModal(character: Character) {
-		selectedCharacter = character;
-		showRelationModal = true;
+	async function startCreate() {
+		if (readOnly) return;
+		if (viewMode !== 'list') viewMode = 'list';
+		await tick();
+		if (creating) return;
+		form = emptyForm();
+		await md?.open(NEW);
 	}
 
-	const handleCreate = async () => {
-		if (readOnly || !currentProjectStore.project || !formData.name.trim()) return;
-
-		const character = await charactersDB.create({
-			projectId: currentProjectStore.project.id,
-			name: formData.name,
-			role: formData.role
-		});
-
-		// 追加情報を更新
-		await charactersDB.update(character.id, {
-			age: formData.age,
-			gender: formData.gender,
-			appearance: formData.appearance,
-			personality: formData.personality,
-			background: formData.background
-		});
-
-		// 同期キューに追加
-		await queueChange('characters', character.id, 'create');
-
-		await loadCharacters();
-		showCreateModal = false;
-	};
-
-	const handleUpdate = async () => {
-		if (readOnly) return;
-		if (!editingCharacter) return;
-
-		await charactersDB.update(editingCharacter.id, {
-			name: formData.name,
-			role: formData.role,
-			age: formData.age,
-			gender: formData.gender,
-			appearance: formData.appearance,
-			personality: formData.personality,
-			background: formData.background
-		});
-
-		// 同期キューに追加
-		await queueChange('characters', editingCharacter.id, 'update');
-
-		await loadCharacters();
-		showEditModal = false;
-		editingCharacter = null;
-	};
-
-	async function handleDelete(id: string) {
-		if (readOnly) return;
-		if (!(await confirmDialog({ message: 'このキャラクターを削除しますか?', danger: true })))
+	async function startEdit(c: Character) {
+		if (readOnly) {
+			await openCharacter(c.id);
 			return;
-		await charactersDB.delete(id);
-		// 同期キューに追加
-		await queueChange('characters', id, 'delete');
-		await loadCharacters();
+		}
+		if (selectedId === c.id) {
+			form = formOf(c);
+			editing = true;
+			return;
+		}
+		wantEdit = c.id;
+		if (!(await md?.open(c.id))) wantEdit = null;
 	}
 
-	async function handleAddRelation(
-		fromCharacterId: string,
-		toCharacterId: string,
-		relation: string
-	) {
-		const character = characters.find((c) => c.id === fromCharacterId);
-		if (!character) return;
-
-		// プレーンなオブジェクトと配列に変換
-		const newRelationships = [
-			...character.relationships.map((r) => ({ characterId: r.characterId, relation: r.relation })),
-			{ characterId: toCharacterId, relation }
-		];
-
-		await charactersDB.update(fromCharacterId, {
-			relationships: newRelationships
-		});
-
-		// 同期キューに追加
-		await queueChange('characters', fromCharacterId, 'update');
-
-		await loadCharacters();
+	async function cancelEdit() {
+		if (dirty && !(await guard.confirm())) return;
+		if (creating) {
+			await md?.close();
+			return;
+		}
+		editing = false;
 	}
 
-	async function handleRemoveRelation(characterId: string, relationshipIndex: number) {
+	/** 一覧 ⇄ 相関図。編集中の未保存の変更があれば、切り替える前に確認する */
+	async function setView(mode: ViewMode) {
+		if (mode === viewMode) return;
+		if (mode === 'graph') {
+			if (dirty && !(await guard.confirm())) return;
+			editing = false;
+		}
+		viewMode = mode;
+	}
+
+	/** 相関図の人物を押したら、一覧に戻ってその人物の詳細を開く */
+	async function showFromGraph(c: Character) {
+		viewMode = 'list';
+		await tick();
+		await md?.open(c.id);
+	}
+
+	function parseAge(text: string): number | undefined {
+		const t = text.trim();
+		if (!t) return undefined;
+		const n = Number(t);
+		return Number.isFinite(n) ? n : undefined;
+	}
+
+	/** 相手と関係名の両方がある行だけを保存する */
+	function completeRelations() {
+		return form.relationships
+			.filter((r) => r.characterId && r.relation.trim())
+			.map((r) => ({ characterId: r.characterId, relation: r.relation.trim() }));
+	}
+
+	const incompleteRelations = $derived(
+		form.relationships.some((r) => !r.characterId || !r.relation.trim())
+	);
+
+	async function handleSave() {
+		if (readOnly || saving) return;
+		const project = currentProjectStore.project;
+		if (!project || !form.name.trim()) return;
+		saving = true;
+		try {
+			const detail = {
+				age: parseAge(form.age),
+				gender: form.gender.trim(),
+				appearance: form.appearance,
+				personality: form.personality,
+				background: form.background,
+				relationships: completeRelations()
+			};
+			if (creating) {
+				const character = await charactersDB.create({
+					projectId: project.id,
+					name: form.name.trim(),
+					role: form.role.trim()
+				});
+				await charactersDB.update(character.id, detail);
+				await queueChange('characters', character.id, 'create');
+				await refreshCharacters();
+				md?.replace(character.id);
+			} else if (selectedCharacter) {
+				const id = selectedCharacter.id;
+				await charactersDB.update(id, {
+					name: form.name.trim(),
+					role: form.role.trim(),
+					...detail
+				});
+				await queueChange('characters', id, 'update');
+				await refreshCharacters();
+				editing = false;
+			}
+		} catch (error) {
+			console.error('Failed to save character:', error);
+			toast.error('人物の保存に失敗しました');
+		} finally {
+			saving = false;
+		}
+	}
+
+	async function handleDelete(c: Character) {
 		if (readOnly) return;
-		const character = characters.find((c) => c.id === characterId);
-		if (!character) return;
+		if (!(await confirmDialog({ message: `「${c.name}」を削除しますか?`, danger: true }))) return;
+		await charactersDB.delete(c.id);
+		await queueChange('characters', c.id, 'delete');
+		if (selectedId === c.id) {
+			editing = false;
+			md?.replace(null);
+		}
+		await refreshCharacters();
+	}
 
-		// プレーンなオブジェクトと配列に変換
-		const newRelationships = character.relationships
-			.filter((_, i) => i !== relationshipIndex)
-			.map((r) => ({ characterId: r.characterId, relation: r.relation }));
+	async function handleDuplicate(c: Character) {
+		if (readOnly || !currentProjectStore.project) return;
+		try {
+			const copy = await charactersDB.create({
+				projectId: currentProjectStore.project.id,
+				name: `${c.name} (コピー)`,
+				role: c.role
+			});
+			await charactersDB.update(copy.id, {
+				age: c.age,
+				gender: c.gender,
+				appearance: c.appearance,
+				personality: c.personality,
+				background: c.background
+			});
+			await queueChange('characters', copy.id, 'create');
+			// 元の人物のすぐ後ろに置く
+			const written = await charactersDB.moveTo(
+				copy.id,
+				characters.findIndex((x) => x.id === c.id) + 1
+			);
+			if (written.length)
+				await queueChanges(written.map((id) => ({ type: 'characters', id, action: 'update' })));
+			await refreshCharacters();
+		} catch (error) {
+			console.error('Failed to duplicate character:', error);
+			toast.error('人物の複製に失敗しました');
+		}
+	}
 
-		await charactersDB.update(characterId, {
-			relationships: newRelationships
+	/* ---------- 関係の編集 ---------- */
+
+	function addRelation() {
+		form.relationships.push({ key: relationKey++, characterId: '', relation: '' });
+	}
+
+	function removeRelation(key: number) {
+		form.relationships = form.relationships.filter((r) => r.key !== key);
+	}
+
+	/** 詳細の「関係」節に出す行(相手が削除済みなら id だけ残る) */
+	function relationsOf(c: Character) {
+		return c.relationships.map((r) => {
+			const target = characters.find((x) => x.id === r.characterId);
+			return { relation: r.relation, target };
 		});
-
-		// 同期キューに追加
-		await queueChange('characters', characterId, 'update');
-
-		await loadCharacters();
 	}
 
-	function getCharacterName(characterId: string): string {
-		return characters.find((c) => c.id === characterId)?.name || '不明';
+	/* ---------- 並べ替え ---------- */
+
+	async function handleMove(id: string, toIndex: number) {
+		if (!canSort) return;
+		const updates = planCharacterMove(characters, id, toIndex);
+		if (updates.length === 0) return;
+		const previous = characters;
+		// 先に画面へ反映する(保存を待たずに、置いた場所に収まって見えるように)
+		characters = sortByOrder(applyOrderUpdates(characters, updates));
+		try {
+			const written = await charactersDB.moveTo(id, toIndex);
+			if (written.length)
+				await queueChanges(written.map((w) => ({ type: 'characters', id: w, action: 'update' })));
+		} catch (error) {
+			console.error('Failed to move character:', error);
+			characters = previous;
+			toast.error('並べ替えに失敗しました');
+		} finally {
+			await refreshCharacters();
+		}
 	}
 
-	function getRelationships(character: Character) {
-		return character.relationships.map((rel) => ({
-			...rel,
-			name: getCharacterName(rel.characterId)
-		}));
-	}
+	/* ---------- 右クリックメニュー・行のメニュー ---------- */
 
-	// コンテキストメニュー - キャラクター
+	let contextMenu = $state<{ visible: boolean; x: number; y: number; items: ContextMenuItem[] }>({
+		visible: false,
+		x: 0,
+		y: 0,
+		items: []
+	});
+
 	function handleCharacterContextMenu(e: MouseEvent, character: Character) {
 		e.preventDefault();
 		e.stopPropagation();
-
 		const menuItems = createCharacterContextMenu({
-			onEdit: () => openEditModal(character),
-			onDuplicate: () => handleDuplicateCharacter(character),
-			onDelete: () => handleDelete(character.id),
-			onViewRelations: () => openRelationModal(character)
+			onEdit: () => void startEdit(character),
+			onDuplicate: () => void handleDuplicate(character),
+			onDelete: () => void handleDelete(character)
 		});
 		const items = readOnly ? filterReadOnlyMenu(menuItems) : menuItems;
 		if (items.length === 0) return;
-
-		contextMenu = {
-			visible: true,
-			x: e.clientX,
-			y: e.clientY,
-			items,
-			targetCharacter: character
-		};
+		contextMenu = { visible: true, x: e.clientX, y: e.clientY, items };
 	}
 
-	// 複製処理
-	async function handleDuplicateCharacter(character: Character) {
-		if (readOnly || !currentProjectStore.project) return;
-
-		try {
-			const newCharacter = await charactersDB.create({
-				projectId: currentProjectStore.project.id,
-				name: `${character.name} (コピー)`,
-				role: character.role
-			});
-
-			await charactersDB.update(newCharacter.id, {
-				age: character.age,
-				gender: character.gender,
-				appearance: character.appearance,
-				personality: character.personality,
-				background: character.background
-			});
-
-			await queueChange('characters', newCharacter.id, 'create');
-			await loadCharacters();
-		} catch (error) {
-			console.error('Failed to duplicate character:', error);
-			toast.error('キャラクターの複製に失敗しました');
+	function rowMenu(c: Character, ctx: ItemContext): RowMenuItem[] {
+		if (readOnly) return [];
+		const items: RowMenuItem[] = [
+			{ label: '編集', icon: 'pencil', onselect: () => void startEdit(c) }
+		];
+		if (canSort) {
+			items.push(
+				{ label: '上へ', icon: 'arrow-up', disabled: !ctx.canMoveUp, onselect: ctx.moveUp },
+				{ label: '下へ', icon: 'arrow-down', disabled: !ctx.canMoveDown, onselect: ctx.moveDown }
+			);
 		}
+		items.push(
+			{ label: '複製', icon: 'files', onselect: () => void handleDuplicate(c) },
+			{ label: '削除', icon: 'trash', danger: true, onselect: () => void handleDelete(c) }
+		);
+		return items;
+	}
+
+	function clearSearch() {
+		query = '';
 	}
 </script>
 
-<div class="flex w:100% h:100% bg:theme-background fg:theme-text">
-	<div class="flex-grow:1 flex flex:column min-w:0 min-h:0">
-		<header class="bg:theme-background border-bottom:1|solid|theme-border">
-			<div
-				class="page-header max-w:1280 mx:auto w:100% px:24 py:20 flex flex-wrap:wrap gap:12 jc:space-between ai:center"
+{#snippet emptyState()}
+	<ItemPlaceholder
+		icon="users"
+		title="人物はまだいません"
+		text={readOnly
+			? 'この作品の人物は、閲覧のみできます。'
+			: '登場人物の名前や役割、外見・性格・背景、人物どうしの関係をまとめておけます。'}
+	>
+		{#if !readOnly}
+			<Button onclick={() => void startCreate()}>
+				<Icon name="plus" class="ico" />最初の人物を作成
+			</Button>
+		{/if}
+	</ItemPlaceholder>
+{/snippet}
+
+<div class="chars-page" class:detail-full={viewMode === 'list' && selectedId !== null && !wide}>
+	<ItemsPageHead
+		title="人物"
+		total={!isLoading && characters.length > 0 ? `${characters.length} 人` : undefined}
+	>
+		<AiToggle />
+		<div class="seg" role="group" aria-label="表示の切り替え">
+			<button type="button" aria-pressed={viewMode === 'list'} onclick={() => void setView('list')}>
+				<Icon name="list" class="ico" />一覧
+			</button>
+			<button
+				type="button"
+				aria-pressed={viewMode === 'graph'}
+				data-tour="characters-graph-button"
+				onclick={() => void setView('graph')}
 			>
-				<div>
-					<h1 class="font:26 font-weight:600 m:0 fg:theme-text">キャラクター管理</h1>
-					<p class="font:14 fg:theme-text-secondary mt:8">登場人物の情報と相関図を管理します</p>
-				</div>
-				<div class="flex flex-wrap:wrap ai:center gap:12 max-w:100%">
-					<AiToggle />
-					<div class="flex bg:theme-surface b:1px|solid|theme-border r:10 p:6 gap:8">
-						<button class={viewToggleClass('grid')} onclick={() => (viewMode = 'grid')}>
-							グリッド
-						</button>
-						<button class={viewToggleClass('list')} onclick={() => (viewMode = 'list')}>
-							リスト
-						</button>
-						<button
-							class={viewToggleClass('graph')}
-							data-tour="characters-graph-button"
-							onclick={() => (viewMode = 'graph')}
-						>
-							相関図
-						</button>
-					</div>
-					<Button
-						class="px:16 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
-						disabled={readOnly}
-						onclick={openCreateModal}
-					>
-						+ 新規キャラクター
-					</Button>
-				</div>
-			</div>
-		</header>
+				<Icon name="users" class="ico" />相関図
+			</button>
+		</div>
+		{#if !readOnly}
+			<Button onclick={() => void startCreate()} data-testid="character-new">
+				<Icon name="plus" class="ico" />新規人物
+			</Button>
+		{/if}
+	</ItemsPageHead>
 
-		<main class="flex-grow:1 overflow-y:auto">
-			<div class="page-body max-w:1280 mx:auto px:24 py:24 flex flex:column gap:24">
-				{#if isLoading}
-					<div class="flex jc:center ai:center h:400">
-						<p class="fg:theme-text-secondary">読み込み中...</p>
-					</div>
-				{:else if viewMode === 'grid'}
-					<input
-						class="character-search"
-						type="search"
-						placeholder="名前・役割・性格などで検索..."
-						aria-label="キャラクターを検索"
-						bind:value={characterQuery}
-					/>
-					<!-- グリッドビュー -->
-					<div
-						class="grid gap:20 grid-template-columns:repeat(2,minmax(0,1fr))@md grid-template-columns:repeat(3,minmax(0,1fr))@xl"
-					>
-						{#each visibleCharacters as character (character.id)}
-							<Card
-								class="bg:theme-surface b:1px|solid|theme-border p:24 flex flex:column gap:16"
-								oncontextmenu={(e) => handleCharacterContextMenu(e, character)}
+	{#if viewMode === 'list'}
+		<div class="main">
+			<MasterDetail
+				bind:this={md}
+				bind:selectedId
+				bind:wide
+				ready={!isLoading}
+				exists={(id) => id === NEW || characters.some((c) => c.id === id)}
+				listLayout="sidebar"
+				storageKey={currentProjectStore.project
+					? `characters:${currentProjectStore.project.id}`
+					: undefined}
+				detailTitle={creating ? '新規人物' : (selectedCharacter?.name ?? '人物')}
+				{guard}
+			>
+				{#snippet listHeader()}
+					{#if characters.length > 0}
+						<div class="list-tools">
+							<input
+								class="search"
+								type="search"
+								placeholder="名前・役割・本文で検索"
+								aria-label="人物を検索"
+								bind:value={query}
+							/>
+							<Select
+								class="sort"
+								options={sortOptions}
+								bind:value={sortMode}
+								aria-label="並び順"
+							/>
+						</div>
+						{#if !readOnly && !canSort && characters.length > 1}
+							<p class="hint" role="note">並べ替えは、検索を外して「手動順」にすると使えます</p>
+						{/if}
+					{/if}
+				{/snippet}
+
+				{#snippet list()}
+					{#if isLoading}
+						<div class="sk-list" aria-busy="true" aria-label="読み込み中">
+							{#each [0, 1, 2, 3] as n (n)}
+								<div class="sk-row">
+									<span class="sk sk-avatar"></span><span class="sk sk-text"></span>
+								</div>
+							{/each}
+						</div>
+					{:else if loadError}
+						<ItemPlaceholder title={loadError} role="alert">
+							<Button variant="secondary" onclick={() => void loadCharacters()}>再読み込み</Button>
+						</ItemPlaceholder>
+					{:else if characters.length === 0}
+						{#if wide}
+							<p class="side-note">まだ人物がいません</p>
+						{:else}
+							{@render emptyState()}
+						{/if}
+					{:else if visible.length === 0}
+						<ItemPlaceholder title="条件に合う人物がいません">
+							<Button variant="secondary" onclick={clearSearch}>検索を外す</Button>
+						</ItemPlaceholder>
+					{:else}
+						<div class="list-scroll scroll-stable" data-testid="character-list">
+							<SortableList
+								items={visible}
+								disabled={!canSort}
+								label="人物の一覧"
+								titleOf={(c) => c.name}
+								inlineHandle={false}
+								onmove={handleMove}
 							>
-								<div class="flex flex:column ai:center text-align:center gap:8">
-									<div
-										class="w:72 h:72 r:full bg:theme-border flex ai:center jc:center font:24 fg:theme-text"
+								{#snippet item(c, ctx)}
+									<ItemRow
+										id={c.id}
+										title={c.name}
+										subtitle={characterSummary(c)}
+										selected={selectedId === c.id}
+										testid="character-row"
+										handle={canSort ? ctx.handle : undefined}
+										menuItems={rowMenu(c, ctx)}
+										onopen={() => void openCharacter(c.id)}
+										oncontextmenu={(e) => handleCharacterContextMenu(e, c)}
 									>
-										{character.name.charAt(0)}
-									</div>
-									<h3 class="font:18 font-weight:600 fg:theme-text m:0">{character.name}</h3>
-									<p class="font:14 fg:theme-text-secondary m:0">{character.role}</p>
-									{#if character.age || character.gender}
-										<p class="font:12 fg:theme-text-secondary">
-											{character.age ? `${character.age}歳` : ''}{character.age && character.gender
-												? ' / '
-												: ''}{character.gender || ''}
-										</p>
-									{/if}
-								</div>
+										{#snippet lead()}
+											<IconBadge
+												size={44}
+												shape="circle"
+												tone={avatarTone(c.id)}
+												text={initialOf(c.name)}
+											/>
+										{/snippet}
+									</ItemRow>
+								{/snippet}
+							</SortableList>
+						</div>
+					{/if}
+				{/snippet}
 
-								{#if character.personality}
-									<div class="flex flex:column gap:4">
-										<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">性格</p>
-										<p class="font:14 fg:theme-text-secondary line-clamp:2">
-											{character.personality}
-										</p>
-									</div>
-								{/if}
-
-								{#if character.relationships.length > 0}
-									<div class="flex flex:column gap:4">
-										<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">関係</p>
-										<div class="flex flex-wrap gap:6">
-											{#each character.relationships.slice(0, 3) as rel, index (index)}
-												<span class="px:10 py:4 r:full bg:theme-surface fg:theme-primary font:12">
-													{getCharacterName(rel.characterId)}
-												</span>
-											{/each}
-											{#if character.relationships.length > 3}
-												<span
-													class="px:10 py:4 r:full bg:theme-background b:1px|solid|theme-border fg:theme-text-secondary font:12"
-												>
-													+{character.relationships.length - 3}
-												</span>
-											{/if}
-										</div>
-									</div>
-								{/if}
-
-								<div class="flex gap:8">
-									<button
-										class={`flex:1 ${actionButtonClass()}`}
-										onclick={() => openEditModal(character)}
-									>
-										{readOnly ? '表示' : '編集'}
-									</button>
-									<button
-										class={`flex:1 ${actionButtonClass('secondary')}`}
-										onclick={() => openRelationModal(character)}
-									>
-										関係
-									</button>
-									<button
-										class={actionButtonClass('danger')}
-										disabled={readOnly}
-										onclick={() => handleDelete(character.id)}
-									>
-										削除
-									</button>
-								</div>
-							</Card>
-						{/each}
-					</div>
-				{:else if viewMode === 'list'}
-					<input
-						class="character-search"
-						type="search"
-						placeholder="名前・役割・性格などで検索..."
-						aria-label="キャラクターを検索"
-						bind:value={characterQuery}
-					/>
-					<!-- リストビュー -->
-					<div class="flex flex:column gap:16">
-						{#each visibleCharacters as character (character.id)}
-							<Card
-								class="bg:theme-surface b:1px|solid|theme-border p:24"
-								oncontextmenu={(e) => handleCharacterContextMenu(e, character)}
-							>
-								<div class="flex gap:20 ai:start">
-									<div
-										class="w:64 h:64 r:full bg:theme-border flex ai:center jc:center font:22 fg:theme-text flex-shrink:0"
-									>
-										{character.name.charAt(0)}
-									</div>
-									<div class="flex:1 flex flex:column gap:16">
-										<div class="flex jc:space-between ai:start gap:16">
-											<div>
-												<h3 class="font:18 font-weight:600 fg:theme-text m:0">{character.name}</h3>
-												<p class="font:14 fg:theme-text-secondary mt:6">
-													{character.role}
-													{#if character.age || character.gender}
-														• {character.age ? `${character.age}歳` : ''}{character.age &&
-														character.gender
-															? ' / '
-															: ''}{character.gender || ''}
-													{/if}
-												</p>
-											</div>
-											<div class="flex gap:8">
-												<button class={actionButtonClass()} onclick={() => openEditModal(character)}
-													>{readOnly ? '表示' : '編集'}</button
-												>
-												<button
-													class={actionButtonClass('secondary')}
-													onclick={() => openRelationModal(character)}>関係</button
-												>
-												<button
-													class={actionButtonClass('danger')}
-													disabled={readOnly}
-													onclick={() => handleDelete(character.id)}>削除</button
-												>
-											</div>
-										</div>
-
-										<div class="grid gap:16 grid-template-columns:repeat(3,minmax(0,1fr))@md">
-											{#if character.appearance}
-												<div class="flex flex:column gap:4">
-													<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">外見</p>
-													<p class="font:14 fg:theme-text-secondary">{character.appearance}</p>
-												</div>
-											{/if}
-											{#if character.personality}
-												<div class="flex flex:column gap:4">
-													<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">性格</p>
-													<p class="font:14 fg:theme-text-secondary">{character.personality}</p>
-												</div>
-											{/if}
-											{#if character.background}
-												<div class="flex flex:column gap:4">
-													<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">背景</p>
-													<p class="font:14 fg:theme-text-secondary">{character.background}</p>
-												</div>
-											{/if}
-										</div>
-									</div>
-								</div>
-							</Card>
-						{/each}
-					</div>
-				{:else}
-					<!-- 相関図ビュー: ドラッグで動かせるキャンバス -->
-					{#if currentProjectStore.project}
-						<RelationCanvas
-							{characters}
-							projectId={currentProjectStore.project.id}
-							onChanged={loadCharacters}
-							onOpenCharacter={openRelationModal}
+				{#snippet placeholder()}
+					{#if !isLoading && characters.length === 0 && !loadError}
+						{@render emptyState()}
+					{:else}
+						<ItemPlaceholder
+							icon="user"
+							title="人物を選んでください"
+							text="左の一覧から選ぶと、外見・性格・背景・関係の全文がここに表示されます。"
 						/>
 					{/if}
-				{/if}
+				{/snippet}
 
-				{#if characters.length === 0 && !isLoading}
-					<div class="flex flex:column ai:center jc:center h:400 gap:16">
-						<p class="fg:theme-text-secondary font:18">キャラクターがまだありません</p>
-						<Button
-							class="px:20 py:12 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:10 font:14"
-							disabled={readOnly}
-							onclick={openCreateModal}
+				{#snippet detail()}
+					{#if creating || selectedCharacter}
+						<ItemDetail
+							heading={creating ? form.name : (selectedCharacter?.name ?? '')}
+							{editing}
+							{creating}
+							{readOnly}
+							canSave={form.name.trim() !== ''}
+							{saving}
+							onedit={() => selectedCharacter && void startEdit(selectedCharacter)}
+							onsave={() => void handleSave()}
+							oncancel={() => void cancelEdit()}
+							ondelete={selectedCharacter ? () => void handleDelete(selectedCharacter) : undefined}
 						>
-							最初のキャラクターを作成
-						</Button>
-					</div>
-				{/if}
-			</div>
-		</main>
-	</div>
-</div>
-
-<!-- 新規作成モーダル -->
-<Modal bind:isOpen={showCreateModal} title="新規キャラクター作成">
-	<div class="flex flex:column gap:16">
-		<Input label="名前 *" bind:value={formData.name} placeholder="キャラクター名" />
-		<Input label="役割" bind:value={formData.role} placeholder="主人公、ヒロイン、悪役など" />
-
-		<div class="grid grid-cols:2 gap:16">
-			<div>
-				<label for="create-age" class="block mb:8 font:14 font:semibold">年齢</label>
-				<input
-					id="create-age"
-					type="number"
-					bind:value={formData.age}
-					placeholder="年齢"
-					class={`w:full ${fieldBaseClass}`}
-				/>
-			</div>
-			<Input label="性別" bind:value={formData.gender} placeholder="性別" />
-		</div>
-
-		<div>
-			<label for="create-appearance" class="block mb:8 font:14 font:semibold">外見</label>
-			<textarea
-				id="create-appearance"
-				bind:value={formData.appearance}
-				class={`${textareaBaseClass} min-h:80 resize:vertical`}
-				placeholder="髪型、体格、服装など..."
-			></textarea>
-		</div>
-
-		<div>
-			<label for="create-personality" class="block mb:8 font:14 font:semibold">性格</label>
-			<textarea
-				id="create-personality"
-				bind:value={formData.personality}
-				class={`${textareaBaseClass} min-h:80 resize:vertical`}
-				placeholder="性格の特徴..."
-			></textarea>
-		</div>
-
-		<div>
-			<label for="create-background" class="block mb:8 font:14 font:semibold">背景</label>
-			<textarea
-				id="create-background"
-				bind:value={formData.background}
-				class={`${textareaBaseClass} min-h:80 resize:vertical`}
-				placeholder="生い立ち、経歴など..."
-			></textarea>
-		</div>
-	</div>
-
-	{#snippet footer()}
-		<div class="flex gap:12">
-			<Button variant="ghost" class={actionButtonClass()} onclick={() => (showCreateModal = false)}
-				>キャンセル</Button
-			>
-			<Button
-				class="px:20 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
-				onclick={handleCreate}
-				disabled={!formData.name.trim()}>作成</Button
-			>
-		</div>
-	{/snippet}
-</Modal>
-
-<!-- 編集モーダル -->
-<Modal bind:isOpen={showEditModal} title="キャラクター編集">
-	<fieldset disabled={readOnly} class="flex flex:column gap:16 b:0 p:0 m:0 min-w:0">
-		<Input label="名前 *" bind:value={formData.name} placeholder="キャラクター名" />
-		<Input label="役割" bind:value={formData.role} placeholder="主人公、ヒロイン、悪役など" />
-
-		<div class="grid grid-cols:2 gap:16">
-			<div>
-				<label for="edit-age" class="block mb:8 font:14 font:semibold">年齢</label>
-				<input
-					id="edit-age"
-					type="number"
-					bind:value={formData.age}
-					placeholder="年齢"
-					class={`w:full ${fieldBaseClass}`}
-				/>
-			</div>
-			<Input label="性別" bind:value={formData.gender} placeholder="性別" />
-		</div>
-
-		<div>
-			<label for="edit-appearance" class="block mb:8 font:14 font:semibold">外見</label>
-			<textarea
-				id="edit-appearance"
-				bind:value={formData.appearance}
-				class={`${textareaBaseClass} min-h:80 resize:vertical`}
-				placeholder="髪型、体格、服装など..."
-			></textarea>
-		</div>
-
-		<div>
-			<label for="edit-personality" class="block mb:8 font:14 font:semibold">性格</label>
-			<textarea
-				id="edit-personality"
-				bind:value={formData.personality}
-				class={`${textareaBaseClass} min-h:80 resize:vertical`}
-				placeholder="性格の特徴..."
-			></textarea>
-		</div>
-
-		<div>
-			<label for="edit-background" class="block mb:8 font:14 font:semibold">背景</label>
-			<textarea
-				id="edit-background"
-				bind:value={formData.background}
-				class={`${textareaBaseClass} min-h:80 resize:vertical`}
-				placeholder="生い立ち、経歴など..."
-			></textarea>
-		</div>
-	</fieldset>
-
-	{#snippet footer()}
-		<div class="flex gap:12">
-			<Button variant="ghost" class={actionButtonClass()} onclick={() => (showEditModal = false)}
-				>キャンセル</Button
-			>
-			<Button
-				class="px:20 py:10 bg:theme.primary fg:theme-background b:1px|solid|theme-border r:8 font:14"
-				onclick={handleUpdate}
-				disabled={readOnly || !formData.name.trim()}>更新</Button
-			>
-		</div>
-	{/snippet}
-</Modal>
-
-<!-- 関係編集モーダル -->
-<Modal bind:isOpen={showRelationModal} title="キャラクター関係編集">
-	{#if selectedCharacter}
-		<div class="flex flex:column gap:16">
-			<div class="p:16 bg:theme-surface b:1px|solid|theme-border r:8">
-				<p class="font:14 fg:theme-text-secondary mb:4">対象キャラクター</p>
-				<p class="font:18 font-weight:600 fg:theme-text">{selectedCharacter.name}</p>
-			</div>
-
-			<div>
-				<p class="font:14 font:semibold mb:12">現在の関係</p>
-				{#if selectedCharacter.relationships.length === 0}
-					<p class="fg:theme-text-secondary font:14">関係が登録されていません</p>
-				{:else}
-					<div class="flex flex:column gap:8">
-						{#each getRelationships(selectedCharacter) as rel, index (index)}
-							<div
-								class="flex ai:center jc:space-between p:12 bg:theme-background b:1px|solid|theme-border r:8"
-							>
-								<div class="flex ai:center gap:12">
-									<span class="font:14 fg:theme-text-secondary">{rel.relation}</span>
-									<span class="fg:theme-text-secondary">→</span>
-									<span class="font:14 font-weight:600 fg:theme.primary">{rel.name}</span>
+							{#snippet lead()}
+								{#if selectedCharacter}
+									<IconBadge
+										size={56}
+										shape="circle"
+										tone={avatarTone(selectedCharacter.id)}
+										text={initialOf(editing ? form.name : selectedCharacter.name)}
+									/>
+								{:else}
+									<IconBadge size={56} shape="circle" icon="user" tone="neutral" />
+								{/if}
+							{/snippet}
+							{#snippet badges()}
+								{#if selectedCharacter}
+									{@const summary = characterSummary(selectedCharacter)}
+									{#if summary}<span class="summary selectable">{summary}</span>{/if}
+								{/if}
+							{/snippet}
+							{#snippet body()}
+								{#if selectedCharacter}
+									{@const c = selectedCharacter}
+									{@const rels = relationsOf(c)}
+									{#if !c.appearance.trim() && !c.personality.trim() && !c.background.trim() && rels.length === 0}
+										<p class="none">
+											外見・性格・背景・関係はまだ入力されていません。{#if !readOnly}「編集」から書き始められます。{/if}
+										</p>
+									{/if}
+									{#if c.appearance.trim()}<ItemSection title="外見" text={c.appearance} />{/if}
+									{#if c.personality.trim()}<ItemSection title="性格" text={c.personality} />{/if}
+									{#if c.background.trim()}<ItemSection title="背景" text={c.background} />{/if}
+									{#if rels.length > 0}
+										<ItemSection title="関係">
+											<ul class="relations" data-testid="relations">
+												{#each rels as rel, i (i)}
+													<li class="relation">
+														<span class="chip">{rel.relation}</span>
+														<Icon name="chevron-right" class="rel-arrow" />
+														{#if rel.target}
+															{@const target = rel.target}
+															<button
+																type="button"
+																class="rel-link"
+																data-testid="relation-link"
+																onclick={() => void openCharacter(target.id)}
+															>
+																<IconBadge
+																	size={28}
+																	shape="circle"
+																	tone={avatarTone(target.id)}
+																	text={initialOf(target.name)}
+																/>
+																<span class="rel-name">{target.name}</span>
+															</button>
+														{:else}
+															<span class="rel-missing">削除された人物</span>
+														{/if}
+													</li>
+												{/each}
+											</ul>
+										</ItemSection>
+									{/if}
+								{/if}
+							{/snippet}
+							{#snippet footnote()}
+								{#if selectedCharacter}
+									<span class="selectable">
+										更新 {formatDate(selectedCharacter.updatedAt)} ・ 作成 {formatDate(
+											selectedCharacter.createdAt
+										)}
+									</span>
+								{/if}
+							{/snippet}
+							{#snippet fields()}
+								<div class="field">
+									<label for="char-name">名前</label>
+									<input
+										id="char-name"
+										type="text"
+										bind:value={form.name}
+										placeholder="人物の名前"
+										maxlength="100"
+									/>
 								</div>
-								<button
-									class={actionButtonClass('danger')}
-									disabled={readOnly}
-									onclick={() => handleRemoveRelation(selectedCharacter!.id, index)}
-								>
-									削除
-								</button>
-							</div>
-						{/each}
-					</div>
-				{/if}
-			</div>
-
-			<div>
-				<p class="font:14 font:semibold mb:12">新しい関係を追加</p>
-				<div class="flex gap:8">
-					<input
-						type="text"
-						placeholder="関係性（例: 親友、ライバル）"
-						class={`flex:1 ${fieldBaseClass}`}
-						id="relation-input"
-					/>
-					<select class={fieldBaseClass} id="target-character">
-						<option value="">キャラクターを選択</option>
-						{#each characters.filter((c) => c.id !== selectedCharacter?.id) as char (char.id)}
-							<option value={char.id}>{char.name}</option>
-						{/each}
-					</select>
-					<Button
-						class="px:16 py:10 bg:theme.primary fg:theme-background r:8"
-						onclick={() => {
-							const relationInput = document.getElementById('relation-input') as HTMLInputElement;
-							const targetSelect = document.getElementById('target-character') as HTMLSelectElement;
-							if (relationInput.value && targetSelect.value && selectedCharacter) {
-								handleAddRelation(selectedCharacter.id, targetSelect.value, relationInput.value);
-								relationInput.value = '';
-								targetSelect.value = '';
-							}
-						}}
-					>
-						追加
-					</Button>
-				</div>
-			</div>
+								<div class="field-row">
+									<div class="field">
+										<label for="char-role">役割</label>
+										<input
+											id="char-role"
+											type="text"
+											bind:value={form.role}
+											placeholder="主人公、ヒロイン、悪役など"
+										/>
+									</div>
+									<div class="field narrow">
+										<label for="char-age">年齢</label>
+										<input
+											id="char-age"
+											type="text"
+											inputmode="numeric"
+											autocomplete="off"
+											bind:value={form.age}
+											placeholder="年齢"
+										/>
+									</div>
+									<div class="field narrow">
+										<label for="char-gender">性別</label>
+										<input
+											id="char-gender"
+											type="text"
+											bind:value={form.gender}
+											placeholder="性別"
+										/>
+									</div>
+								</div>
+								<div class="field">
+									<label for="char-appearance">外見</label>
+									<textarea
+										id="char-appearance"
+										bind:value={form.appearance}
+										rows="4"
+										placeholder="髪型、体格、服装など"
+									></textarea>
+								</div>
+								<div class="field">
+									<label for="char-personality">性格</label>
+									<textarea
+										id="char-personality"
+										bind:value={form.personality}
+										rows="4"
+										placeholder="性格の特徴"
+									></textarea>
+								</div>
+								<div class="field">
+									<label for="char-background">背景</label>
+									<textarea
+										id="char-background"
+										bind:value={form.background}
+										rows="5"
+										placeholder="生い立ち、経歴など"
+									></textarea>
+								</div>
+								<div class="field" role="group" aria-labelledby="char-relations-label">
+									<span class="label" id="char-relations-label">関係</span>
+									{#if form.relationships.length > 0}
+										<ul class="rel-edit">
+											{#each form.relationships as row (row.key)}
+												<li class="rel-row" data-testid="relation-row">
+													<Select
+														class="rel-target"
+														options={relationTargets}
+														bind:value={row.characterId}
+														placeholder="相手を選択"
+														aria-label="関係の相手"
+													/>
+													<input
+														class="rel-name-input"
+														type="text"
+														bind:value={row.relation}
+														placeholder="関係(例: 親友、ライバル)"
+														aria-label="関係の名前"
+													/>
+													<button
+														type="button"
+														class="rel-remove"
+														aria-label="この関係を削除"
+														onclick={() => removeRelation(row.key)}
+													>
+														<Icon name="trash" class="ico" />
+													</button>
+												</li>
+											{/each}
+										</ul>
+									{/if}
+									<div class="rel-actions">
+										<Button
+											variant="secondary"
+											size="sm"
+											disabled={relationTargets.length === 0}
+											onclick={addRelation}
+										>
+											<Icon name="plus" class="ico" />関係を追加
+										</Button>
+										{#if relationTargets.length === 0}
+											<span class="note">関係を結ぶには、ほかの人物が必要です</span>
+										{:else if incompleteRelations}
+											<span class="note">相手と関係の名前の両方がある行だけが保存されます</span>
+										{/if}
+									</div>
+								</div>
+							{/snippet}
+						</ItemDetail>
+					{/if}
+				{/snippet}
+			</MasterDetail>
+		</div>
+	{:else}
+		<div class="graph scroll-stable">
+			{#if isLoading}
+				<p class="graph-note">読み込み中...</p>
+			{:else if currentProjectStore.project}
+				<RelationCanvas
+					{characters}
+					projectId={currentProjectStore.project.id}
+					onChanged={refreshCharacters}
+					onOpenCharacter={(c) => void showFromGraph(c)}
+				/>
+			{/if}
 		</div>
 	{/if}
+</div>
 
-	{#snippet footer()}
-		<div class="flex gap:12">
-			<Button
-				variant="ghost"
-				class={actionButtonClass()}
-				onclick={() => (showRelationModal = false)}>閉じる</Button
-			>
-		</div>
-	{/snippet}
-</Modal>
-
-<!-- コンテキストメニュー -->
 <ContextMenu
 	visible={contextMenu.visible}
 	x={contextMenu.x}
@@ -767,52 +845,442 @@
 />
 
 <style>
-	.line-clamp\:2 {
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-	}
-
-	.character-search {
+	.chars-page {
+		display: flex;
+		flex-direction: column;
 		width: 100%;
-		max-width: 480px;
-		padding: 10px 12px;
-		border: 1px solid var(--color-border);
-		border-radius: 8px;
+		height: 100%;
+		min-height: 0;
 		background: var(--color-background);
 		color: var(--color-text);
-		font-size: 16px;
-		font-family: inherit;
 	}
 
-	.page-header :global(button) {
+	/* 表示の切り替え(一覧 / 相関図) */
+	.seg {
+		display: inline-flex;
+		padding: 3px;
+		gap: 2px;
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		background: var(--color-surface);
+	}
+
+	.seg button {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 30px;
+		padding: 0 12px;
+		border: 0;
+		border-radius: 7px;
+		background: transparent;
+		color: var(--color-text-secondary);
+		font: inherit;
+		font-size: 13px;
 		white-space: nowrap;
+		cursor: pointer;
+		transition:
+			background-color 0.15s,
+			color 0.15s;
+	}
+
+	.seg button:hover {
+		color: var(--color-text);
+	}
+
+	.seg button[aria-pressed='true'] {
+		background: var(--color-background);
+		color: var(--color-primary);
+		box-shadow: 0 0 0 1px var(--color-border);
+	}
+
+	.seg :global(.ico),
+	.rel-actions :global(.ico),
+	.rel-remove :global(.ico) {
+		display: inline-flex;
+		flex: none;
+		width: 16px;
+		height: 16px;
+	}
+
+	.seg :global(.ico svg),
+	.rel-actions :global(.ico svg),
+	.rel-remove :global(.ico svg) {
+		width: 100%;
+		height: 100%;
+	}
+
+	/* 狭いとき、詳細は全画面。上の見出しは隠す */
+	.chars-page.detail-full :global(.page-head) {
+		display: none;
+	}
+
+	.main {
+		flex: 1;
+		min-height: 0;
+		border-top: 1px solid var(--color-border);
+	}
+
+	.chars-page.detail-full .main {
+		border-top: 0;
+	}
+
+	/* 一覧の上の検索と並び */
+	.list-tools {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 12px 12px 8px;
+	}
+
+	.search {
+		flex: 1 1 0;
+		min-width: 0;
+		height: 36px;
+		padding: 0 12px;
+		font-size: 13.5px;
+	}
+
+	.list-tools :global(.sort) {
+		flex: 0 0 auto;
+		width: auto;
+		min-width: 8.5rem;
+	}
+
+	.hint {
+		margin: 0;
+		padding: 0 16px 8px;
+		font-size: 12px;
+		color: var(--color-text-secondary);
+	}
+
+	.list-scroll {
+		flex: 1;
+		min-height: 0;
+		padding: 4px 8px 16px;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		--sortable-gap: 2px;
+		--row-pad-x: 12px;
+	}
+
+	.side-note {
+		margin: 0;
+		padding: 24px 16px;
+		font-size: 13px;
+		color: var(--color-text-secondary);
+	}
+
+	/* 読み込み中 */
+	.sk-list {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		padding: 12px 8px;
+		pointer-events: none;
+	}
+
+	.sk-row {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		height: 60px;
+		padding: 0 12px;
+	}
+
+	.sk {
+		background: var(--color-surface);
+		animation: pulse 1.4s ease-in-out infinite;
+	}
+
+	.sk-avatar {
+		flex: none;
+		width: 44px;
+		height: 44px;
+		border-radius: 50%;
+	}
+
+	.sk-text {
+		flex: 1;
+		height: 14px;
+		max-width: 60%;
+		border-radius: 7px;
+	}
+
+	@keyframes pulse {
+		50% {
+			opacity: 0.5;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.sk {
+			animation: none;
+		}
+	}
+
+	/* 詳細(閲覧) */
+	.summary {
+		font-size: 14px;
+		color: var(--color-text-secondary);
+	}
+
+	.none {
+		margin: 0;
+		font-size: 13.5px;
+		line-height: 1.8;
+		color: var(--color-text-secondary);
+	}
+
+	.relations {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.relation {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px 4px;
+		min-height: 40px;
+	}
+
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		height: 26px;
+		padding: 0 10px;
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		background: var(--color-surface);
+		color: var(--color-text-secondary);
+		font-size: 13px;
+		overflow-wrap: anywhere;
+	}
+
+	.relation :global(.rel-arrow) {
+		display: inline-flex;
+		flex: none;
+		width: 16px;
+		height: 16px;
+		color: var(--color-text-secondary);
+	}
+
+	.relation :global(.rel-arrow svg) {
+		width: 100%;
+		height: 100%;
+	}
+
+	.rel-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		min-height: 40px;
+		padding: 0 10px 0 6px;
+		border: 0;
+		border-radius: 20px;
+		background: transparent;
+		color: var(--color-primary);
+		font: inherit;
+		font-size: 15px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.rel-link:hover {
+		background: var(--hover);
+	}
+
+	.rel-link:focus-visible {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 1px;
+	}
+
+	.rel-name {
+		overflow-wrap: anywhere;
+		text-align: left;
+	}
+
+	.rel-missing {
+		font-size: 13.5px;
+		color: var(--color-text-secondary);
+		opacity: 0.8;
+	}
+
+	/* 編集フォーム */
+	.field {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		gap: 6px;
+		min-width: 0;
+	}
+
+	.field label,
+	.field .label {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--color-text-secondary);
+	}
+
+	.field input[type='text'],
+	.field textarea {
+		width: 100%;
+		box-sizing: border-box;
+		font-size: 16px;
+	}
+
+	.field textarea {
+		min-height: 6rem;
+		line-height: 1.8;
+		resize: vertical;
+	}
+
+	.field-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 16px;
+	}
+
+	.field-row .field {
+		flex: 2 1 12rem;
+	}
+
+	.field-row .field.narrow {
+		flex: 1 1 7rem;
+	}
+
+	.rel-edit {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.rel-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.rel-row :global(.rel-target) {
+		flex: 1 1 11rem;
+		min-width: 0;
+	}
+
+	.rel-name-input {
+		flex: 1 1 11rem;
+		min-width: 0;
+		box-sizing: border-box;
+		font-size: 16px;
+	}
+
+	.rel-remove {
+		display: inline-flex;
+		flex: none;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		padding: 0;
+		border: 0;
+		border-radius: 8px;
+		background: transparent;
+		color: var(--color-text-secondary);
+		cursor: pointer;
+	}
+
+	.rel-remove:hover {
+		background: var(--hover);
+		color: var(--color-error);
+	}
+
+	.rel-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 12px;
+	}
+
+	.note {
+		font-size: 12px;
+		color: var(--color-text-secondary);
+	}
+
+	/* 相関図 */
+	.graph {
+		flex: 1;
+		min-height: 0;
+		padding: 0 24px 24px;
+		overflow-y: auto;
+	}
+
+	.graph-note {
+		margin: 0;
+		padding: 48px 0;
+		text-align: center;
+		color: var(--color-text-secondary);
 	}
 
 	@media (max-width: 768px) {
-		.page-header {
-			padding: 12px 16px;
+		.seg {
+			flex: 1;
 		}
 
-		.page-header h1 {
-			font-size: 20px;
+		.seg button {
+			flex: 1;
+			justify-content: center;
+			padding: 0 8px;
 		}
 
-		.page-body {
-			padding: 12px 16px 24px;
-			min-width: 0;
+		.list-tools {
+			padding: 12px 16px 8px;
 		}
 
-		.page-body > :global(*) {
-			min-width: 0;
-			max-width: 100%;
+		.search {
+			height: 44px;
 		}
 
-		.page-header > :global(*) {
-			min-width: 0;
-			max-width: 100%;
+		.list-tools :global(.sort) {
+			min-width: 7.5rem;
+		}
+
+		.hint {
+			padding: 0 16px 8px;
+		}
+
+		/* 狭い画面では、行を画面の端まで広げ、中身の左右に 16px の余白を取る */
+		.list-scroll {
+			padding: 0 0 16px;
+			--row-pad-x: 16px;
+			--row-radius: 0;
+			--sortable-gap: 0;
+		}
+
+		.list-scroll :global(.item-row) {
+			border-bottom: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+		}
+
+		.graph {
+			padding: 0 16px 16px;
+		}
+
+		.rel-remove {
+			width: 44px;
+			height: 44px;
+		}
+	}
+
+	@media (pointer: coarse) {
+		.list-scroll {
+			--sortable-handle-size: 44px;
 		}
 	}
 </style>

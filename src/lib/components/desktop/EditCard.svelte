@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '$lib/components/ui/Icon.svelte';
 	import { diffChars, type EditProposal } from '$lib/desktop/edits';
 	import { aiStore, type EditMode, type EditState } from '$lib/stores/ai.svelte';
 
@@ -60,7 +61,7 @@
 		onclick={() => (userToggled = !expanded)}
 		title={expanded ? '差分を畳む' : '差分を表示'}
 	>
-		<span class="chevron" class:open={expanded}>▸</span>
+		<span class="chevron" class:open={expanded}><Icon name="chevron-right" /></span>
 		<span class="file" title={edit.file}>{editState?.sceneTitle ?? fileName}</span>
 		<span class="count"
 			><span class="plus">+{added}</span> <span class="minus">−{removed}</span></span
@@ -146,8 +147,17 @@
 	}
 
 	.chevron {
-		display: inline-block;
+		display: inline-flex;
+		width: 14px;
+		height: 14px;
 		transition: transform 0.15s;
+	}
+
+	.chevron :global(div),
+	.chevron :global(svg) {
+		display: flex;
+		width: 14px;
+		height: 14px;
 	}
 
 	.chevron.open {

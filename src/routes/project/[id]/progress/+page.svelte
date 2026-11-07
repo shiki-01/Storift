@@ -269,7 +269,7 @@
 			</div>
 		</header>
 
-		<main class="flex-grow:1 overflow-y:auto">
+		<main class="flex-grow:1 overflow-y:auto scroll-stable">
 			<div class="page-body max-w:1280 mx:auto w:100% px:24 py:24 flex flex:column gap:24">
 				{#if isLoading}
 					<div class="flex jc:center ai:center h:320">

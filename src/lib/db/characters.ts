@@ -1,12 +1,13 @@
 import { db } from './schema';
 import type { Character, CharacterCreateInput } from '$lib/types';
 import { v4 as uuidv4 } from 'uuid';
-import { isUnchanged, touchProject } from './utils';
+import { isUnchanged, touchProject, writeOrderChanges } from './utils';
+import { moveItem, nextOrder, sortByOrder } from '$lib/utils/ordering';
 import { historyDB } from './history';
 
 export const charactersDB = {
 	async getByProjectId(projectId: string): Promise<Character[]> {
-		return await db.characters.where('projectId').equals(projectId).toArray();
+		return sortByOrder(await db.characters.where('projectId').equals(projectId).toArray());
 	},
 
 	async getById(id: string): Promise<Character | undefined> {
@@ -15,6 +16,7 @@ export const charactersDB = {
 
 	async create(input: CharacterCreateInput): Promise<Character> {
 		const now = Date.now();
+		const existing = await this.getByProjectId(input.projectId);
 		const character: Character = {
 			id: input.id ?? uuidv4(),
 			projectId: input.projectId,
@@ -24,6 +26,7 @@ export const charactersDB = {
 			personality: '',
 			background: '',
 			relationships: [],
+			order: nextOrder(existing),
 			createdAt: now,
 			updatedAt: now,
 			_version: 1
@@ -61,6 +64,21 @@ export const charactersDB = {
 		if (character) {
 			await touchProject(character.projectId);
 		}
+	},
+
+	/**
+	 * toIndex 番目(移動後の位置)へ動かす。書いた行の id を返す(通常は 1 行。utils/ordering.ts)。
+	 * 並べ替えは内容の編集ではないので、履歴は残さない。同期は呼び出し元が、返った id を queueChanges に渡す。
+	 */
+	async moveTo(id: string, toIndex: number): Promise<string[]> {
+		const character = await db.characters.get(id);
+		if (!character) return [];
+		const siblings = await this.getByProjectId(character.projectId);
+		const changes = moveItem(siblings, id, toIndex).map((u) => ({
+			id: u.id,
+			changes: { order: u.order } as Partial<Character>
+		}));
+		return await writeOrderChanges(db.characters, character.projectId, changes);
 	},
 
 	/**

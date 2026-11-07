@@ -10,6 +10,7 @@
 	import {
 		aiStore,
 		EDIT_MODE_LABELS,
+		EDIT_MODE_SUMMARIES,
 		QUICK_ACTIONS,
 		type ChatMessage,
 		type EditMode,
@@ -17,6 +18,7 @@
 	} from '$lib/stores/ai.svelte';
 	import { splitEdits, type EditProposal } from '$lib/desktop/edits';
 	import EditCard from './EditCard.svelte';
+	import Select from '$lib/components/ui/Select.svelte';
 	import { describeActiveModel } from '$lib/ai/registry';
 
 	let input = $state('');
@@ -47,8 +49,13 @@
 		edit: '<path d="M4 20h4L18.5 9.5a2.8 2.8 0 0 0-4-4L4 16v4"/><path d="M13.5 6.5l4 4"/>',
 		retry: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
 		// 紙飛行機
-		send: '<path d="M21 3L10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>'
+		send: '<path d="M21 3L10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>',
+		stop: '<rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/>'
 	};
+
+	const editModeOptions = (Object.entries(EDIT_MODE_LABELS) as [EditMode, string][]).map(
+		([value, label]) => ({ value, label, description: EDIT_MODE_SUMMARIES[value] })
+	);
 
 	let sessionTitle = $derived(
 		aiStore.sessions.find((s) => s.id === aiStore.currentSessionId)?.title ?? '新しい会話'
@@ -403,7 +410,7 @@
 						in:fly={{ y: 6, duration: 180 }}
 					>
 						{#if editingId === message.id}
-							<div class="msg user editing">
+							<div class="msg user editing selectable">
 								<!-- svelte-ignore a11y_autofocus -->
 								<textarea
 									class="edit-input"
@@ -422,7 +429,7 @@
 								</div>
 							</div>
 						{:else}
-							<div class="msg user">
+							<div class="msg user selectable">
 								{#if message.quote}
 									<blockquote class="quote">{message.quote}</blockquote>
 								{/if}
@@ -459,7 +466,7 @@
 						{/if}
 					</div>
 				{:else if message.role === 'error'}
-					<div class="msg error" class:auth={message.auth}>
+					<div class="msg error selectable" class:auth={message.auth}>
 						{#if message.auth && message.provider && message.provider !== 'claude-code'}
 							<strong>認証に失敗しました。</strong>
 							<span class="error-detail">{message.text}</span>
@@ -479,7 +486,7 @@
 						{/if}
 					</div>
 				{:else}
-					<div class="msg assistant" in:fade={{ duration: 180 }}>
+					<div class="msg assistant selectable" in:fade={{ duration: 180 }}>
 						{#each renderItems(message) as item, i (i)}
 							{#if item.kind === 'markdown'}
 								<!-- eslint-disable-next-line svelte/no-at-html-tags -- DOMPurify で無害化済み -->
@@ -591,36 +598,35 @@
 				disabled={notFound}
 			></textarea>
 			<div class="input-foot">
-				<label class="mode-select" title="本文の編集">
-					{@render icon(ICONS.pen, 14)}
-					<select
-						value={aiStore.settings.editMode}
-						onchange={(e) =>
-							aiStore.updateSettings({ editMode: e.currentTarget.value as EditMode })}
-						aria-label="本文の編集"
-					>
-						{#each Object.entries(EDIT_MODE_LABELS) as [value, label] (value)}
-							<option {value}>{label}</option>
-						{/each}
-					</select>
-				</label>
+				<Select
+					class="mode-select"
+					size="sm"
+					aria-label="本文の編集"
+					menuMinWidth={240}
+					options={editModeOptions}
+					value={aiStore.settings.editMode}
+					onchange={(v) => aiStore.updateSettings({ editMode: v as EditMode })}
+				>
+					{#snippet leading()}{@render icon(ICONS.pen, 14)}{/snippet}
+				</Select>
 				<span class="spacer"></span>
 				<span class="provider-tag" data-ai-provider-tag title="使っているプロバイダとモデル">
 					{describeActiveModel(aiStore.provider, aiStore.settings)}
 				</span>
 				{#if aiStore.isRunning}
-					<button class="send stop" onclick={() => aiStore.cancel()} title="停止" aria-label="停止">
-						<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"
-							><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" /></svg
-						>
-					</button>
+					<button
+						class="icon send stop"
+						onclick={() => aiStore.cancel()}
+						title="停止"
+						aria-label="停止">{@render icon(ICONS.stop)}</button
+					>
 				{:else}
 					<button
-						class="send"
+						class="icon send"
 						onclick={() => send()}
 						disabled={!input.trim() || notFound}
 						title="送信 (Enter)"
-						aria-label="送信">{@render icon(ICONS.send, 17)}</button
+						aria-label="送信">{@render icon(ICONS.send)}</button
 					>
 				{/if}
 			</div>
@@ -1290,7 +1296,7 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		padding: 4px 6px 6px 10px;
+		padding: 4px;
 	}
 
 	.provider-tag {
@@ -1302,71 +1308,39 @@
 		white-space: nowrap;
 	}
 
-	.mode-select {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		min-width: 0;
-		height: 26px;
-		padding: 0 4px 0 8px;
-		border-radius: 7px;
-		color: var(--color-text-secondary);
-		transition: background-color 0.15s;
+	/* 本文の編集のセレクト。ボタン類と同じ高さの行に収める */
+	.input-foot :global(.mode-select) {
+		flex: 0 1 auto;
 	}
 
-	.mode-select:hover {
-		background: var(--hover);
-		color: var(--color-text);
-	}
-
-	.mode-select select {
-		min-width: 0;
-		padding: 0 18px 0 2px;
-		border: none;
-		background-color: transparent;
-		background-position: right 2px center;
-		color: inherit;
-		font: inherit;
-		font-size: 11.5px;
-		cursor: pointer;
-		outline: none;
-		box-shadow: none;
-	}
-
-	.send {
-		flex: none;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 32px;
-		height: 32px;
-		padding: 0;
-		border-radius: 50%;
+	/* 送信/停止は他のアイコンボタンと同じ 34px の角丸の正方形。有効なときだけ primary の面にする */
+	.send:not(:disabled) {
 		background: var(--color-primary);
 		color: var(--color-background);
-		transition:
-			transform 0.12s,
-			background-color 0.15s,
-			opacity 0.15s;
-	}
-
-	.send svg {
-		margin: 1px 1px 0 0;
 	}
 
 	.send:hover:not(:disabled) {
 		background: color-mix(in srgb, var(--color-primary) 85%, var(--color-text));
+		color: var(--color-background);
 	}
 
 	.send:active:not(:disabled) {
-		transform: scale(0.92);
+		transform: scale(0.94);
 	}
 
 	.send:disabled {
-		opacity: 0.35;
+		background: transparent;
+		color: var(--color-text-secondary);
+		opacity: 0.45;
 	}
 
-	.send.stop {
+	.send.stop:not(:disabled) {
 		background: var(--color-text);
+		color: var(--color-background);
+	}
+
+	.send.stop:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--color-text) 85%, var(--color-background));
+		color: var(--color-background);
 	}
 </style>

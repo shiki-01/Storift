@@ -330,6 +330,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
 	class="reader"
+	class:scroll-stable={!vertical}
 	class:vertical
 	bind:this={reader}
 	onscroll={onScroll}
@@ -400,7 +401,7 @@
 							{#if scene.isEmpty}
 								<p class="empty-note">（本文なし）</p>
 							{:else}
-								<div class="body">
+								<div class="body selectable">
 									<!-- eslint-disable-next-line svelte/no-at-html-tags -- previewToHtml で本文をエスケープ済み -->
 									{@html previewToHtml(scene.content, true, true)}
 								</div>

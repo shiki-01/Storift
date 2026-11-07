@@ -1,4 +1,5 @@
 ﻿<script lang="ts">
+	import Icon from './Icon.svelte';
 	import { onMount } from 'svelte';
 	import {
 		notificationService,
@@ -123,12 +124,12 @@
 					class="flex ai:center gap:8 p:12 border:1px|solid|theme-success r:8 fg:theme-success"
 					style="background-color: color-mix(in srgb, var(--color-success) 10%, transparent);"
 				>
-					<span class="font:20">✓</span>
+					<Icon name="check" class="ico font:20" />
 					<span class="font:14">通知が有効です</span>
 				</div>
 			{:else if permission === 'denied'}
 				<div class="flex ai:center gap:8 p:12 bg:theme-surface border:1|solid|theme-error r:8">
-					<span class="font:20">✗</span>
+					<Icon name="x" class="ico font:20" />
 					<div class="flex-grow">
 						<p class="font:14 fg:theme-error">通知が無効です</p>
 						<p class="font:12 fg:theme-error mt:4">ブラウザの設定から通知を許可してください</p>

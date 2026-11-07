@@ -2,6 +2,7 @@
 	// 設定「AI」: Claude Code の項目
 	import { onMount } from 'svelte';
 	import { aiStore } from '$lib/stores/ai.svelte';
+	import Select from '$lib/components/ui/Select.svelte';
 
 	const MODELS = [
 		{ value: '', label: '既定' },
@@ -12,6 +13,7 @@
 
 	let s = $derived(aiStore.settings.claudeCode);
 	let status = $derived(aiStore.status);
+	const modelOptions = [...MODELS, { value: '__custom', label: 'その他(モデル名を入力)' }];
 	let isPreset = $derived(MODELS.some((m) => m.value === s.model));
 	let loginError = $state('');
 
@@ -63,19 +65,14 @@
 <div class="field">
 	<label for="claude-model">モデル</label>
 	<div class="field-body">
-		<select
+		<Select
 			id="claude-model"
+			options={modelOptions}
 			value={isPreset ? s.model : '__custom'}
-			onchange={(e) => {
-				const v = e.currentTarget.value;
+			onchange={(v) => {
 				if (v !== '__custom') aiStore.updateProviderSettings('claudeCode', { model: v });
 			}}
-		>
-			{#each MODELS as m (m.value)}
-				<option value={m.value}>{m.label}</option>
-			{/each}
-			<option value="__custom">その他(モデル名を入力)</option>
-		</select>
+		/>
 		{#if !isPreset}
 			<input
 				type="text"

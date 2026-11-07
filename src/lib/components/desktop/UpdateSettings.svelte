@@ -4,6 +4,8 @@
 	import { getVersion } from '@tauri-apps/api/app';
 	import { updaterStore } from '$lib/stores/updater.svelte';
 	import { formatRelativeTime } from '$lib/utils/dateUtils';
+	import { formatByteProgress } from '$lib/utils/formatBytes';
+	import ProgressBar from '$lib/components/ui/ProgressBar.svelte';
 
 	let appVersion = $state('');
 
@@ -15,13 +17,16 @@
 		}
 	});
 
-	let percent = $derived(
-		updaterStore.progress === null ? null : Math.round(updaterStore.progress * 100)
+	// 受信量が分かれば「12.3 / 45.6 MB」を添える
+	let sizeText = $derived(
+		updaterStore.receivedBytes > 0 || updaterStore.totalBytes
+			? formatByteProgress(updaterStore.receivedBytes, updaterStore.totalBytes)
+			: undefined
 	);
 </script>
 
 <div class="update">
-	<p>Storift デスクトップ版{appVersion ? ` v${appVersion}` : ''}</p>
+	<p class="selectable">Storift デスクトップ版{appVersion ? ` v${appVersion}` : ''}</p>
 
 	{#if updaterStore.status === 'available'}
 		<p class="note">新しいバージョン {updaterStore.version} があります。</p>
@@ -29,14 +34,13 @@
 			<pre class="notes">{updaterStore.notes}</pre>
 		{/if}
 	{:else if updaterStore.status === 'downloading'}
-		<p class="note">ダウンロード中{percent === null ? '…' : ` ${percent}%`}</p>
-		<progress max="100" value={percent ?? undefined}></progress>
+		<ProgressBar value={updaterStore.progress} label="ダウンロード中" detail={sizeText} />
 	{:else if updaterStore.status === 'ready'}
 		<p class="note">更新を入れました。再起動すると新しいバージョンになります。</p>
 	{:else if updaterStore.status === 'uptodate'}
 		<p class="note">最新のバージョンです。</p>
 	{:else if updaterStore.status === 'error'}
-		<p class="note error">更新に失敗しました: {updaterStore.error}</p>
+		<p class="note error selectable">更新に失敗しました: {updaterStore.error}</p>
 	{/if}
 
 	<div class="actions">
@@ -92,10 +96,6 @@
 		font-family: inherit;
 		font-size: 12px;
 		white-space: pre-wrap;
-	}
-
-	progress {
-		width: 100%;
 	}
 
 	.actions {

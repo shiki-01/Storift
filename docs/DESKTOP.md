@@ -4,20 +4,20 @@ Storift を macOS / Windows / Linux のデスクトップアプリとして動�
 
 ## 構成
 
-| 場所                                           | 役割                                                                                                                          |
-| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `src-tauri/`                                   | Tauri v2 のネイティブ側(Rust)                                                                                                 |
-| `src-tauri/src/claude.rs`                      | `claude -p` の起動・出力の中継・中断                                                                                          |
-| `src-tauri/src/mcp.rs`                         | Claude Code が呼ぶ MCP サーバー(127.0.0.1)。呼び出しをフロントへ中継する。ツール定義を TS へ渡す `ai_tool_definitions` もここ |
-| `src-tauri/src/secrets.rs`                     | API キーの保管(`secret_set` / `secret_get` / `secret_delete`)。macOS / Windows は OS のキーチェーン                           |
-| `src-tauri/src/workspace.rs`                   | 原稿の書き出し先(ワークスペース)へのファイル同期                                                                              |
-| `src-tauri/src/shell_env.rs`                   | ログインシェルの環境変数(PATH など)の取り込み                                                                                 |
-| `src/lib/desktop/`                             | フロントエンドからネイティブ側の呼び出し、原稿の Markdown 化、出力の解釈                                                      |
-| `src/lib/desktop/mcp.ts`                       | MCP ツール(storift)の処理。IndexedDB を読み、編集案を回答に記録する                                                           |
-| `src/lib/ai/`                                  | AI プロバイダの抽象(型・登録簿・設定の移行・API キーの保管・HTTP 系の共通基盤・各プロバイダ)                                  |
-| `src/lib/stores/ai.svelte.ts`                  | パネルの状態・会話・設定                                                                                                      |
-| `src/lib/components/desktop/AiPanel.svelte`    | サイドパネルの UI                                                                                                             |
-| `src/lib/components/settings/AiSection.svelte` | 設定の「AI」(プロバイダの選択と各設定)                                                                                        |
+| 場所                                           | 役割                                                                                                                                 |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `src-tauri/`                                   | Tauri v2 のネイティブ側(Rust)                                                                                                        |
+| `src-tauri/src/claude.rs`                      | `claude -p` の起動・出力の中継・中断                                                                                                 |
+| `src-tauri/src/mcp.rs`                         | Claude Code が呼ぶ MCP サーバー(127.0.0.1)。呼び出しをフロントへ中継する。ツール定義を TS へ渡す `ai_tool_definitions` もここ        |
+| `src-tauri/src/secrets.rs`                     | API キーの保管(`secret_set` / `secret_get` / `secret_delete`)。macOS / Windows は OS のキーチェーン                                  |
+| `src-tauri/src/workspace.rs`                   | 原稿の書き出し先(ワークスペース)へのファイル同期。現在の Claude Code 連携は使わない(旧版の名残。作業ディレクトリは空の `claude-cwd`) |
+| `src-tauri/src/shell_env.rs`                   | ログインシェルの環境変数(PATH など)の取り込み                                                                                        |
+| `src/lib/desktop/`                             | フロントエンドからネイティブ側の呼び出し、原稿の Markdown 化、出力の解釈                                                             |
+| `src/lib/desktop/mcp.ts`                       | MCP ツール(storift)の処理。IndexedDB を読み、編集案を回答に記録する                                                                  |
+| `src/lib/ai/`                                  | AI プロバイダの抽象(型・登録簿・設定の移行・API キーの保管・HTTP 系の共通基盤・各プロバイダ)                                         |
+| `src/lib/stores/ai.svelte.ts`                  | パネルの状態・会話・設定                                                                                                             |
+| `src/lib/components/desktop/AiPanel.svelte`    | サイドパネルの UI                                                                                                                    |
+| `src/lib/components/settings/AiSection.svelte` | 設定の「AI」(プロバイダの選択と各設定)                                                                                               |
 
 フロントエンドは Web 版と同じ SvelteKit のコードで、Tauri から起動したときだけ `adapter-static` で静的ファイルとして書き出してアプリに同梱する(`svelte.config.js` が `TAURI_ENV_PLATFORM` を見て切り替える)。Service Worker はデスクトップ版では登録しない。
 
@@ -240,13 +240,13 @@ Linux では WebKitGTK などが必要(`.github/workflows/desktop.yml` の「Ins
 
 ## ビルドと配布(GitHub Actions)
 
-| ワークフロー                    | 内容                                                              |
-| ------------------------------- | ----------------------------------------------------------------- |
-| `.github/workflows/ci.yml`      | Web 版の型チェック・テスト・ビルド                                |
-| `.github/workflows/desktop.yml` | macOS(Apple Silicon / Intel)・Windows・Linux 向けにアプリをビルド |
+| ワークフロー                    | 内容                                                                        |
+| ------------------------------- | --------------------------------------------------------------------------- |
+| `.github/workflows/ci.yml`      | Web 版の型チェック・テスト・ビルド                                          |
+| `.github/workflows/desktop.yml` | macOS(Apple Silicon / Intel)・Windows・Linux 向けにアプリをビルド(4 ジョブ) |
 
-- main への push と PR では、ビルドした `.dmg` / `.msi` / `.exe` / `.deb` / `.rpm` / `.AppImage` を Actions の Artifacts に置く。
-- `v` から始まるタグ(例: `v0.1.0`)を push すると、それらを添付した下書きのリリースを GitHub Releases に作る。アプリのバージョンは `package.json` の `version` を使うので、タグと合わせて更新する。
+- PR(デスクトップ版に関係するファイルを変えたときだけ)は、`--no-bundle` でビルドが通ることと、Linux の `cargo test` を確かめる。インストーラーや Artifacts は作らない。main への push だけでは `desktop.yml` は動かない(Web 側の確認は `deploy-app.yml` が行う)。
+- `v` から始まるタグ(例: `v0.1.0`)の push では、4 つのジョブ(macOS arm64・macOS x64・Linux・Windows)がインストーラー(`.dmg` / `.msi` / `.exe` / `.deb` / `.rpm` / `.AppImage`)を作り、GitHub Releases の下書きのリリースに添付する。同じファイルを Actions の Artifacts にも置く。アプリのバージョンは `package.json` の `version` を使う(`tauri.conf.json` の `version` が参照している)ので、タグと合わせて更新する。
 
 ### 自動アップデート
 
@@ -271,7 +271,7 @@ bun run tauri signer generate -w ~/.tauri/storift-updater.key
 #### リリースの手順
 
 1. `package.json` の `version` を上げ、`main` に入れる。
-2. あとは自動。`release.yml` が `v<version>` のタグを作り、`desktop.yml` が 3 OS 分をビルドして署名付きのリリースと `latest.json` を作る。3 つとも通ると、リリースを自動で公開し、利用者へ更新が配られる。
+2. あとは自動。`release.yml` が `v<version>` のタグを作り、`desktop.yml` が 4 ジョブ(macOS arm64・macOS x64・Linux・Windows)をビルドして、署名付きの下書きのリリースと `latest.json` を作る。4 つとも通ると、`publish` ジョブが下書きを自動で公開し(最新のリリースにする)、利用者へ更新が配られる。
 
 - すでにあるバージョンは何もしない(`package.json` を別の理由で変えても、タグは増えない)。
 - 手動でやり直すときは、Actions の「Release」を手動実行する。手でタグを打って push しても、同じビルドが動く。

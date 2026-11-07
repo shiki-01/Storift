@@ -14,10 +14,12 @@
 ## アプリの画面を載せている箇所
 
 - トップの操作デモ(`site/src/lib/demo/`)は動画ではなく、見本の部品を台本どおりに動かしている。アプリの見た目を大きく変えたら合わせて直す。
-- 実画面の画像は `site/static/shots/` にある。アプリの dev サーバーを 5181 番で起動し、リポジトリ直下で次を実行すると撮り直せる。使い捨てプロファイルの Chrome で撮るので、手元の作品には触れない。
+- 実画面の画像は `site/static/shots/`(WebP。ライト/ダークの 2 枚ずつ)にある。アプリの dev サーバーを 5181 番で起動し、リポジトリ直下で次を実行すると撮り直せる。Playwright の Chromium(E2E と同じ、インストール済みのもの)で撮り、撮影用の作品(`site/scripts/seed.js`)を使い捨てのコンテキストに入れるので、手元の作品には触れない。画面を作り直したら、その画面の画像(`relation`・`world` など)を撮り直す。
 
 ```bash
-node site/scripts/capture-shots.mjs
+bun run dev -- --port 5181 --strictPort   # 別のターミナルで起動しておく
+node site/scripts/capture-shots.mjs                  # すべて撮る
+node site/scripts/capture-shots.mjs relation world   # 名前を指定すると、その画像だけ撮る
 ```
 
 ## URL の設定

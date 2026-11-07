@@ -17,12 +17,37 @@ Issue に次を書いてください。
 ```sh
 bun run lint
 bun run check
-bun run test
+bun run test -- --run
+bun run build
 ```
 
+- `bun run test` は vitest で、`src/` 以下のテストだけを実行します(`--run` を付けないと、監視モードのまま終わりません)。
+- 変更した内容によっては、次も確認してください。
+  - `site/` を変えた場合: `cd site` して `bun run lint`、`bun run check`、`bun run build`(`site/node_modules` が必要。なければ `bun install`)。
+  - `src-tauri/`(Rust)を変えた場合: `cd src-tauri` して `cargo fmt --check` と `cargo test`。
+  - `firestore.rules` を変えた場合: `bun run test:rules`(Java と Firebase Emulator が必要。`firebase emulators:exec` を使います)。あわせて、紹介サイトのガイドに載せたルールの写し(`site/src/lib/firestoreRules.ts`)も同じ内容に更新してください。`bun run test` が一致を検証します。
+- 画面を変えた場合は、関連する E2E を `bun run test:e2e:*` で実行してください。Playwright の Chromium を使い、`vite dev` を空きポートで起動します。**並行して実行すると不安定になるものがあるので、1 本ずつ実行してください。**
+  - `test:e2e`(共同編集): Firebase Emulator(auth・firestore)を使います。
+  - `test:e2e:mobile` / `:preview` / `:settings` / `:ai-header` / `:ai-select` / `:user-select` / `:scrollbar` / `:progress` / `:plot` / `:characters` / `:worldbuilding`: エミュレータは不要です。
 - コードの整形は Prettier、静的解析は ESLint に従います(`bun run format` で整形できます)。
 - 挙動を変える場合は、可能な範囲でテストを追加してください。
 - 変更は目的ごとに分け、コミットメッセージは変更の内容が分かるように書いてください。
+
+### CI
+
+GitHub Actions が実行するのは、次のコマンドです。**`bun run lint`、`test:rules`、E2E は CI では動かない**ので、手元で確認してください。
+
+| ワークフロー | いつ                             | コマンド                                               |
+| ------------ | -------------------------------- | ------------------------------------------------------ |
+| Web CI       | PR                               | `bun run check` / `bunx vitest run` / `bun run build`  |
+| Deploy App   | main への push                   | 同上のあと、Cloudflare Pages へ配信                    |
+| Desktop      | PR(デスクトップ版に関係する変更) | Linux で `cargo test`、各 OS で `--no-bundle` のビルド |
+
+## リリース
+
+1. `package.json` の `version` を上げます(`src-tauri/Cargo.toml` の `version` も揃えます)。
+2. 変更点を [CHANGELOG.md](CHANGELOG.md) に書きます。
+3. `main` に入れます。`release.yml` が `v<version>` のタグを作り、`desktop.yml` がインストーラーのビルドと GitHub Releases への公開までを行います。手順の詳細は [docs/DESKTOP.md](docs/DESKTOP.md) の「リリースの手順」を参照してください。
 
 ## 変更前の相談
 

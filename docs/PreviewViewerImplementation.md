@@ -1,3 +1,5 @@
+> **注記: この文書は実装前(着手時)の計画メモで、履歴として残している。** 計画の部品(`PreviewViewer.svelte` / `PreviewSettings.svelte` / `ManuscriptGrid.svelte`)は、エディタ内のプレビューとして実装済み。その後に、作品全体を通して読む「通読」(`src/routes/project/[id]/preview/+page.svelte`、`src/lib/components/preview/ManuscriptReader.svelte`、原稿の組み立ては `src/lib/utils/manuscript.ts`)が加わったが、この文書には書かれていない。計画と実装が食い違う場合は、コードと [UI_GUIDELINES.md](UI_GUIDELINES.md) を正とする。
+
 Preview Viewer Implementation
 Analyze existing project structure and data models
 Design Preview Component

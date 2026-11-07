@@ -1,30 +1,32 @@
 <script lang="ts">
 	import { syncStore } from '$lib/stores/sync.svelte';
 	import { formatRelativeTime } from '$lib/utils/dateUtils';
+	import Icon from './Icon.svelte';
+	import ProgressBar from './ProgressBar.svelte';
 
 	const statusConfig = {
 		synced: {
-			icon: '✓',
+			icon: 'check',
 			text: '同期済み',
 			color: 'fg:theme-text'
 		},
 		syncing: {
-			icon: '⟳',
+			icon: 'loader-2',
 			text: '同期中...',
 			color: 'fg:theme-primary'
 		},
 		offline: {
-			icon: '⚠',
+			icon: 'alert-triangle',
 			text: 'オフライン',
 			color: 'fg:theme-warning'
 		},
 		conflict: {
-			icon: '⚠',
+			icon: 'alert-triangle',
 			text: '競合発生',
 			color: 'fg:theme-error'
 		},
 		error: {
-			icon: '✕',
+			icon: 'x',
 			text: 'エラー',
 			color: 'fg:theme-error'
 		}
@@ -32,7 +34,7 @@
 
 	// Firebase 未設定(同期なし)のときは「オフライン」ではなく、この端末に保存していることを示す
 	const localConfig = {
-		icon: '○',
+		icon: 'circle',
 		text: '同期なし',
 		color: 'fg:theme-text-secondary'
 	};
@@ -45,6 +47,12 @@
 		syncStore.isConfigured && syncStore.status === 'syncing' && progress.phase && progress.total > 0
 			? `同期中 ${progress.done}/${progress.total}`
 			: config.text
+	);
+	// 件数が分かっているときだけ、バーで進み具合を示す
+	const syncRatio = $derived(
+		syncStore.isConfigured && syncStore.status === 'syncing' && progress.phase && progress.total > 0
+			? Math.min(1, progress.done / progress.total)
+			: null
 	);
 	const progressTitle = $derived(
 		syncStore.status === 'syncing' && progress.phase
@@ -68,12 +76,15 @@
 		? () => (syncStore.conflictDialogOpen = true)
 		: undefined}
 >
-	<span class="{config.color} {syncStore.status === 'syncing' ? 'spinning' : ''}">
-		{config.icon}
+	<span class="{config.color} status-icon {syncStore.status === 'syncing' ? 'spinning' : ''}">
+		<Icon name={config.icon} />
 	</span>
 	<span class={config.color + ' white-space:nowrap'}>
 		{statusText}
 	</span>
+	{#if syncRatio !== null}
+		<ProgressBar class="sync-bar" value={syncRatio} label="同期の進捗" size="sm" showText={false} />
+	{/if}
 	{#if syncStore.lastSyncTime}
 		<span class="sync-time fg:theme-text-secondary white-space:nowrap">
 			• {formatRelativeTime(syncStore.lastSyncTime)}
@@ -105,8 +116,20 @@
 		text-underline-offset: 3px;
 	}
 
+	.status-icon,
+	.status-icon :global(div),
+	.status-icon :global(svg) {
+		display: flex;
+		width: 14px;
+		height: 14px;
+	}
+
+	:global(.sync-bar) {
+		width: 56px;
+		flex: none;
+	}
+
 	.spinning {
-		display: inline-block;
 		animation: spin 2s linear infinite;
 	}
 
@@ -115,6 +138,10 @@
 		.sync-time,
 		.sync-error {
 			display: none;
+		}
+
+		:global(.sync-bar) {
+			width: 40px;
 		}
 	}
 

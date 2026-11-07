@@ -272,6 +272,20 @@ export const EDIT_MODE_LABELS: Record<EditMode, string> = {
 	auto: '自動で反映(後から確認)'
 };
 
+/** 設定画面での説明 */
+export const EDIT_MODE_HINTS: Record<EditMode, string> = {
+	suggest: '修正案を文章で示すだけで、本文は書き換えません。',
+	confirm: '編集案を差分で確認し、1 件ずつ(または「すべて反映」で)反映します。',
+	auto: '回答が終わると本文を書き換えます。変更は本文上に色付きで残り、後から保持・元に戻すを選べます。'
+};
+
+/** セレクトの項目に添える短い説明 */
+export const EDIT_MODE_SUMMARIES: Record<EditMode, string> = {
+	suggest: '修正案を文章で示すだけ',
+	confirm: '差分を見て 1 件ずつ反映',
+	auto: '回答後に反映し、後から戻せる'
+};
+
 const GLOBAL_KEY = '__global__';
 const MAX_SAVED_MESSAGES = 100;
 const MAX_SAVED_SESSIONS = 30;

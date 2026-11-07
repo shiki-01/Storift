@@ -33,6 +33,20 @@ export const icons = {
 	panel: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9.5 4v16"/>',
 	print:
 		'<path d="M7 8V4h10v4"/><rect x="4" y="8" width="16" height="8" rx="2"/><path d="M7 14h10v6H7z"/>',
+	preview:
+		'<path d="M3 5.5C5.5 4.3 8.5 4.3 12 6c3.5-1.7 6.5-1.7 9 -.5V18c-2.5-1.2-5.5-1.2-9 .5-3.5-1.7-6.5-1.7-9-.5z"/><path d="M12 6v12.5"/>',
+	plus: '<path d="M12 5v14M5 12h14"/>',
+	dots: '<path d="M6 12h.01M12 12h.01M18 12h.01"/>',
+	grip: '<path d="M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01"/>',
+	chevron: '<path d="M6 9l6 6 6-6"/>',
+	list: '<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>',
+	columns:
+		'<rect x="3.5" y="4" width="7" height="16" rx="1.5"/><rect x="13.5" y="4" width="7" height="10" rx="1.5"/>',
+	timeline:
+		'<path d="M6 4v16"/><circle cx="6" cy="8" r="2"/><circle cx="6" cy="16" r="2"/><path d="M11 8h9M11 16h9"/>',
+	buildings: '<path d="M4 20V8l6-3v15M10 20v-9l10 3v6M3 20h18"/>',
+	term: '<path d="M3.5 17l3.5-10 3.5 10M4.8 13.5h4.4M14 7v10h3.2a2.5 2.5 0 0 0 0-5H14"/>',
+	loader: '<path d="M12 3a9 9 0 1 0 9 9"/>',
 	palette:
 		'<path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.2 0 1.9-.9 1.9-1.9 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1 .8-1.8 1.8-1.8h2.1a4.2 4.2 0 0 0 3.7-4.2c0-3.7-3.8-6.5-8.5-6.5z"/><circle cx="7.8" cy="11.5" r="1"/><circle cx="10.5" cy="7.8" r="1"/><circle cx="15" cy="8" r="1"/>'
 } as const;

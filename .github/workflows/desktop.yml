@@ -16,6 +16,9 @@ on:
       - 'bun.lock'
       - 'svelte.config.js'
       - 'vite.config.ts'
+      # アプリのビルドが読み込むファイル(AccessSettings が firestore.rules を ?raw で取り込む。Master CSS の設定)
+      - 'firestore.rules'
+      - 'master.css.ts'
       - 'vitest.config.ts'
       - 'tsconfig.json'
       - '.github/workflows/desktop.yml'

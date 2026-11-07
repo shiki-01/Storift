@@ -37,7 +37,7 @@
 			<p class="chapter"><span>⌄</span><strong>{c.title}</strong></p>
 			{#each c.scenes as s (s)}
 				<p class="scene" class:active={s === '祖母の栞'}>
-					{s}<small>{s === '祖母の栞' ? count.toLocaleString() : sceneCounts[s]}字</small>
+					{s}<small>{s === '祖母の栞' ? count.toLocaleString() : sceneCounts[s]}文字</small>
 				</p>
 			{/each}
 		{/each}
@@ -49,6 +49,7 @@
 			<div class="crumb"><small>第一章 雨の古書店</small><strong>祖母の栞</strong></div>
 			<span class="count">{count} 字</span>
 			<div class="tools">
+				<span class="extra"><Icon name="palette" size={15} /></span>
 				<span class="modes">
 					<i class:on={!split}><Icon name="write" size={14} /></i>
 					<i class:on={split} class:press={pressed === 'mode-split'} data-t="mode-split">
@@ -57,12 +58,16 @@
 					<i><Icon name="eye" size={14} /></i>
 				</span>
 				<span class="extra">
-					<Icon name="export" size={15} /><Icon name="print" size={15} /><Icon
-						name="history"
+					<Icon name="export" size={15} /><Icon name="preview" size={15} /><Icon
+						name="print"
 						size={15}
-					/><Icon name="search" size={15} />
+					/><Icon name="history" size={15} /><Icon name="search" size={15} />
 				</span>
-				<span class="saved" class:saving><i></i>{saving ? '保存中' : '保存済み'}</span>
+				<!-- アプリの保存状態(SaveState)と同じ: アイコン + 短い言葉。幅は固定して、右のボタンを動かさない -->
+				<span class="saved" class:saving role="status">
+					<span class="glyph"><Icon name={saving ? 'loader' : 'check'} size={14} /></span>
+					<span class="label">{saving ? '保存中' : '保存済み'}</span>
+				</span>
 			</div>
 		</div>
 
@@ -246,19 +251,30 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
-		font-size: 10.5px;
+		min-width: 4.6em;
+		font-size: 11px;
 	}
 
-	.saved i {
-		width: 5px;
-		height: 5px;
-		border-radius: 50%;
-		background: var(--color-success);
-		transition: background-color 0.2s;
+	.saved .glyph {
+		display: inline-flex;
+		color: var(--color-success);
 	}
 
-	.saved.saving i {
-		background: var(--color-text-secondary);
+	.saved.saving .glyph {
+		color: var(--color-primary);
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.saved.saving .glyph {
+			animation: none;
+		}
 	}
 
 	.body {
@@ -334,8 +350,12 @@
 	@media (max-width: 760px) {
 		.crumb small,
 		.bar > :global(svg),
-		.saved {
+		.saved .label {
 			display: none;
+		}
+
+		.saved {
+			min-width: 0;
 		}
 
 		.source {

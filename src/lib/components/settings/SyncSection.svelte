@@ -3,6 +3,7 @@
 	import { toast } from '$lib/stores/toast.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import Select from '$lib/components/ui/Select.svelte';
 	import ConflictBackups from '$lib/components/ui/ConflictBackups.svelte';
 	import { isFirebaseInitialized } from '$lib/firebase/config';
 	import { stopAllRealtimeSync } from '$lib/firebase/sync';
@@ -181,16 +182,16 @@
 		labelFor="conflictResolution"
 		description="競合した版は、下の「同期バックアップ」から復元できます。"
 	>
-		<select
+		<Select
 			id="conflictResolution"
 			bind:value={form.settings.conflictResolution}
 			onchange={form.save}
-			class="px:.75rem py:.5rem pr:30 b:1px|solid|theme-border r:8px fg:theme-text"
-		>
-			<option value="manual">手動で選択（推奨）</option>
-			<option value="local">常にこの端末の変更を優先</option>
-			<option value="remote">常にクラウドの変更を優先</option>
-		</select>
+			options={[
+				{ value: 'manual', label: '手動で選択（推奨）' },
+				{ value: 'local', label: '常にこの端末の変更を優先' },
+				{ value: 'remote', label: '常にクラウドの変更を優先' }
+			]}
+		/>
 	</SettingsRow>
 	<div
 		class="px:1rem py:.75rem r:6px"

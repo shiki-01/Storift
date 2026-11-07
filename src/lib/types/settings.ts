@@ -63,6 +63,8 @@ export interface AppSettings {
 	autoTheme: boolean;
 	editorFont?: EditorFont;
 	editorFormatting: EditorFormatting;
+	/** 執筆画面のツールバーで、三点メニュー(…)にまとめるボタンの id(未設定は全部ツールバーに表示)。端末内にだけ保存 */
+	toolbarMenuItems?: string[];
 	shortcuts: {
 		save: string;
 		undo: string;

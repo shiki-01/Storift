@@ -55,7 +55,7 @@ import {
 	PANEL_KEY,
 	SETTINGS_KEY
 } from '$lib/ai/settings';
-import { EDIT_INSTRUCTIONS } from '$lib/ai/prompts';
+import { EDIT_INSTRUCTIONS, REFERENCE_INSTRUCTIONS } from '$lib/ai/prompts';
 import type {
 	AiProvider,
 	AiProviderId,
@@ -1411,7 +1411,10 @@ export const aiStore = {
 								? conv.sessionId
 								: undefined,
 						editMode: mode,
-						appendSystemPrompt: mode === 'suggest' ? undefined : EDIT_INSTRUCTIONS,
+						appendSystemPrompt:
+							mode === 'suggest'
+								? REFERENCE_INSTRUCTIONS
+								: `${EDIT_INSTRUCTIONS}\n\n${REFERENCE_INSTRUCTIONS}`,
 						settings: $state.snapshot(settings) as AiSettings
 					},
 					onLine,

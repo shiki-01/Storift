@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { EditorFont } from '$lib/types';
 	import { isDesktop } from '$lib/desktop/platform';
+	import Select from './Select.svelte';
 	import {
 		getSystemFontName,
 		listSystemFonts,
@@ -77,14 +78,13 @@
 		}
 	});
 
-	function handleChange(e: Event) {
-		const target = e.target as HTMLSelectElement;
-		if (target.value === SYSTEM_OPTION) {
+	function handleChange(selected: string) {
+		if (selected === SYSTEM_OPTION) {
 			enableSystemMode();
 			return;
 		}
 		systemMode = false;
-		const newFont = target.value as EditorFont;
+		const newFont = selected as EditorFont;
 		value = newFont;
 		if (onchange) {
 			onchange(newFont);
@@ -102,20 +102,15 @@
 </script>
 
 <div class="font-selector">
-	<select
+	<Select
+		aria-label="エディタのフォント"
 		value={systemMode ? SYSTEM_OPTION : value}
 		onchange={handleChange}
-		class="p:8|12 r:6 border:1|solid|theme-border cursor:pointer font:13 outline:none focus:border:theme-primary transition:all|0.2s"
-	>
-		{#each fonts as font (font.value)}
-			<option value={font.value} style="font-family: {font.fontFamily};">
-				{font.label}
-			</option>
-		{/each}
-		{#if desktop}
-			<option value={SYSTEM_OPTION}>システムフォント…</option>
-		{/if}
-	</select>
+		options={[
+			...fonts.map((f) => ({ value: f.value as string, label: f.label })),
+			...(desktop ? [{ value: SYSTEM_OPTION, label: 'システムフォント…' }] : [])
+		]}
+	/>
 	{#if desktop && systemMode}
 		<input
 			type="text"
@@ -134,13 +129,3 @@
 		</datalist>
 	{/if}
 </div>
-
-<style>
-	select {
-		appearance: none;
-		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23333' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
-		background-repeat: no-repeat;
-		background-position: right 8px center;
-		padding-right: 32px;
-	}
-</style>

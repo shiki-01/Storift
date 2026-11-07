@@ -12,6 +12,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Select from '$lib/components/ui/Select.svelte';
+	import ColorPicker from '$lib/components/ui/ColorPicker.svelte';
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
 	import MasterDetail from '$lib/components/items/MasterDetail.svelte';
 	import ItemDetail from '$lib/components/items/ItemDetail.svelte';
@@ -720,7 +721,11 @@
 							</div>
 							<div class="field">
 								<label for="plot-color">カラー</label>
-								<input id="plot-color" type="color" bind:value={form.color} class="color" />
+								<ColorPicker
+									id="plot-color"
+									bind:value={form.color}
+									aria-label="プロットのカラー"
+								/>
 							</div>
 						{/snippet}
 					</ItemDetail>
@@ -1157,16 +1162,6 @@
 
 	.field-row .field {
 		flex: 1 1 10rem;
-	}
-
-	.color {
-		width: 4rem;
-		height: 36px;
-		padding: 2px;
-		border: 1px solid var(--color-border);
-		border-radius: 8px;
-		background: var(--color-background);
-		cursor: pointer;
 	}
 
 	@media (max-width: 768px) {

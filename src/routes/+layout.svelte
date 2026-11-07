@@ -25,6 +25,7 @@
 	import ConflictHost from '$lib/components/ui/ConflictHost.svelte';
 	import TourOverlay from '$lib/components/tutorial/TourOverlay.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
+	import { installNativeContextMenuPolicy } from '$lib/desktop/nativeContextMenu';
 	import { aiStore } from '$lib/stores/ai.svelte';
 	import { updaterStore } from '$lib/stores/updater.svelte';
 	import TitleBar from '$lib/components/desktop/TitleBar.svelte';
@@ -123,6 +124,9 @@
 		// ビューポート(スマホ判定・キーボード高さ)の監視を開始
 		const stopViewport = initViewport();
 
+		// デスクトップ版の既定のコンテキストメニュー(戻る・再読み込み・検証)を、非編集領域では出さない
+		const stopContextMenuPolicy = installNativeContextMenuPolicy();
+
 		// デスクトップ版は、起動後に新しいバージョンを自動で確認する
 		if (desktop) updaterStore.startAutoCheck();
 
@@ -210,6 +214,7 @@
 		return () => {
 			updaterStore.stopAutoCheck();
 			stopViewport();
+			stopContextMenuPolicy();
 			unsubscribe();
 			stopNetworkMonitoring();
 			stopSync();

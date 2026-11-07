@@ -5,7 +5,6 @@
 	import {
 		SvelteFlow,
 		Background,
-		Controls,
 		Panel,
 		ConnectionMode,
 		MarkerType,
@@ -29,6 +28,10 @@
 		insideRect
 	} from '$lib/utils/relationGraph';
 	import Sheet from '$lib/components/mobile/Sheet.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
+	import ColorPicker from '$lib/components/ui/ColorPicker.svelte';
+	import Icon from '$lib/components/ui/Icon.svelte';
+	import RelationControls from './RelationControls.svelte';
 	import CharacterNode from './CharacterNode.svelte';
 	import GroupNode from './GroupNode.svelte';
 	import RelationEdge from './RelationEdge.svelte';
@@ -45,6 +48,8 @@
 
 	const nodeTypes = { character: CharacterNode, region: GroupNode };
 	const edgeTypes = { relation: RelationEdge };
+	const MIN_ZOOM = 0.3;
+	const MAX_ZOOM = 2;
 	const NODE_W = 96;
 	const NODE_H = 88;
 
@@ -544,8 +549,8 @@
 		{edgeTypes}
 		fitView
 		fitViewOptions={{ padding: 0.25 }}
-		minZoom={0.3}
-		maxZoom={2}
+		minZoom={MIN_ZOOM}
+		maxZoom={MAX_ZOOM}
 		connectionMode={ConnectionMode.Loose}
 		connectionRadius={70}
 		deleteKey={null}
@@ -559,14 +564,21 @@
 		onmoveend={(_, vp) => (viewport = vp)}
 	>
 		<Background gap={22} />
-		<Controls showLock={false} />
+		<Panel position="bottom-left">
+			<RelationControls zoom={viewport.zoom} minZoom={MIN_ZOOM} maxZoom={MAX_ZOOM} />
+		</Panel>
 		<Panel position="top-left">
 			<div class="tools">
-				<button onclick={addGroup}>＋ グループ</button>
-				<button onclick={autoLayout}>自動配置</button>
-				<button onclick={() => (fullscreen = !fullscreen)}>
-					{fullscreen ? '閉じる' : '全画面'}
-				</button>
+				<Button variant="secondary" size="sm" onclick={addGroup}>
+					<Icon name="plus" class="btn-ico" />グループ
+				</Button>
+				<Button variant="secondary" size="sm" onclick={autoLayout}>自動配置</Button>
+				<Button variant="secondary" size="sm" onclick={() => (fullscreen = !fullscreen)}>
+					{#if fullscreen}<Icon name="x" class="btn-ico" />閉じる{:else}<Icon
+							name="arrows-maximize"
+							class="btn-ico"
+						/>全画面{/if}
+				</Button>
 			</div>
 		</Panel>
 		<Panel position="bottom-center">
@@ -611,19 +623,7 @@
 
 			<div class="field">
 				<span>色</span>
-				<div class="swatches">
-					{#each RELATION_COLORS as color (color)}
-						<button
-							type="button"
-							class="swatch"
-							class:on={draftColor === color}
-							style:background={color}
-							aria-label={`色 ${color}`}
-							aria-pressed={draftColor === color}
-							onclick={() => (draftColor = color)}
-						></button>
-					{/each}
-				</div>
+				<ColorPicker bind:value={draftColor} presets={RELATION_COLORS} aria-label="線の色" />
 			</div>
 
 			{#if editor.kind !== 'group'}
@@ -672,15 +672,16 @@
 
 			<div class="actions">
 				{#if editor.kind !== 'new'}
-					<button type="button" class="danger" onclick={remove} disabled={busy}>削除</button>
+					<Button variant="danger" size="lg" onclick={remove} disabled={busy}>削除</Button>
 				{/if}
-				<button
+				<Button
 					type="submit"
-					class="primary"
+					size="lg"
+					class="grow"
 					disabled={busy || (editor.kind !== 'group' && !draftLabel.trim())}
 				>
 					{editor.kind === 'new' ? '追加' : '保存'}
-				</button>
+				</Button>
 			</div>
 		</form>
 	{/if}
@@ -698,12 +699,9 @@
 		background: var(--color-background);
 		--xy-background-color: var(--color-background);
 		--xy-background-pattern-dots-color-default: var(--color-border);
-		--xy-edge-label-background-color-default: var(--color-background);
-		--xy-edge-label-color-default: var(--color-text);
-		--xy-controls-button-background-color-default: var(--color-background);
-		--xy-controls-button-color-default: var(--color-text);
-		--xy-controls-button-border-color-default: var(--color-border);
-		--xy-minimap-background-color-default: var(--color-surface);
+		/* ラベルの箱は RelationEdge の中身で描くので、ライブラリ既定の白い箱は消す */
+		--xy-edge-label-background-color: transparent;
+		--xy-edge-label-color: var(--color-text);
 	}
 
 	@media (max-width: 768px) {
@@ -724,6 +722,21 @@
 		padding-bottom: var(--safe-bottom);
 	}
 
+	.canvas :global(.svelte-flow__edge-label) {
+		padding: 0;
+		background: transparent;
+		color: var(--color-text);
+	}
+
+	/* ダークテーマで選択した線が沈まないように */
+	.canvas :global(.svelte-flow__edge.selected .svelte-flow__edge-path) {
+		stroke-width: 3;
+	}
+
+	.canvas :global(.svelte-flow__panel) {
+		margin: 12px;
+	}
+
 	.canvas :global(.svelte-flow) {
 		background: var(--color-background);
 	}
@@ -738,15 +751,15 @@
 		gap: 6px;
 	}
 
-	.tools button {
-		height: 34px;
-		padding: 0 12px;
-		border: 1px solid var(--color-border);
-		border-radius: 10px;
-		background: var(--color-background);
-		color: var(--color-text);
-		font-size: 13px;
-		cursor: pointer;
+	.tools :global(.btn-ico) {
+		display: inline-flex;
+		width: 14px;
+		height: 14px;
+	}
+
+	.tools :global(.btn-ico svg) {
+		width: 100%;
+		height: 100%;
 	}
 
 	.hint {
@@ -790,24 +803,6 @@
 		color: var(--color-text-secondary);
 	}
 
-	.swatches {
-		display: flex;
-		gap: 10px;
-	}
-
-	.swatch {
-		width: 32px;
-		height: 32px;
-		border-radius: 50%;
-		border: 2px solid var(--color-background);
-		box-shadow: 0 0 0 1px var(--color-border);
-		cursor: pointer;
-	}
-
-	.swatch.on {
-		box-shadow: 0 0 0 2px var(--color-text);
-	}
-
 	.seg {
 		display: flex;
 		gap: 4px;
@@ -839,29 +834,7 @@
 		gap: 8px;
 	}
 
-	.actions button {
-		height: 44px;
-		padding: 0 18px;
-		border-radius: 12px;
-		font-size: 14px;
-		cursor: pointer;
-	}
-
-	.actions .primary {
+	.actions :global(.grow) {
 		flex: 1;
-		border: none;
-		background: var(--color-primary);
-		color: var(--color-background);
-		font-weight: 600;
-	}
-
-	.actions .primary:disabled {
-		opacity: 0.4;
-	}
-
-	.actions .danger {
-		border: 1px solid var(--color-border);
-		background: var(--color-background);
-		color: var(--color-error);
 	}
 </style>

@@ -56,15 +56,16 @@
 	const MIN_SIZE = 12;
 	const MAX_SIZE = 32;
 
-	function loadPrefs(): { writingMode: WritingMode; fontSize: number | null } {
+	function loadPrefs(): { writingMode: WritingMode; fontSize: number | null; focus: boolean } {
 		try {
 			const raw = JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null');
 			return {
 				writingMode: raw?.writingMode === 'vertical' ? 'vertical' : 'horizontal',
-				fontSize: typeof raw?.fontSize === 'number' ? raw.fontSize : null
+				fontSize: typeof raw?.fontSize === 'number' ? raw.fontSize : null,
+				focus: raw?.focus === true
 			};
 		} catch {
-			return { writingMode: 'horizontal', fontSize: null };
+			return { writingMode: 'horizontal', fontSize: null, focus: false };
 		}
 	}
 
@@ -78,9 +79,43 @@
 		)
 	);
 
+	// 集中モード: 周辺の UI(アプリのレール・上部バー・この画面の操作バー)を隠して本文だけにする
+	let focusReading = $state(savedPrefs.focus);
+	// 集中中、マウス移動・タップで終了ボタンをはっきり見せる時間
+	let focusAwake = $state(false);
+	let awakeTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function wake() {
+		if (!focusReading) return;
+		focusAwake = true;
+		if (awakeTimer) clearTimeout(awakeTimer);
+		awakeTimer = setTimeout(() => (focusAwake = false), 2500);
+	}
+
+	function setFocusReading(on: boolean) {
+		focusReading = on;
+		tocOpen = false;
+		settingsOpen = false;
+		focusAwake = false;
+		savePrefs();
+		if (on) wake();
+	}
+
+	// アプリ全体のレール・ヘッダー・下部ナビは、執筆画面の集中モードと同じ editorStore.focusMode で隠れる
+	$effect(() => {
+		editorStore.focusMode = focusReading;
+	});
+	onDestroy(() => {
+		editorStore.focusMode = false;
+		if (awakeTimer) clearTimeout(awakeTimer);
+	});
+
 	function savePrefs() {
 		try {
-			localStorage.setItem(PREFS_KEY, JSON.stringify({ writingMode, fontSize }));
+			localStorage.setItem(
+				PREFS_KEY,
+				JSON.stringify({ writingMode, fontSize, focus: focusReading })
+			);
 		} catch {
 			// 保存できなくても、その場の表示には反映される
 		}
@@ -171,6 +206,11 @@
 
 	function onKeydown(e: KeyboardEvent) {
 		if (e.key !== 'Escape') return;
+		if (focusReading && !tocOpen && !settingsOpen) {
+			e.preventDefault();
+			setFocusReading(false);
+			return;
+		}
 		if (tocOpen) {
 			e.preventDefault();
 			closeToc();
@@ -254,7 +294,12 @@
 	const numberFormat = new Intl.NumberFormat('ja-JP');
 </script>
 
-<svelte:window onkeydown={onKeydown} onpagehide={flushPosition} />
+<svelte:window
+	onkeydown={onKeydown}
+	onpagehide={flushPosition}
+	onpointermove={wake}
+	onpointerdown={wake}
+/>
 <svelte:document onvisibilitychange={onVisibility} />
 
 <div class="preview-page">
@@ -266,7 +311,29 @@
 			<a href={resolve('/project/[id]/editor', { id: projectId })}>執筆画面で書き始める</a>
 		</p>
 	{:else}
-		<header class="bar" aria-label="通読プレビューの操作">
+		{#if focusReading}
+			<button
+				type="button"
+				class="focus-exit"
+				class:awake={focusAwake}
+				aria-label="集中モードを終了(Esc)"
+				title="集中モードを終了(Esc)"
+				data-testid="focus-exit"
+				onclick={() => setFocusReading(false)}
+			>
+				<svg
+					viewBox="0 0 24 24"
+					width="18"
+					height="18"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg
+				>
+			</button>
+		{/if}
+		<header class="bar" class:hidden={focusReading} aria-label="通読プレビューの操作">
 			<div class="bar-row">
 				<button
 					bind:this={tocButton}
@@ -314,6 +381,27 @@
 						onclick={() => setMode('vertical')}>縦</button
 					>
 				</div>
+
+				<button
+					type="button"
+					class="icon-btn"
+					aria-label="集中モード"
+					title="集中モード(周辺の表示を隠して本文だけにする)"
+					data-testid="focus-toggle"
+					onclick={() => setFocusReading(true)}
+				>
+					<svg
+						viewBox="0 0 24 24"
+						width="20"
+						height="20"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.8"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg
+					>
+				</button>
 
 				<button
 					bind:this={settingsButton}
@@ -456,6 +544,7 @@
 
 <style>
 	.preview-page {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		width: 100%;
@@ -479,6 +568,35 @@
 		border-bottom: 1px solid var(--color-border);
 		background: var(--color-background);
 		color: var(--color-text);
+	}
+
+	.bar.hidden {
+		display: none;
+	}
+
+	.focus-exit {
+		position: absolute;
+		top: calc(var(--safe-top, 0px) + 8px);
+		right: max(8px, var(--safe-right, 0px));
+		z-index: 5;
+		width: 36px;
+		height: 36px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		border: 1px solid var(--color-border);
+		border-radius: 50%;
+		background: var(--color-background);
+		color: var(--color-text-secondary);
+		opacity: 0.25;
+		transition: opacity 0.2s;
+		cursor: pointer;
+	}
+
+	.focus-exit.awake,
+	.focus-exit:hover,
+	.focus-exit:focus-visible {
+		opacity: 1;
 	}
 
 	.bar-row {

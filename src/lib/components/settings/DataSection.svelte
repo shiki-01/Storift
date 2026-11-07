@@ -7,6 +7,7 @@
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
+	import Select from '$lib/components/ui/Select.svelte';
 	import SettingsCard from './SettingsCard.svelte';
 	import SettingsRow from './SettingsRow.svelte';
 
@@ -129,9 +130,11 @@
 				<label for="exportFormat" class="display:block mb:8 font:14 fg:theme-text-secondary"
 					>形式</label
 				>
-				<select id="exportFormat" bind:value={exportFormat} class="w:full">
-					<option value="json">JSON (バックアップ用)</option>
-				</select>
+				<Select
+					id="exportFormat"
+					bind:value={exportFormat}
+					options={[{ value: 'json', label: 'JSON (バックアップ用)' }]}
+				/>
 			</div>
 		</div>
 	</Modal>

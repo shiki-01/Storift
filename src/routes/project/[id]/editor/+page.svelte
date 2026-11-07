@@ -6,6 +6,9 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
+	import { itemNav } from '$lib/stores/itemNav.svelte';
+	import { splitToolbar, type ToolbarItem } from '$lib/utils/toolbarItems';
+	import { page } from '$app/state';
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
 	import { dataChange } from '$lib/stores/dataChange.svelte';
@@ -166,9 +169,56 @@
 		x: number;
 		y: number;
 		items: ContextMenuItem[];
-		targetType?: 'editor' | 'chapter' | 'scene';
+		targetType?: 'editor' | 'chapter' | 'scene' | 'toolbar';
 		targetId?: string;
 	}>({ visible: false, x: 0, y: 0, items: [] });
+
+	// ツールバーの操作ボタン(設定で、常時表示と三点メニューに分けられる。src/lib/utils/toolbarItems.ts)
+	const toolbarSplit = $derived(splitToolbar(settingsStore.toolbarMenuItems, { desktop }));
+	const pinnedMain = $derived(toolbarSplit.pinned.filter((i) => i.id !== 'ai'));
+	const pinnedAi = $derived(toolbarSplit.pinned.find((i) => i.id === 'ai'));
+	const toolDefs = $derived<
+		Record<
+			string,
+			{ action: () => void; disabled?: boolean; active?: boolean; tour?: string; testid?: string }
+		>
+	>({
+		assist: { action: () => (showWritingAssistant = true), disabled: readOnly },
+		export: { action: () => (showExportModal = true), tour: 'editor-export' },
+		manuscript: { action: openManuscriptPreview, testid: 'open-manuscript-preview' },
+		print: { action: () => (showPrintPreview = true) },
+		history: { action: () => (showVersionManager = true), disabled: readOnly },
+		proofread: { action: () => (showProofread = true) },
+		search: { action: () => void openSearch() },
+		focus: { action: () => (editorStore.focusMode = true) },
+		memo: { action: toggleMemoPanel, active: showMemo, tour: 'editor-memo-button' },
+		ai: { action: () => aiStore.toggle(), active: aiStore.open, tour: 'editor-ai' }
+	});
+	const toolLabel = (item: ToolbarItem) =>
+		item.shortcut ? `${item.label} (${item.shortcut})` : item.label;
+
+	function openToolbarMenu(e: MouseEvent) {
+		if (contextMenu.visible && contextMenu.targetType === 'toolbar') {
+			contextMenu.visible = false;
+			return;
+		}
+		e.stopPropagation();
+		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		contextMenu = {
+			visible: true,
+			// ボタンの右端にそろえて、下に開く
+			x: rect.right - 240,
+			y: rect.bottom + 4,
+			targetType: 'toolbar',
+			items: toolbarSplit.menu.map((item) => ({
+				label: item.label,
+				icon: item.icon,
+				shortcut: item.shortcut,
+				disabled: toolDefs[item.id].disabled,
+				action: toolDefs[item.id].action
+			}))
+		};
+	}
 
 	let editorDiv = $state<HTMLDivElement | null>(null);
 	let editorScrollContainer = $state<HTMLDivElement | null>(null);
@@ -1041,6 +1091,16 @@
 		}
 		showSceneSheet = false;
 	}
+
+	// AI の回答中のシーンへのリンクから、そのシーンを開く
+	$effect(() => {
+		const req = itemNav.request;
+		if (!req || req.path !== page.url.pathname || currentProjectStore.isLoading) return;
+		const scene = currentProjectStore.scenes.find((s) => s.id === req.id);
+		if (currentProjectStore.scenes.length === 0 && !scene) return;
+		itemNav.take(page.url.pathname);
+		if (scene) untrack(() => void handleSceneSelect(scene));
+	});
 
 	function openSceneModal(chapterId: string) {
 		if (readOnly) return;
@@ -2314,100 +2374,29 @@
 									<Icon name="eye" class="w:18px" />
 								</button>
 							</div>
-							<div class="tool-sep"></div>
-							<!-- Phase 2: 執筆支援ツール -->
-							<button
-								class="tool"
-								onclick={() => (showWritingAssistant = true)}
-								disabled={readOnly}
-								aria-label="執筆支援"
-								title="執筆支援"
-							>
-								<Icon name="pencil-bolt" class="w:20px" />
-							</button>
-							<button
-								class="tool"
-								data-tour="editor-export"
-								onclick={() => (showExportModal = true)}
-								aria-label="エクスポート"
-								title="エクスポート"
-							>
-								<Icon name="download" class="w:20px" />
-							</button>
-							<button
-								class="tool"
-								onclick={openManuscriptPreview}
-								aria-label="作品全体を通して読む"
-								title="作品全体を通して読む"
-								data-testid="open-manuscript-preview"
-							>
-								<Icon name="book-2" class="w:20px" />
-							</button>
-							<button
-								class="tool"
-								onclick={() => (showPrintPreview = true)}
-								aria-label="印刷プレビュー"
-								title="印刷プレビュー"
-							>
-								<Icon name="printer" class="w:20px" />
-							</button>
-							<button
-								class="tool"
-								onclick={() => (showVersionManager = true)}
-								disabled={readOnly}
-								aria-label="バージョン履歴"
-								title="バージョン履歴"
-							>
-								<Icon name="history" class="w:20px" />
-							</button>
-							<button
-								class="tool"
-								onclick={() => (showProofread = true)}
-								aria-label="校正"
-								title="校正"
-							>
-								<Icon name="abc" class="w:20px" />
-							</button>
-							<button
-								class="tool"
-								onclick={openSearch}
-								aria-label="検索・置換 (Ctrl+Shift+F)"
-								title="検索・置換 (Ctrl+Shift+F)"
-							>
-								<Icon name="search" class="w:20px" />
-							</button>
-							<button
-								class="tool"
-								onclick={() => (editorStore.focusMode = true)}
-								aria-label="集中モード"
-								title="集中モード"
-							>
-								<Icon name="wallpaper" class="w:20px" />
-							</button>
-							<button
-								class="tool"
-								class:on={showMemo}
-								aria-pressed={showMemo}
-								data-tour="editor-memo-button"
-								onclick={toggleMemoPanel}
-								aria-label="メモ (Ctrl+Shift+M)"
-								title="メモ (Ctrl+Shift+M)"
-							>
-								<Icon name="clipboard-text" class="w:20px" />
-							</button>
-							{#if desktop}
+							{#if pinnedMain.length > 0 || toolbarSplit.menu.length > 0}
 								<div class="tool-sep"></div>
+							{/if}
+							{#each pinnedMain as item (item.id)}
+								{@render toolButton(item)}
+							{/each}
+							{#if toolbarSplit.menu.length > 0}
 								<button
-									class="tool tool--ai"
-									class:on={aiStore.open}
-									aria-pressed={aiStore.open}
-									data-tour="editor-ai"
-									onclick={() => aiStore.toggle()}
-									aria-label="AI パネル (Ctrl+Shift+L)"
-									title="AI パネル (Ctrl+Shift+L)"
+									class="tool"
+									class:on={contextMenu.visible && contextMenu.targetType === 'toolbar'}
+									aria-haspopup="menu"
+									aria-expanded={contextMenu.visible && contextMenu.targetType === 'toolbar'}
+									aria-label="その他のツール"
+									title="その他のツール"
+									data-testid="toolbar-more"
+									onclick={openToolbarMenu}
 								>
-									<Icon name="sparkles" class="w:20px" />
+									<Icon name="dots" class="w:20px" />
 								</button>
+							{/if}
+							{#if pinnedAi}
+								<div class="tool-sep"></div>
+								{@render toolButton(pinnedAi)}
 							{/if}
 							<div class="tool-sep"></div>
 							{#if collab === 'fallback' && collabNotice}
@@ -3002,6 +2991,24 @@
 		</div>
 	</form>
 </Modal>
+
+{#snippet toolButton(item: ToolbarItem)}
+	{@const def = toolDefs[item.id]}
+	<button
+		class="tool"
+		class:tool--ai={item.id === 'ai'}
+		class:on={def.active}
+		aria-pressed={def.active === undefined ? undefined : def.active}
+		data-tour={def.tour}
+		data-testid={def.testid}
+		disabled={def.disabled}
+		onclick={def.action}
+		aria-label={toolLabel(item)}
+		title={toolLabel(item)}
+	>
+		<Icon name={item.icon} class="w:20px" />
+	</button>
+{/snippet}
 
 <!-- コンテキストメニュー -->
 <ContextMenu

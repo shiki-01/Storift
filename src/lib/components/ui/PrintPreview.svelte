@@ -8,6 +8,7 @@
 	} from '$lib/utils/print';
 	import Modal from './Modal.svelte';
 	import Button from './Button.svelte';
+	import Select from './Select.svelte';
 
 	interface Props {
 		chapters: Array<{
@@ -122,19 +123,20 @@
 						<label for="fontFamily" class="font:14 fg:theme-text-secondary mb:6 block"
 							>フォント</label
 						>
-						<select
+						<Select
 							id="fontFamily"
 							bind:value={options.fontFamily}
-							class="w:full py:8 px:12 r:8 border:1|solid|theme-border font:14"
-						>
-							<option value="'游明朝', 'Yu Mincho', serif">游明朝</option>
-							<option value="'ヒラギノ明朝 ProN', 'Hiragino Mincho ProN', serif"
-								>ヒラギノ明朝</option
-							>
-							<option value="'メイリオ', Meiryo, sans-serif">メイリオ</option>
-							<option value="'游ゴシック', 'Yu Gothic', sans-serif">游ゴシック</option>
-							<option value="'MS 明朝', 'MS Mincho', serif">MS 明朝</option>
-						</select>
+							options={[
+								{ value: "'游明朝', 'Yu Mincho', serif", label: '游明朝' },
+								{
+									value: "'ヒラギノ明朝 ProN', 'Hiragino Mincho ProN', serif",
+									label: 'ヒラギノ明朝'
+								},
+								{ value: "'メイリオ', Meiryo, sans-serif", label: 'メイリオ' },
+								{ value: "'游ゴシック', 'Yu Gothic', sans-serif", label: '游ゴシック' },
+								{ value: "'MS 明朝', 'MS Mincho', serif", label: 'MS 明朝' }
+							]}
+						/>
 					</div>
 				</div>
 			</div>

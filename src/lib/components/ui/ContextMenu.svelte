@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import Icon from './Icon.svelte';
 
 	interface MenuItem {
@@ -60,16 +59,15 @@
 		}
 	}
 
-	onMount(() => {
-		if (visible) {
-			document.addEventListener('click', handleClickOutside);
-			document.addEventListener('keydown', handleEscape);
-
-			return () => {
-				document.removeEventListener('click', handleClickOutside);
-				document.removeEventListener('keydown', handleEscape);
-			};
-		}
+	// 表示中だけ、外側のクリックと Esc を見る
+	$effect(() => {
+		if (!visible) return;
+		document.addEventListener('click', handleClickOutside);
+		document.addEventListener('keydown', handleEscape);
+		return () => {
+			document.removeEventListener('click', handleClickOutside);
+			document.removeEventListener('keydown', handleEscape);
+		};
 	});
 </script>
 
@@ -106,7 +104,10 @@
 	</div>
 	<button
 		aria-label="close"
-		onclick={() => (visible = false)}
+		onclick={() => {
+			visible = false;
+			onClose?.();
+		}}
 		class="w:100dvw h:100dvh fixed top:0 left:0 z:9998"
 	></button>
 {/if}

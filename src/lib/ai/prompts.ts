@@ -3,8 +3,9 @@
  * Claude Code は自前の指示を持つので使わない。Ollama は Rust 側(ollama.rs)に同じ文面を持つ。
  */
 import { EDIT_INSTRUCTIONS } from '$lib/desktop/edits';
+import { REFERENCE_INSTRUCTIONS } from './refs';
 
-export { EDIT_INSTRUCTIONS };
+export { EDIT_INSTRUCTIONS, REFERENCE_INSTRUCTIONS };
 
 export const BASE_SYSTEM_PROMPT =
 	'あなたは小説の執筆を支える日本語のアシスタントです。' +

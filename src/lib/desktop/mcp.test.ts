@@ -269,7 +269,8 @@ describe('propose_edit', () => {
 		aiStore.updateSettings({ editMode: 'suggest' });
 		const { run, done } = startRun('直して');
 		expect(run.req.editMode).toBe('suggest');
-		expect(run.req.appendSystemPrompt).toBeUndefined();
+		expect(run.req.appendSystemPrompt).not.toContain('propose_edit');
+		expect(run.req.appendSystemPrompt).toContain('[[種別:id|表示名]]');
 
 		const result = await aiStore.proposeEdit(run.req.requestId, {
 			kind: 'scene',

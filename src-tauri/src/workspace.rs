@@ -1,9 +1,10 @@
-//! Claude Code が読むワークスペース。
+//! 原稿の Markdown 書き出し先(ワークスペース)。
 //!
-//! 原稿の正本はアプリ内の IndexedDB にあり、Claude Code からは読めない。
-//! そこでアプリ側で全プロジェクトを Markdown に書き出し、このディレクトリに
-//! 置く。Claude Code はここを作業ディレクトリとして起動し、Read / Grep で
-//! プロジェクトを横断して参照する。書き出しは一方向(アプリ → ファイル)。
+//! 原稿の正本はアプリ内の IndexedDB にある。以前の版は全プロジェクトを
+//! Markdown に書き出し、Claude Code の作業ディレクトリとして読ませていた。
+//! 現在の Claude Code 連携は MCP のツール経由で読む方式に移っており
+//! (claude.rs。作業ディレクトリは空の claude-cwd)、書き出しの呼び出し元は無い。
+//! 書き出しは一方向(アプリ → ファイル)。
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;

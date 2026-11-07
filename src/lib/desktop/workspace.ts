@@ -1,9 +1,10 @@
 /**
- * Claude Code に読ませるため、全プロジェクトを Markdown に書き出す。
+ * 全プロジェクトを Markdown に書き出す処理と、MCP のツールが使う読み出しの補助。
  *
- * 書き出し先はデスクトップアプリのデータディレクトリ内の workspace/ で、
- * Claude Code はそこを作業ディレクトリとして起動する(src-tauri/src/workspace.rs)。
- * ファイルはアプリ → ディスクの一方向で、ディスク側の変更はアプリに戻らない。
+ * 書き出し先はデスクトップアプリのデータディレクトリ内の workspace/ だが、
+ * 現在の Claude Code 連携は書き出しを使わない(syncWorkspace の呼び出し元は無い。
+ * Claude Code は空の claude-cwd で動き、原稿は MCP のツール経由で読む。src-tauri/src/claude.rs)。
+ * 書き出す場合も、ファイルはアプリ → ディスクの一方向で、ディスク側の変更はアプリに戻らない。
  */
 import { db, memosDB } from '$lib/db';
 import type { Table } from 'dexie';

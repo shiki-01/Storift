@@ -1,6 +1,6 @@
 [package]
 name = "storift"
-version = "0.1.0"
+version = "0.4.0"
 description = "Storift デスクトップ版"
 edition = "2021"
 license = "MIT"

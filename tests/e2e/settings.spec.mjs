@@ -114,6 +114,19 @@ async function openSettings(browser, base, contextOptions, hash = '') {
 	return { context, page };
 }
 
+/**
+ * 直接リンク(URL を開き直す)を再現する。
+ * 同じ文書内でハッシュだけを goto すると、直前のリンクのクリックによる hashchange が
+ * まだ届いていないうちに SvelteKit が popstate を受け取り、URL の反映を飛ばすことがある
+ * (クリックから数 ms 以内に別のハッシュへ移る、テスト特有の操作のとき)。
+ * 別のページを挟んで、文書ごと読み込み直す。
+ */
+async function openDirectLink(page, base, hash) {
+	await page.goto(`${base}/home`);
+	await page.goto(`${base}/settings${hash}`);
+	await page.locator(NAV).waitFor();
+}
+
 const heading = (page) => page.locator(H2).first().textContent();
 const currentLabel = (page) =>
 	page
@@ -191,8 +204,7 @@ async function desktopTests(browser, base) {
 		['#shortcuts', 'エディタ'],
 		['#nonexistent', '外観']
 	]) {
-		await page.goto(`${base}/settings${hash}`);
-		await page.locator(NAV).waitFor();
+		await openDirectLink(page, base, hash);
 		check(`直接リンク ${hash} は「${label}」`, (await heading(page))?.trim() === label);
 	}
 
@@ -397,8 +409,7 @@ async function mobileTests(browser, base) {
 	}
 
 	// スマホ幅でも主要な操作が動く
-	await page.goto(`${base}/settings#sharing`);
-	await page.locator(NAV).waitFor();
+	await openDirectLink(page, base, '#sharing');
 	const cursor = page.getByLabel('他の人のカーソルを表示');
 	await cursor.waitFor({ timeout: 30_000 });
 	await cursor.uncheck();

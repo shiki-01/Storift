@@ -46,7 +46,7 @@ shared/{pid}/{type}/{id}[/{sub}/...]   type = projects, chapters, scenes, charac
 - 失効: オーナーが `owners/{uid}` を delete。
 - 先着: ownerKey 未作成の間は、最初に batch を commit した認証ユーザーがオーナーになる(仕様として許容)。デプロイ直後に速やかに登録すること。
 
-## 検証済みの挙動(エミュレータ、61 テスト)
+## 検証済みの挙動(エミュレータ。件数は `bun run test:rules` の出力を参照)
 
 - `shared` コレクションの list: オーナーのみ可。非オーナーは(`visibility` 条件付きでも)拒否する。link 公開のプロジェクトを列挙されると、pid を知らなくてもデータを読めてしまうため。プロジェクトは pid を指定した get で個別に取得する。
 - ルールは複数 match の OR 評価。`shared/{pid}/{col}/{id}` と、サブコレクション以下用の `shared/{pid}/{col}/{id}/{sub}/{rest=**}` に分け、col を type に限定したため、secrets / members / presence に抜け道はない。

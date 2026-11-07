@@ -16,4 +16,6 @@ npm と Cargo の依存はそれぞれのライセンス(主に MIT / Apache-2.0
 
 ## アイコン・ロゴ
 
-`src/lib/components/editor/icons/`、`src-tauri/icons/`、`static/favicon/`、`src/lib/assets/` は、このプロジェクトのために作成したもので、本体と同じ MIT ライセンスです。
+`src/lib/components/editor/icons/`、`src-tauri/icons/`、`static/favicon/`、`static/brand/`、`src/lib/assets/` は、このプロジェクトのために作成したもので、本体と同じ MIT ライセンスです。
+
+`static/brand/` には、ロゴの原本(`storift-logo.svg`)と、そこから作ったシンボル・ワードマーク・アプリアイコンの SVG が入っています。`src-tauri/icons/` の macOS / Windows 用の角丸のアプリアイコン(`icon.icns`、`icon.ico`、各サイズの PNG)と、元画像の `scripts/app-icon-macos.png`・`scripts/app-icon-windows.png` も、その原本から `bun run icons`(`scripts/build-icons.mjs`)で生成したものです。作り方は [docs/BRAND.md](docs/BRAND.md) にあります。

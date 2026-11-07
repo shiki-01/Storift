@@ -151,32 +151,45 @@
 		'#6b5b7b'
 	);
 
-	const world = (id, category, title, content) =>
-		worldbuildingDB.create({ id, projectId: P, category, title, content });
+	const world = async (id, category, title, content, tags = []) => {
+		await worldbuildingDB.create({ id, projectId: P, category, title, content });
+		if (tags.length) await worldbuildingDB.update(id, { tags });
+	};
 	await world(
 		'w1',
 		'location',
 		'坂の上の古書店',
-		'雨の日にだけ灯りをともす店。屋号は掠れて読めない。奥の棚には売り物ではない本が並ぶ。'
+		'雨の日にだけ灯りをともす店。屋号は掠れて読めない。奥の棚には売り物ではない本が並ぶ。\n\n店主の真柴が五十年、ひとりで守っている。',
+		['舞台', '現在']
 	);
 	await world(
 		'w2',
 		'location',
 		'霧ヶ沢',
-		'栞に書かれていた町の名前。昭和四十年代にダムの底へ沈んだ。'
+		'栞に書かれていた町の名前。昭和四十年代にダムの底へ沈んだ。',
+		['舞台', '過去']
 	);
 	await world(
 		'w3',
 		'term',
 		'預かり本',
-		'店主が持ち主に代わって保管している本のこと。値札がついていない。'
+		'店主が持ち主に代わって保管している本のこと。値札がついていない。',
+		['古書店']
 	);
+	await world('w5', 'term', '栞の符丁', '栞の裏に鉛筆で書かれた小さな数字。町の番地を表す。', [
+		'古書店',
+		'過去'
+	]);
 	await world(
 		'w4',
 		'timeline',
 		'町の年表',
-		'昭和三十八年 ダム計画の発表 / 昭和四十一年 集団移転 / 昭和四十三年 湛水開始'
+		'昭和三十八年 ダム計画の発表 / 昭和四十一年 集団移転 / 昭和四十三年 湛水開始',
+		['過去']
 	);
+	await world('w6', 'other', '祖母の傘', '雨の日にいつも持ち歩いていた、柄の長い黒い傘。', [
+		'現在'
+	]);
 
 	// 進捗: 直近 40 日ぶん、決まった並びで記録する
 	const pat = [

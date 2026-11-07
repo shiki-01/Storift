@@ -42,22 +42,15 @@
 	]);
 
 	const nodes = [
-		{ ...akari, name: '朝倉 灯', role: '主人公', mark: '朝', main: true },
-		{ ...shizu, name: '朝倉 静', role: '祖母', mark: '静', main: false },
-		{ ...mashiba, name: '真柴 蓮', role: '店主', mark: '真', main: false }
+		{ ...akari, name: '朝倉 灯', role: '主人公', mark: '朝', tone: 'primary' },
+		{ ...shizu, name: '朝倉 静', role: '祖母', mark: '朝', tone: 'primary' },
+		{ ...mashiba, name: '真柴 蓮', role: '店主', mark: '真', tone: 'accent' }
 	];
 </script>
 
 <div class="page">
-	<header>
-		<div>
-			<h3>キャラクター管理</h3>
-			<p>登場人物の情報と相関図を管理します</p>
-		</div>
-		<span class="tabs"><i>グリッド</i><i>リスト</i><i class="on">相関図</i></span>
-	</header>
-
 	<div class="canvas">
+		<p class="tools"><span>＋ グループ</span><span>自動配置</span><span>全画面</span></p>
 		<svg viewBox="0 0 680 400" preserveAspectRatio="xMidYMid meet">
 			<defs>
 				<marker
@@ -83,15 +76,15 @@
 			{/each}
 			{#each nodes as n (n.name)}
 				<g transform="translate({n.x} {n.y})">
-					<circle r="24" class="node" class:main={n.main} />
-					<text class="mark" y="6">{n.mark}</text>
+					<circle r="24" class="node {n.tone}" />
+					<text class="mark {n.tone}" y="6">{n.mark}</text>
 					<text class="name" y="42">{n.name}</text>
 					<text class="role" y="57">{n.role}</text>
 				</g>
 			{/each}
 			<g transform="translate({seo.x} {seo.y})" class:dragging>
-				<circle r="24" class="node" />
-				<text class="mark" y="6">瀬</text>
+				<circle r="24" class="node secondary" />
+				<text class="mark secondary" y="6">瀬</text>
 				<text class="name" y="42">瀬尾 湊</text>
 				<text class="role" y="57">同級生</text>
 				<circle r="24" fill="transparent" data-t="node-mover" />
@@ -108,52 +101,11 @@
 		min-height: 0;
 	}
 
-	header {
-		flex: none;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 14px 20px;
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	h3 {
-		font-size: 17px;
-		line-height: 1.3;
-	}
-
-	header p {
-		font-size: 11px;
-		color: var(--color-text-secondary);
-	}
-
-	.tabs {
-		display: inline-flex;
-		gap: 2px;
-		padding: 3px;
-		border-radius: 8px;
-		background: var(--color-surface);
-		font-size: 11px;
-		color: var(--color-text-secondary);
-		white-space: nowrap;
-	}
-
-	.tabs i {
-		padding: 3px 9px;
-		border-radius: 6px;
-		font-style: normal;
-	}
-
-	.tabs i.on {
-		background: var(--color-background);
-		color: var(--color-text);
-	}
-
 	.canvas {
+		position: relative;
 		flex: 1;
 		min-height: 0;
-		margin: 14px 20px 18px;
+		margin: 12px 18px 16px;
 		border: 1px solid var(--color-border);
 		border-radius: 10px;
 		background-color: var(--editor-background);
@@ -189,25 +141,52 @@
 		text-anchor: middle;
 	}
 
+	/* 人物ごとの色は、アプリのアバターと同じく基調色を薄く敷く */
 	.node {
-		fill: var(--color-surface);
-		stroke: var(--color-border);
+		--tone: var(--color-primary);
+		fill: color-mix(in srgb, var(--tone) 12%, var(--color-background));
+		stroke: color-mix(in srgb, var(--tone) 28%, var(--color-border));
 	}
 
-	.node.main {
-		stroke: var(--color-primary);
-		stroke-width: 1.5;
+	.node.accent,
+	.mark.accent {
+		--tone: var(--color-accent);
+	}
+
+	.node.secondary,
+	.mark.secondary {
+		--tone: color-mix(in srgb, var(--color-primary) 55%, var(--color-accent));
 	}
 
 	.dragging .node {
-		stroke: var(--color-primary);
+		stroke: var(--tone);
 		stroke-width: 1.5;
 	}
 
 	.mark {
-		fill: var(--color-text);
-		font-size: 15px;
+		--tone: var(--color-primary);
+		fill: var(--tone);
+		font-size: 16px;
+		font-weight: 600;
 		text-anchor: middle;
+	}
+
+	.tools {
+		position: absolute;
+		top: 8px;
+		left: 8px;
+		z-index: 1;
+		display: flex;
+		gap: 6px;
+		font-size: 10.5px;
+		color: var(--color-text);
+	}
+
+	.tools span {
+		padding: 3px 9px;
+		border: 1px solid var(--color-border);
+		border-radius: 7px;
+		background: var(--color-background);
 	}
 
 	.name {
@@ -224,11 +203,7 @@
 	}
 
 	@media (max-width: 760px) {
-		header {
-			padding: 10px 12px;
-		}
-
-		header p {
+		.tools {
 			display: none;
 		}
 

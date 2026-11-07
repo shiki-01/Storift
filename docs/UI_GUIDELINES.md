@@ -56,6 +56,12 @@ UI の操作部品は選択できず、本文や、コピーしたくなる情�
 - アイコン: 絵文字や記号文字(✓ ⚠ ⏳ など)は使わず、`src/lib/components/editor/icons/*.svg` を `Icon.svelte` で出す。
   色は `currentColor` にし、固定の黒・白は使わない。インラインで使うときは `class="ico"`(`1em` 角)。
 - 保存状態: `src/lib/components/ui/SaveState.svelte`。全ラベルを同じセルに重ねて幅を固定する。
+- 色選択: `<input type="color">` は使わず `src/lib/components/ui/ColorPicker.svelte`(インライン表示と `popover` 表示)。計算は `colorLogic.ts`。
+- 相関図の操作: ズームなどは `src/lib/components/relation/RelationControls.svelte`。ライブラリ既定のコントロールやラベルの白い箱は使わず、`--color-background` / `--color-text` のトークンで描く。
+- AI 返答の資料リンク: AI には内部名や id を出させず、`[[種別:id|表示名]]` で書かせる(指示は `src/lib/ai/refs.ts`)。描画は `linkifyRefs`、遷移は `src/lib/desktop/refLinks.ts` の `openRef`、同じ画面での選択は `itemNav.svelte.ts`。
+- ツールバーの表示設定: 項目は `src/lib/utils/toolbarItems.ts` に定義し、三点メニューへまとめる項目は `AppSettings.toolbarMenuItems` に保存する。項目を足すときは定義に加える(既定は全表示)。
+- ネイティブのコンテキストメニュー: Tauri の本番ビルドでは、入力欄と選択テキスト以外の既定メニューを `src/lib/desktop/nativeContextMenu.ts` で止める。
+- アクティブ状態: 開閉するボタンは `disabled` ではなく、選択中の見た目(`aria-pressed`)にする。
 
 ## 一覧と詳細(プロット・人物・設定資料)
 

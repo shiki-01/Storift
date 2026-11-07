@@ -26,6 +26,7 @@
 	let dragOffset = $state(0);
 	let dragging = $state(false);
 	let startY = 0;
+	let startViewportH = 0;
 	let returnFocusTo: HTMLElement | null = null;
 
 	const titleId = `sheet-title-${Math.random().toString(36).slice(2, 8)}`;
@@ -58,15 +59,29 @@
 		return () => window.removeEventListener('keydown', onKeydown);
 	});
 
+	// 上へ引いて全画面にする判定(half のときだけ)。EXPAND_AT を超えて離すと全画面になる
+	const EXPAND_AT = 50;
+	const canExpand = $derived(size === 'half' && !expanded);
+	/** 上へ引いた量(px, 0 以上) */
+	const pullUp = $derived(canExpand && dragOffset < 0 ? -dragOffset : 0);
+	/** 全画面への判定の進み具合 0〜1 */
+	const progress = $derived(Math.min(1, pullUp / EXPAND_AT));
+	/** しきい値に届いている(離すと全画面になる) */
+	const armed = $derived(pullUp >= EXPAND_AT);
+
 	function onPointerDown(e: PointerEvent) {
 		dragging = true;
 		startY = e.clientY;
+		startViewportH = window.innerHeight;
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 	}
 
 	function onPointerMove(e: PointerEvent) {
 		if (!dragging) return;
-		dragOffset = Math.max(-120, e.clientY - startY);
+		const dy = e.clientY - startY;
+		// 半分 → 全画面の高さの差まで、指に追従して伸びる。それ以外の上向きは動かさない
+		const maxUp = canExpand ? startViewportH * (0.92 - 0.55) : 0;
+		dragOffset = Math.max(-maxUp, dy);
 	}
 
 	function onPointerUp() {
@@ -76,33 +91,46 @@
 			close();
 			return;
 		}
-		if (dragOffset < -50 && size === 'half') expanded = true;
+		if (armed) expanded = true;
 		else if (dragOffset > 40 && expanded) expanded = false;
 		dragOffset = 0;
 	}
 
-	let heightStyle = $derived(
-		size === 'auto' ? 'auto' : size === 'full' || expanded ? '92dvh' : '55dvh'
-	);
+	let heightStyle = $derived.by(() => {
+		if (size === 'auto') return 'auto';
+		const base = size === 'full' || expanded ? '92dvh' : '55dvh';
+		// 引いている間は、指の動きの分だけ高さを足す(全画面の高さを超えない)
+		return pullUp > 0 ? `min(92dvh, calc(${base} + ${pullUp}px))` : base;
+	});
 </script>
 
 {#if open}
 	<div class="sheet-root" role="presentation">
-		<button class="sheet-backdrop" aria-label="閉じる" tabindex="-1" onclick={close}></button>
+		<button
+			class="sheet-backdrop"
+			class:dragging
+			aria-label="閉じる"
+			tabindex="-1"
+			style:--dim={0.4 + 0.2 * progress}
+			onclick={close}
+		></button>
 		<div
 			bind:this={sheetEl}
 			class="sheet"
 			class:dragging
+			class:armed
 			role="dialog"
 			aria-modal="true"
 			aria-labelledby={title ? titleId : undefined}
 			tabindex="-1"
 			style:height={heightStyle}
 			style:max-height="92dvh"
+			style:--pull={progress}
 			style:transform={dragOffset > 0 ? `translateY(${dragOffset}px)` : undefined}
 		>
 			<div
 				class="sheet-grabber"
+				class:armed
 				role="presentation"
 				onpointerdown={onPointerDown}
 				onpointermove={onPointerMove}
@@ -152,8 +180,13 @@
 		position: absolute;
 		inset: 0;
 		border: none;
-		background: rgba(0, 0, 0, 0.4);
+		background: rgba(0, 0, 0, var(--dim, 0.4));
 		animation: sheet-fade 0.18s ease-out;
+		transition: background-color 0.2s ease;
+	}
+
+	.sheet-backdrop.dragging {
+		transition: none;
 	}
 
 	.sheet {
@@ -162,19 +195,25 @@
 		flex-direction: column;
 		background: var(--color-background);
 		color: var(--color-text);
-		border-radius: 16px 16px 0 0;
+		/* 引き上げるほど角丸が大きくなり、全画面に近づく感じを出す */
+		border-radius: calc(16px + 12px * var(--pull, 0)) calc(16px + 12px * var(--pull, 0)) 0 0;
 		border-top: 1px solid var(--color-border);
 		box-shadow: var(--shadow-float);
 		padding-bottom: var(--safe-bottom);
 		animation: sheet-up 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
 		transition:
-			height 0.2s ease,
-			transform 0.2s ease;
+			height 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+			transform 0.2s ease,
+			border-radius 0.2s ease;
 		outline: none;
 	}
 
 	.sheet.dragging {
 		transition: none;
+	}
+
+	.sheet.armed {
+		border-top-color: var(--color-primary);
 	}
 
 	.sheet-grabber {
@@ -187,10 +226,26 @@
 	}
 
 	.sheet-handle {
-		width: 36px;
+		width: calc(36px + 20px * var(--pull, 0));
 		height: 4px;
 		border-radius: 2px;
-		background: var(--color-border);
+		background: color-mix(
+			in srgb,
+			var(--color-primary) calc(var(--pull, 0) * 60%),
+			var(--color-border)
+		);
+		transition:
+			width 0.15s ease,
+			background-color 0.15s ease,
+			transform 0.15s ease;
+	}
+
+	/* しきい値に届いた: 離すと全画面になることが分かるよう、ハンドルをはっきり変える */
+	.sheet-grabber.armed .sheet-handle {
+		width: 64px;
+		height: 5px;
+		background: var(--color-primary);
+		transform: scaleY(1.2);
 	}
 
 	.sheet-header {
@@ -254,7 +309,8 @@
 
 	@media (prefers-reduced-motion: reduce) {
 		.sheet,
-		.sheet-backdrop {
+		.sheet-backdrop,
+		.sheet-handle {
 			animation: none;
 			transition: none;
 		}

@@ -29,6 +29,7 @@
 	import { updaterStore } from '$lib/stores/updater.svelte';
 	import TitleBar from '$lib/components/desktop/TitleBar.svelte';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
+	import { pageContext } from '$lib/stores/pageContext.svelte';
 	import SelectionAsk from '$lib/components/desktop/SelectionAsk.svelte';
 	import EditorDiff from '$lib/components/desktop/EditorDiff.svelte';
 	import AppRail from '$lib/components/layout/AppRail.svelte';
@@ -74,10 +75,25 @@
 		}
 		return staticTitles[path];
 	});
-	// タイトルバーには作品名と画面名を出す
+	// 画面名の後ろに付ける、選択中の対象名。執筆は「章 / シーン」、ほかは選んでいる項目名
+	let detailParts = $derived.by((): string[] => {
+		if (!isProjectPage) return [];
+		const path = page.url.pathname;
+		if (path.endsWith('/editor')) {
+			const scene = editorStore.currentScene;
+			if (!scene) return [];
+			const chapter = currentProjectStore.chapters.find((c) => c.id === scene.chapterId);
+			return [chapter?.title, scene.title].filter((t): t is string => !!t);
+		}
+		const detail = pageContext.detailFor(path);
+		return detail ? [detail] : [];
+	});
+	// 「執筆 / 一巻 / プロローグ」「人物 / 朝日夕」のように、画面名と対象名を ' / ' でつなぐ
+	let breadcrumb = $derived([sectionLabel, ...detailParts].filter(Boolean).join(' / '));
+	// タイトルバーには作品名と、画面名・対象名を出す
 	let windowTitle = $derived.by(() => {
 		const project = isProjectPage ? currentProjectStore.project?.title : '';
-		return [project, sectionLabel].filter(Boolean).join(' — ') || 'Storift';
+		return [project, breadcrumb].filter(Boolean).join(' — ') || 'Storift';
 	});
 
 	// 画面が切り替わった時だけ、ふわっと出す。作品の中の移動ではプロジェクトの読み込みをやり直さない
@@ -235,7 +251,13 @@
 									aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg
 								>
 							</a>
-							<span class="header-title">{sectionLabel ?? ''}</span>
+							<span class="header-title" title={breadcrumb}>
+								<span class="header-section">{sectionLabel ?? ''}</span>
+								{#each detailParts as part, i (i)}
+									<span class="header-sep" aria-hidden="true">/</span>
+									<span class="header-part">{part}</span>
+								{/each}
+							</span>
 						{:else}
 							<a href={resolve('/home')} class="header-logo" aria-label="ホーム">
 								<Logo variant="full" size={20} title="Storift" />
@@ -365,11 +387,38 @@
 		padding: 0 12px;
 	}
 
+	/* 長い対象名は末尾を省略し、画面名と区切りは縮めない */
 	.header-title {
+		display: flex;
 		flex: 1;
+		align-items: baseline;
+		gap: 6px;
+		min-width: 0;
+		overflow: hidden;
 		font-size: 15px;
 		font-weight: 600;
 		color: var(--color-text);
+		white-space: nowrap;
+	}
+
+	.header-section,
+	.header-sep {
+		flex: none;
+	}
+
+	.header-sep {
+		color: var(--color-text-secondary);
+		font-weight: 400;
+	}
+
+	.header-part {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.header-part:last-child {
+		flex: 1 1 auto;
 	}
 
 	.header-logo {

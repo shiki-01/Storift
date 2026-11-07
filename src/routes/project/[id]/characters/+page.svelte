@@ -25,6 +25,8 @@
 	import RelationCanvas from '$lib/components/relation/RelationCanvas.svelte';
 	import MasterDetail from '$lib/components/items/MasterDetail.svelte';
 	import ItemDetail from '$lib/components/items/ItemDetail.svelte';
+	import { page } from '$app/state';
+	import { pageContext } from '$lib/stores/pageContext.svelte';
 	import ItemSection from '$lib/components/items/ItemSection.svelte';
 	import ItemRow, { type RowMenuItem } from '$lib/components/items/ItemRow.svelte';
 	import ItemsPageHead from '$lib/components/items/ItemsPageHead.svelte';
@@ -130,6 +132,14 @@
 
 	const creating = $derived(selectedId === NEW);
 	const selectedCharacter = $derived(characters.find((c) => c.id === selectedId));
+
+	// 見出し(タイトルバー・スマホの上部バー)に選択中の人物名を出す
+	$effect(() => {
+		pageContext.setDetail(
+			page.url.pathname,
+			creating ? '新規人物' : (selectedCharacter?.name ?? '')
+		);
+	});
 
 	const visible = $derived(
 		visibleCharacters(characters, { query, sort: sortMode as CharacterSort })
@@ -660,8 +670,6 @@
 											<ul class="relations" data-testid="relations">
 												{#each rels as rel, i (i)}
 													<li class="relation">
-														<span class="chip">{rel.relation}</span>
-														<Icon name="chevron-right" class="rel-arrow" />
 														{#if rel.target}
 															{@const target = rel.target}
 															<button
@@ -681,6 +689,8 @@
 														{:else}
 															<span class="rel-missing">削除された人物</span>
 														{/if}
+														<Icon name="chevron-right" class="rel-arrow" />
+														<span class="chip">{rel.relation}</span>
 													</li>
 												{/each}
 											</ul>

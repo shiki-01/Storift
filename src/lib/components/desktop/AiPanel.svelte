@@ -50,7 +50,7 @@
 		retry: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
 		// 紙飛行機
 		send: '<path d="M21 3L10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>',
-		stop: '<rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/>'
+		stop: '<rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor"/>'
 	};
 
 	const editModeOptions = (Object.entries(EDIT_MODE_LABELS) as [EditMode, string][]).map(
@@ -614,11 +614,8 @@
 					{describeActiveModel(aiStore.provider, aiStore.settings)}
 				</span>
 				{#if aiStore.isRunning}
-					<button
-						class="icon send stop"
-						onclick={() => aiStore.cancel()}
-						title="停止"
-						aria-label="停止">{@render icon(ICONS.stop)}</button
+					<button class="icon send" onclick={() => aiStore.cancel()} title="停止" aria-label="停止"
+						>{@render icon(ICONS.stop)}</button
 					>
 				{:else}
 					<button
@@ -1313,7 +1310,7 @@
 		flex: 0 1 auto;
 	}
 
-	/* 送信/停止は他のアイコンボタンと同じ 34px の角丸の正方形。有効なときだけ primary の面にする */
+	/* 送信/停止は他のアイコンボタンと同じ 34px の角丸の正方形。有効なときは同じ primary の面にする(停止も同じ見た目) */
 	.send:not(:disabled) {
 		background: var(--color-primary);
 		color: var(--color-background);
@@ -1332,15 +1329,5 @@
 		background: transparent;
 		color: var(--color-text-secondary);
 		opacity: 0.45;
-	}
-
-	.send.stop:not(:disabled) {
-		background: var(--color-text);
-		color: var(--color-background);
-	}
-
-	.send.stop:hover:not(:disabled) {
-		background: color-mix(in srgb, var(--color-text) 85%, var(--color-background));
-		color: var(--color-background);
 	}
 </style>

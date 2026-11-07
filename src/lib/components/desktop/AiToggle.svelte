@@ -15,8 +15,8 @@
 		class:on={aiStore.open}
 		aria-pressed={aiStore.open}
 		onclick={() => aiStore.toggle()}
-		aria-label="AI パネル (Ctrl+Shift+L)"
-		title="AI パネル (Ctrl+Shift+L)"
+		aria-label="AI パネル"
+		title={aiStore.open ? 'AI パネルを閉じる (Ctrl+Shift+L)' : 'AI パネルを開く (Ctrl+Shift+L)'}
 	>
 		<Icon name="sparkles" class="w:18px" />
 		<span>AI</span>
@@ -42,9 +42,21 @@
 		background: var(--color-background);
 	}
 
+	/* 開いている状態は「選択中」の見た目。--selected は半透明の薄い色なので、文字色を背景色にすると
+	   読めず disabled に見えていた。アクセント色の文字と枠で示す */
 	.ai-toggle.on {
-		background: var(--selected, var(--color-primary));
-		color: var(--color-background);
-		border-color: transparent;
+		background: var(--selected);
+		color: var(--color-primary);
+		border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+		font-weight: 600;
+	}
+
+	.ai-toggle.on:hover {
+		background: color-mix(in srgb, var(--color-primary) 20%, transparent);
+	}
+
+	.ai-toggle:focus-visible {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 2px;
 	}
 </style>

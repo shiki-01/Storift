@@ -253,6 +253,9 @@
 		border-style: solid;
 		border-width: 8px 8px 8px 0;
 		border-color: transparent var(--color-border) transparent transparent;
+		/* 項目の右端(余白 6px)より 2px 内側へ食い込む。項目の半透明のホバー背景の下に潜ると
+		   重なった部分だけ濃くなるので、項目より前面に出して不透明な色で描く */
+		z-index: 1;
 		transition: transform 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
 		animation: notch-in 0.22s ease-out;
 		pointer-events: none;

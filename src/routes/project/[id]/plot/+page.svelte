@@ -15,6 +15,8 @@
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
 	import MasterDetail from '$lib/components/items/MasterDetail.svelte';
 	import ItemDetail from '$lib/components/items/ItemDetail.svelte';
+	import { page } from '$app/state';
+	import { pageContext } from '$lib/stores/pageContext.svelte';
 	import ItemSection from '$lib/components/items/ItemSection.svelte';
 	import SortableList from '$lib/components/items/SortableList.svelte';
 	import PlotCard from '$lib/components/plot/PlotCard.svelte';
@@ -82,6 +84,14 @@
 
 	const creating = $derived(selectedId === NEW);
 	const selectedPlot = $derived(plots.find((p) => p.id === selectedId));
+
+	// 見出し(タイトルバー・スマホの上部バー)に選択中のプロット名を出す
+	$effect(() => {
+		pageContext.setDetail(
+			page.url.pathname,
+			creating ? '新規プロット' : (selectedPlot?.title ?? '')
+		);
+	});
 
 	/** 絞り込み中は一覧の並びが全体の並びと一致しないので、並べ替えを止める */
 	const filtering = $derived(

@@ -119,14 +119,20 @@ async function main() {
 		await checkPage(page, 'エディタ', '.editor-panel--editor', '.editor-page');
 
 		console.log('[プロット・人物・設定資料・進捗]');
-		for (const [name, route] of [
-			['プロット', 'plot'],
-			['人物', 'characters'],
-			['設定資料', 'worldbuilding'],
-			['進捗', 'progress']
+		for (const [name, route, scroller, target] of [
+			// プロットは、ボードの列の中がスクロールする(縦のスクロールコンテナは列の本体)
+			[
+				'プロット',
+				'plot',
+				'[data-status="idea"] .col-body.scroll-stable',
+				'[data-status="idea"] .col-body .sortable'
+			],
+			['人物', 'characters', 'main.scroll-stable', 'main .page-body'],
+			['設定資料', 'worldbuilding', 'main.scroll-stable', 'main .page-body'],
+			['進捗', 'progress', 'main.scroll-stable', 'main .page-body']
 		]) {
 			await page.goto(`${vite.base}/project/${pid}/${route}`);
-			await checkPage(page, name, 'main.scroll-stable', 'main .page-body');
+			await checkPage(page, name, scroller, target);
 		}
 
 		console.log('[通読]');

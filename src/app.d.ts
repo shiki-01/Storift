@@ -8,7 +8,10 @@ declare global {
 		// interface Error {}
 		// interface Locals {}
 		// interface PageData {}
-		// interface PageState {}
+		/** 一覧/詳細(MasterDetail)で開いている項目。URL の hash と対で、ブラウザの戻る/進むの追従に使う */
+		interface PageState {
+			md?: string | null;
+		}
 		// interface Platform {}
 	}
 }

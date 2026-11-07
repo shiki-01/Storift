@@ -1,11 +1,13 @@
 import { db } from './schema';
 import type { Plot, PlotCreateInput } from '$lib/types';
 import { v4 as uuidv4 } from 'uuid';
-import { isUnchanged, touchProject } from './utils';
+import { isUnchanged, touchProject, writeOrderChanges } from './utils';
+import { nextOrder, sortByOrder } from '$lib/utils/ordering';
+import { planPlotMove, type PlotGroup } from '$lib/utils/plotOrdering';
 
 export const plotsDB = {
 	async getByProjectId(projectId: string): Promise<Plot[]> {
-		return await db.plots.where('projectId').equals(projectId).sortBy('order');
+		return sortByOrder(await db.plots.where('projectId').equals(projectId).toArray());
 	},
 
 	async getById(id: string): Promise<Plot | undefined> {
@@ -15,7 +17,6 @@ export const plotsDB = {
 	async create(input: PlotCreateInput): Promise<Plot> {
 		const now = Date.now();
 		const existingPlots = await this.getByProjectId(input.projectId);
-		const maxOrder = existingPlots.reduce((max, p) => Math.max(max, p.order), -1);
 
 		const plot: Plot = {
 			id: input.id ?? uuidv4(),
@@ -26,7 +27,7 @@ export const plotsDB = {
 			content: '',
 			position: { x: 0, y: 0 },
 			color: '#3b82f6',
-			order: maxOrder + 1,
+			order: nextOrder(existingPlots),
 			createdAt: now,
 			updatedAt: now,
 			_version: 1
@@ -57,6 +58,21 @@ export const plotsDB = {
 		if (plot) {
 			await touchProject(plot.projectId);
 		}
+	},
+
+	/**
+	 * 同じ状態の列の中で toIndex 番目(移動後の位置)へ動かす。group に状態を指定すると、その状態の列へ移す
+	 * (状態の変更と order は、同じ 1 回の更新で書く)。ALL_PLOTS を指定すると、状態に関係なく
+	 * プロット全体(タイムライン)の中で動かす。書いた行の id を返す。
+	 * 通常は 1 行だけ。間隔が尽きたときなどだけ、その列全体を振り直す(utils/ordering.ts)。
+	 * 同期は呼び出し元が、返った id を queueChanges に渡す。
+	 */
+	async moveTo(id: string, toIndex: number, group?: PlotGroup): Promise<string[]> {
+		const plot = await db.plots.get(id);
+		if (!plot) return [];
+		const all = await this.getByProjectId(plot.projectId);
+		const changes = planPlotMove(all, id, toIndex, group);
+		return await writeOrderChanges<Plot>(db.plots, plot.projectId, changes);
 	},
 
 	async reorder(projectId: string, plotIds: string[]): Promise<void> {

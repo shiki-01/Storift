@@ -12,7 +12,8 @@ export interface Plot {
 		y: number;
 	};
 	color: string;
-	order: number;
+	/** 手動の並び順(分数順序。無ければ createdAt 順。utils/ordering.ts) */
+	order?: number;
 	createdAt: number;
 	updatedAt: number;
 	_version: number;

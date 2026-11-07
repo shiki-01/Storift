@@ -9,6 +9,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { editorStore } from '$lib/stores/editor.svelte';
 import { aiStore, type ToolResult } from '$lib/stores/ai.svelte';
+import { sortByOrder } from '$lib/utils/ordering';
 import { entityContext, loadWorkspaceData, STATUS_LABELS, type WorkspaceData } from './workspace';
 import {
 	PLOT_STATUS_LABELS,
@@ -160,25 +161,22 @@ function inProject<T extends { projectId: string }>(items: T[], projectId: strin
 function listRows(kind: ListKind, data: WorkspaceData, projectId: string): Row[] {
 	switch (kind) {
 		case 'characters':
-			return inProject(data.characters, projectId)
-				.sort((a, b) => a.name.localeCompare(b.name, 'ja'))
-				.map((c) => ({ id: c.id, title: c.name, sub: c.role }));
+			return sortByOrder(inProject(data.characters, projectId)).map((c) => ({
+				id: c.id,
+				title: c.name,
+				sub: c.role
+			}));
 		case 'plots':
-			return inProject(data.plots, projectId)
-				.sort((a, b) => a.order - b.order)
-				.map((p) => ({
-					id: p.id,
-					title: p.title,
-					sub: `${PLOT_TYPE_LABELS[p.type]} / ${PLOT_STATUS_LABELS[p.status]}`
-				}));
+			return sortByOrder(inProject(data.plots, projectId)).map((p) => ({
+				id: p.id,
+				title: p.title,
+				sub: `${PLOT_TYPE_LABELS[p.type]} / ${PLOT_STATUS_LABELS[p.status]}`
+			}));
 		case 'worldbuilding': {
 			const order = Object.keys(WORLD_LABELS);
-			return inProject(data.worldbuilding, projectId)
-				.sort(
-					(a, b) =>
-						order.indexOf(a.category) - order.indexOf(b.category) ||
-						a.title.localeCompare(b.title, 'ja')
-				)
+			// 分類の順に並べ、同じ分類の中は手動順
+			return sortByOrder(inProject(data.worldbuilding, projectId))
+				.sort((a, b) => order.indexOf(a.category) - order.indexOf(b.category))
 				.map((w) => ({ id: w.id, title: w.title, sub: WORLD_LABELS[w.category] }));
 		}
 		case 'memos':

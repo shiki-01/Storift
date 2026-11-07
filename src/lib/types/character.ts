@@ -10,6 +10,8 @@ export interface Character {
 	background: string;
 	relationships: CharacterRelationship[];
 	imageUrl?: string;
+	/** 手動の並び順(分数順序。無ければ createdAt 順。utils/ordering.ts) */
+	order?: number;
 	createdAt: number;
 	updatedAt: number;
 	_version: number;

@@ -198,7 +198,7 @@ async function main() {
 		await page.goto(`${vite.base}/project/${pid}/plot`);
 		await page.getByText('プロットの本文テキスト').first().waitFor({ timeout: 30_000 });
 		await text(page, 'プロットの本文', 'p:has-text("プロットの本文テキスト")');
-		await none(page, 'プロットのページのボタン', 'main button');
+		await none(page, 'プロットのページのボタン', '.plot-page button');
 		await page.goto(`${vite.base}/project/${pid}/characters`);
 		await page.getByText('人物の性格テキスト').first().waitFor({ timeout: 30_000 });
 		await text(page, '人物の説明', 'p:has-text("人物の性格テキスト")');

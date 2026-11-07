@@ -91,7 +91,13 @@ function scene(id: string, title: string, order: number, content: string): Scene
 	};
 }
 
-function character(id: string, name: string, appearance: string): Character {
+function character(
+	id: string,
+	name: string,
+	appearance: string,
+	createdAt = 0,
+	order?: number
+): Character {
 	return {
 		id,
 		projectId: 'p1',
@@ -101,7 +107,8 @@ function character(id: string, name: string, appearance: string): Character {
 		personality: '',
 		background: '',
 		relationships: [],
-		createdAt: 0,
+		order,
+		createdAt,
 		updatedAt: 0,
 		_version: 1
 	};
@@ -116,9 +123,10 @@ async function seed() {
 		scene('s2', '出会い', 1, '別の場面')
 	]);
 	await db.characters.bulkPut([
-		character('ch1', 'アキ', '黒髪の少年'),
-		character('ch2', 'ベニ', '赤い外套'),
-		character('ch3', 'チカ', '白い仮面')
+		character('ch1', 'アキ', '黒髪の少年', 1),
+		// 一覧は手動順(order が無ければ作成順)。作成順は アキ・チカ・ベニ
+		character('ch2', 'ベニ', '赤い外套', 3),
+		character('ch3', 'チカ', '白い仮面', 2)
 	]);
 }
 
@@ -163,6 +171,22 @@ describe('MCP の読み取り', () => {
 		expect(result.text).toContain('アキ');
 		expect(result.text).toContain('主人公');
 		expect(result.text).not.toContain('黒髪');
+	});
+
+	it('一覧は手動順(order)で並ぶ。order が無ければ作成順', async () => {
+		const names = (text: string) => [...text.matchAll(/ch\d {2}(\S+?)\(/g)].map((m) => m[1]);
+		const before = await callTool('list_items', { kind: 'characters' }, 'x');
+		expect(names(before.text)).toEqual(['アキ', 'チカ', 'ベニ']);
+
+		await db.characters.update('ch2', { order: 1024 });
+		await db.characters.update('ch1', { order: 2048 });
+		await db.characters.update('ch3', { order: 3072 });
+		const after = await callTool('list_items', { kind: 'characters' }, 'x');
+		expect(names(after.text)).toEqual(['ベニ', 'アキ', 'チカ']);
+
+		// order はファイルに書き出す項目ではない
+		const item = await callTool('get_item', { kind: 'characters', id: 'ch2' }, 'x');
+		expect(item.text).not.toMatch(/order/i);
 	});
 
 	it('limit と cursor で続きのページを取れる', async () => {

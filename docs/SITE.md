@@ -13,14 +13,36 @@
 
 ## アプリの画面を載せている箇所
 
-- トップの操作デモ(`site/src/lib/demo/`)は動画ではなく、見本の部品を台本どおりに動かしている。アプリの見た目を大きく変えたら合わせて直す。
-- 実画面の画像は `site/static/shots/`(WebP。ライト/ダークの 2 枚ずつ)にある。アプリの dev サーバーを 5181 番で起動し、リポジトリ直下で次を実行すると撮り直せる。Playwright の Chromium(E2E と同じ、インストール済みのもの)で撮り、撮影用の作品(`site/scripts/seed.js`)を使い捨てのコンテキストに入れるので、手元の作品には触れない。画面を作り直したら、その画面の画像(`relation`・`world` など)を撮り直す。
+- トップの操作デモ(`site/src/lib/demo/`)は動画ではなく、見本の部品を台本どおりに動かしている。アプリのコンポーネントは import せず、見た目だけをサイト側の部品(`DemoEditor`・`DemoPlot`・`DemoCharacters`・`DemoRelation`・`DemoWorld`・`DemoProgress`)として書いている。台本は `AppDemo.svelte` の `scripts`(書く・プロット・人物・設定資料・進捗の 5 場面)で、動きを減らす設定(`prefers-reduced-motion`)では各場面の最後の状態をそのまま見せる。アプリの画面を作り直したら、合わせて直す(配色は `app.css` のトークンだけを使い、色の見本は基調色の `color-mix` で作る)。
+- 実画面の画像は `site/static/shots/`(WebP、1920x1200。ライト/ダークの 2 枚ずつ、1 枚 100KB 前後)にある。使っている場所は、トップの `Gallery.svelte`(`split`・`plot`・`characters`・`relation`・`world`・`preview`・`progress`・`home`)、機能の頁(`editor`・`plot`・`preview`)、使い方の頁(`settings`)。
+
+### 実画面の撮り直し
+
+アプリの dev サーバーを 5181 番で起動し、リポジトリ直下で次を実行する。Playwright の Chromium(E2E と同じ、インストール済みのもの。`playwright install` はしない)で撮り、撮影用の作品(`site/scripts/seed.js`。架空の作品「雨の日の栞」)を使い捨てのコンテキストに入れるので、手元の作品には触れない。
 
 ```bash
 bun run dev -- --port 5181 --strictPort   # 別のターミナルで起動しておく
-node site/scripts/capture-shots.mjs                  # すべて撮る
-node site/scripts/capture-shots.mjs relation world   # 名前を指定すると、その画像だけ撮る
+node site/scripts/capture-shots.mjs                  # すべて撮る(約 3 分)
+node site/scripts/capture-shots.mjs plot world       # 名前を指定すると、その画像だけ撮る
 ```
+
+| 名前         | 画面                                                             |
+| ------------ | ---------------------------------------------------------------- |
+| `home`       | 作品一覧(チュートリアルの案内は閉じて撮る)                       |
+| `editor`     | 執筆(「祖母の栞」を開いた状態)                                   |
+| `split`      | 執筆の二画面表示(本文と縦書きのプレビュー)                       |
+| `plot`       | プロットのボード(四つの列がすべて見える。詳細は開かない)         |
+| `characters` | 人物の一覧と詳細(「朝倉 灯」を開いた状態)                        |
+| `relation`   | 人物の相関図                                                     |
+| `world`      | 設定資料の一覧と詳細(「坂の上の古書店」を開いた状態)             |
+| `progress`   | 進捗                                                             |
+| `preview`    | 通読(横書き。作品名の見出しから)                                 |
+| `settings`   | 設定の「外観」(「システム設定に従う」を外し、配色の枠を合わせる) |
+
+- 日時は、撮影スクリプトの `FIXED_TIME`(`2026-06-14T10:00:00+09:00`)に、ブラウザの時計とタイムゾーン(Asia/Tokyo)を固定している。進捗のカレンダー、プロットの「更新 日付」、詳細の更新日時が、実行日に依らず同じ絵になる。
+- データは `seed.js` が `projectsDB` などへ直接書き込む。人物・設定資料・プロットを足したいときは、そこに追記する(実在の作品名・人名は使わない)。
+- 画像は 1280x800 の表示を 1.5 倍で撮り、WebP(quality 82)で書く。1 枚が 150KB を超えたら、`QUALITY` を下げる。
+- 撮ったら 1 枚ずつ開いて、崩れ・切れ・日付・個人情報(端末のパス、Firebase の設定、API キー)が写っていないか、ライトとダークで確かめる。画像を足したら、`Gallery.svelte` の `shots`(名前・タブ名・alt)か、使う頁の `Shot` に追加する。
 
 ## URL の設定
 

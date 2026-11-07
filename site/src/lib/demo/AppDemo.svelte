@@ -4,25 +4,40 @@
 	import type { IconName } from '$lib/icons';
 	import DemoEditor from './DemoEditor.svelte';
 	import DemoPlot from './DemoPlot.svelte';
-	import DemoRelation from './DemoRelation.svelte';
+	import DemoCharacters from './DemoCharacters.svelte';
+	import DemoWorld from './DemoWorld.svelte';
 	import DemoProgress from './DemoProgress.svelte';
-	import { BASE_TEXT, PLOTS, type PlotStatus, type View } from './data';
+	import Logo from '$lib/Logo.svelte';
+	import {
+		BASE_TEXT,
+		PLOTS,
+		type CharMode,
+		type PlotStatus,
+		type View,
+		type WorldCategory
+	} from './data';
 
 	// トップの操作デモ。動画ではなく、本物の部品を台本どおりに動かしている。
 	// 配色に追従し、文字もぼやけず、読み込みも軽い。
 
-	const rail: { view: View; icon: IconName; label: string }[] = [
+	const rail: { view: View | 'preview'; icon: IconName; label: string }[] = [
 		{ view: 'editor', icon: 'write', label: '執筆' },
+		{ view: 'preview', icon: 'preview', label: '通読' },
 		{ view: 'plot', icon: 'plot', label: 'プロット' },
-		{ view: 'relation', icon: 'characters', label: '人物' },
+		{ view: 'characters', icon: 'characters', label: '人物' },
 		{ view: 'world', icon: 'world', label: '設定資料' },
 		{ view: 'progress', icon: 'progress', label: '進捗' }
 	];
 
 	const chapters = [
 		{ id: 'write', label: '書く', note: '記法をそのまま打つと、隣の縦書きに組まれます' },
-		{ id: 'plot', label: 'プロット', note: '場面の状態を、アイデアから完了まで進めます' },
-		{ id: 'relation', label: '相関図', note: '人物を動かして、関係を整理します' },
+		{
+			id: 'plot',
+			label: 'プロット',
+			note: 'カードをドラッグして、アイデアから推敲済みまで進めます'
+		},
+		{ id: 'characters', label: '人物', note: '一覧と詳細で読み、相関図で関係を整理します' },
+		{ id: 'world', label: '設定資料', note: '分類で絞り込み、選ぶと全文が読めます' },
 		{ id: 'progress', label: '進捗', note: '書いた分量は、日ごとに記録されます' }
 	] as const;
 
@@ -32,6 +47,11 @@
 	let text = $state(BASE_TEXT);
 	let saving = $state(false);
 	let plots = $state<Record<string, PlotStatus>>({});
+	let plotDrag = $state<{ id: string; x: number; y: number } | null>(null);
+	let charMode = $state<CharMode>('list');
+	let charOpened = $state(false);
+	let worldChip = $state<'all' | WorldCategory>('all');
+	let worldOpened = $state('');
 	let mover = $state({ x: 0, y: 0 });
 	let progressShown = $state(0);
 	let pressed = $state<string | null>(null);
@@ -51,6 +71,11 @@
 		text = BASE_TEXT;
 		saving = false;
 		plots = Object.fromEntries(PLOTS.map((p) => [p.id, p.status]));
+		plotDrag = null;
+		charMode = 'list';
+		charOpened = false;
+		worldChip = 'all';
+		worldOpened = '';
 		mover = { x: 0, y: 0 };
 		progressShown = 0;
 		pressed = null;
@@ -117,6 +142,30 @@
 		action();
 	}
 
+	/** カードの取っ手をつかんで、別の列へ運ぶ */
+	async function drag(id: number, plot: string, to: PlotStatus) {
+		await moveTo(id, `grip-${plot}`);
+		await clock(id, 150);
+		cursor.down = true;
+		const from = { x: cursor.x, y: cursor.y };
+		// 取っ手を、移し先の列の上部(左寄り)へ運ぶ
+		const col = stage.querySelector<HTMLElement>(`[data-t="col-${to}"]`)!.getBoundingClientRect();
+		const box = stage.getBoundingClientRect();
+		const dest = { x: col.left - box.left + 30, y: col.top - box.top + 62 };
+		plotDrag = { id: plot, x: 0, y: 0 };
+		await clock(id, 900, (t) => {
+			const k = ease(t);
+			const x = (dest.x - from.x) * k;
+			const y = (dest.y - from.y) * k;
+			plotDrag = { id: plot, x, y };
+			cursor.x = from.x + x;
+			cursor.y = from.y + y;
+		});
+		cursor.down = false;
+		plotDrag = null;
+		plots[plot] = to;
+	}
+
 	async function type(id: number, input: string) {
 		for (const ch of input) {
 			text += ch;
@@ -144,13 +193,17 @@
 		async plot(id) {
 			await click(id, 'rail-plot', () => (view = 'plot'));
 			await clock(id, 700);
-			await click(id, 'next-pl3', () => (plots.pl3 = 'written'));
-			await clock(id, 750);
-			await click(id, 'next-pl1', () => (plots.pl1 = 'planned'));
+			await drag(id, 'pl3', 'written');
+			await clock(id, 700);
+			await drag(id, 'pl1', 'planned');
 			await clock(id, 1500);
 		},
-		async relation(id) {
-			await click(id, 'rail-relation', () => (view = 'relation'));
+		async characters(id) {
+			await click(id, 'rail-characters', () => (view = 'characters'));
+			await clock(id, 700);
+			await click(id, 'row-akari', () => (charOpened = true));
+			await clock(id, 1600);
+			await click(id, 'seg-graph', () => (charMode = 'graph'));
 			await clock(id, 700);
 			await moveTo(id, 'node-mover');
 			await clock(id, 120);
@@ -163,7 +216,15 @@
 				cursor.y = from.y + 56 * k;
 			});
 			cursor.down = false;
-			await clock(id, 1500);
+			await clock(id, 1300);
+		},
+		async world(id) {
+			await click(id, 'rail-world', () => (view = 'world'));
+			await clock(id, 700);
+			await click(id, 'chip-location', () => (worldChip = 'location'));
+			await clock(id, 700);
+			await click(id, 'row-w1', () => (worldOpened = 'w1'));
+			await clock(id, 2000);
 		},
 		async progress(id) {
 			await click(id, 'rail-progress', () => (view = 'progress'));
@@ -181,9 +242,18 @@
 			plots.pl3 = 'written';
 			plots.pl1 = 'planned';
 		}
-		// 相関図から進捗へ移る章では、動かした人物の位置を保ったままにする
-		if (index >= 3) mover = { x: -70, y: 56 };
-		view = (['editor', 'editor', 'plot', 'relation'] as const)[index];
+		// 人物から設定資料へ移る章では、相関図で動かした人物の位置を保ったままにする
+		if (index >= 3) {
+			charMode = 'graph';
+			charOpened = true;
+			mover = { x: -70, y: 56 };
+		}
+		// 設定資料から進捗へ移る章では、絞り込みと開いた資料を保つ
+		if (index >= 4) {
+			worldChip = 'location';
+			worldOpened = 'w1';
+		}
+		view = (['editor', 'editor', 'plot', 'characters', 'world'] as const)[index];
 	}
 
 	/** 動きを減らす設定のとき: 章の終わりの状態をそのまま見せる */
@@ -199,8 +269,14 @@
 			plots.pl3 = 'written';
 			plots.pl1 = 'planned';
 		} else if (index === 2) {
-			view = 'relation';
+			view = 'characters';
+			charMode = 'graph';
+			charOpened = true;
 			mover = { x: -70, y: 56 };
+		} else if (index === 3) {
+			view = 'world';
+			worldChip = 'location';
+			worldOpened = 'w1';
 		} else {
 			view = 'progress';
 			progressShown = 1;
@@ -260,15 +336,7 @@
 <figure class="demo">
 	<div class="window" bind:this={stage} aria-hidden="true" inert>
 		<div class="d-rail">
-			<span class="d-mark">
-				<svg viewBox="0 0 36 32" width="22" height="20">
-					<path
-						d="M28.27.47a1.6 1.6 0 0 1 2.27 0l4.22 4.22a1.6 1.6 0 0 1 0 2.27L20.02 21.71a1.6 1.6 0 0 1-.82.44l-5.28 1.06a1.6 1.6 0 0 1-1.89-1.89l1.06-5.28c.06-.3.21-.58.43-.8z"
-						fill="currentColor"
-					/>
-					<path d="M.7 27h33.74M.7 30.43h33.74" stroke="currentColor" stroke-width="1.4" />
-				</svg>
-			</span>
+			<span class="d-mark"><Logo variant="mark" size={24} title="" /></span>
 			<div class="d-rail-group">
 				{#if notchTop !== null}
 					<span class="d-notch" style:transform="translateY({notchTop}px)"></span>
@@ -296,9 +364,17 @@
 			{#if view === 'editor'}
 				<DemoEditor {text} {split} {saving} {pressed} />
 			{:else if view === 'plot'}
-				<DemoPlot {plots} {pressed} />
-			{:else if view === 'relation'}
-				<DemoRelation {mover} dragging={cursor.down} />
+				<DemoPlot {plots} drag={plotDrag} />
+			{:else if view === 'characters'}
+				<DemoCharacters
+					mode={charMode}
+					opened={charOpened}
+					{mover}
+					dragging={cursor.down}
+					{pressed}
+				/>
+			{:else if view === 'world'}
+				<DemoWorld chip={worldChip} opened={worldOpened} {pressed} />
 			{:else if view === 'progress'}
 				<DemoProgress shown={progressShown} />
 			{/if}

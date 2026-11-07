@@ -199,12 +199,19 @@ async function main() {
 		await page.getByText('プロットの本文テキスト').first().waitFor({ timeout: 30_000 });
 		await text(page, 'プロットの本文', 'p:has-text("プロットの本文テキスト")');
 		await none(page, 'プロットのページのボタン', '.plot-page button');
+		// 人物・設定資料は、一覧の行を押して詳細(全文)を開く。本文は選択でき、一覧の行や見出しは選択できない
 		await page.goto(`${vite.base}/project/${pid}/characters`);
+		await page.locator('[data-testid="character-row"] .open').first().click({ timeout: 30_000 });
 		await page.getByText('人物の性格テキスト').first().waitFor({ timeout: 30_000 });
 		await text(page, '人物の説明', 'p:has-text("人物の性格テキスト")');
+		await none(page, '人物の一覧の行(名前)', '.chars-page .item-row .title');
+		await none(page, '人物のページのボタン', '.chars-page button');
 		await page.goto(`${vite.base}/project/${pid}/worldbuilding`);
+		await page.locator('[data-testid="world-row"] .open').first().click({ timeout: 30_000 });
 		await page.getByText('設定資料の本文テキスト').first().waitFor({ timeout: 30_000 });
 		await text(page, '設定資料の本文', 'p:has-text("設定資料の本文テキスト")');
+		await none(page, '設定資料の一覧の行(題名)', '.world-page .item-row .title');
+		await none(page, '設定資料のページのボタン', '.world-page button');
 
 		console.log('[進捗]');
 		await page.goto(`${vite.base}/project/${pid}/progress`);

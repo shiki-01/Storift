@@ -30,7 +30,9 @@
 		"test:e2e:user-select": "node tests/e2e/user-select.spec.mjs",
 		"test:e2e:scrollbar": "node tests/e2e/scrollbar.spec.mjs",
 		"test:e2e:progress": "node tests/e2e/progress.spec.mjs",
-		"test:e2e:plot": "node tests/e2e/plot.spec.mjs"
+		"test:e2e:plot": "node tests/e2e/plot.spec.mjs",
+		"test:e2e:characters": "node tests/e2e/characters.spec.mjs",
+		"test:e2e:worldbuilding": "node tests/e2e/worldbuilding.spec.mjs"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^1.4.0",

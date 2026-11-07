@@ -127,8 +127,9 @@ async function main() {
 				'[data-status="idea"] .col-body.scroll-stable',
 				'[data-status="idea"] .col-body .sortable'
 			],
-			['人物', 'characters', 'main.scroll-stable', 'main .page-body'],
-			['設定資料', 'worldbuilding', 'main.scroll-stable', 'main .page-body'],
+			// 人物・設定資料は、一覧のスクロールコンテナ(.list-scroll)がスクロールする。詳細ペインにも .scroll-stable が付く
+			['人物', 'characters', '.list-scroll.scroll-stable', '.list-scroll .sortable'],
+			['設定資料', 'worldbuilding', '.list-scroll.scroll-stable', '.list-scroll .sortable'],
 			['進捗', 'progress', 'main.scroll-stable', 'main .page-body']
 		]) {
 			await page.goto(`${vite.base}/project/${pid}/${route}`);

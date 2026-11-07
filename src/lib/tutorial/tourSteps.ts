@@ -163,7 +163,10 @@ export const TOUR_STEPS: TourStep[] = [
 	{
 		id: 'worldbuilding-tabs',
 		title: '設定資料の分類',
-		body: ['用語・場所・年表・その他に分けて、世界観の情報を残せます。'],
+		body: [
+			'用語・場所・年表・その他に分けて、世界観の情報を残せます。件数を見ながら、分類で絞り込めます。',
+			'項目を押すと全文が読め、右端のハンドルをドラッグすると、分類の中で並べ替えられます。'
+		],
 		target: '[data-tour="worldbuilding-categories"]'
 	},
 	{

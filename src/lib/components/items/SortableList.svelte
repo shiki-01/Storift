@@ -601,8 +601,8 @@
 		flex: none;
 		align-items: center;
 		justify-content: center;
-		width: 28px;
-		height: 28px;
+		width: var(--sortable-handle-size, 28px);
+		height: var(--sortable-handle-size, 28px);
 		padding: 0;
 		border: 0;
 		border-radius: 7px;
@@ -671,8 +671,8 @@
 	@media (pointer: coarse) {
 		.handle,
 		.move {
-			width: 36px;
-			height: 36px;
+			width: var(--sortable-handle-size, 36px);
+			height: var(--sortable-handle-size, 36px);
 			opacity: 1;
 		}
 	}

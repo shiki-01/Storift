@@ -82,6 +82,72 @@ describe('decideConflict', () => {
 	});
 });
 
+describe('decideConflict: 並べ替え(order)だけの違い', () => {
+	const row = (over: Record<string, unknown> = {}) => ({
+		id: 'c1',
+		projectId: 'p1',
+		name: '人物',
+		role: '主人公',
+		order: 1024,
+		createdAt: 1,
+		updatedAt: 1000,
+		_version: 2,
+		...over
+	});
+
+	it('人物・設定資料・プロットは、order だけの違いなら新しい updatedAt の方を採用する', () => {
+		const local = row({ order: 2048, updatedAt: 3000, _version: 3 });
+		const remote = row({ order: 512, updatedAt: 5000, _version: 4, syncedAt: 9 });
+		for (const type of ['characters', 'worldbuilding', 'plots']) {
+			expect(decideConflict(type, local, remote, 'manual')).toEqual({
+				kind: 'auto',
+				action: 'apply-remote',
+				reason: 'order-only'
+			});
+			expect(decideConflict(type, remote, local, 'manual')).toEqual({
+				kind: 'auto',
+				action: 'push-local',
+				reason: 'order-only'
+			});
+		}
+	});
+
+	it('order 以外(題名・分類・状態など)も違えば、従来どおり手動', () => {
+		const local = row({ order: 2048, updatedAt: 3000 });
+		expect(
+			decideConflict('characters', local, row({ order: 1, name: '別', updatedAt: 5000 }), 'manual')
+		).toEqual({ kind: 'manual' });
+		expect(
+			decideConflict(
+				'worldbuilding',
+				row({ category: 'term', order: 1 }),
+				row({ category: 'place', order: 2, updatedAt: 5000 }),
+				'manual'
+			)
+		).toEqual({ kind: 'manual' });
+	});
+
+	it('order を持たない種別(シーンなど)には適用しない', () => {
+		const local = row({ order: 2048, updatedAt: 3000 });
+		const remote = row({ order: 512, updatedAt: 5000 });
+		expect(decideConflict('memos', local, remote, 'manual')).toEqual({ kind: 'manual' });
+	});
+
+	it('order が片側に無い(旧データ)場合も、order だけの違いとして扱う', () => {
+		const local = row({ updatedAt: 3000 });
+		const remote = row({ updatedAt: 5000 });
+		delete (local as Record<string, unknown>).order;
+		expect(decideConflict('plots', local, remote, 'manual')).toMatchObject({
+			action: 'apply-remote',
+			reason: 'order-only'
+		});
+	});
+
+	it('contentDiffers(リモート適用の判断)は order の違いを内容の違いとして扱い続ける', () => {
+		expect(contentDiffers(row({ order: 1 }), row({ order: 2 }))).toBe(true);
+	});
+});
+
 describe('2 端末のフィードバックのシミュレーション', () => {
 	// 簡易モデル: 端末 A / B とリモート。突き合わせ(reconcile + decideConflict)で収束するか
 	type Doc = ReturnType<typeof scene>;

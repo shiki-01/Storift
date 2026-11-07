@@ -28,9 +28,20 @@ export function differingKeys(a: Entity, b: Entity): string[] {
 		.sort((x, y) => x.localeCompare(y));
 }
 
+/** 手動の並び順(order)を持つ項目。並べ替えだけの違いは、内容の競合として扱わない */
+const ORDERED_TYPES: ReadonlySet<string> = new Set(['characters', 'worldbuilding', 'plots']);
+
+/** メタ項目を除いた違いが order だけか(人物・設定資料・プロットの並べ替えだけが食い違った場合) */
+export function differsOnlyInOrder(type: string, a: Entity, b: Entity): boolean {
+	if (!ORDERED_TYPES.has(type)) return false;
+	const keys = differingKeys(a, b);
+	return keys.length > 0 && keys.every((key) => key === 'order');
+}
+
 export type ConflictDecisionReason =
 	| 'newest-wins'
 	| 'same-content'
+	| 'order-only'
 	| 'policy-local'
 	| 'policy-remote';
 
@@ -42,6 +53,8 @@ export type ConflictDecision =
  * 競合(双方が base 以降に更新)をどう扱うか決める。
  * - プロジェクト・CRDT 化したシーン(newestWins): 常に新しい方
  * - 内容がメタ項目を除いて同一: 新しい updatedAt の方(自動書き込みで updatedAt だけが動いた場合。履歴退避は不要)
+ * - 人物・設定資料・プロットで、違いがメタ項目と order(並べ替え)だけ: 新しい updatedAt の方
+ *   (並べ替えは内容の編集ではないので、ダイアログを出さない)
  * - 競合ポリシーが local / remote: その方針
  * - それ以外: 手動(ダイアログ)
  */
@@ -58,6 +71,9 @@ export function decideConflict(
 	}
 	if (!contentDiffers(local, remote)) {
 		return { kind: 'auto', action: newest, reason: 'same-content' };
+	}
+	if (differsOnlyInOrder(type, local, remote)) {
+		return { kind: 'auto', action: newest, reason: 'order-only' };
 	}
 	if (policy === 'local') return { kind: 'auto', action: 'push-local', reason: 'policy-local' };
 	if (policy === 'remote') return { kind: 'auto', action: 'apply-remote', reason: 'policy-remote' };

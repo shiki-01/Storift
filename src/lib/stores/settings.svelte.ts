@@ -46,6 +46,13 @@ export const settingsStore = {
 	set editorFormatting(value: AppSettings['editorFormatting']) {
 		settings.editorFormatting = value;
 	},
+	/** 執筆画面のツールバーで、三点メニューにまとめるボタンの id */
+	get toolbarMenuItems() {
+		return settings.toolbarMenuItems ?? [];
+	},
+	set toolbarMenuItems(value: string[]) {
+		settings.toolbarMenuItems = value;
+	},
 	get hasFirebaseConfig() {
 		return settings.firebase !== undefined;
 	}

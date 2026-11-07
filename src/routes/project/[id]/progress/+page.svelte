@@ -3,6 +3,7 @@
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { progressLogsDB } from '$lib/db';
 	import type { ProgressLog, ProgressStats } from '$lib/types';
+	import Icon from '$lib/components/ui/Icon.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
@@ -277,7 +278,7 @@
 					</div>
 				{:else}
 					<div class="stat-cards flex gap:16 flex-wrap:wrap jc:space-between">
-						<Card class="flex:1 min-w:200">
+						<Card padding="none" class="flex:1 min-w:200">
 							<div class="p:20 text-align:center flex flex:column gap:8">
 								<p class="font:14 fg:theme-text-secondary">累計文字数</p>
 								<p class="font:30 font-weight:600 fg:theme-text">
@@ -287,7 +288,7 @@
 							</div>
 						</Card>
 
-						<Card class="flex:1 min-w:200">
+						<Card padding="none" class="flex:1 min-w:200">
 							<div class="p:20 text-align:center flex flex:column gap:8">
 								<p class="font:14 fg:theme-text-secondary">平均執筆量</p>
 								<p class="font:30 font-weight:600 fg:theme-text">
@@ -297,7 +298,7 @@
 							</div>
 						</Card>
 
-						<Card class="flex:1 min-w:200">
+						<Card padding="none" class="flex:1 min-w:200">
 							<div class="p:20 text-align:center flex flex:column gap:8">
 								<p class="font:14 fg:theme-text-secondary">最高記録</p>
 								<p class="font:30 font-weight:600 fg:theme-text">
@@ -307,7 +308,7 @@
 							</div>
 						</Card>
 
-						<Card class="flex:1 min-w:200">
+						<Card padding="none" class="flex:1 min-w:200">
 							<div class="p:20 text-align:center flex flex:column gap:8">
 								<p class="font:14 fg:theme-text-secondary">連続執筆</p>
 								<p class="font:30 font-weight:600 fg:theme-text">{stats.consecutiveDays}</p>
@@ -315,7 +316,7 @@
 							</div>
 						</Card>
 
-						<Card data-tour="progress-goal" class="flex:1 min-w:200">
+						<Card padding="none" data-tour="progress-goal" class="goal-card flex:1 min-w:200">
 							<div class="p:20 text-align:center flex flex:column gap:8">
 								<p class="font:14 fg:theme-text-secondary">目標達成率</p>
 								<p class="font:30 font-weight:600 fg:theme-primary">{stats.goalProgress}%</p>
@@ -326,21 +327,27 @@
 
 					<div class="grid gap:16 grid-template-columns:repeat(3,minmax(0,1fr))@lg">
 						<div class="grid-col-span:2@lg">
-							<Card>
-								<div class="p:24 flex flex:column gap:20">
-									<div class="flex jc:space-between ai:center">
-										<h2 class="font:20 font-weight:600 fg:theme-text">
+							<Card padding="none">
+								<div class="card-pad p:24 flex flex:column gap:20">
+									<div class="flex jc:space-between ai:center gap:8">
+										<h2 class="month-title font:20 font-weight:600 fg:theme-text m:0">
 											{format(currentMonth, 'yyyy年M月', { locale: ja })}
 										</h2>
 										<div class="flex gap:8">
-											<Button variant="secondary" class="px:12 py:8 font:12" onclick={previousMonth}
-												>←</Button
+											<Button
+												variant="secondary"
+												class="px:12 py:8 font:12"
+												onclick={previousMonth}
+												aria-label="前の月"><Icon name="chevron-left" class="ico" /></Button
 											>
 											<Button variant="secondary" class="px:12 py:8 font:12" onclick={goToToday}
 												>今日</Button
 											>
-											<Button variant="secondary" class="px:12 py:8 font:12" onclick={nextMonth}
-												>→</Button
+											<Button
+												variant="secondary"
+												class="px:12 py:8 font:12"
+												onclick={nextMonth}
+												aria-label="次の月"><Icon name="chevron-right" class="ico" /></Button
 											>
 										</div>
 									</div>
@@ -353,7 +360,7 @@
 										</p>
 									</div>
 
-									<div class="grid gap:4 grid-template-columns:repeat(7,minmax(0,1fr)) mb:8">
+									<div class="grid gap:4 grid-template-columns:repeat(7,minmax(0,1fr)) mb:-12">
 										{#each ['日', '月', '火', '水', '木', '金', '土'] as day (day)}
 											<div
 												class="text-align:center font:12 font-weight:600 fg:theme-text-secondary py:8"
@@ -405,8 +412,8 @@
 						</div>
 
 						<div>
-							<Card>
-								<div class="p:24 flex flex:column gap:16">
+							<Card padding="none">
+								<div class="card-pad p:24 flex flex:column gap:16">
 									<h3 class="font:18 font-weight:600 fg:theme-text">最近の記録</h3>
 									<div class="flex flex:column gap:12">
 										{#each recentLogs as log (log.id)}
@@ -528,9 +535,23 @@
 			min-width: 0 !important;
 		}
 
+		/* 5 枚目(目標達成率)が 1 枚だけ半幅で残らないよう、横いっぱいに広げる */
+		.stat-cards > :global(.goal-card) {
+			grid-column: 1 / -1;
+		}
+
+		.card-pad {
+			padding: 16px;
+			gap: 14px;
+		}
+
 		.stat-cards :global(p:nth-child(2)) {
 			font-size: 24px;
 		}
+	}
+
+	.month-title {
+		white-space: nowrap;
 	}
 
 	.page-header :global(button) {

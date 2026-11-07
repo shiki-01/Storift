@@ -20,6 +20,9 @@
 	import EditCard from './EditCard.svelte';
 	import Select from '$lib/components/ui/Select.svelte';
 	import { describeActiveModel } from '$lib/ai/registry';
+	import { linkifyRefs, type RefKind, type RefLookup } from '$lib/ai/refs';
+	import { loadRefIndex, openRef } from '$lib/desktop/refLinks';
+	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 
 	let input = $state('');
 	let showHistory = $state(false);
@@ -50,7 +53,7 @@
 		retry: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
 		// 紙飛行機
 		send: '<path d="M21 3L10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>',
-		stop: '<rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/>'
+		stop: '<rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor"/>'
 	};
 
 	const editModeOptions = (Object.entries(EDIT_MODE_LABELS) as [EditMode, string][]).map(
@@ -123,8 +126,32 @@
 
 	let notFound = $derived(aiStore.status !== null && !aiStore.status.found);
 
+	// 回答中の資料リンク用の索引。回答が増えたとき・シーンが変わったときに読み直す
+	let refLookup = $state<RefLookup>(() => undefined);
+	$effect(() => {
+		const projectId = currentProjectStore.project?.id;
+		void aiStore.messages.length;
+		void aiStore.messages.at(-1)?.running;
+		void currentProjectStore.scenes.length;
+		if (!projectId) return;
+		void loadRefIndex(projectId)
+			.then((lookup) => (refLookup = lookup))
+			.catch(() => undefined);
+	});
+
 	function renderMarkdown(text: string): string {
-		return DOMPurify.sanitize(marked.parse(text, { async: false, breaks: true }) as string);
+		const linked = linkifyRefs(text, refLookup);
+		return DOMPurify.sanitize(marked.parse(linked, { async: false, breaks: true }) as string, {
+			ADD_ATTR: ['data-ref-kind', 'data-ref-id']
+		});
+	}
+
+	function onMarkdownClick(e: MouseEvent) {
+		const btn = (e.target as HTMLElement).closest<HTMLElement>('button.ref-link');
+		const projectId = currentProjectStore.project?.id;
+		if (!btn || !projectId) return;
+		const { refKind, refId } = btn.dataset;
+		if (refKind && refId) void openRef(refKind as RefKind, refId, projectId);
 	}
 
 	// 新しい出力が来たら一番下までスクロールする(上を読んでいるときは動かさない)
@@ -489,8 +516,10 @@
 					<div class="msg assistant selectable" in:fade={{ duration: 180 }}>
 						{#each renderItems(message) as item, i (i)}
 							{#if item.kind === 'markdown'}
-								<!-- eslint-disable-next-line svelte/no-at-html-tags -- DOMPurify で無害化済み -->
-								<div class="markdown">{@html renderMarkdown(item.text)}</div>
+								<div class="markdown" onclick={onMarkdownClick}>
+									<!-- eslint-disable-next-line svelte/no-at-html-tags -- DOMPurify で無害化済み -->
+									{@html renderMarkdown(item.text)}
+								</div>
 							{:else if item.kind === 'tool'}
 								<div class="tool">
 									<span class="tool-name">{item.name}</span>
@@ -614,11 +643,8 @@
 					{describeActiveModel(aiStore.provider, aiStore.settings)}
 				</span>
 				{#if aiStore.isRunning}
-					<button
-						class="icon send stop"
-						onclick={() => aiStore.cancel()}
-						title="停止"
-						aria-label="停止">{@render icon(ICONS.stop)}</button
+					<button class="icon send" onclick={() => aiStore.cancel()} title="停止" aria-label="停止"
+						>{@render icon(ICONS.stop)}</button
 					>
 				{:else}
 					<button
@@ -1020,6 +1046,35 @@
 		color: var(--color-text-secondary);
 	}
 
+	.markdown :global(.ref-link) {
+		display: inline;
+		margin: 0 1px;
+		padding: 0 7px;
+		border: 1px solid color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+		color: var(--color-primary);
+		font: inherit;
+		font-size: 0.92em;
+		line-height: 1.6;
+		cursor: pointer;
+		user-select: none;
+		-webkit-user-select: none;
+	}
+
+	.markdown :global(button.ref-link:hover) {
+		background: color-mix(in srgb, var(--color-primary) 20%, transparent);
+	}
+
+	.markdown :global(.ref-link.missing) {
+		border-color: var(--color-border);
+		background: transparent;
+		color: var(--color-text-secondary);
+		text-decoration: line-through;
+		opacity: 0.7;
+		cursor: default;
+	}
+
 	.markdown :global(a) {
 		color: var(--color-primary);
 		text-decoration: underline;
@@ -1313,7 +1368,7 @@
 		flex: 0 1 auto;
 	}
 
-	/* 送信/停止は他のアイコンボタンと同じ 34px の角丸の正方形。有効なときだけ primary の面にする */
+	/* 送信/停止は他のアイコンボタンと同じ 34px の角丸の正方形。有効なときは同じ primary の面にする(停止も同じ見た目) */
 	.send:not(:disabled) {
 		background: var(--color-primary);
 		color: var(--color-background);
@@ -1332,15 +1387,5 @@
 		background: transparent;
 		color: var(--color-text-secondary);
 		opacity: 0.45;
-	}
-
-	.send.stop:not(:disabled) {
-		background: var(--color-text);
-		color: var(--color-background);
-	}
-
-	.send.stop:hover:not(:disabled) {
-		background: color-mix(in srgb, var(--color-text) 85%, var(--color-background));
-		color: var(--color-background);
 	}
 </style>

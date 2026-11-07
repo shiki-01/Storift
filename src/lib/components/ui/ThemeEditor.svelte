@@ -2,6 +2,8 @@
 	import { untrack } from 'svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import ColorPicker from '$lib/components/ui/ColorPicker.svelte';
+	import Select from '$lib/components/ui/Select.svelte';
 	import { themeStore, themes, type Theme } from '$lib/stores/theme.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import {
@@ -199,7 +201,13 @@
 	{@const value = colorValue(group, key)}
 	<div class="color-row">
 		<label for={id} class="color-label">{label}</label>
-		<input {id} type="color" {value} oninput={(e) => setColor(group, key, e.currentTarget.value)} />
+		<ColorPicker
+			{id}
+			popover={true}
+			{value}
+			aria-label={label}
+			onchange={(v) => setColor(group, key, v)}
+		/>
 		<input
 			type="text"
 			class="hex"
@@ -229,11 +237,12 @@
 
 			<div class="field">
 				<label for="theme-base">元にするテーマ</label>
-				<select id="theme-base" value={baseId} onchange={(e) => applyBase(e.currentTarget.value)}>
-					{#each themeStore.allThemes as theme (theme.id)}
-						<option value={theme.id}>{theme.name}</option>
-					{/each}
-				</select>
+				<Select
+					id="theme-base"
+					value={baseId}
+					options={themeStore.allThemes.map((t) => ({ value: t.id, label: t.name }))}
+					onchange={applyBase}
+				/>
 			</div>
 
 			<div class="tabs" role="tablist">
@@ -262,38 +271,42 @@
 				<div class="simple-panel">
 					<div class="color-row">
 						<label for="simple-background" class="color-label">背景</label>
-						<input
+						<ColorPicker
 							id="simple-background"
-							type="color"
+							popover={true}
 							value={simple.background}
-							oninput={(e) => setSimple('background', e.currentTarget.value)}
+							aria-label="背景"
+							onchange={(v) => setSimple('background', v)}
 						/>
 					</div>
 					<div class="color-row">
 						<label for="simple-text" class="color-label">文字</label>
-						<input
+						<ColorPicker
 							id="simple-text"
-							type="color"
+							popover={true}
 							value={simple.text}
-							oninput={(e) => setSimple('text', e.currentTarget.value)}
+							aria-label="文字"
+							onchange={(v) => setSimple('text', v)}
 						/>
 					</div>
 					<div class="color-row">
 						<label for="simple-primary" class="color-label">メイン</label>
-						<input
+						<ColorPicker
 							id="simple-primary"
-							type="color"
+							popover={true}
 							value={simple.primary}
-							oninput={(e) => setSimple('primary', e.currentTarget.value)}
+							aria-label="メイン"
+							onchange={(v) => setSimple('primary', v)}
 						/>
 					</div>
 					<div class="color-row">
 						<label for="simple-accent" class="color-label">差し色</label>
-						<input
+						<ColorPicker
 							id="simple-accent"
-							type="color"
+							popover={true}
 							value={simple.accent}
-							oninput={(e) => setSimple('accent', e.currentTarget.value)}
+							aria-label="差し色"
+							onchange={(v) => setSimple('accent', v)}
 						/>
 					</div>
 					<label class="check">
@@ -396,7 +409,6 @@
 	}
 
 	.field input,
-	.field select,
 	.hex {
 		height: 34px;
 		padding: 0 10px;
@@ -456,24 +468,14 @@
 
 	.color-row {
 		display: grid;
-		grid-template-columns: 96px 44px minmax(0, 1fr);
+		grid-template-columns: 96px 32px minmax(0, 1fr);
 		align-items: center;
 		gap: 10px;
 		font-size: 14px;
 	}
 
-	.color-row input[type='color'] {
-		width: 44px;
-		height: 32px;
-		padding: 0;
-		border: 1px solid var(--color-border);
-		border-radius: 6px;
-		background: none;
-		cursor: pointer;
-	}
-
 	.simple-panel .color-row {
-		grid-template-columns: 96px 44px;
+		grid-template-columns: 96px 32px;
 	}
 
 	.check {

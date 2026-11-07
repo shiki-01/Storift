@@ -1,13 +1,9 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { getIcon } from '../editor/icons';
 
 	let { name, class: className }: { name: string; class?: string } = $props();
-	let icon = $state('');
-
-	onMount(() => {
-		icon = getIcon(name) || '';
-	});
+	// name が変わったら追従する(onMount で一度だけ読むと、詳細ペインの再利用で古いアイコンが残る)
+	const icon = $derived(getIcon(name) || '');
 </script>
 
 <div class={className}>

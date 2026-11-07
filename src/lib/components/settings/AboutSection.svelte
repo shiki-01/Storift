@@ -31,25 +31,25 @@
 </script>
 
 <SettingsCard title="バージョン情報">
-	<div class="fg:theme-text-secondary">
-		<div class="mb:12"><Logo variant="full" size={28} /></div>
+	<div class="flex flex:column gap:14 fg:theme-text-secondary">
+		<div><Logo variant="full" size={28} /></div>
 		{#if isDesktop()}
 			<UpdateSettings />
 		{:else}
-			<p class="selectable">Storift v{__APP_VERSION__}</p>
-			<p class="font:.875rem selectable">ビルド: {buildVersion}</p>
-			<p class="font:.875rem selectable">
+			<p class="m:0 selectable">Storift v{__APP_VERSION__}</p>
+			<p class="m:0 font:.875rem selectable">ビルド: {buildVersion}</p>
+			<p class="m:0 font:.875rem selectable">
 				オフライン対応: {swVersion
 					? `有効 (${swVersion})`
 					: '未有効(初回の読み込み後に有効になります)'}
 			</p>
-			<div class="mt:8">
+			<div>
 				<Button variant="secondary" size="sm" onclick={handleCheckUpdate} disabled={checkingUpdate}>
 					更新を確認
 				</Button>
 			</div>
 		{/if}
-		<p class="mt:12">&copy shiki 2025</p>
+		<p class="m:4|0|0|0">&copy shiki 2025</p>
 	</div>
 </SettingsCard>
 

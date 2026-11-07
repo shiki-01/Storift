@@ -167,7 +167,9 @@
 
 {#if label}
 	<EdgeLabel x={control.x} y={control.y - LABEL_GAP - (exchange ? half : 0)} selectEdgeOnClick>
-		<span class="relation-edge-label" style:color={data.color}>{label}</span>
+		<span class="relation-edge-label" style:--edge-color={data.color}>
+			<i class="dot"></i>{label}
+		</span>
 	</EdgeLabel>
 {/if}
 
@@ -193,28 +195,53 @@
 {/if}
 
 <style>
+	/* ライブラリ既定の白い箱(.svelte-flow__edge-label)は RelationCanvas 側で消している */
 	.relation-edge-label {
-		display: inline-block;
-		padding: 1px 6px;
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 2px 9px 2px 7px;
+		border: 1px solid color-mix(in srgb, var(--edge-color) 55%, var(--color-border));
 		border-radius: 999px;
 		background: var(--color-background);
+		color: var(--color-text);
 		font-size: 12px;
 		font-weight: 600;
+		line-height: 1.4;
 		white-space: nowrap;
+		box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
 	}
 
+	.dot {
+		flex: none;
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--edge-color);
+	}
+
+	/* 線の中点のつまみ。見た目は 12px、つかめる範囲は 28px */
 	.relation-edge-anchor {
+		position: relative;
 		box-sizing: border-box;
-		width: 10px;
-		height: 10px;
+		width: 12px;
+		height: 12px;
 		padding: 0;
 		border: 2px solid;
 		border-radius: 50%;
 		background: var(--color-background);
+		box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
 		cursor: grab;
 		touch-action: none;
 		user-select: none;
 		transition: transform 0.12s ease;
+	}
+
+	.relation-edge-anchor::after {
+		content: '';
+		position: absolute;
+		inset: -10px;
+		border-radius: 50%;
 	}
 
 	.relation-edge-anchor.active {

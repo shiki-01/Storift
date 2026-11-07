@@ -9,6 +9,8 @@
 		children?: import('svelte').Snippet;
 		/** data-tour などの data-* 属性は、そのまま button に渡す */
 		[key: `data-${string}`]: string | undefined;
+		/** aria-label などの aria-* 属性も、そのまま button に渡す */
+		[key: `aria-${string}`]: string | undefined;
 	}
 
 	let {

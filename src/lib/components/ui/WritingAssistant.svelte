@@ -2,6 +2,7 @@
 	import { rubyToHtml, removeRuby, normalizeRuby } from '$lib/utils/ruby';
 	import Modal from './Modal.svelte';
 	import Button from './Button.svelte';
+	import Select from './Select.svelte';
 	import Icon from './Icon.svelte';
 
 	interface Props {
@@ -209,14 +210,11 @@
 					他サービスからコピーしたテキストのルビ記法をStorift形式に変換します。
 				</p>
 				<div class="flex flex:column gap:12">
-					<select
+					<Select
 						bind:value={selectedConvertFormat}
-						class="w:full p:10 r:6 b:1|solid|theme-border fg:theme-text font:14"
-					>
-						{#each convertPatterns as pattern (pattern.id)}
-							<option value={pattern.id}>{pattern.name}</option>
-						{/each}
-					</select>
+						aria-label="変換元の形式"
+						options={convertPatterns.map((p) => ({ value: p.id, label: p.name }))}
+					/>
 					<Button size="sm" onclick={convertToStorift}>
 						<span class="flex ai:center gap:6">
 							<Icon name="refresh" class="w:16px" />

@@ -2,6 +2,7 @@
 	import { toast } from '$lib/stores/toast.svelte';
 	import { exportProject, type ExportOptions } from '$lib/services/export.service';
 	import Modal from './Modal.svelte';
+	import Select from './Select.svelte';
 
 	interface Props {
 		projectId: string;
@@ -59,14 +60,18 @@
 			<!-- フォーマット選択 -->
 			<div>
 				<label for="exportFormat" class="block mb-2 font-semibold">形式</label>
-				<select id="exportFormat" bind:value={format} class="w-full px-3 py-2 border rounded">
-					<option value="txt">テキスト (.txt)</option>
-					<option value="md">Markdown (.md)</option>
-					<option value="pdf">PDF (.pdf)</option>
-					<option value="docx">Word互換 (.rtf)</option>
-					<option value="epub">EPUB (.epub)</option>
-					<option value="json">JSON (バックアップ)</option>
-				</select>
+				<Select
+					id="exportFormat"
+					bind:value={format}
+					options={[
+						{ value: 'txt', label: 'テキスト (.txt)' },
+						{ value: 'md', label: 'Markdown (.md)' },
+						{ value: 'pdf', label: 'PDF (.pdf)' },
+						{ value: 'docx', label: 'Word互換 (.rtf)' },
+						{ value: 'epub', label: 'EPUB (.epub)' },
+						{ value: 'json', label: 'JSON (バックアップ)' }
+					]}
+				/>
 			</div>
 
 			{#if format !== 'json'}

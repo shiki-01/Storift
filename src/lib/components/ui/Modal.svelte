@@ -41,7 +41,6 @@
 	// 開いた直後の高さは測るだけで、アニメーションさせない
 	let bodyHeight = $state(0);
 	let animateHeight = $state(false);
-	let resizing = $state(false);
 	$effect(() => {
 		if (!isOpen) {
 			animateHeight = false;
@@ -152,11 +151,7 @@
 			<div
 				class="modal-body-frame"
 				class:animate={animateHeight}
-				class:resizing
 				style:height={bodyHeight ? `${bodyHeight}px` : undefined}
-				ontransitionrun={() => (resizing = true)}
-				ontransitionend={() => (resizing = false)}
-				ontransitioncancel={() => (resizing = false)}
 			>
 				<div class="modal-body p:24" bind:offsetHeight={bodyHeight}>
 					{#if children}
@@ -198,13 +193,14 @@
 {/if}
 
 <style>
-	.modal-body-frame.animate {
-		transition: height 0.24s cubic-bezier(0.2, 0.7, 0.2, 1);
+	/* 高さは中身(.modal-body)に合わせて指定するので、常にはみ出しを隠す。
+	   切り替えの 1 フレームだけ中身が枠より高くなり、外側(overflow:auto)に一瞬スクロールバーが出るのを防ぐ */
+	.modal-body-frame {
+		overflow: hidden;
 	}
 
-	/* 伸び縮みしている間だけ、はみ出した中身を隠す */
-	.modal-body-frame.resizing {
-		overflow: hidden;
+	.modal-body-frame.animate {
+		transition: height 0.24s cubic-bezier(0.2, 0.7, 0.2, 1);
 	}
 
 	@media (prefers-reduced-motion: reduce) {

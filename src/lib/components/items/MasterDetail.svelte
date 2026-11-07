@@ -16,6 +16,7 @@
 	import { page } from '$app/state';
 	import { pushState, replaceState } from '$app/navigation';
 	import Icon from '$lib/components/ui/Icon.svelte';
+	import { itemNav } from '$lib/stores/itemNav.svelte';
 
 	interface Props {
 		/** 選択中の項目の ID(読み取り用。変更は open / close / replace で) */
@@ -176,6 +177,16 @@
 		selectedId = id;
 		shallow('replace', id);
 	}
+
+	// 外(AI の資料リンクなど)からの「この項目を選んで」という依頼
+	$effect(() => {
+		if (!itemNav.request || !mounted || !ready) return;
+		const id = itemNav.take(page.url.pathname);
+		if (id === null) return;
+		untrack(() => {
+			if (!exists || exists(id)) void open(id);
+		});
+	});
 
 	onMount(() => {
 		mounted = true;

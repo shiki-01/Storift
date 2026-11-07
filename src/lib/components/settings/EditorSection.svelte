@@ -14,6 +14,9 @@
 	import { isDesktop } from '$lib/desktop/platform';
 	import { getAutoOpen, setAutoOpen } from '$lib/utils/siteLink';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
+	import { settingsDB } from '$lib/db';
+	import { settingsStore } from '$lib/stores/settings.svelte';
+	import { TOOLBAR_ITEMS, setInMenu, splitToolbar } from '$lib/utils/toolbarItems';
 	import SettingsCard from './SettingsCard.svelte';
 	import SettingsRow from './SettingsRow.svelte';
 	import type { SettingsForm } from './settingsForm.svelte';
@@ -27,6 +30,11 @@
 
 	onMount(() => {
 		if (!isDesktop()) autoOpenFromSite = getAutoOpen();
+		// 設定画面を直接開いたときも、保存済みのツールバー設定を反映する
+		void settingsDB
+			.get()
+			.then((saved) => (settingsStore.toolbarMenuItems = saved.toolbarMenuItems ?? []))
+			.catch(() => undefined);
 	});
 
 	// 自動保存
@@ -81,6 +89,33 @@
 		};
 		form.save();
 	};
+
+	// 執筆画面のツールバー: 常時表示するボタンと、三点メニュー(…)にまとめるボタン
+	const toolbarItems = TOOLBAR_ITEMS.filter((i) => isDesktop() || !i.desktopOnly);
+	const pinnedIds = $derived(
+		new Set(
+			splitToolbar(settingsStore.toolbarMenuItems, { desktop: isDesktop() }).pinned.map((i) => i.id)
+		)
+	);
+
+	async function setPinned(id: string, pinned: boolean) {
+		const next = setInMenu(settingsStore.toolbarMenuItems, id, !pinned);
+		settingsStore.toolbarMenuItems = next;
+		try {
+			await settingsDB.update({ toolbarMenuItems: next });
+		} catch (error) {
+			console.error('Failed to save toolbar settings:', error);
+		}
+	}
+
+	async function resetToolbar() {
+		settingsStore.toolbarMenuItems = [];
+		try {
+			await settingsDB.update({ toolbarMenuItems: [] });
+		} catch (error) {
+			console.error('Failed to save toolbar settings:', error);
+		}
+	}
 </script>
 
 <!-- エディタ(自動保存) -->
@@ -236,6 +271,36 @@
 	<div class="mt:16">
 		<Button onclick={resetFormatting} variant="secondary" class="w:fit">デフォルトに戻す</Button>
 	</div>
+</SettingsCard>
+
+<!-- ツールバー -->
+<SettingsCard
+	title="ツールバー"
+	description="執筆画面の上部のボタンを、常に表示するか、三点メニュー(…)にまとめるかを選びます。スマホの上部バーには影響しません。"
+	data-tour="settings-toolbar"
+>
+	{#each toolbarItems as item (item.id)}
+		<SettingsRow
+			label={item.label}
+			description={pinnedIds.has(item.id) ? 'ツールバーに表示' : '三点メニューにまとめる'}
+			labelFor={`toolbar-item-${item.id}`}
+		>
+			<input
+				id={`toolbar-item-${item.id}`}
+				type="checkbox"
+				checked={pinnedIds.has(item.id)}
+				onchange={(e) => void setPinned(item.id, e.currentTarget.checked)}
+			/>
+		</SettingsRow>
+	{/each}
+	<SettingsRow label="既定に戻す" description="すべてのボタンをツールバーに表示します。">
+		<Button
+			variant="secondary"
+			size="sm"
+			disabled={settingsStore.toolbarMenuItems.length === 0}
+			onclick={() => void resetToolbar()}>既定に戻す</Button
+		>
+	</SettingsRow>
 </SettingsCard>
 
 <!-- ショートカットキー -->

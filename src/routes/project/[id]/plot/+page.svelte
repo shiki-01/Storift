@@ -12,9 +12,12 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Select from '$lib/components/ui/Select.svelte';
+	import ColorPicker from '$lib/components/ui/ColorPicker.svelte';
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
 	import MasterDetail from '$lib/components/items/MasterDetail.svelte';
 	import ItemDetail from '$lib/components/items/ItemDetail.svelte';
+	import { page } from '$app/state';
+	import { pageContext } from '$lib/stores/pageContext.svelte';
 	import ItemSection from '$lib/components/items/ItemSection.svelte';
 	import SortableList from '$lib/components/items/SortableList.svelte';
 	import PlotCard from '$lib/components/plot/PlotCard.svelte';
@@ -82,6 +85,14 @@
 
 	const creating = $derived(selectedId === NEW);
 	const selectedPlot = $derived(plots.find((p) => p.id === selectedId));
+
+	// 見出し(タイトルバー・スマホの上部バー)に選択中のプロット名を出す
+	$effect(() => {
+		pageContext.setDetail(
+			page.url.pathname,
+			creating ? '新規プロット' : (selectedPlot?.title ?? '')
+		);
+	});
 
 	/** 絞り込み中は一覧の並びが全体の並びと一致しないので、並べ替えを止める */
 	const filtering = $derived(
@@ -710,7 +721,11 @@
 							</div>
 							<div class="field">
 								<label for="plot-color">カラー</label>
-								<input id="plot-color" type="color" bind:value={form.color} class="color" />
+								<ColorPicker
+									id="plot-color"
+									bind:value={form.color}
+									aria-label="プロットのカラー"
+								/>
 							</div>
 						{/snippet}
 					</ItemDetail>
@@ -1147,16 +1162,6 @@
 
 	.field-row .field {
 		flex: 1 1 10rem;
-	}
-
-	.color {
-		width: 4rem;
-		height: 36px;
-		padding: 2px;
-		border: 1px solid var(--color-border);
-		border-radius: 8px;
-		background: var(--color-background);
-		cursor: pointer;
 	}
 
 	@media (max-width: 768px) {

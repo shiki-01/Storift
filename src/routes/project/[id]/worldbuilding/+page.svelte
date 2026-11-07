@@ -28,6 +28,8 @@
 	import Select from '$lib/components/ui/Select.svelte';
 	import MasterDetail from '$lib/components/items/MasterDetail.svelte';
 	import ItemDetail from '$lib/components/items/ItemDetail.svelte';
+	import { page } from '$app/state';
+	import { pageContext } from '$lib/stores/pageContext.svelte';
 	import ItemSection from '$lib/components/items/ItemSection.svelte';
 	import ItemRow, { type RowMenuItem } from '$lib/components/items/ItemRow.svelte';
 	import ItemsPageHead from '$lib/components/items/ItemsPageHead.svelte';
@@ -101,6 +103,11 @@
 
 	const creating = $derived(selectedId === NEW);
 	const selectedItem = $derived(items.find((w) => w.id === selectedId));
+
+	// 見出し(タイトルバー・スマホの上部バー)に選択中の資料名を出す
+	$effect(() => {
+		pageContext.setDetail(page.url.pathname, creating ? '新規資料' : (selectedItem?.title ?? ''));
+	});
 
 	const tags = $derived(tagCounts(items));
 	/** 消えたタグで絞り込んだままにしない */

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { PreviewSettings, WritingMode, TextOrientation } from '$lib/types';
 	import Button from '$lib/components/ui/Button.svelte';
+	import Select from '$lib/components/ui/Select.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 
 	interface Props {
@@ -132,16 +133,12 @@
 
 			<div class="setting-group">
 				<label class="setting-label" for="font-select">フォント</label>
-				<select
+				<Select
 					id="font-select"
-					class="setting-select"
 					bind:value={localSettings.fontFamily}
 					onchange={updateSettings}
-				>
-					{#each fonts as font (font.value)}
-						<option value={font.value}>{font.label}</option>
-					{/each}
-				</select>
+					options={fonts.map((f) => ({ value: f.value, label: f.label }))}
+				/>
 			</div>
 
 			<div class="setting-group">
@@ -428,17 +425,6 @@
 	.toggle-button.active {
 		background: var(--color-primary);
 		color: var(--color-background);
-	}
-
-	.setting-select {
-		width: 100%;
-		padding: 0.5rem;
-		font-size: 0.875rem;
-		border: 1px solid var(--color-border, #e0e0e0);
-		border-radius: 6px;
-		background-color: var(--color-background, #fff);
-		padding-right: 30px;
-		color: var(--color-text, #333);
 	}
 
 	.setting-range {

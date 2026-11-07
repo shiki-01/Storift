@@ -333,7 +333,7 @@
 	}
 </script>
 
-<div class="home-page">
+<div class="home-page scroll-stable">
 	<header class="home-head">
 		<div class="home-heading">
 			<h1>作品</h1>

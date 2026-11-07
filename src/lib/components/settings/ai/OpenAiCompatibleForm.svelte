@@ -2,6 +2,7 @@
 	// 設定「AI」: OpenAI 互換 API の項目(プリセット・Base URL・API キー・モデル・接続テスト)
 	import { onMount } from 'svelte';
 	import { aiStore } from '$lib/stores/ai.svelte';
+	import Select from '$lib/components/ui/Select.svelte';
 	import { registry } from '$lib/ai/registry';
 	import { validateBaseUrl } from '$lib/ai/http/url';
 	import { OPENAI_PRESETS, findPreset } from '$lib/ai/providers/openaiPresets';
@@ -53,6 +54,8 @@
 	onMount(() => {
 		if (!aiStore.status) void aiStore.checkStatus();
 	});
+
+	const presetOptions = OPENAI_PRESETS.map((p) => ({ value: p.id, label: p.label }));
 
 	function selectPreset(id: string) {
 		if (id === s.presetId) return;
@@ -144,11 +147,12 @@
 <div class="field">
 	<label for="oa-preset">サービス</label>
 	<div class="field-body">
-		<select id="oa-preset" value={s.presetId} onchange={(e) => selectPreset(e.currentTarget.value)}>
-			{#each OPENAI_PRESETS as p (p.id)}
-				<option value={p.id}>{p.label}</option>
-			{/each}
-		</select>
+		<Select
+			id="oa-preset"
+			options={presetOptions}
+			value={s.presetId}
+			onchange={(v) => selectPreset(v)}
+		/>
 		{#if preset.note}<p class="hint">{preset.note}</p>{/if}
 	</div>
 </div>

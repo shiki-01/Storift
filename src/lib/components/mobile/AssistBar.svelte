@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '$lib/components/ui/Icon.svelte';
 	import { applyInsertion, moveCaret, undo, redo, type InsertKind } from '$lib/utils/editorInput';
 
 	interface Props {
@@ -42,19 +43,23 @@
 			</button>
 		{/each}
 		<span class="divider"></span>
-		<button class="key" aria-label="元に戻す" onpointerdown={keepFocus} onclick={undo}>↶</button>
-		<button class="key" aria-label="やり直す" onpointerdown={keepFocus} onclick={redo}>↷</button>
+		<button class="key" aria-label="元に戻す" onpointerdown={keepFocus} onclick={undo}
+			><Icon name="arrow-back-up" /></button
+		>
+		<button class="key" aria-label="やり直す" onpointerdown={keepFocus} onclick={redo}
+			><Icon name="arrow-forward-up" /></button
+		>
 		<button
 			class="key"
 			aria-label="カーソルを左へ"
 			onpointerdown={keepFocus}
-			onclick={() => moveCaret(-1)}>◀</button
+			onclick={() => moveCaret(-1)}><Icon name="chevron-left" /></button
 		>
 		<button
 			class="key"
 			aria-label="カーソルを右へ"
 			onpointerdown={keepFocus}
-			onclick={() => moveCaret(1)}>▶</button
+			onclick={() => moveCaret(1)}><Icon name="chevron-right" /></button
 		>
 		<span class="divider"></span>
 		<button
@@ -121,6 +126,9 @@
 	}
 
 	.key {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		flex: none;
 		min-width: 40px;
 		height: 34px;
@@ -131,6 +139,13 @@
 		color: var(--color-text);
 		font-size: 15px;
 		cursor: pointer;
+	}
+
+	.key :global(div),
+	.key :global(svg) {
+		display: flex;
+		width: 18px;
+		height: 18px;
 	}
 
 	.key.wide {

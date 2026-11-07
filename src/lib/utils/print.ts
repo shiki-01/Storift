@@ -231,8 +231,8 @@ export function openPrintPreview(
 		</head>
 		<body>
 			<div class="print-toolbar no-print">
-				<button onclick="window.print()">🖨️ 印刷</button>
-				<button onclick="window.close()">❌ 閉じる</button>
+				<button onclick="window.print()">印刷</button>
+				<button onclick="window.close()">閉じる</button>
 			</div>
 			<div class="print-content">
 				${content}

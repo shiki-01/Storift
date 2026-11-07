@@ -8,6 +8,7 @@ import { createServer } from 'node:net';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { applyTheme, CUSTOM_DARK_THEME, shotEl } from './helpers.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -138,6 +139,82 @@ const headerMetrics = (page, selector, buttonSelector) =>
 		};
 	}, buttonSelector);
 
+/** 保存状態を指定の状態にする(エディタのストアを直接書き換える。error は保存の失敗を起こして作る) */
+async function setSaveState(page, state) {
+	if (state === 'error') {
+		await page.evaluate(async () => {
+			const { scenesDB } = await import('/src/lib/db/index.ts');
+			const { editorStore } = await import('/src/lib/stores/editor.svelte.ts');
+			scenesDB.update = async () => {
+				throw new Error('E2E: 保存の失敗');
+			};
+			editorStore.isSaving = false;
+			editorStore.isDirty = true;
+		});
+		await page.locator('.save-state[data-state="error"]').waitFor({ timeout: 15_000 });
+		return;
+	}
+	await page.evaluate(async (state) => {
+		const { editorStore } = await import('/src/lib/stores/editor.svelte.ts');
+		editorStore.isSaving = state === 'saving';
+		editorStore.isDirty = state === 'dirty';
+	}, state);
+	await page.locator(`.save-state[data-state="${state}"]`).waitFor();
+}
+
+/** 保存状態の表示の幅と、その左隣のボタンの左端 */
+const saveMetrics = (page) =>
+	page.evaluate(() => {
+		const save = document.querySelector('.editor-toolbar .save-state');
+		const ai = document.querySelector('.editor-toolbar .tool--ai');
+		const visible = [...save.querySelectorAll('.item')].filter(
+			(el) => getComputedStyle(el).visibility === 'visible'
+		);
+		return {
+			width: save.getBoundingClientRect().width,
+			aiLeft: ai.getBoundingClientRect().left,
+			saveLeft: save.getBoundingClientRect().left,
+			visibleCount: visible.length,
+			label: visible[0]?.textContent?.trim(),
+			hasEmoji: /[\u2190-\u27bf\u{1F000}-\u{1FAFF}]/u.test(save.textContent ?? '')
+		};
+	});
+
+/** 表示モード切替のアイコンの色と、背景とのコントラスト比 */
+const segContrast = (page) =>
+	page.evaluate(() => {
+		const parse = (c) =>
+			c
+				.match(/[\d.]+/g)
+				.slice(0, 3)
+				.map(Number);
+		const lum = ([r, g, b]) => {
+			const f = (v) => ((v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+			return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+		};
+		const ratio = (a, b) => {
+			const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m);
+			return (x + 0.05) / (y + 0.05);
+		};
+		const opaque = (el) => {
+			for (let n = el; n; n = n.parentElement) {
+				const bg = getComputedStyle(n).backgroundColor;
+				if (bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') return parse(bg);
+			}
+			return [255, 255, 255];
+		};
+		return [...document.querySelectorAll('.seg-tool')].map((btn) => {
+			const shape = btn.querySelector('svg path, svg circle');
+			const stroke = getComputedStyle(shape).stroke;
+			return {
+				label: btn.getAttribute('aria-label'),
+				on: btn.classList.contains('on'),
+				stroke,
+				ratio: ratio(parse(stroke), opaque(btn))
+			};
+		});
+	});
+
 async function main() {
 	const port = await freePort();
 	const base = `http://127.0.0.1:${port}`;
@@ -233,6 +310,70 @@ async function main() {
 			toolbar2.height === panel2.height,
 			`${toolbar2.height} vs ${panel2.height}`
 		);
+
+		// ---------- 保存状態の幅(状態が変わっても右側のボタンの位置が動かない) ----------
+		console.log('[保存状態の幅]');
+		// 幅が足りないとツールバーが AI パネルの下に隠れるので、広い画面で確かめる
+		await page.setViewportSize({ width: 1600, height: 900 });
+		await sleep(300);
+		const widths = {};
+		for (const state of ['saved', 'saving', 'dirty', 'error']) {
+			await setSaveState(page, state);
+			widths[state] = await saveMetrics(page);
+		}
+		console.log(`  ${JSON.stringify(widths)}`);
+		const states = Object.keys(widths);
+		check(
+			'全ての状態で表示の幅が同じ',
+			states.every((k) => widths[k].width === widths.saved.width),
+			states.map((k) => widths[k].width).join(' / ')
+		);
+		check(
+			'全ての状態で左隣のボタン(AI)の left が変わらない',
+			states.every((k) => widths[k].aiLeft === widths.saved.aiLeft),
+			states.map((k) => widths[k].aiLeft).join(' / ')
+		);
+		check(
+			'見えるラベルは常に 1 つで、状態に対応する',
+			states.every((k) => widths[k].visibleCount === 1) &&
+				widths.saved.label === '保存済み' &&
+				widths.saving.label === '保存中' &&
+				widths.dirty.label === '未保存' &&
+				widths.error.label === '保存失敗',
+			states.map((k) => widths[k].label).join(' / ')
+		);
+		check(
+			'保存状態に絵文字・記号文字がない',
+			states.every((k) => !widths[k].hasEmoji)
+		);
+		check(
+			'アイコンは SVG',
+			(await page.locator('.editor-toolbar .save-state .item.current svg').count()) === 1
+		);
+		await setSaveState(page, 'saving');
+		await shotEl(page.locator('.editor-toolbar-actions'), 'toolbar-saving-light');
+		await setSaveState(page, 'error');
+		await shotEl(page.locator('.editor-toolbar-actions'), 'toolbar-error-light');
+
+		// ---------- 表示モードのアイコン(暗い配色でも見える) ----------
+		console.log('[表示モードのアイコンの色]');
+		for (const [name, theme] of [
+			['light', 'light'],
+			['dark', 'dark'],
+			['custom-dark', CUSTOM_DARK_THEME]
+		]) {
+			await applyTheme(page, theme);
+			await page.locator('.seg-tool[aria-label="二画面表示"]').click();
+			await sleep(200);
+			const icons = await segContrast(page);
+			console.log(`  ${name}: ${icons.map((i) => `${i.label}=${i.ratio.toFixed(2)}`).join(' ')}`);
+			check(
+				`${name}: 全てのアイコンがコントラスト 3:1 以上`,
+				icons.every((i) => i.ratio >= 3),
+				icons.map((i) => `${i.label}:${i.stroke}`).join(' ')
+			);
+			await shotEl(page.locator('.editor-toolbar-actions'), `toolbar-seg-${name}`);
+		}
 
 		await context.close();
 	} finally {

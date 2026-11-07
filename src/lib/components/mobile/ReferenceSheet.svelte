@@ -141,7 +141,7 @@
 								<span class="row-sub">{c.role || ''}</span>
 							</button>
 							{#if expandedId === c.id}
-								<dl class="detail">
+								<dl class="detail selectable">
 									{#if c.age || c.gender}
 										<dt>基本</dt>
 										<dd>{[c.age ? `${c.age}歳` : '', c.gender].filter(Boolean).join(' / ')}</dd>
@@ -181,7 +181,7 @@
 								<span class="row-sub">{categoryLabels[w.category]}</span>
 							</button>
 							{#if expandedId === w.id}
-								<div class="detail body">{w.content}</div>
+								<div class="detail body selectable">{w.content}</div>
 							{/if}
 						</li>
 					{/each}

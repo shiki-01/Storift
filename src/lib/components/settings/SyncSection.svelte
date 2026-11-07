@@ -1,6 +1,7 @@
 <script lang="ts">
 	// 設定「同期」: Firebase 接続・同期状態・競合ポリシー・バックアップ・同期診断・完全同期
 	import { toast } from '$lib/stores/toast.svelte';
+	import Icon from '$lib/components/ui/Icon.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import ConflictBackups from '$lib/components/ui/ConflictBackups.svelte';
 	import { isFirebaseInitialized } from '$lib/firebase/config';
@@ -139,7 +140,7 @@
 								? 'bg:theme-error'
 								: 'bg:theme-border'}"
 				></span>
-				<span>
+				<span class="selectable">
 					{#if syncStore.status === 'synced'}
 						{form.settings.syncEnabled ? '同期済み' : '同期無効'}
 					{:else if syncStore.status === 'syncing'}
@@ -198,13 +199,15 @@
 		{#if form.settings.conflictResolution === 'manual'}
 			<p class="font:.875rem">競合が発生した場合、どちらの変更を採用するか手動で選択できます。</p>
 		{:else if form.settings.conflictResolution === 'local'}
-			<p class="font:.875rem fg:theme-warning">
-				⚠️ クラウドの変更が自動的に破棄されます。他の端末での編集が失われる可能性があります。
-			</p>
+			<div class="flex gap:6 font:.875rem fg:theme-warning">
+				<Icon name="alert-triangle" class="ico mt:2" />
+				<p>クラウドの変更が自動的に破棄されます。他の端末での編集が失われる可能性があります。</p>
+			</div>
 		{:else if form.settings.conflictResolution === 'remote'}
-			<p class="font:.875rem fg:theme-warning">
-				⚠️ この端末の変更が自動的に破棄されます。ローカルでの編集が失われる可能性があります。
-			</p>
+			<div class="flex gap:6 font:.875rem fg:theme-warning">
+				<Icon name="alert-triangle" class="ico mt:2" />
+				<p>この端末の変更が自動的に破棄されます。ローカルでの編集が失われる可能性があります。</p>
+			</div>
 		{/if}
 	</div>
 </SettingsCard>
@@ -253,7 +256,7 @@
 			{#if syncMetrics.length === 0}
 				<p class="fg:theme-text-secondary font:.875rem mt:8">記録はまだありません。</p>
 			{:else}
-				<ul class="flex flex:column gap:.25rem mt:8 font:12 list-style:none p:0">
+				<ul class="flex flex:column gap:.25rem mt:8 font:12 list-style:none p:0 selectable">
 					{#each syncMetrics as m (m.at + m.kind + (m.label ?? '') + m.durationMs)}
 						<li class={m.ok ? '' : 'fg:theme-error'}>
 							{new Date(m.at).toLocaleTimeString('ja-JP')}

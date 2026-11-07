@@ -15,7 +15,7 @@
 	};
 </script>
 
-<div class="h:100% overflow-y:auto flex ai:center jc:center bg:theme-surface p:24">
+<div class="h:100% overflow-y:auto scroll-stable flex ai:center jc:center bg:theme-surface p:24">
 	<div class="max-w:500 w:full bg:theme-background r:16 p:32">
 		<div class="text-align:center mb:24">
 			<div
@@ -34,7 +34,7 @@
 					プロジェクトの読み込みに失敗しました
 				{/if}
 			</h2>
-			<p class="font:14 fg:theme-text-secondary">
+			<p class="font:14 fg:theme-text-secondary selectable">
 				{errorMessage}
 			</p>
 		</div>

@@ -69,6 +69,7 @@
 
 <div
 	class="preview-container"
+	class:scroll-stable={settings.writingMode !== 'vertical'}
 	class:vertical={settings.writingMode === 'vertical'}
 	class:horizontal={settings.writingMode === 'horizontal'}
 	class:manuscript={settings.manuscriptMode}
@@ -103,7 +104,7 @@
 				</div>
 			{/if}
 
-			<div class="text-area">
+			<div class="text-area selectable">
 				<!-- eslint-disable-next-line svelte/no-at-html-tags -- previewToHtml で本文をエスケープ済み -->
 				{@html processedContent}
 			</div>

@@ -75,6 +75,9 @@ describe('updaterStore', () => {
 		await updaterStore.install();
 		expect(updaterStore.status).toBe('ready');
 		expect(updaterStore.progress).toBe(1);
+		// 「18.8 / 44.8 MB」の表示に使うバイト数
+		expect(updaterStore.receivedBytes).toBe(40);
+		expect(updaterStore.totalBytes).toBe(100);
 		await updaterStore.restart();
 		expect(relaunch).toHaveBeenCalledOnce();
 	});

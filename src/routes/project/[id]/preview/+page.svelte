@@ -11,6 +11,7 @@
 	import { chaptersDB, scenesDB } from '$lib/db';
 	import { editorFontToCss } from '$lib/utils/fonts';
 	import { buildManuscript, isSameSource, progressAt } from '$lib/utils/manuscript';
+	import ProgressBar from '$lib/components/ui/ProgressBar.svelte';
 	import ManuscriptReader from '$lib/components/preview/ManuscriptReader.svelte';
 	import type { Chapter, Scene, WritingMode } from '$lib/types';
 
@@ -330,16 +331,13 @@
 			</div>
 
 			<div class="bar-row meter">
-				<div
-					class="track"
-					role="progressbar"
-					aria-label="読んだ割合"
-					aria-valuemin="0"
-					aria-valuemax="100"
-					aria-valuenow={percent}
-				>
-					<div class="fill" style="width: {progress.fraction * 100}%"></div>
-				</div>
+				<ProgressBar
+					class="meter-bar"
+					value={progress.fraction}
+					label="読んだ割合"
+					size="sm"
+					showText={false}
+				/>
 				<span class="meter-text" data-testid="progress-text">
 					{percent}% ・ {numberFormat.format(progress.readChars)} / {numberFormat.format(
 						progress.totalChars
@@ -563,17 +561,8 @@
 		padding: 0 4px 2px;
 	}
 
-	.track {
+	.meter :global(.meter-bar) {
 		flex: 1;
-		height: 3px;
-		border-radius: 2px;
-		background: var(--color-border);
-		overflow: hidden;
-	}
-
-	.fill {
-		height: 100%;
-		background: var(--color-primary);
 	}
 
 	.meter-text {

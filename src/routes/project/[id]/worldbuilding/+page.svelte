@@ -235,7 +235,7 @@
 			</div>
 		</header>
 
-		<main class="flex-grow:1 overflow-y:auto">
+		<main class="flex-grow:1 overflow-y:auto scroll-stable">
 			<div class="page-body max-w:1280 mx:auto w:100% px:24 py:24 flex flex:column gap:24">
 				<div class="filter-row flex flex-wrap gap:16 jc:space-between ai:center">
 					<div class="flex:1 min-w:240">
@@ -286,7 +286,9 @@
 								</div>
 
 								{#if worldbuilding.content}
-									<p class="fg:theme-text-secondary font:14 line-clamp:3 white-space:pre-wrap">
+									<p
+										class="fg:theme-text-secondary font:14 line-clamp:3 white-space:pre-wrap selectable"
+									>
 										{worldbuilding.content}
 									</p>
 								{/if}

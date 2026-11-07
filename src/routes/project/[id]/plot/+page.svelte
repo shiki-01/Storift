@@ -305,7 +305,7 @@
 			</div>
 		</header>
 
-		<main class="flex-grow:1 overflow-y:auto">
+		<main class="flex-grow:1 overflow-y:auto scroll-stable">
 			<div class="page-body max-w:1280 mx:auto w:100% px:24 py:24 flex flex:column gap:24">
 				<input
 					class="plot-search"
@@ -364,7 +364,7 @@
 												{plot.title}
 											</button>
 											{#if plot.content}
-												<p class="font:14 fg:theme-text-secondary line-clamp:3">
+												<p class="font:14 fg:theme-text-secondary line-clamp:3 selectable">
 													{plot.content}
 												</p>
 											{/if}
@@ -454,7 +454,9 @@
 											</div>
 										</div>
 										{#if plot.content}
-											<p class="fg:theme-text font:16 white-space:pre-wrap">{plot.content}</p>
+											<p class="fg:theme-text font:16 white-space:pre-wrap selectable">
+												{plot.content}
+											</p>
 										{/if}
 									</div>
 								</div>

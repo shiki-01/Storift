@@ -4,6 +4,7 @@
 	import { db } from '$lib/db';
 	import { exportAllProjects } from '$lib/services/export.service';
 	import { importFromJson } from '$lib/services/import.service';
+	import Icon from '$lib/components/ui/Icon.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import SettingsCard from './SettingsCard.svelte';
@@ -187,9 +188,10 @@
 		confirmVariant="danger"
 	>
 		<div class="flex flex:column gap:16">
-			<p class="fg:theme-error font-semibold">
-				⚠️ すべてのプロジェクト、キャラクター、プロット、設定資料が削除されます。
-			</p>
+			<div class="flex gap:8 fg:theme-error font-semibold">
+				<Icon name="alert-triangle" class="ico mt:3" />
+				<p>すべてのプロジェクト、キャラクター、プロット、設定資料が削除されます。</p>
+			</div>
 			<p>この操作は取り消すことができません。事前にバックアップを取ることをお勧めします。</p>
 			<p>本当に削除しますか?</p>
 		</div>

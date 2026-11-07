@@ -1,14 +1,8 @@
 <script lang="ts">
 	// 設定「AI」: 本文の編集の扱い(プロバイダ共通)とワークスペース
 	import { onMount } from 'svelte';
-	import { aiStore, EDIT_MODE_LABELS, type EditMode } from '$lib/stores/ai.svelte';
+	import { aiStore, EDIT_MODE_HINTS, EDIT_MODE_LABELS, type EditMode } from '$lib/stores/ai.svelte';
 	import { getWorkspacePath, openWorkspace } from '$lib/desktop/ai';
-
-	const EDIT_MODE_HINTS: Record<EditMode, string> = {
-		suggest: '修正案を文章で示すだけで、本文は書き換えません。',
-		confirm: '編集案を差分で確認し、1 件ずつ(または「すべて反映」で)反映します。',
-		auto: '回答が終わると本文を書き換えます。変更は本文上に色付きで残り、後から保持・元に戻すを選べます。'
-	};
 
 	let workspacePath = $state('');
 

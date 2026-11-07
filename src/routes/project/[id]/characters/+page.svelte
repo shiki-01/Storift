@@ -347,7 +347,7 @@
 			</div>
 		</header>
 
-		<main class="flex-grow:1 overflow-y:auto">
+		<main class="flex-grow:1 overflow-y:auto scroll-stable">
 			<div class="page-body max-w:1280 mx:auto px:24 py:24 flex flex:column gap:24">
 				{#if isLoading}
 					<div class="flex jc:center ai:center h:400">
@@ -390,7 +390,7 @@
 								{#if character.personality}
 									<div class="flex flex:column gap:4">
 										<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">性格</p>
-										<p class="font:14 fg:theme-text-secondary line-clamp:2">
+										<p class="font:14 fg:theme-text-secondary line-clamp:2 selectable">
 											{character.personality}
 										</p>
 									</div>
@@ -495,19 +495,25 @@
 											{#if character.appearance}
 												<div class="flex flex:column gap:4">
 													<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">外見</p>
-													<p class="font:14 fg:theme-text-secondary">{character.appearance}</p>
+													<p class="font:14 fg:theme-text-secondary selectable">
+														{character.appearance}
+													</p>
 												</div>
 											{/if}
 											{#if character.personality}
 												<div class="flex flex:column gap:4">
 													<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">性格</p>
-													<p class="font:14 fg:theme-text-secondary">{character.personality}</p>
+													<p class="font:14 fg:theme-text-secondary selectable">
+														{character.personality}
+													</p>
 												</div>
 											{/if}
 											{#if character.background}
 												<div class="flex flex:column gap:4">
 													<p class="font:12 font-weight:600 fg:theme-text-secondary m:0">背景</p>
-													<p class="font:14 fg:theme-text-secondary">{character.background}</p>
+													<p class="font:14 fg:theme-text-secondary selectable">
+														{character.background}
+													</p>
 												</div>
 											{/if}
 										</div>

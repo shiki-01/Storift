@@ -25,7 +25,11 @@
 		"test:e2e:mobile": "node tests/e2e/mobile-header.spec.mjs",
 		"test:e2e:preview": "node tests/e2e/preview.spec.mjs",
 		"test:e2e:settings": "node tests/e2e/settings.spec.mjs",
-		"test:e2e:ai-header": "node tests/e2e/ai-header.spec.mjs"
+		"test:e2e:ai-header": "node tests/e2e/ai-header.spec.mjs",
+		"test:e2e:ai-select": "node tests/e2e/ai-select.spec.mjs",
+		"test:e2e:user-select": "node tests/e2e/user-select.spec.mjs",
+		"test:e2e:scrollbar": "node tests/e2e/scrollbar.spec.mjs",
+		"test:e2e:progress": "node tests/e2e/progress.spec.mjs"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^1.4.0",

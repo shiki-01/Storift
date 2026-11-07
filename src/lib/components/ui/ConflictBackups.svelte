@@ -96,7 +96,7 @@
 								{reasonLabels[history.changeType]} ・ {formatDate(history.createdAt)}
 							</div>
 							{#if preview(history)}
-								<div class="font:12 fg:theme-text-secondary mt:8 white-space:pre-wrap">
+								<div class="font:12 fg:theme-text-secondary mt:8 white-space:pre-wrap selectable">
 									{preview(history)}
 								</div>
 							{/if}

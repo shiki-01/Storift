@@ -107,7 +107,7 @@
 
 			initializeFirebase(config);
 			await signInAnonymousUser();
-			testResult = '✓ 接続成功!';
+			testResult = '接続成功!';
 		} catch (e) {
 			error = (e instanceof Error ? e.message : '') || '接続に失敗しました';
 		} finally {
@@ -176,7 +176,7 @@
 	};
 </script>
 
-<div class="h:100% overflow-y:auto bg:theme-background flex ai:start jc:center p:24">
+<div class="h:100% overflow-y:auto scroll-stable bg:theme-background flex ai:start jc:center p:24">
 	<div class="max-w:600 w:full">
 		<Card padding="lg">
 			<div class="m:0|0|16|0"><Logo variant="full" size={28} title="Storift" /></div>
@@ -269,7 +269,7 @@ projectId: 'your-project',
 
 				{#if error}
 					<div
-						class="fg:theme-error p:12|16 r:6 border:1|solid|theme-error"
+						class="fg:theme-error p:12|16 r:6 border:1|solid|theme-error selectable"
 						style="background-color: color-mix(in srgb, var(--color-error) 10%, transparent);"
 					>
 						{error}
@@ -278,9 +278,10 @@ projectId: 'your-project',
 
 				{#if testResult}
 					<div
-						class="fg:theme-success p:12|16 r:6 border:1|solid|theme-success"
+						class="flex ai:center gap:6 fg:theme-success p:12|16 r:6 border:1|solid|theme-success"
 						style="background-color: color-mix(in srgb, var(--color-success) 10%, transparent);"
 					>
+						<Icon name="check" class="ico" />
 						{testResult}
 					</div>
 				{/if}

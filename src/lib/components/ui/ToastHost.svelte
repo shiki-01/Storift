@@ -40,7 +40,7 @@
 	{#each toastStore.items as item (item.id)}
 		<div class="toast {item.kind}" role={item.kind === 'error' ? 'alert' : 'status'}>
 			<span class="dot" aria-hidden="true"></span>
-			<span class="message">{item.message}</span>
+			<span class="message selectable">{item.message}</span>
 			{#if item.action}
 				<button
 					class="action"

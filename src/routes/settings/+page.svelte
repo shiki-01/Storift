@@ -211,10 +211,41 @@
 		align-items: start;
 	}
 
-	/* サイドバー: ページ内をスクロールしても追従する */
+	/* 広い画面: タイトルとサイドバーは固定し、右の内容だけをスクロールする(二重スクロールにしない) */
+	@media (min-width: 769px) {
+		.settings-scroll {
+			overflow: hidden;
+		}
+
+		.settings-page {
+			box-sizing: border-box;
+			height: 100%;
+			padding-bottom: 0;
+		}
+
+		.settings-layout {
+			flex: 1;
+			min-height: 0;
+			grid-template-rows: minmax(0, 1fr);
+			align-items: stretch;
+		}
+
+		.settings-nav {
+			overflow-y: auto;
+		}
+
+		.settings-content {
+			min-height: 0;
+			overflow-y: auto;
+			overscroll-behavior: contain;
+			padding-bottom: 80px;
+		}
+	}
+
+	/* 狭い画面: タブは上部に固定(ページ全体がスクロールする) */
 	.settings-nav {
 		position: sticky;
-		top: 24px;
+		top: 0;
 	}
 
 	.nav-list {
@@ -329,7 +360,6 @@
 
 		/* 上部に横スクロールのタブとして固定する */
 		.settings-nav {
-			top: 0;
 			z-index: 5;
 			margin: 0 -16px;
 			padding: 0 16px;

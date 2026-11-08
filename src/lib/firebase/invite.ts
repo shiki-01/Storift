@@ -68,9 +68,20 @@ export function buildInviteLink(base: string, data: InviteData): string {
 	return `${base.replace(/\/+$/, '')}${INVITE_PATH}#${encodeInvitePayload(data)}`;
 }
 
-/** 招待リンクの <base>。Web 版は現在のオリジン、デスクトップ版は公開アプリの URL */
+/**
+ * Tauri の WebView の内部オリジンか。外部の人は開けない。
+ * Windows は http(s)://tauri.localhost、macOS/Linux は tauri://localhost。
+ */
+export function isTauriOrigin(origin: string): boolean {
+	return /^(tauri:\/\/localhost|https?:\/\/tauri\.localhost)(:\d+)?\/?$/i.test(origin.trim());
+}
+
+/**
+ * 招待リンクの <base>。Web 版は現在のオリジン、デスクトップ版は公開アプリの URL。
+ * デスクトップの判定(desktop)が外れても、オリジンが Tauri の内部オリジンなら公開アプリの URL にする。
+ */
 export function inviteBase(desktop: boolean, origin?: string): string {
-	if (desktop || !origin) return PUBLIC_APP_URL;
+	if (desktop || !origin || isTauriOrigin(origin)) return PUBLIC_APP_URL;
 	return origin;
 }
 

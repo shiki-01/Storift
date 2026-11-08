@@ -7,7 +7,7 @@
 | サイト（紹介）     | `storift.shiki-01.com`     | `site/`        | `storift-site`                |
 | エディタ（アプリ） | `app.storift.shiki-01.com` | リポジトリ直下 | `storift`（既存）             |
 
-- サイトは SvelteKit + `adapter-static` の静的サイト。ページは `/`、`/features`、`/guide`、`/guide/firebase`(Firebase 同期の設定ガイド)、`/faq`、`/privacy`(プライバシーポリシー)、`/terms`(利用規約)。
+- サイトは SvelteKit + `adapter-static` の静的サイト。ページは `/`、`/features`、`/guide`、`/guide/firebase`(Firebase 同期の設定ガイド)、`/faq`、`/support`(開発の支援)、`/privacy`(プライバシーポリシー)、`/terms`(利用規約)。
 - アプリのコード・ビルドは変更しない。サイトは `site/` に独立した `package.json` を持つ。
 - サイトとアプリは別オリジンになる。Cookie・IndexedDB・Service Worker は共有されない（意図した分離）。
 

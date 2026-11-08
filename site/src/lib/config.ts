@@ -11,6 +11,11 @@ export const RELEASES_URL = (
 	env.PUBLIC_RELEASES_URL || 'https://github.com/shiki-01/Storift/releases'
 ).replace(/\/$/, '');
 
+/** 支援の窓口 */
+export const SPONSORS_URL = 'https://github.com/sponsors/shiki-01';
+export const BOOTH_URL = 'https://shiki-01.booth.pm/';
+export const SUPPORTERS_URL = 'https://github.com/shiki-01/Storift/blob/main/SUPPORTERS.md';
+
 export const SITE_NAME = 'Storift';
 export const SITE_TAGLINE = '小説を書くための、ひとつの場所。';
 export const SITE_DESCRIPTION =

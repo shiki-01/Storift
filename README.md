@@ -168,9 +168,9 @@ SvelteKit / Svelte 5 / TypeScript / Master CSS / Dexie(IndexedDB) / Yjs(共同�
 Storift はすべての機能を無料で使えます。開発を支援していただける場合は、次のどちらかからお願いします。支援の有無で使える機能は変わりません。
 
 - [GitHub Sponsors](https://github.com/sponsors/shiki-01)(GitHub アカウントが必要です)
-- [pixivFANBOX](https://shiki-01.fanbox.cc/)
+- [BOOTH](https://shiki-01.booth.pm/)(支援用の商品の購入。アプリ本体は含みません)
 
-支援してくださった方のうち、希望された方の名前を [SUPPORTERS.md](SUPPORTERS.md) に載せています。
+支援してくださった方のうち、希望された方の名前を [SUPPORTERS.md](SUPPORTERS.md) に載せています。詳しくは[公開サイトの「開発の支援」](https://storift.shiki-01.com/support)を参照してください。
 
 ## ライセンス
 

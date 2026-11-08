@@ -154,7 +154,7 @@ SvelteKit / Svelte 5 / TypeScript / Master CSS / Dexie(IndexedDB) / Yjs(共同�
 | [docs/SYNC_OPTIMIZATION.md](docs/SYNC_OPTIMIZATION.md)                     | 同期の仕組みと最適化                |
 | [docs/FIREBASE_USAGE_ESTIMATE.md](docs/FIREBASE_USAGE_ESTIMATE.md)         | Firebase 無料枠での使用量の見積もり |
 | [docs/SITE.md](docs/SITE.md)                                               | 紹介サイトとドメイン構成            |
-| [docs/BRAND.md](docs/BRAND.md)                                             | ロゴとアイコンの素材                |
+| [docs/BRAND.md](docs/BRAND.md)                                             | ロゴとアイコンの素材、名称の利用    |
 | [docs/UI_GUIDELINES.md](docs/UI_GUIDELINES.md)                             | 画面の共通の取り決め                |
 | [docs/UI_UX_IMPROVEMENTS.md](docs/UI_UX_IMPROVEMENTS.md)                   | UI/UX の改善項目と対応状況          |
 | [docs/PreviewViewerImplementation.md](docs/PreviewViewerImplementation.md) | プレビューの実装計画(履歴)          |
@@ -163,6 +163,12 @@ SvelteKit / Svelte 5 / TypeScript / Master CSS / Dexie(IndexedDB) / Yjs(共同�
 
 [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください。
 
+## 支援
+
+Storift はすべての機能を無料で使えます。開発を支援していただける場合は、[GitHub Sponsors](https://github.com/sponsors/shiki-01) からお願いします。支援の有無で使える機能は変わりません。
+
 ## ライセンス
 
 [MIT License](LICENSE)。同梱の第三者の素材(フォントなど)は、それぞれのライセンスに従います。一覧は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) にあります。
+
+名称「Storift」とロゴ・アイコンは MIT License の対象外です。使ってよい範囲は [docs/BRAND.md](docs/BRAND.md#名称とロゴの利用) にあります。改変した版を配布するときは、別の名前とアイコンを付けてください。

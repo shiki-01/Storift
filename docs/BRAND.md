@@ -66,3 +66,27 @@ bun run icons
 ```
 
 `scripts/build-icons.mjs` が、原本から派生 SVG、PWA / サイト / favicon の PNG と ICO、OG 画像、`scripts/app-icon-macos.png` / `app-icon-windows.png`、`src-tauri/icons/*` を作り直す。`tauri icon` は原画ごとに別の一時ディレクトリで 2 回走らせ、`icon.icns` は macOS 版、`icon.ico` は直接描いたもの、それ以外の PNG は Windows 版を `src-tauri/icons/` に置く(モバイル向けの出力は置かない)。Playwright の Chromium を使う(`playwright install` は不要な環境が前提)。配色や余白を変えるときは、スクリプト先頭の `COLORS` と、各アイコンの `margin` / `radius` / `widthRatio` を直す。
+
+## 名称とロゴの利用
+
+コードは MIT License だが、MIT License は名称「Storift」とロゴ・アイコン(この文書の素材すべて)の使用権を与えない。名称とロゴの扱いは、この節に従う。
+
+### 断りなく使ってよい
+
+- Storift を紹介・解説・レビューする記事、動画、スライドなどで、名称とロゴを使う。
+- Storift 向けに作ったもの(テーマ、テンプレート、解説など)に「Storift 用」「for Storift」と書く。
+- 改変していない公式のビルドを再配布するときに、名称とアイコンをそのまま使う。
+
+いずれも、上の「使い方」(色・形を変えない)を守ること。
+
+### 使わないでほしい
+
+- 改変した版(フォーク)を、Storift の名称・ロゴ・アイコンのまま配布する。フォークには別の名前とアイコンを付ける。「Storift をもとにしています」と書くのは構わない。
+- 公式のものと取り違えられる名前、ドメイン、アプリストアの掲載、SNS アカウントを作る。
+- 名称やロゴを、有料で売る商品・サービスの名前や看板に使う。
+
+### フォークで差し替えるもの
+
+`static/brand/*`、`static/favicon*`、`src-tauri/icons/*`、`site/static/favicon*`・`og.png`、2 つの `Logo.svelte`、`manifest.webmanifest` と `tauri.conf.json` のアプリ名。
+
+判断に迷う使い方は、[Issues](https://github.com/shiki-01/Storift/issues) で相談してください。

@@ -6,6 +6,30 @@
 			name="viewport"
 			content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-visual"
 		/>
+		<!-- 最初の描画前に、直前に確定したテーマを適用する(src/lib/utils/themeBoot.ts と同じ判断) -->
+		<script>
+			(function () {
+				try {
+					var m = JSON.parse(localStorage.getItem('storift:theme-mirror'));
+					if (!m || m.v !== 1 || !m.fixed || !m.light || !m.dark) return;
+					var s = m.fixed;
+					if (m.auto) {
+						var d = false;
+						var l = false;
+						try {
+							d = matchMedia('(prefers-color-scheme: dark)').matches;
+							l = matchMedia('(prefers-color-scheme: light)').matches;
+						} catch (e) {}
+						s = d || (!l && m.lastSystemDark) ? m.dark : m.light;
+					}
+					var r = document.documentElement;
+					for (var k in s.vars) r.style.setProperty(k, s.vars[k]);
+					r.setAttribute('data-theme', s.id);
+					r.setAttribute('data-scheme', s.scheme);
+					r.style.colorScheme = s.scheme;
+				} catch (e) {}
+			})();
+		</script>
 		<meta name="theme-color" content="#f6f4ef" media="(prefers-color-scheme: light)" />
 		<meta name="theme-color" content="#1b1a18" media="(prefers-color-scheme: dark)" />
 		<link rel="manifest" href="/manifest.webmanifest" />

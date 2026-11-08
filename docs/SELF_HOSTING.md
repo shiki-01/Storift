@@ -32,6 +32,7 @@ Firebase の設定値はビルドに含めず、利用者が端末ごとに入�
 ### 招待リンク(共有)を使う場合
 
 - 招待リンクの `<base>` は、Web 版では配信しているドメイン(`location.origin`)、デスクトップ版では公開アプリの URL(既定 `https://app.storift.shiki-01.com`)です。自分のドメインで配信し、デスクトップ版でもそちらを使いたい場合は、`src/lib/firebase/invite.ts` の `PUBLIC_APP_URL` を書き換えてビルドしてください(定数 1 か所です)。
+- デスクトップ版でも招待リンクは公開 Web 版の URL(`https://app.storift.shiki-01.com`)になります。
 - 招待された人(ゲスト)は、そのドメインのアプリから**ホストの Firebase に匿名認証で接続**します。ホストの Firebase の Authentication → 承認済みドメインに、**ゲストがアプリを開くドメイン**(自分で配信しているドメイン、公開版を使うならそのドメイン)を追加してください。ゲスト側に Firebase の設定は不要です。
 - 共有機能には新ルール(`firestore.rules`)が必要です。旧ルールのままでは、ゲストは参加できません([FIRESTORE_SETUP.md](FIRESTORE_SETUP.md))。
 

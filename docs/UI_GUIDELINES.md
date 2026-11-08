@@ -52,6 +52,8 @@ UI の操作部品は選択できず、本文や、コピーしたくなる情�
 
 - セレクト: `<select>` ではなく `src/lib/components/ui/Select.svelte`(`options` / `value` / `size`)。
   ポップアップは `body` 直下に `position: fixed` で出し、空きの広い側へ開く。`bun run test:e2e:ai-select`。
+  `menuMinWidth` を省略すると、`size="sm"` のポップアップ最小幅は 160px(`md` はトリガーの幅)。
+  `SelectOption.style` に インラインスタイルを渡すと項目の文字に当たる(例: フォント選択で `font-family`)。省略した項目には何も付かない。
 - 進捗バー: `src/lib/components/ui/ProgressBar.svelte`(`value` は 0〜1、`null` は不確定)。高さ・角丸・色はここで揃える。
 - アイコン: 絵文字や記号文字(✓ ⚠ ⏳ など)は使わず、`src/lib/components/editor/icons/*.svg` を `Icon.svelte` で出す。
   色は `currentColor` にし、固定の黒・白は使わない。インラインで使うときは `class="ico"`(`1em` 角)。

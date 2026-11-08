@@ -254,20 +254,20 @@ async function desktopTests(browser, base) {
 		)
 	);
 
-	// サイドバーの追従: 内容を長くしてスクロールしても、サイドバーは見えたまま
+	// サイドバーの固定: 内容を長くしてスクロールしても、サイドバーは動かない
 	await page.goto(`${base}/settings#editor`);
 	await page.locator(NAV).waitFor();
 	await page.locator('#fontSize').waitFor();
 	const before = (await page.locator(NAV).boundingBox())?.y ?? -1;
-	const scrolled = await page.locator('.settings-scroll').evaluate((el) => {
+	const scrolled = await page.locator('.settings-content').evaluate((el) => {
 		el.scrollTop = el.scrollHeight;
 		return el.scrollTop;
 	});
 	await sleep(200);
 	const after = (await page.locator(NAV).boundingBox())?.y ?? -2;
 	check(
-		'スクロールしてもサイドバーが追従する',
-		scrolled > 0 && after >= 0 && after <= 40 && after < before,
+		'スクロールしてもサイドバーの位置は変わらない',
+		scrolled > 0 && before >= 0 && after === before,
 		`scrolled=${scrolled} before=${before} after=${after}`
 	);
 

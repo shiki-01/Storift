@@ -146,4 +146,22 @@ describe('inviteBase', () => {
 		expect(inviteBase(true, 'tauri://localhost')).toBe(PUBLIC_APP_URL);
 		expect(inviteBase(false, undefined)).toBe(PUBLIC_APP_URL);
 	});
+
+	it('Windows(http://tauri.localhost)・tauri://localhost は、判定が外れても公開アプリの URL', () => {
+		for (const desktop of [true, false]) {
+			expect(inviteBase(desktop, 'http://tauri.localhost')).toBe(PUBLIC_APP_URL);
+			expect(inviteBase(desktop, 'https://tauri.localhost')).toBe(PUBLIC_APP_URL);
+			expect(inviteBase(desktop, 'tauri://localhost')).toBe(PUBLIC_APP_URL);
+		}
+	});
+
+	it('通常の Web オリジンはそのまま(tauri.localhost に似たホストは除く)', () => {
+		expect(inviteBase(false, 'https://app.storift.shiki-01.com')).toBe(
+			'https://app.storift.shiki-01.com'
+		);
+		expect(inviteBase(false, 'http://localhost:5173')).toBe('http://localhost:5173');
+		expect(inviteBase(false, 'https://tauri.localhost.evil.example')).toBe(
+			'https://tauri.localhost.evil.example'
+		);
+	});
 });

@@ -29,7 +29,7 @@
 		label?: string;
 		disabled?: boolean;
 		size?: 'sm' | 'md';
-		/** ポップアップの最小幅(px)。トリガーが狭いときに広げる */
+		/** ポップアップの最小幅(px)。トリガーが狭いときに広げる。size="sm" は枠なしで狭いので、既定 160 */
 		menuMinWidth?: number;
 		class?: string;
 		/** トリガーの左に出す飾り(アイコンなど) */
@@ -46,11 +46,14 @@
 		label,
 		disabled = false,
 		size = 'md',
-		menuMinWidth = 0,
+		menuMinWidth,
 		class: className = '',
 		leading,
 		onchange
 	}: Props = $props();
+
+	/** size="sm" のトリガーは文字ぶんしかない幅なので、ポップアップはこの幅まで広げる */
+	const SM_MENU_MIN_WIDTH = 160;
 
 	const uid = $props.id();
 	const listId = `${uid}-list`;
@@ -107,7 +110,7 @@
 			rect,
 			popupEl.scrollHeight,
 			{ width: window.innerWidth, height: window.innerHeight },
-			Math.max(menuMinWidth, 0)
+			Math.max(menuMinWidth ?? (size === 'sm' ? SM_MENU_MIN_WIDTH : 0), 0)
 		);
 	}
 

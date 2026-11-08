@@ -2,11 +2,12 @@
  * AI の回答中の資料リンク(src/lib/ai/refs.ts)の、索引づくりと遷移。
  */
 import { goto } from '$app/navigation';
+import { page } from '$app/state';
 import { resolve } from '$app/paths';
 import { charactersDB, memosDB, plotsDB, worldbuildingDB } from '$lib/db';
 import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 import { editorStore } from '$lib/stores/editor.svelte';
-import { itemNav } from '$lib/stores/itemNav.svelte';
+import { selectAndGo } from './refNav';
 import type { RefKind, RefLookup } from '$lib/ai/refs';
 import { entityTitle } from './entities';
 
@@ -28,28 +29,28 @@ export async function loadRefIndex(projectId: string): Promise<RefLookup> {
 	return (id) => map.get(id);
 }
 
+/* eslint-disable svelte/no-navigation-without-resolve -- path は resolve() 済み */
+const go = (path: string) => goto(path);
+/* eslint-enable svelte/no-navigation-without-resolve */
+
 /** 参照先の画面を開き、その項目を選ぶ */
 export async function openRef(kind: RefKind, id: string, projectId: string): Promise<void> {
 	switch (kind) {
 		case 'character': {
 			const path = resolve('/project/[id]/characters', { id: projectId });
-			itemNav.select(path, id);
-			return void (await goto(path));
+			return selectAndGo(path, id, page.url.pathname, go);
 		}
 		case 'plot': {
 			const path = resolve('/project/[id]/plot', { id: projectId });
-			itemNav.select(path, id);
-			return void (await goto(path));
+			return selectAndGo(path, id, page.url.pathname, go);
 		}
 		case 'worldbuilding': {
 			const path = resolve('/project/[id]/worldbuilding', { id: projectId });
-			itemNav.select(path, id);
-			return void (await goto(path));
+			return selectAndGo(path, id, page.url.pathname, go);
 		}
 		case 'scene': {
 			const path = resolve('/project/[id]/editor', { id: projectId });
-			itemNav.select(path, id);
-			return void (await goto(path));
+			return selectAndGo(path, id, page.url.pathname, go);
 		}
 		case 'memo': {
 			editorStore.requestMemo(null);

@@ -1,6 +1,13 @@
 <script lang="ts">
 	import Seo from '$lib/Seo.svelte';
-	import { APP_URL, BOOTH_URL, RELEASES_URL, SPONSORS_URL, SUPPORTERS_URL } from '$lib/config';
+	import {
+		APP_URL,
+		BOOTH_URL,
+		RELEASES_URL,
+		SPONSORS_LIST_URL,
+		SPONSORS_URL,
+		SUPPORTERS_URL
+	} from '$lib/config';
 
 	const ISSUES_URL = 'https://github.com/shiki-01/Storift/issues';
 </script>
@@ -26,13 +33,16 @@
 			<div class="ways">
 				<div class="way">
 					<h3>GitHub Sponsors</h3>
-					<p>月ごと、または一回の支援です。GitHub のアカウントが必要です。</p>
+					<p>
+						開発者(shiki-01)への、月ごと、または一回の支援です。Storift に限らず、shiki-01
+						が公開しているプロジェクト全体の開発に充てます。GitHub のアカウントが必要です。
+					</p>
 					<a class="btn secondary" href={SPONSORS_URL}>GitHub Sponsors を開く</a>
 				</div>
 				<div class="way">
 					<h3>BOOTH</h3>
 					<p>
-						支援用の商品を購入する形の、一回の支援です。pixiv
+						Storift のための、支援用の商品を購入する形の一回の支援です。pixiv
 						のアカウントが必要です。商品には、お礼の画像と、支援者一覧への掲載を申し込むフォームの案内が入っています。
 					</p>
 					<a class="btn secondary" href={BOOTH_URL}>BOOTH を開く</a>
@@ -57,24 +67,25 @@
 		<section>
 			<h2>3. 支援者一覧への掲載</h2>
 			<p>
-				支援してくださった方のうち、掲載を希望された方の名前を、<a href={SUPPORTERS_URL}
-					>支援者一覧</a
-				>に載せています。
+				支援してくださった方のうち、掲載を希望された方の名前を載せています。窓口によって、載せる場所が違います。
 			</p>
 			<ul>
 				<li>
-					<strong>GitHub Sponsors</strong>: 支援を「公開」に設定した方を、GitHub
-					のユーザー名で載せます。非公開の支援は載せません。
+					<strong>GitHub Sponsors</strong>: 支援を「公開」に設定した方を、GitHub のユーザー名で、<a
+						href={SPONSORS_LIST_URL}>shiki-01 のプロフィール</a
+					>の支援者一覧に載せます。Sponsors
+					の支援はプロジェクトごとに分かれないため、一覧は全プロジェクトで共通です。非公開の支援は載せません。
 				</li>
 				<li>
 					<strong>BOOTH</strong>: 商品に入っている案内のフォームに、載せたい表示名と BOOTH
-					の注文番号を書いて送ってください。注文番号は、支援の確認だけに使います。
+					の注文番号を書いて送ってください。<a href={SUPPORTERS_URL}>Storift の支援者一覧</a
+					>に載せます。注文番号は、支援の確認だけに使います。
 				</li>
 				<li>支援の金額や期間は載せません。並び順は、掲載を受け付けた順です。</li>
 				<li>
-					掲載の取り下げや表示名の変更は、いつでも受け付けます。GitHub Sponsors の方は <a
-						href={ISSUES_URL}>Issues</a
-					>、BOOTH の方は同じフォームからお知らせください。
+					掲載の取り下げや表示名の変更は、いつでも受け付けます。GitHub Sponsors
+					の方は、支援の設定を「非公開」に変えるか、<a href={ISSUES_URL}>Issues</a
+					>でお知らせください。BOOTH の方は、同じフォームからお知らせください。
 				</li>
 			</ul>
 		</section>

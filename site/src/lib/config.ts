@@ -14,6 +14,9 @@ export const RELEASES_URL = (
 /** 支援の窓口 */
 export const SPONSORS_URL = 'https://github.com/sponsors/shiki-01';
 export const BOOTH_URL = 'https://shiki-01.booth.pm/';
+/** GitHub Sponsors の支援者一覧(プロフィールの README。全プロジェクト共通) */
+export const SPONSORS_LIST_URL = 'https://github.com/shiki-01';
+/** BOOTH など Storift 固有の窓口の支援者一覧 */
 export const SUPPORTERS_URL = 'https://github.com/shiki-01/Storift/blob/main/SUPPORTERS.md';
 
 export const SITE_NAME = 'Storift';

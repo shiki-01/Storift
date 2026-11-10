@@ -19,6 +19,7 @@ export interface ToolbarItem {
 export const TOOLBAR_ITEMS: readonly ToolbarItem[] = [
 	{ id: 'assist', label: '執筆支援', icon: 'pencil-bolt' },
 	{ id: 'export', label: 'エクスポート', icon: 'download' },
+	{ id: 'review', label: 'AI 添削用にコピー', icon: 'copy' },
 	{ id: 'manuscript', label: '作品全体を通して読む', icon: 'book-2' },
 	{ id: 'print', label: '印刷プレビュー', icon: 'printer' },
 	{ id: 'history', label: 'バージョン履歴', icon: 'history' },

@@ -187,6 +187,7 @@
 	>({
 		assist: { action: () => (showWritingAssistant = true), disabled: readOnly },
 		export: { action: () => (showExportModal = true), tour: 'editor-export' },
+		review: { action: () => void openReviewExport(), testid: 'open-review-export' },
 		manuscript: { action: openManuscriptPreview, testid: 'open-manuscript-preview' },
 		print: { action: () => (showPrintPreview = true) },
 		history: { action: () => (showVersionManager = true), disabled: readOnly },

@@ -238,7 +238,7 @@
 			<AppRail />
 		{/if}
 
-		<div class="app-column">
+		<div class="app-column" class:has-fixed-header={showMobileHeader}>
 			{#if showMobileHeader}
 				<header class="app-header">
 					<div class="app-header-inner">
@@ -375,7 +375,17 @@
 		flex-direction: column;
 	}
 
+	/* ヘッダーは fixed にする。画面上端に固定要素がないと iOS が上端に OS 側のぼかしを付け、文字がぼやける */
+	.app-column.has-fixed-header {
+		padding-top: calc(var(--safe-top) + var(--bar-height) + 1px);
+	}
+
 	.app-header {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		z-index: 5;
 		flex: none;
 		background: var(--color-background);
 		border-bottom: 1px solid var(--color-border);

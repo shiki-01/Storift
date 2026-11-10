@@ -69,6 +69,16 @@
 	/** しきい値に届いている(離すと全画面になる) */
 	const armed = $derived(pullUp >= EXPAND_AT);
 
+	/** 背景の影が画面上端(ステータスバー部分)まで届くよう、body の直下へ移す */
+	function portal(node: HTMLElement) {
+		document.body.appendChild(node);
+		return {
+			destroy() {
+				node.remove();
+			}
+		};
+	}
+
 	function onPointerDown(e: PointerEvent) {
 		dragging = true;
 		startY = e.clientY;
@@ -105,7 +115,7 @@
 </script>
 
 {#if open}
-	<div class="sheet-root" role="presentation">
+	<div class="sheet-root" role="presentation" use:portal>
 		<button
 			class="sheet-backdrop"
 			class:dragging

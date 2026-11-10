@@ -29,6 +29,7 @@
 	import PreviewViewer from '$lib/components/preview/PreviewViewer.svelte';
 	import PreviewSettings from '$lib/components/preview/PreviewSettings.svelte';
 	import SceneExportModal from '$lib/components/ui/SceneExportModal.svelte';
+	import ReviewExportModal from '$lib/components/ui/ReviewExportModal.svelte';
 	import SearchReplace from '$lib/components/ui/SearchReplace.svelte';
 	import Sheet from '$lib/components/mobile/Sheet.svelte';
 	import AssistBar from '$lib/components/mobile/AssistBar.svelte';
@@ -130,6 +131,7 @@
 	let showVersionManager = $state(false);
 	let showFormattingModal = $state(false);
 	let showExportModal = $state(false);
+	let showReviewExport = $state(false);
 	let showSearch = $state(false);
 	let showProofread = $state(false);
 
@@ -1779,6 +1781,12 @@
 	});
 
 	// 作品全体を通して読む画面へ(未保存の変更は beforeNavigate で保存される)
+	// 未保存の編集を保存してから開く(保存前の本文が漏れないように)
+	async function openReviewExport() {
+		if (editorStore.currentScene && editorStore.isDirty) await handleSave();
+		showReviewExport = true;
+	}
+
 	function openManuscriptPreview() {
 		void goto(resolve('/project/[id]/preview', { id: currentProjectStore.project?.id ?? '' }));
 	}
@@ -2727,6 +2735,9 @@
 			>執筆支援(字下げ・ルビ)</button
 		>
 		<button onclick={() => runAction(() => (showExportModal = true))}>エクスポート</button>
+		<button data-testid="open-review-export" onclick={() => runAction(openReviewExport)}
+			>AI 添削用にコピー</button
+		>
 		<button onclick={() => runAction(openManuscriptPreview)}>作品全体を通して読む</button>
 		<button onclick={() => runAction(() => (showPrintPreview = true))}>印刷プレビュー</button>
 		<button disabled={readOnly} onclick={() => runAction(() => (showVersionManager = true))}
@@ -2847,6 +2858,24 @@
 			content={editorStore.content}
 			title={editorStore.currentScene.title}
 			onClose={() => (showExportModal = false)}
+		/>
+	</Modal>
+{/if}
+
+<!-- AI 添削用の書き出しモーダル -->
+{#if showReviewExport && currentProjectStore.project}
+	<Modal
+		isOpen={showReviewExport}
+		onClose={() => (showReviewExport = false)}
+		title="AI 添削用にコピー"
+		size="large"
+	>
+		<ReviewExportModal
+			projectId={currentProjectStore.project.id}
+			projectTitle={currentProjectStore.project.title}
+			chapters={currentProjectStore.chapters}
+			currentChapterId={editorStore.currentScene?.chapterId}
+			onClose={() => (showReviewExport = false)}
 		/>
 	</Modal>
 {/if}

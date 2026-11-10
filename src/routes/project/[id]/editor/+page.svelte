@@ -3713,9 +3713,8 @@
 		padding-top: var(--safe-top);
 		padding-left: var(--safe-left);
 		padding-right: var(--safe-right);
-		background: color-mix(in srgb, var(--color-background) 90%, transparent);
-		-webkit-backdrop-filter: blur(10px);
-		backdrop-filter: blur(10px);
+		/* iOS の PWA で backdrop-filter が常時かかったままになり本文上部がぼやけるため、ぼかしは使わず不透明にする */
+		background: var(--color-background);
 		border-bottom: 1px solid var(--color-border);
 		transform: translateY(0);
 		opacity: 1;

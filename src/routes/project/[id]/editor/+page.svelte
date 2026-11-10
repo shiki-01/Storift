@@ -3721,7 +3721,7 @@
 		transition:
 			transform 0.2s ease-out,
 			opacity 0.2s ease-out;
-		will-change: transform;
+		/* will-change: transform は iOS でバーのレイヤーが低解像度のまま残り文字がぼやけるため付けない */
 	}
 
 	.m-bar-wrap.m-bar-off {

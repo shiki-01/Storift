@@ -3705,7 +3705,8 @@
 	 * 出入りは transform/opacity だけで行い、高さや余白は変えない。
 	 */
 	.m-bar-wrap {
-		position: absolute;
+		/* 画面上端に固定要素があると iOS は上端への OS 側のぼかしを付けない。absolute だと文字ごとぼやける */
+		position: fixed;
 		top: 0;
 		left: 0;
 		right: 0;

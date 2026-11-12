@@ -10,7 +10,7 @@ v0.1.0 で、共有・共同編集のために新しい Firestore セキュリ�
 - 設定コードを持つ人は全データにアクセスできます。共有には使わず、自分の端末にだけ貼ってください。
 - 手順は [docs/FIRESTORE_SETUP.md](docs/FIRESTORE_SETUP.md)、ルールの仕様は [docs/SHARING_RULES.md](docs/SHARING_RULES.md) にあります。
 
-## 未リリース
+## v0.6.0
 
 - **拡張機能**: 設定に「拡張機能」を追加しました。拡張はこの端末ごとに有効/無効を選べます(既定はすべて無効)。仕組みは [docs/EXTENSIONS.md](docs/EXTENSIONS.md) にあります。
 - **Monolog. 連携**: 最初の拡張として、執筆している時間を時間記録アプリ [Monolog.](https://www.monolog.life) に記録できます(Web 版・デスクトップ版)。

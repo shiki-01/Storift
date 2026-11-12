@@ -53,12 +53,50 @@ describe('scenesDB の拡張向けイベント', () => {
 			chapterId,
 			projectId,
 			characterCount: 5,
-			previousCharacterCount: 0 // create は characterCount を 0 で作る
+			previousCharacterCount: 0, // create は characterCount を 0 で作る
+			delta: 5,
+			origin: 'user'
 		});
 		await scenesDB.update(scene.id, { content: 'あ' });
 		expect(updated).toHaveBeenLastCalledWith(
-			expect.objectContaining({ characterCount: 1, previousCharacterCount: 5 })
+			expect.objectContaining({ characterCount: 1, previousCharacterCount: 5, delta: -4 })
 		);
+	});
+
+	it('origin を指定すると、そのまま付けて発行する(AI の差し替えは ai)', async () => {
+		const scene = await newScene('あいう');
+		await scenesDB.update(scene.id, { content: 'あいうえお' }, { origin: 'ai' });
+		expect(updated).toHaveBeenCalledWith(expect.objectContaining({ origin: 'ai', delta: 5 }));
+	});
+
+	it('AI の適用分と自分の編集が同じ保存に混ざるときは、origin ごとに分けて発行する', async () => {
+		const scene = await newScene('あいう');
+		await scenesDB.update(scene.id, { content: 'あいう' }, { silent: true }); // 文字数を 3 にそろえる
+		await db.scenes.update(scene.id, { characterCount: 3 });
+		updated.mockClear();
+		// AI が +10、自分が +2(保存後の文字数は 15)
+		await scenesDB.update(
+			scene.id,
+			{ content: 'あ'.repeat(15) },
+			{ ai: { delta: 10, userEdited: true } }
+		);
+		expect(updated).toHaveBeenCalledTimes(2);
+		expect(updated.mock.calls[0][0]).toMatchObject({ origin: 'ai', delta: 10, characterCount: 13 });
+		expect(updated.mock.calls[1][0]).toMatchObject({
+			origin: 'user',
+			delta: 2,
+			previousCharacterCount: 13,
+			characterCount: 15
+		});
+		// 自分の編集が無ければ、AI の分だけ
+		updated.mockClear();
+		await scenesDB.update(
+			scene.id,
+			{ content: 'あ'.repeat(20) },
+			{ ai: { delta: 5, userEdited: false } }
+		);
+		expect(updated).toHaveBeenCalledTimes(1);
+		expect(updated.mock.calls[0][0]).toMatchObject({ origin: 'ai', delta: 5 });
 	});
 
 	it('本文が同じ、またはタイトル・並び順だけの更新では発行しない', async () => {

@@ -6,8 +6,8 @@ import type * as Y from 'yjs';
  * 既存の記録(保存ごとの「増えた分のみ」)に合わせ、take() は純増分が正のときだけその値を返してリセットする。
  */
 
-/** 数えない origin(リモートから届いた変更と、保存済みの状態の読み込み) */
-const NON_LOCAL_ORIGINS = new Set<unknown>(['remote', 'restore']);
+/** 数えない origin(リモートから届いた変更、保存済みの状態の読み込み、検索置換・復元などプログラムによる書き換え) */
+const NON_LOCAL_ORIGINS = new Set<unknown>(['remote', 'restore', 'program']);
 
 export interface LocalGrowthTracker {
 	/** これまでの純増分(負・0 のときは 0)を返し、集計をリセットする */

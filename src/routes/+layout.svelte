@@ -26,7 +26,8 @@
 	import TourOverlay from '$lib/components/tutorial/TourOverlay.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
 	import { installNativeContextMenuPolicy } from '$lib/desktop/nativeContextMenu';
-	import { extensionHost } from '$lib/extensions/host.svelte';
+	import { extensionHost, publishPage, publishVisibility } from '$lib/extensions/host.svelte';
+	import { pageFromPath } from '$lib/extensions/pages';
 	import { aiStore } from '$lib/stores/ai.svelte';
 	import { updaterStore } from '$lib/stores/updater.svelte';
 	import TitleBar from '$lib/components/desktop/TitleBar.svelte';
@@ -121,7 +122,17 @@
 			: ''
 	);
 
+	// 開いている画面を拡張へ知らせる(購読者がいなければ、値を覚えるだけ)
+	$effect(() => {
+		publishPage(pageFromPath(page.url.pathname));
+	});
+
 	onMount(() => {
+		// アプリが前面にあるか(別のウィンドウに移った・最小化した)を拡張へ知らせる
+		const onVisibility = () => publishVisibility(document.visibilityState !== 'hidden');
+		document.addEventListener('visibilitychange', onVisibility);
+		onVisibility();
+
 		// ビューポート(スマホ判定・キーボード高さ)の監視を開始
 		const stopViewport = initViewport();
 
@@ -218,6 +229,7 @@
 		return () => {
 			updaterStore.stopAutoCheck();
 			stopViewport();
+			document.removeEventListener('visibilitychange', onVisibility);
 			stopContextMenuPolicy();
 			unsubscribe();
 			stopNetworkMonitoring();

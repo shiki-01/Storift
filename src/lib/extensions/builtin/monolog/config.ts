@@ -18,8 +18,6 @@ export const DESKTOP_REDIRECT_URI = 'storift://monolog/callback';
 /** 設定画面から開く場所(接続後の戻り先) */
 export const SETTINGS_PATH = '/settings#extensions';
 
-export const PRIVACY_URL = 'https://storift.shiki-01.com/privacy';
-
 export function redirectUriFor(desktop: boolean): string {
 	return desktop ? DESKTOP_REDIRECT_URI : WEB_REDIRECT_URI;
 }

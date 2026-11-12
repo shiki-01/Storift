@@ -3,15 +3,23 @@ import type { Scene, SceneCreateInput } from '$lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import { isUnchanged, touchProject } from './utils';
 import { historyDB } from './history';
-import { extensionEvents } from '$lib/extensions/events';
+import { extensionEvents, type SceneChangeOrigin } from '$lib/extensions/events';
 
 /** 拡張向けイベントの発行に関するオプション */
 export interface SceneWriteOptions {
 	/**
 	 * true なら拡張向けのイベント(scene:updated / scene:created)を発行しない。
-	 * 自分が書いた変更ではない書き込み(共同編集の取り込み・AI による差し替えなど)で指定する
+	 * 誰の変更かを切り分けられない書き込み(共同編集のミラーなど)で指定する
 	 */
 	silent?: boolean;
+	/** この保存の変更が誰(何)によるものか。省略すると 'user'(利用者がエディタで書いた変更) */
+	origin?: SceneChangeOrigin;
+	/**
+	 * 利用者の編集と同じ保存に、AI の提案を適用した変更が混ざっているとき(エディタで開いているシーン)。
+	 * delta は AI の適用による文字数の増減、userEdited は利用者の編集も含まれるか。
+	 * 指定すると、AI の分(origin: 'ai')と利用者の分(origin: 'user')を別のイベントとして発行する
+	 */
+	ai?: { delta: number; userEdited: boolean };
 }
 
 export const scenesDB = {
@@ -95,13 +103,41 @@ export const scenesDB = {
 			changes.content !== undefined &&
 			currentScene.content !== changes.content
 		) {
-			extensionEvents.emit('scene:updated', {
+			const base = {
 				sceneId: id,
 				chapterId: currentScene.chapterId,
-				projectId: currentScene.projectId,
-				characterCount: effective.characterCount ?? changes.content.length,
-				previousCharacterCount: currentScene.characterCount ?? 0
-			});
+				projectId: currentScene.projectId
+			};
+			const before = currentScene.characterCount ?? 0;
+			const after = effective.characterCount ?? changes.content.length;
+			if (options.ai) {
+				// AI の適用分を先に、残りを利用者の分として分ける(増減の合計は保存の前後の差と一致する)
+				const afterAi = before + options.ai.delta;
+				extensionEvents.emit('scene:updated', {
+					...base,
+					characterCount: afterAi,
+					previousCharacterCount: before,
+					delta: options.ai.delta,
+					origin: 'ai'
+				});
+				if (options.ai.userEdited) {
+					extensionEvents.emit('scene:updated', {
+						...base,
+						characterCount: after,
+						previousCharacterCount: afterAi,
+						delta: after - afterAi,
+						origin: 'user'
+					});
+				}
+			} else {
+				extensionEvents.emit('scene:updated', {
+					...base,
+					characterCount: after,
+					previousCharacterCount: before,
+					delta: after - before,
+					origin: options.origin ?? 'user'
+				});
+			}
 		}
 
 		// プロジェクトの更新日時を更新

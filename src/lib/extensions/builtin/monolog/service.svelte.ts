@@ -46,11 +46,14 @@ export const monologState = $state<{ connection: ConnectionStatus; sessionActive
 export const monologControl: {
 	/** 計測中なら開始時刻(ms)と増減した文字数。計測中でなければ null */
 	snapshot(): { startedAtMs: number; delta: number } | null;
-	/** いま終了して記録する */
+	/** いま終了して記録する(本体の執筆セッションも終了する) */
 	endNow(): Promise<SessionOutcome>;
+	/** Monolog. への記録だけを終える(連携の解除の前など。本体の執筆セッションは続く) */
+	finishRecording(): Promise<SessionOutcome>;
 } = {
 	snapshot: () => null,
-	endNow: async () => 'none'
+	endNow: async () => 'none',
+	finishRecording: async () => 'none'
 };
 
 export const monologTokens = new TokenManager({ storage: createTokenStorage(isDesktop()) });

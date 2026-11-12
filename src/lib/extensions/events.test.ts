@@ -6,7 +6,9 @@ const payload = {
 	chapterId: 'c',
 	projectId: 'p',
 	characterCount: 10,
-	previousCharacterCount: 4
+	previousCharacterCount: 4,
+	delta: 6,
+	origin: 'user' as const
 };
 
 describe('EventEmitter', () => {
@@ -43,5 +45,23 @@ describe('EventEmitter', () => {
 		await Promise.resolve();
 		expect(ok).toHaveBeenCalled();
 		spy.mockRestore();
+	});
+
+	it('購読者の増減を watchListeners で知らせる(解除・clear でも)', () => {
+		const emitter = new EventEmitter();
+		const watcher = vi.fn();
+		const stop = emitter.watchListeners(watcher);
+		const off = emitter.on('scene:updated', () => {});
+		expect(watcher).toHaveBeenCalledTimes(1);
+		off();
+		expect(watcher).toHaveBeenCalledTimes(2);
+		off(); // 二重の解除では知らせない
+		expect(watcher).toHaveBeenCalledTimes(2);
+		emitter.on('scene:created', () => {});
+		emitter.clear();
+		expect(watcher).toHaveBeenCalledTimes(4);
+		stop();
+		emitter.on('scene:created', () => {});
+		expect(watcher).toHaveBeenCalledTimes(4);
 	});
 });

@@ -32,6 +32,10 @@ import {
 /** 書き込みの origin。それ以外の origin(エディタのバインディングや UndoManager)もローカルの変更として扱う */
 export const ORIGIN_LOCAL = 'local';
 export const ORIGIN_REMOTE = 'remote';
+/** AI の提案を適用した書き込み(送信・ミラーはローカルの変更と同じ。利用者が書いた分としては数えない) */
+export const ORIGIN_AI = 'ai';
+/** プログラムによる書き換え(検索置換・履歴の復元・競合の解決)。ローカルの変更として送るが、執筆としては数えない */
+export const ORIGIN_PROGRAM = 'program';
 /** 永続化・snapshot からの復元(送信もミラーの対象外にもしない読み込み) */
 const ORIGIN_RESTORE = 'restore';
 
@@ -57,7 +61,7 @@ export interface CrdtDeps {
 	mirrorContent(
 		sceneId: string,
 		text: string,
-		ctx: { projectId: string; readOnly: boolean }
+		ctx: { projectId: string; readOnly: boolean; changes: LocalChanges }
 	): Promise<void>;
 	/** 上書きされる前のローカルの本文を historyDB に退避する */
 	backupScene(sceneId: string): Promise<void>;
@@ -71,6 +75,26 @@ export interface CrdtDeps {
 	onOnline(callback: () => void): () => void;
 	now(): number;
 }
+
+/** ある origin による、前回のミラー以降の変更 */
+export interface OriginChange {
+	/** 文字数の増減(挿入した文字数 - 削除した文字数) */
+	delta: number;
+	/** 変更があったか(増減が 0 でも、書き換えていれば true) */
+	edited: boolean;
+}
+
+/**
+ * 前回のミラー以降に、この端末で入れた変更の内訳(拡張向けイベントの origin の判定に使う)。
+ * user は利用者が書いた分(エディタの入力・元に戻す)、ai は AI の提案を適用した分。
+ * リモートの変更・復元・プログラムによる書き換え(ORIGIN_PROGRAM)は含まない
+ */
+export interface LocalChanges {
+	user: OriginChange;
+	ai: OriginChange;
+}
+
+const noChange = (): OriginChange => ({ delta: 0, edited: false });
 
 export type CrdtOpenFailure =
 	/** 共有プロジェクト(active)ではない */
@@ -165,6 +189,8 @@ class SceneDocEntry {
 	private sending: Promise<void> | null = null;
 	private compacting = false;
 	private mirrorChain: Promise<void> = Promise.resolve();
+	/** 前回のミラー以降に、この端末で入れた変更の内訳 */
+	private changes: LocalChanges = { user: noChange(), ai: noChange() };
 
 	readonly remoteCallbacks = new Set<(text: string) => void>();
 	readonly localCallbacks = new Set<(text: string) => void>();
@@ -180,6 +206,20 @@ class SceneDocEntry {
 	) {
 		this.readOnly = readOnly;
 		this.ydoc.on('update', (update: Uint8Array, origin: unknown) => this.onUpdate(update, origin));
+		this.ytext.observe((event, transaction) => this.countChange(event, transaction.origin));
+	}
+
+	/** この端末で入れた変更を、origin ごとに数える(リモート・復元・プログラムによる書き換えは数えない) */
+	private countChange(event: Y.YTextEvent, origin: unknown): void {
+		if (origin === ORIGIN_REMOTE || origin === ORIGIN_RESTORE || origin === ORIGIN_PROGRAM) return;
+		// 読み取り専用での変更は送らず、ミラーもしない(onUpdate)
+		if (this.readOnly) return;
+		const target = origin === ORIGIN_AI ? this.changes.ai : this.changes.user;
+		for (const op of event.delta) {
+			if (typeof op.insert === 'string') target.delta += op.insert.length;
+			else if (typeof op.delete === 'number') target.delta -= op.delete;
+		}
+		target.edited = true;
 	}
 
 	// ---------- 開く ----------
@@ -463,14 +503,23 @@ class SceneDocEntry {
 			if (this.discarded) return;
 			const text = this.ytext.toString();
 			if (text === this.lastMirrored) return;
+			// 内訳は、ミラーに渡した分だけ取り出す(ミラー中に入った変更は次回に回す)
+			const changes = this.changes;
+			this.changes = { user: noChange(), ai: noChange() };
 			try {
 				await this.deps.mirrorContent(this.sceneId, text, {
 					projectId: this.projectId,
-					readOnly: this.readOnly
+					readOnly: this.readOnly,
+					changes
 				});
 				this.lastMirrored = text;
 			} catch (error) {
 				console.error('CRDT: failed to mirror content:', error);
+				// 失敗した分は、次のミラーに持ち越す
+				for (const key of ['user', 'ai'] as const) {
+					this.changes[key].delta += changes[key].delta;
+					this.changes[key].edited ||= changes[key].edited;
+				}
 			}
 		});
 		return this.mirrorChain;

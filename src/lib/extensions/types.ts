@@ -1,19 +1,9 @@
 import type { Component } from 'svelte';
-import type { ExtensionEvents } from './events';
+import type { ExtensionEvents, PageChangeEvent, WritingSessionEvent } from './events';
 
-/** 拡張が動作するプラットフォーム。web は Web 版(PWA)、desktop はデスクトップ版(Tauri) */
-export type ExtensionPlatform = 'web' | 'desktop';
+import type { ExtensionManifest, ExtensionPlatform } from './manifest';
 
-export interface ExtensionManifest {
-	/** 一意な ID。有効状態の保存キーにもなる(英小文字・数字・ハイフン) */
-	id: string;
-	/** 設定画面に出す名前 */
-	name: string;
-	/** 設定画面に出す説明(1 〜 2 文) */
-	description: string;
-	/** 動作するプラットフォーム。含まれない環境では無効表示になり、activate もされない */
-	platforms: ExtensionPlatform[];
-}
+export type { ExtensionManifest, ExtensionPlatform } from './manifest';
 
 /** 拡張に渡す通知(トースト)。UI の実装には依存させない */
 export interface ExtensionNotifier {
@@ -22,16 +12,37 @@ export interface ExtensionNotifier {
 	info(message: string): void;
 }
 
+/** 拡張から見た執筆セッション */
+export interface ExtensionSessionApi {
+	/** 進行中のセッション(無ければ null)。作品名は、権限 `project:title` を宣言した拡張にだけ入る */
+	current(): WritingSessionEvent | null;
+	/** 進行中のセッションを、利用者の操作として終了する(session:end の reason は 'manual')。無ければ false */
+	endNow(): boolean;
+}
+
+/** 拡張から見たアプリの状態 */
+export interface ExtensionAppApi {
+	/** いま開いている画面(`page:change` の最新の値)。まだ分からなければ null */
+	page(): PageChangeEvent | null;
+	/** アプリが前面にあるか */
+	visible(): boolean;
+}
+
 /**
  * 拡張に渡す API。拡張は DB に直接触れず、ここにあるものだけを使う。
- * イベントは購読のみ。読み取りは必要最小限(作品名の取得など)にとどめる
+ * イベントは購読のみで、マニフェストの `permissions.events` に宣言したものだけを購読できる。
+ * 作品名は、`permissions.read` に `project:title` を宣言した拡張にだけ渡す
  */
 export interface ExtensionContext {
 	platform: ExtensionPlatform;
-	/** イベントの購読(`on` の返り値で解除) */
+	/** イベントの購読(`on` の返り値で解除)。宣言していないイベントを購読すると例外になる */
 	events: ExtensionEvents;
-	/** 作品名の読み取り(読み取り専用)。見つからなければ undefined */
+	session: ExtensionSessionApi;
+	app: ExtensionAppApi;
+	/** 作品名の読み取り(読み取り専用)。見つからない、または権限が無ければ undefined */
 	getProjectTitle(projectId: string): Promise<string | undefined>;
+	/** 作品の総文字数(読み取り専用)。見つからない、または権限 `project:chars` が無ければ undefined */
+	getProjectCharCount(projectId: string): Promise<number | undefined>;
 	notify: ExtensionNotifier;
 }
 
@@ -56,12 +67,22 @@ export interface ExtensionToolbarContribution {
 	panel: Component<ExtensionPanelProps>;
 	/** true の間、アイコンに小さなインジケータ(ドット)を出す。リアクティブな状態だけを読むこと */
 	badge?: () => boolean;
+	/**
+	 * スマホの上部バー(シーン名の下の状態の行)に出す小さな表示(任意)。props は受け取らない。
+	 * 出すものが無いときは、何も描画しないこと
+	 */
+	status?: Component;
 }
 
 export interface Extension {
 	manifest: ExtensionManifest;
 	/** ツールバーに出す項目(任意) */
 	toolbar?: ExtensionToolbarContribution;
+	/**
+	 * 設定画面の拡張のカードに出す、拡張固有の設定(任意。公式の拡張は Svelte コンポーネント)。
+	 * 有効で、このプラットフォームに対応しているときだけ読み込む(props は受け取らない)
+	 */
+	settings?: () => Promise<{ default: Component }>;
 	/** 有効化されたとき(起動時に有効な場合を含む)に呼ばれる */
 	activate(ctx: ExtensionContext): void | Promise<void>;
 	/** 無効化されたときに呼ばれる。購読・タイマー・リスナーをすべて解除する */

@@ -2,7 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import type { Firestore } from 'firebase/firestore';
 import type { CrdtDocRow } from '$lib/types';
-import { CrdtOpenError, createDocManager, type CrdtDeps, type DocManager } from './doc';
+import {
+	CrdtOpenError,
+	ORIGIN_AI,
+	ORIGIN_PROGRAM,
+	createDocManager,
+	type CrdtDeps,
+	type DocManager,
+	type LocalChanges
+} from './doc';
 import type { CrdtPersistence } from './persistence';
 import { groupUpdates } from './policy';
 import type { CrdtTransport, RemoteUpdate, SnapshotData } from './transport';
@@ -91,6 +99,7 @@ class Device {
 	content: string;
 	online = true;
 	mirrored: string[] = [];
+	changes: LocalChanges[] = [];
 	backups = 0;
 	denied = 0;
 	errors: string[] = [];
@@ -115,9 +124,10 @@ class Device {
 			resolveDb: async () => ({}) as Firestore,
 			getScene: async () =>
 				this.sceneDeleted ? undefined : { content: this.content, projectId: 'p1' },
-			mirrorContent: async (_id, text) => {
+			mirrorContent: async (_id, text, ctx) => {
 				this.content = text;
 				this.mirrored.push(text);
+				this.changes.push(ctx.changes);
 			},
 			backupScene: async () => void this.backups++,
 			currentUid: () => 'uid',
@@ -371,6 +381,54 @@ describe('送受信', () => {
 		h.setText('abc123');
 		await tick(1600);
 		expect(a.mirrored).toEqual(['abc123']);
+	});
+});
+
+describe('ミラーに渡す、この端末で入れた変更の内訳(拡張向けイベントの origin 用)', () => {
+	const sum = (device: Device, key: 'user' | 'ai') =>
+		device.changes.reduce((n, c) => n + c[key].delta, 0);
+
+	it('自分の編集は user、AI の適用は ai として数え、他の人の変更・プログラムによる書き換えは数えない', async () => {
+		const server = new FakeServer();
+		const a = new Device(server, 'abc');
+		const b = new Device(server, 'abc');
+		const ha = await a.manager.openScene('s1', PROJECT());
+		const hb = await b.manager.openScene('s1', PROJECT('editor'));
+
+		ha.setText('abcde'); // 自分で +2
+		ha.setText('abcdefgh', ORIGIN_AI); // AI の適用で +3
+		ha.setText('abcdefghij', ORIGIN_PROGRAM); // 検索置換など(数えない)
+		hb.setText('abc12345'); // 相手が +5(こちらのミラーには入るが、こちらでは数えない)
+		await tick(6000);
+
+		expect(sum(a, 'user')).toBe(2);
+		expect(sum(a, 'ai')).toBe(3);
+		expect(a.changes.some((c) => c.user.edited)).toBe(true);
+		expect(a.content).toBe(ha.ytext.toString());
+		// 相手の端末では、相手が入れた +5 だけが user(こちらの変更は受け取っただけで数えない)
+		expect(sum(b, 'user')).toBe(5);
+		expect(sum(b, 'ai')).toBe(0);
+	});
+
+	it('リモートの変更を受け取っただけの端末は、内訳が空のままミラーする', async () => {
+		const server = new FakeServer();
+		const a = new Device(server, 'x');
+		const b = new Device(server, 'x');
+		const ha = await a.manager.openScene('s1', PROJECT());
+		await b.manager.openScene('s1', PROJECT('editor'));
+		ha.setText('xyz');
+		await tick(6000);
+		expect(b.mirrored.at(-1)).toBe('xyz');
+		expect(b.changes.every((c) => !c.user.edited && !c.ai.edited)).toBe(true);
+	});
+
+	it('削除は負の増減として数える', async () => {
+		const server = new FakeServer();
+		const a = new Device(server, 'abcdef');
+		const h = await a.manager.openScene('s1', PROJECT());
+		h.setText('ab');
+		await tick(3000);
+		expect(sum(a, 'user')).toBe(-4);
 	});
 });
 

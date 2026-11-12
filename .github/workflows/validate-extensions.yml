@@ -1,0 +1,39 @@
+name: Validate Extensions
+
+# 拡張機能(extensions/)を触る PR で、マニフェスト・コンテンツ・ファイル構成を検証し、レジストリが生成できることを確かめる。
+on:
+  pull_request:
+    paths:
+      - 'extensions/**'
+      - 'scripts/**'
+      - 'src/lib/extensions/manifest.ts'
+      - 'src/lib/extensions/pack.ts'
+      - 'src/lib/extensions/registryIndex.ts'
+      - '.github/workflows/validate-extensions.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: validate-extensions-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Validate extensions
+        run: bun run validate:extensions
+
+      - name: Build registry (dry run)
+        run: bun scripts/build-registry.ts "$RUNNER_TEMP/extensions-registry"
+
+      - name: Test (validator and registry)
+        run: bunx vitest run scripts src/lib/extensions

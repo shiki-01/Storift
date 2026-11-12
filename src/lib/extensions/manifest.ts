@@ -3,10 +3,19 @@
  *
  * マニフェストは、アプリ(同梱する拡張の一覧・同意画面・設定)と紹介サイト(拡張ページ)の両方が読む、
  * 拡張についての単一の情報源。このファイルは紹介サイト(site/)からも読み込むので、
- * 他のモジュールに依存させない(純関数と定数だけを置く)。
+ * パックの検証(pack.ts)以外のモジュールに依存させない(純関数と定数だけを置く)。
  */
 
 import { validateContributions, type PackContributions } from './pack';
+
+// 紹介サイト(site/)は manifest.ts だけを読み込むので、表示に使うパックの定数もここから出す
+export {
+	ALLOWED_LICENSES,
+	CONTRIBUTION_LABELS,
+	PACK_LIMITS,
+	contributionKinds,
+	type ContributionKind
+} from './pack';
 
 /** マニフェストの形式の版。互換性のない変更をしたら上げる */
 export const MANIFEST_API_VERSION = 1;

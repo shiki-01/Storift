@@ -279,6 +279,21 @@ describe('タイマー方式', () => {
 	});
 });
 
+describe('snapshot', () => {
+	it('計測中だけ、開始時刻と増減した文字数を返す', async () => {
+		const { manager } = setup({ mode: 'timer' });
+		expect(manager.snapshot()).toBeNull();
+		manager.handleSceneUpdated(ev({ characterCount: 110, previousCharacterCount: 100 }));
+		// タイマー開始の応答を待つ間は、まだ計測中として扱わない
+		expect(manager.snapshot()).toBeNull();
+		await vi.advanceTimersByTimeAsync(0);
+		manager.handleSceneUpdated(ev({ characterCount: 125, previousCharacterCount: 110 }));
+		expect(manager.snapshot()).toEqual({ startedAtMs: T0, delta: 25 });
+		await manager.finish('manual');
+		expect(manager.snapshot()).toBeNull();
+	});
+});
+
 describe('記録方式', () => {
 	it('終了時に /records だけを呼ぶ。タイマーには触れない', async () => {
 		const { manager, client } = setup({ mode: 'record', idleMinutes: 10 });

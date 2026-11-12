@@ -79,12 +79,12 @@ src/lib/extensions/
 - 選んだ理由: AI プロバイダの API キーと同じ脅威モデルで、すでに「キーチェーンが使えなければ平文で localStorage」という方針と利用者への説明があり、新しい仕組みを増やさずに済む。Web 版はキーチェーンが無く、IndexedDB に置くとエクスポート処理と混ざりやすいため、独立した localStorage のキーにした。
 - リフレッシュトークンは 90 日で、**更新のたびにローテーション**する。新しい値を保存してから古い値を捨てる。使用済みを再送すると invalid_grant になるので、更新は直列化する(同じタブ内は進行中の Promise を共有、複数タブ間は `navigator.locks`。ロック取得後に保存済みの値を読み直し、他のタブが更新済みならそれを使う)。
 - invalid_grant になったら接続情報を消し、設定に「要再接続」を表示する(印は `storift:monolog:needs-reconnect`)。
-- 連携の解除は `POST /oauth/revoke` を呼び、失敗してもローカルのトークンは必ず消す。
+- 連携の解除は `POST /v1/oauth/revoke` を呼び、失敗してもローカルのトークンは必ず消す。
 
 ### API の扱い
 
 - ベース `https://api.monolog.life/v1`、`Authorization: Bearer`、本文は JSON。CORS は許可済みで、ブラウザから直接呼ぶ。
-- OAuth のエンドポイント(`/oauth/token`、`/oauth/revoke`)は `application/x-www-form-urlencoded`、エラーは RFC 6749 の形。リソース API のエラーは `{ "error": { "code", "message", "request_id" } }`。
+- OAuth のエンドポイント(`/v1/oauth/token`、`/v1/oauth/revoke`)は `application/x-www-form-urlencoded`、エラーは RFC 6749 の形。リソース API のエラーは `{ "error": { "code", "message", "request_id" } }`。
 - 401 は 1 回だけ更新して再試行。429 は Retry-After 秒(最大 60 秒)待って再試行(最大 3 回)。
 - `POST /records`・`/timer/start`・`/timer/stop` には `Idempotency-Key`(UUID)を付け、通信エラーの再送(最大 3 回、500ms から指数バックオフ)・401 後・429 後の再試行は同じキーで行う。
 

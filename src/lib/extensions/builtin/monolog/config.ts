@@ -6,9 +6,9 @@ export const MONOLOG_CLIENT_ID = 'mlc_7vwiiiwkcdglzq4ggnsq';
 export const MONOLOG_SCOPE = 'records:write timer';
 
 export const AUTHORIZE_URL = 'https://www.monolog.life/oauth/authorize';
-export const TOKEN_URL = 'https://api.monolog.life/oauth/token';
-export const REVOKE_URL = 'https://api.monolog.life/oauth/revoke';
 export const API_BASE = 'https://api.monolog.life/v1';
+export const TOKEN_URL = `${API_BASE}/oauth/token`;
+export const REVOKE_URL = `${API_BASE}/oauth/revoke`;
 
 /** Monolog. に登録済みのリダイレクト URI(完全一致が必要) */
 export const WEB_ORIGIN = 'https://app.storift.shiki-01.com';

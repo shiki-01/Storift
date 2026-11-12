@@ -20,6 +20,7 @@ const WEB_SECTIONS = [
 	['editor', 'エディタ'],
 	['sync', '同期'],
 	['sharing', '共有'],
+	['extensions', '拡張機能'],
 	['data', 'データ'],
 	['about', 'このアプリについて']
 ];
@@ -249,9 +250,10 @@ async function desktopTests(browser, base) {
 	);
 	check(
 		'切替を aria-live で知らせる',
-		((await page.locator('.settings-page [role="status"]').textContent()) ?? '').includes(
-			'エディタ'
-		)
+		(
+			(await page.locator('.settings-page p[role="status"][aria-live="polite"]').textContent()) ??
+			''
+		).includes('エディタ')
 	);
 
 	// サイドバーの固定: 内容を長くしてスクロールしても、サイドバーは動かない

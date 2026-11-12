@@ -1,0 +1,8 @@
+{
+	"id": "my-keys",
+	"name": "私の入力補助キー",
+	"keys": [
+		{ "label": "「」", "text": "「」", "caretBack": 1 },
+		{ "label": "※", "text": "※" }
+	]
+}

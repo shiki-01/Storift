@@ -1,0 +1,26 @@
+{
+	"id": "common-notation",
+	"name": "よくある表記ゆれ辞書",
+	"description": "「出来る→できる」「下さい→ください」など、ひらがなで書くことが多い言葉を、校正で知らせます。",
+	"version": "1.0.0",
+	"author": "shiki-01",
+	"kind": "pack",
+	"apiVersion": 1,
+	"platforms": ["web", "desktop"],
+	"icon": "abc",
+	"homepage": "https://github.com/shiki-01/Storift/tree/main/extensions/common-notation",
+	"license": "MIT",
+	"updatedAt": "2026-11-12",
+	"permissions": { "storage": true },
+	"privacy": {
+		"sends": [],
+		"stores": ["インストールした辞書の内容: この端末のブラウザ内(IndexedDB)にだけ保存"],
+		"onDisable": "無効にすると、校正にこの辞書の指摘が出なくなります。アンインストールすると、この端末に保存した内容を削除します。",
+		"notes": [
+			"通信しません。コードも実行しません(JSON のデータだけです)。",
+			"作品の本文は読み取りません。校正を開いたときに、画面の中で、本文とこの辞書の語を照らし合わせるだけです。",
+			"同期・バックアップ・書き出しには含まれません。"
+		]
+	},
+	"contributions": { "proofreadRules": ["contents/rules.json"] }
+}

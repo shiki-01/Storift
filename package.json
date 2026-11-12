@@ -18,6 +18,8 @@
 		"test:coverage": "vitest --coverage",
 		"tauri": "tauri",
 		"icons": "node scripts/build-icons.mjs",
+		"validate:extensions": "bun scripts/validate-extensions.ts",
+		"build:registry": "bun scripts/build-registry.ts",
 		"desktop:dev": "tauri dev",
 		"desktop:build": "tauri build",
 		"test:rules": "firebase emulators:exec --only firestore --project demo-storift \"vitest run --config vitest.rules.config.ts\"",

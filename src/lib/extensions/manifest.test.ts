@@ -85,7 +85,15 @@ describe('validateManifest', () => {
 
 	it('kind・apiVersion・platforms', () => {
 		expect(errorsOf({ kind: 'plugin' }).join()).toContain('kind');
-		expect(errorsOf({ kind: 'pack' })).toEqual([]);
+		// パックは contributions と license が必須(pack.test.ts に詳しいテストがある)
+		expect(
+			errorsOf({
+				kind: 'pack',
+				license: 'MIT',
+				updatedAt: '2026-11-12',
+				contributions: { themes: ['themes/a.json'] }
+			})
+		).toEqual([]);
 		expect(errorsOf({ kind: 'script' })).toEqual([]);
 		expect(errorsOf({ apiVersion: 2 }).join()).toContain('apiVersion');
 		expect(errorsOf({ platforms: [] }).join()).toContain('platforms');

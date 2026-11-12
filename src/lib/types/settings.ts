@@ -65,6 +65,8 @@ export interface AppSettings {
 	editorFormatting: EditorFormatting;
 	/** 執筆画面のツールバーで、三点メニュー(…)にまとめるボタンの id(未設定は全部ツールバーに表示)。端末内にだけ保存 */
 	toolbarMenuItems?: string[];
+	/** 執筆画面のツールバーのボタンの並び(id の配列。拡張の項目は `ext:<拡張 ID>`)。未設定は既定の並び。端末内にだけ保存 */
+	toolbarOrder?: string[];
 	shortcuts: {
 		save: string;
 		undo: string;

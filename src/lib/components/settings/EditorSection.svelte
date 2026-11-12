@@ -16,7 +16,17 @@
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { settingsDB } from '$lib/db';
 	import { settingsStore } from '$lib/stores/settings.svelte';
-	import { TOOLBAR_ITEMS, setInMenu, splitToolbar } from '$lib/utils/toolbarItems';
+	import Icon from '$lib/components/ui/Icon.svelte';
+	import SortableList from '$lib/components/items/SortableList.svelte';
+	import { extensionHost } from '$lib/extensions/host.svelte';
+	import {
+		FIXED_LAST_ID,
+		orderedItems,
+		reorderStored,
+		setInMenu,
+		splitToolbar,
+		type ToolbarItem
+	} from '$lib/utils/toolbarItems';
 	import SettingsCard from './SettingsCard.svelte';
 	import SettingsRow from './SettingsRow.svelte';
 	import type { SettingsForm } from './settingsForm.svelte';
@@ -33,7 +43,10 @@
 		// 設定画面を直接開いたときも、保存済みのツールバー設定を反映する
 		void settingsDB
 			.get()
-			.then((saved) => (settingsStore.toolbarMenuItems = saved.toolbarMenuItems ?? []))
+			.then((saved) => {
+				settingsStore.toolbarMenuItems = saved.toolbarMenuItems ?? [];
+				settingsStore.toolbarOrder = saved.toolbarOrder ?? [];
+			})
 			.catch(() => undefined);
 	});
 
@@ -90,31 +103,56 @@
 		form.save();
 	};
 
-	// 執筆画面のツールバー: 常時表示するボタンと、三点メニュー(…)にまとめるボタン
-	const toolbarItems = TOOLBAR_ITEMS.filter((i) => isDesktop() || !i.desktopOnly);
+	// 執筆画面のツールバー: ボタンの並び順と、常時表示するボタン/三点メニュー(…)にまとめるボタン
+	const desktop = isDesktop();
+	// 有効で、このプラットフォームに対応する拡張の項目(無効な拡張の項目は一覧に出さない)
+	const extensionItems = $derived<ToolbarItem[]>(
+		extensionHost.toolbarItems.map((e) => ({ id: e.itemId, label: e.label, icon: e.icon }))
+	);
+	const allItems = $derived(orderedItems(settingsStore.toolbarOrder, { desktop }, extensionItems));
+	// AI パネルのボタンは並べ替えの対象外(右端側に固定)
+	const sortableItems = $derived(allItems.filter((i) => i.id !== FIXED_LAST_ID));
+	const fixedItem = $derived(allItems.find((i) => i.id === FIXED_LAST_ID));
 	const pinnedIds = $derived(
 		new Set(
-			splitToolbar(settingsStore.toolbarMenuItems, { desktop: isDesktop() }).pinned.map((i) => i.id)
+			splitToolbar(
+				settingsStore.toolbarMenuItems,
+				{ desktop },
+				{ order: settingsStore.toolbarOrder, extensions: extensionItems }
+			).pinned.map((i) => i.id)
 		)
 	);
 
-	async function setPinned(id: string, pinned: boolean) {
-		const next = setInMenu(settingsStore.toolbarMenuItems, id, !pinned);
-		settingsStore.toolbarMenuItems = next;
+	async function saveToolbar(changes: { toolbarMenuItems?: string[]; toolbarOrder?: string[] }) {
 		try {
-			await settingsDB.update({ toolbarMenuItems: next });
+			await settingsDB.update(changes);
 		} catch (error) {
 			console.error('Failed to save toolbar settings:', error);
 		}
 	}
 
+	async function setPinned(id: string, pinned: boolean) {
+		const next = setInMenu(settingsStore.toolbarMenuItems, id, !pinned);
+		settingsStore.toolbarMenuItems = next;
+		await saveToolbar({ toolbarMenuItems: next });
+	}
+
+	async function moveToolbarItem(id: string, toIndex: number) {
+		const next = reorderStored(
+			settingsStore.toolbarOrder,
+			id,
+			toIndex,
+			{ desktop },
+			extensionItems
+		);
+		settingsStore.toolbarOrder = next;
+		await saveToolbar({ toolbarOrder: next });
+	}
+
 	async function resetToolbar() {
 		settingsStore.toolbarMenuItems = [];
-		try {
-			await settingsDB.update({ toolbarMenuItems: [] });
-		} catch (error) {
-			console.error('Failed to save toolbar settings:', error);
-		}
+		settingsStore.toolbarOrder = [];
+		await saveToolbar({ toolbarMenuItems: [], toolbarOrder: [] });
 	}
 </script>
 
@@ -276,32 +314,56 @@
 <!-- ツールバー -->
 <SettingsCard
 	title="ツールバー"
-	description="執筆画面の上部のボタンを、常に表示するか、三点メニュー(…)にまとめるかを選びます。スマホの上部バーには影響しません。"
+	description="執筆画面の上部のボタンの並び順と、常に表示するか三点メニュー(…)にまとめるかを選びます。ハンドルをドラッグするか、ハンドルで Space を押して↑↓キーで並べ替えます。有効にした拡張機能のボタンも並びます。スマホの上部バーには影響しません。"
 	data-tour="settings-toolbar"
 >
-	{#each toolbarItems as item (item.id)}
-		<SettingsRow
-			label={item.label}
-			description={pinnedIds.has(item.id) ? 'ツールバーに表示' : '三点メニューにまとめる'}
-			labelFor={`toolbar-item-${item.id}`}
-		>
-			<input
-				id={`toolbar-item-${item.id}`}
-				type="checkbox"
-				checked={pinnedIds.has(item.id)}
-				onchange={(e) => void setPinned(item.id, e.currentTarget.checked)}
-			/>
-		</SettingsRow>
-	{/each}
-	<SettingsRow label="既定に戻す" description="すべてのボタンをツールバーに表示します。">
+	<SortableList
+		items={sortableItems}
+		label="ツールバーのボタンの並び"
+		titleOf={(i) => i.label}
+		onmove={(id, toIndex) => void moveToolbarItem(id, toIndex)}
+		class="toolbar-list"
+	>
+		{#snippet item(it)}
+			{@render toolbarRow(it)}
+		{/snippet}
+	</SortableList>
+	{#if fixedItem}
+		<div class="toolbar-fixed">
+			{@render toolbarRow(fixedItem)}
+			<p class="toolbar-fixed-note">AI パネルのボタンは、並べ替えずに右端側に固定されます。</p>
+		</div>
+	{/if}
+	<SettingsRow
+		label="既定に戻す"
+		description="ボタンの並びを既定の順に戻し、すべてのボタンをツールバーに表示します。"
+	>
 		<Button
 			variant="secondary"
 			size="sm"
-			disabled={settingsStore.toolbarMenuItems.length === 0}
+			disabled={settingsStore.toolbarMenuItems.length === 0 &&
+				settingsStore.toolbarOrder.length === 0}
 			onclick={() => void resetToolbar()}>既定に戻す</Button
 		>
 	</SettingsRow>
 </SettingsCard>
+
+{#snippet toolbarRow(item: ToolbarItem)}
+	<div class="toolbar-row">
+		<Icon name={item.icon} class="toolbar-row-icon" />
+		<span class="toolbar-row-label">{item.label}</span>
+		<label class="toolbar-row-pin">
+			<input
+				id={`toolbar-item-${item.id}`}
+				type="checkbox"
+				checked={pinnedIds.has(item.id)}
+				aria-label={`${item.label}をツールバーに常時表示する`}
+				onchange={(e) => void setPinned(item.id, e.currentTarget.checked)}
+			/>
+			<span>{pinnedIds.has(item.id) ? '常時表示' : '三点メニュー'}</span>
+		</label>
+	</div>
+{/snippet}
 
 <!-- ショートカットキー -->
 <SettingsCard
@@ -346,6 +408,65 @@
 </SettingsCard>
 
 <style>
+	:global(.toolbar-list) {
+		--sortable-gap: 2px;
+		padding-top: 8px;
+	}
+
+	.toolbar-row {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		min-height: 40px;
+		padding: 0 4px;
+		font-size: 14px;
+	}
+
+	.toolbar-row :global(.toolbar-row-icon) {
+		display: flex;
+		flex: none;
+		width: 18px;
+		height: 18px;
+		color: var(--color-text-secondary);
+	}
+
+	.toolbar-row :global(.toolbar-row-icon svg) {
+		width: 100%;
+		height: 100%;
+	}
+
+	.toolbar-row-label {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.toolbar-row-pin {
+		display: inline-flex;
+		flex: none;
+		align-items: center;
+		gap: 6px;
+		font-size: 12.5px;
+		color: var(--color-text-secondary);
+		cursor: pointer;
+	}
+
+	/* 並べ替えの対象外の行は、ハンドルの分だけ字下げして一覧にそろえる */
+	.toolbar-fixed {
+		padding: 4px 0 8px 32px;
+		border-top: 1px solid var(--color-border);
+		margin-top: 8px;
+	}
+
+	.toolbar-fixed-note {
+		margin: 0;
+		padding-left: 4px;
+		font-size: 12px;
+		color: var(--color-text-secondary);
+	}
+
 	.shortcut-key {
 		padding: 2px 8px;
 		border: 1px solid var(--color-border);

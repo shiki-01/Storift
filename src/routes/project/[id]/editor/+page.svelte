@@ -76,6 +76,7 @@
 	import { defaultPreviewSettings } from '$lib/types';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import SaveState from '$lib/components/ui/SaveState.svelte';
+	import MonologBadge from '$lib/extensions/builtin/monolog/MonologBadge.svelte';
 	import { getSystemFontName, systemFontToCss } from '$lib/utils/fonts';
 	import MemoPanel from '$lib/components/memo/MemoPanel.svelte';
 	import { aiStore } from '$lib/stores/ai.svelte';
@@ -2198,6 +2199,7 @@
 									/>
 								{/if}
 								<SaveState state={saveState} />
+								<MonologBadge />
 								{#if otherMembers.length > 0}
 									<span class="presence-mini" title={presenceText ?? ''}
 										><Icon name="users" class="presence-icon" />{otherMembers.length}</span
@@ -2411,6 +2413,7 @@
 							{#if collab === 'fallback' && collabNotice}
 								{@render collabNoticeView()}
 							{/if}
+							<MonologBadge />
 							<SaveState state={saveState} />
 						</div>
 					</div>

@@ -3,6 +3,16 @@ import type { Scene, SceneCreateInput } from '$lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import { isUnchanged, touchProject } from './utils';
 import { historyDB } from './history';
+import { extensionEvents } from '$lib/extensions/events';
+
+/** 拡張向けイベントの発行に関するオプション */
+export interface SceneWriteOptions {
+	/**
+	 * true なら拡張向けのイベント(scene:updated / scene:created)を発行しない。
+	 * 自分が書いた変更ではない書き込み(共同編集の取り込み・AI による差し替えなど)で指定する
+	 */
+	silent?: boolean;
+}
 
 export const scenesDB = {
 	async getByChapterId(chapterId: string): Promise<Scene[]> {
@@ -17,7 +27,7 @@ export const scenesDB = {
 		return await db.scenes.get(id);
 	},
 
-	async create(input: SceneCreateInput): Promise<Scene> {
+	async create(input: SceneCreateInput, options: SceneWriteOptions = {}): Promise<Scene> {
 		const now = Date.now();
 		const existingScenes = await this.getByChapterId(input.chapterId);
 		const maxOrder = existingScenes.reduce((max, s) => Math.max(max, s.order), -1);
@@ -42,10 +52,22 @@ export const scenesDB = {
 		// 作成履歴を保存
 		await historyDB.create('scene', scene.id, scene.projectId, scene, 'create');
 
+		if (!options.silent) {
+			extensionEvents.emit('scene:created', {
+				sceneId: scene.id,
+				chapterId: scene.chapterId,
+				projectId: scene.projectId
+			});
+		}
+
 		return scene;
 	},
 
-	async update(id: string, changes: Partial<Scene>): Promise<void> {
+	async update(
+		id: string,
+		changes: Partial<Scene>,
+		options: SceneWriteOptions = {}
+	): Promise<void> {
 		// 変更前のデータを保存（履歴用）
 		const currentScene = await db.scenes.get(id);
 
@@ -65,6 +87,22 @@ export const scenesDB = {
 		};
 
 		await db.scenes.update(id, updates);
+
+		// 拡張向け: 本文が実際に変わったときだけ(タイトルや並び順だけの更新では発行しない)
+		if (
+			!options.silent &&
+			currentScene &&
+			changes.content !== undefined &&
+			currentScene.content !== changes.content
+		) {
+			extensionEvents.emit('scene:updated', {
+				sceneId: id,
+				chapterId: currentScene.chapterId,
+				projectId: currentScene.projectId,
+				characterCount: effective.characterCount ?? changes.content.length,
+				previousCharacterCount: currentScene.characterCount ?? 0
+			});
+		}
 
 		// プロジェクトの更新日時を更新
 		if (currentScene) {

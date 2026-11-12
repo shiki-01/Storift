@@ -11,6 +11,7 @@
 		"core:window:allow-close",
 		"core:window:allow-start-dragging",
 		"opener:default",
+		"deep-link:default",
 		"window-state:default",
 		"updater:default",
 		"process:allow-restart",

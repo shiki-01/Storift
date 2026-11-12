@@ -25,6 +25,9 @@
 		}
 	},
 	"plugins": {
+		"deep-link": {
+			"desktop": { "schemes": ["storift"] }
+		},
 		"updater": {
 			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNBQjU4MzY0N0MwNjA0QjIKUldTeUJBWjhaSU8xT20reUNoRWRpRHlaT1Bzb2c1dHZoOGQ2T0h5endXZlNRWWhuU1llTk9qejAK",
 			"endpoints": ["https://github.com/shiki-01/Storift/releases/latest/download/latest.json"],

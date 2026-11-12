@@ -528,7 +528,8 @@ async function editScene(
 		if (!applied.ok)
 			return changes.map(() => ({ ok: false, reason: applied.message }) as ReplaceResult);
 	} else {
-		await scenesDB.update(sceneId, { content });
+		// AI による差し替えは自分が書いた変更ではないので、拡張向けのイベントは発行しない
+		await scenesDB.update(sceneId, { content }, { silent: true });
 		const fresh = await scenesDB.getById(sceneId);
 		const index = currentProjectStore.scenes.findIndex((s) => s.id === sceneId);
 		if (fresh && index !== -1) currentProjectStore.scenes[index] = fresh;

@@ -64,7 +64,8 @@ const manager = createDocManager({
 	},
 	async mirrorContent(sceneId, text, { projectId, readOnly }) {
 		// characterCount・履歴・プロジェクトの更新日時は scenesDB.update の既存のロジックに任せる
-		await scenesDB.update(sceneId, { content: text });
+		// 共同編集のミラーは他の人の変更や復元を含むため、拡張向けのイベントは発行しない(自分の分だけを切り分けられない)
+		await scenesDB.update(sceneId, { content: text }, { silent: true });
 		await refreshSceneInStore(sceneId, projectId);
 		// 共有側の scenes 文書の content もミラーとして従来の同期で更新する(読み取り専用は送らない)
 		if (!readOnly) await queueChange('scenes', sceneId, 'update');

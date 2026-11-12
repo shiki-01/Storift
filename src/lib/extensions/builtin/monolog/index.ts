@@ -4,6 +4,7 @@
  */
 import { isDesktop } from '$lib/desktop/platform';
 import type { Extension, ExtensionContext } from '../../types';
+import MonologPanel from './MonologPanel.svelte';
 import { MonologSessionManager } from './session';
 import { monologSettings } from './settings.svelte';
 import {
@@ -11,6 +12,7 @@ import {
 	AuthFlowError,
 	isDesktopCallback,
 	monologClient,
+	monologControl,
 	monologState,
 	monologTokens,
 	refreshConnection
@@ -52,6 +54,15 @@ export const monologExtension: Extension = {
 		platforms: ['web', 'desktop']
 	},
 
+	toolbar: {
+		id: 'monolog',
+		label: 'Monolog.',
+		icon: 'clock',
+		panel: MonologPanel,
+		// 計測中は、アイコンにドットを出す
+		badge: () => monologState.sessionActive
+	},
+
 	async activate(ctx) {
 		const session = new MonologSessionManager({
 			client: monologClient,
@@ -64,6 +75,8 @@ export const monologExtension: Extension = {
 			}
 		});
 		manager = session;
+		monologControl.snapshot = () => session.snapshot();
+		monologControl.endNow = () => session.finish('manual');
 
 		teardown.push(
 			ctx.events.on('scene:updated', (event) => {
@@ -95,6 +108,8 @@ export const monologExtension: Extension = {
 		teardown = [];
 		const session = manager;
 		manager = null;
+		monologControl.snapshot = () => null;
+		monologControl.endNow = async () => 'none';
 		monologState.sessionActive = false;
 		await session?.dispose();
 	}

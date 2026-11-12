@@ -7,7 +7,14 @@
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
 	import { itemNav } from '$lib/stores/itemNav.svelte';
-	import { splitToolbar, type ToolbarItem } from '$lib/utils/toolbarItems';
+	import {
+		isExtensionItemId,
+		splitToolbar,
+		type ToolbarItem,
+		type ToolbarItemId
+	} from '$lib/utils/toolbarItems';
+	import { extensionHost, type ActiveToolbarItem } from '$lib/extensions/host.svelte';
+	import Popover from '$lib/components/ui/Popover.svelte';
 	import { page } from '$app/state';
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
@@ -177,12 +184,58 @@
 	}>({ visible: false, x: 0, y: 0, items: [] });
 
 	// ツールバーの操作ボタン(設定で、常時表示と三点メニューに分けられる。src/lib/utils/toolbarItems.ts)
-	const toolbarSplit = $derived(splitToolbar(settingsStore.toolbarMenuItems, { desktop }));
+	// 有効で対応する拡張がツールバーに出す項目(設定の並び・まとめる設定は、組み込みのボタンと同じ仕組みで扱う)
+	const extToolbar = $derived(extensionHost.toolbarItems);
+	const extToolbarById = $derived(new Map(extToolbar.map((e) => [e.itemId, e])));
+	const toolbarSplit = $derived(
+		splitToolbar(
+			settingsStore.toolbarMenuItems,
+			{ desktop },
+			{
+				order: settingsStore.toolbarOrder,
+				extensions: extToolbar.map((e) => ({ id: e.itemId, label: e.label, icon: e.icon }))
+			}
+		)
+	);
 	const pinnedMain = $derived(toolbarSplit.pinned.filter((i) => i.id !== 'ai'));
 	const pinnedAi = $derived(toolbarSplit.pinned.find((i) => i.id === 'ai'));
+
+	// 拡張のポップアップ(デスクトップ/タブレット): 押したボタン(または三点ボタン)に追従して開く
+	let extPopoverOpen = $state(false);
+	let extPopoverItemId = $state<string | null>(null);
+	let extPopoverAnchor = $state<HTMLElement | null>(null);
+	let moreButtonEl = $state<HTMLElement | null>(null);
+	const extPopoverItem = $derived(
+		extPopoverItemId ? extToolbarById.get(extPopoverItemId) : undefined
+	);
+
+	function toggleExtPopover(itemId: string, anchor: HTMLElement | null) {
+		if (extPopoverOpen && extPopoverItemId === itemId) {
+			extPopoverOpen = false;
+			return;
+		}
+		extPopoverItemId = itemId;
+		extPopoverAnchor = anchor;
+		extPopoverOpen = true;
+	}
+
+	// 拡張が無効になったら、開いているポップアップも閉じる
+	$effect(() => {
+		if (extPopoverOpen && !extPopoverItem) extPopoverOpen = false;
+	});
+
+	// 拡張のポップアップ(スマホ): 「操作」シートから、同じ中身をシートで開く
+	let showExtSheet = $state(false);
+	let extSheetItemId = $state<string | null>(null);
+	const extSheetItem = $derived(extSheetItemId ? extToolbarById.get(extSheetItemId) : undefined);
+
+	$effect(() => {
+		if (showExtSheet && !extSheetItem) showExtSheet = false;
+	});
+
 	const toolDefs = $derived<
 		Record<
-			string,
+			ToolbarItemId,
 			{ action: () => void; disabled?: boolean; active?: boolean; tour?: string; testid?: string }
 		>
 	>({
@@ -214,13 +267,24 @@
 			x: rect.right - 240,
 			y: rect.bottom + 4,
 			targetType: 'toolbar',
-			items: toolbarSplit.menu.map((item) => ({
-				label: item.label,
-				icon: item.icon,
-				shortcut: item.shortcut,
-				disabled: toolDefs[item.id].disabled,
-				action: toolDefs[item.id].action
-			}))
+			items: toolbarSplit.menu.map((item) => {
+				// 拡張の項目は、三点ボタンに追従して同じポップアップを開く
+				if (isExtensionItemId(item.id)) {
+					return {
+						label: item.label,
+						icon: item.icon,
+						action: () => toggleExtPopover(item.id, moreButtonEl)
+					};
+				}
+				const def = toolDefs[item.id as ToolbarItemId];
+				return {
+					label: item.label,
+					icon: item.icon,
+					shortcut: item.shortcut,
+					disabled: def.disabled,
+					action: def.action
+				};
+			})
 		};
 	}
 
@@ -2389,10 +2453,15 @@
 								<div class="tool-sep"></div>
 							{/if}
 							{#each pinnedMain as item (item.id)}
-								{@render toolButton(item)}
+								{#if extToolbarById.get(item.id)}
+									{@render extToolButton(extToolbarById.get(item.id)!)}
+								{:else}
+									{@render toolButton(item)}
+								{/if}
 							{/each}
 							{#if toolbarSplit.menu.length > 0}
 								<button
+									bind:this={moreButtonEl}
 									class="tool"
 									class:on={contextMenu.visible && contextMenu.targetType === 'toolbar'}
 									aria-haspopup="menu"
@@ -2413,7 +2482,6 @@
 							{#if collab === 'fallback' && collabNotice}
 								{@render collabNoticeView()}
 							{/if}
-							<MonologBadge />
 							<SaveState state={saveState} />
 						</div>
 					</div>
@@ -2747,6 +2815,18 @@
 		<button disabled={readOnly} onclick={() => runAction(() => (showVersionManager = true))}
 			>バージョン履歴</button
 		>
+		{#each extToolbar as ext (ext.itemId)}
+			<button
+				data-testid={`action-ext-${ext.extensionId}`}
+				onclick={() =>
+					runAction(() => {
+						extSheetItemId = ext.itemId;
+						showExtSheet = true;
+					})}
+			>
+				{ext.label}
+			</button>
+		{/each}
 		{#if editorStore.currentScene && !readOnly}
 			<div class="actions-sep"></div>
 			<button onclick={() => runAction(() => handleRenameScene(editorStore.currentScene!))}
@@ -2763,6 +2843,16 @@
 			</button>
 		{/if}
 	</div>
+</Sheet>
+
+<!-- スマホ: 拡張機能の操作(ツールバーのポップアップと同じ中身) -->
+<Sheet bind:open={showExtSheet} title={extSheetItem?.label ?? ''} size="auto">
+	{#if extSheetItem}
+		{@const Panel = extSheetItem.panel}
+		<div class="ext-sheet">
+			<Panel close={() => (showExtSheet = false)} />
+		</div>
+	{/if}
 </Sheet>
 
 <!-- 章作成モーダル -->
@@ -3025,8 +3115,23 @@
 	</form>
 </Modal>
 
+<!-- 拡張がツールバーに出すボタン。押すと Popover で拡張の panel を開く -->
+{#snippet extToolButton(ext: ActiveToolbarItem)}
+	<button
+		class="tool"
+		class:on={extPopoverOpen && extPopoverItemId === ext.itemId}
+		data-testid={`toolbar-ext-${ext.extensionId}`}
+		onclick={(e) => toggleExtPopover(ext.itemId, e.currentTarget)}
+		aria-label={ext.label}
+		title={ext.label}
+	>
+		<Icon name={ext.icon} class="w:20px" />
+		{#if ext.badge?.()}<span class="tool-dot" aria-hidden="true"></span>{/if}
+	</button>
+{/snippet}
+
 {#snippet toolButton(item: ToolbarItem)}
-	{@const def = toolDefs[item.id]}
+	{@const def = toolDefs[item.id as ToolbarItemId]}
 	<button
 		class="tool"
 		class:tool--ai={item.id === 'ai'}
@@ -3042,6 +3147,16 @@
 		<Icon name={item.icon} class="w:20px" />
 	</button>
 {/snippet}
+
+<!-- 拡張のポップアップ(デスクトップ/タブレット) -->
+{#if extPopoverItem}
+	{@const Panel = extPopoverItem.panel}
+	<Popover bind:open={extPopoverOpen} anchor={extPopoverAnchor} label={extPopoverItem.label}>
+		{#snippet children({ close })}
+			<Panel {close} />
+		{/snippet}
+	</Popover>
+{/if}
 
 <!-- コンテキストメニュー -->
 <ContextMenu
@@ -3238,6 +3353,23 @@
 		transition:
 			background-color 0.15s,
 			color 0.15s;
+	}
+
+	.tool {
+		position: relative;
+	}
+
+	/* 拡張のボタンの状態表示(計測中など) */
+	.tool-dot {
+		position: absolute;
+		top: 6px;
+		right: 6px;
+		width: 8px;
+		height: 8px;
+		border: 1.5px solid var(--color-background);
+		border-radius: 50%;
+		background: var(--color-primary);
+		pointer-events: none;
 	}
 
 	.tool:hover {
@@ -3988,6 +4120,10 @@
 		font-size: 14px;
 		font-weight: 600;
 		cursor: pointer;
+	}
+
+	.ext-sheet {
+		padding: 4px 16px 16px;
 	}
 
 	.actions {

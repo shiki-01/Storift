@@ -1,3 +1,4 @@
+import type { Component } from 'svelte';
 import type { ExtensionEvents } from './events';
 
 /** 拡張が動作するプラットフォーム。web は Web 版(PWA)、desktop はデスクトップ版(Tauri) */
@@ -34,8 +35,33 @@ export interface ExtensionContext {
 	notify: ExtensionNotifier;
 }
 
+/** ポップアップ(モバイルでは下から出るシート)の中身に渡す props。拡張に見せるのはこれだけ */
+export interface ExtensionPanelProps {
+	/** ポップアップを閉じる */
+	close: () => void;
+}
+
+/**
+ * 拡張が執筆画面のツールバーに出す項目。アイコンを押すとポップアップで panel を開く。
+ * 有効で、現在のプラットフォームに対応する拡張の項目だけが現れる(並べ替え・三点メニューの対象にもなる)
+ */
+export interface ExtensionToolbarContribution {
+	/** 拡張の中で一意な ID。設定に保存する項目 ID は `ext:<拡張 ID>` になる(1 拡張につき 1 項目) */
+	id: string;
+	/** ボタンの名前(ツールチップ・設定の一覧・メニューに出る) */
+	label: string;
+	/** Icon.svelte の名前(src/lib/components/editor/icons の SVG) */
+	icon: string;
+	/** ポップアップの中身 */
+	panel: Component<ExtensionPanelProps>;
+	/** true の間、アイコンに小さなインジケータ(ドット)を出す。リアクティブな状態だけを読むこと */
+	badge?: () => boolean;
+}
+
 export interface Extension {
 	manifest: ExtensionManifest;
+	/** ツールバーに出す項目(任意) */
+	toolbar?: ExtensionToolbarContribution;
 	/** 有効化されたとき(起動時に有効な場合を含む)に呼ばれる */
 	activate(ctx: ExtensionContext): void | Promise<void>;
 	/** 無効化されたときに呼ばれる。購読・タイマー・リスナーをすべて解除する */

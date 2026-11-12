@@ -60,7 +60,8 @@
 			<h2>5. 第三者のサービス</h2>
 			<p>
 				本ソフトウェアは、Firebase、Google Fonts、Cloudflare、 および利用者が選んだ AI
-				サービス(Claude Code、OpenAI 互換 API、Anthropic API、Gemini、Ollama など)
+				サービス(Claude Code、OpenAI 互換 API、Anthropic API、Gemini、Ollama など)、
+				利用者が拡張機能で連携を有効にした Monolog.
 				など、第三者が提供するサービスを利用します。これらのサービスは、それぞれの提供者の規約に従って利用してください。
 			</p>
 			<p>

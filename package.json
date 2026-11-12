@@ -2,7 +2,7 @@
 	"name": "storift",
 	"private": true,
 	"license": "MIT",
-	"version": "0.6.0",
+	"version": "0.7.0",
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
@@ -32,7 +32,8 @@
 		"test:e2e:progress": "node tests/e2e/progress.spec.mjs",
 		"test:e2e:plot": "node tests/e2e/plot.spec.mjs",
 		"test:e2e:characters": "node tests/e2e/characters.spec.mjs",
-		"test:e2e:worldbuilding": "node tests/e2e/worldbuilding.spec.mjs"
+		"test:e2e:worldbuilding": "node tests/e2e/worldbuilding.spec.mjs",
+		"test:e2e:toolbar": "node tests/e2e/toolbar-ext.spec.mjs"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^1.4.0",

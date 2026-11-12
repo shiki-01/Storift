@@ -17,3 +17,10 @@ export function isSupported(manifest: ExtensionManifest, platform: ExtensionPlat
 export function findExtension(id: string): Extension | undefined {
 	return EXTENSIONS.find((e) => e.manifest.id === id);
 }
+
+/** ツールバー項目の設定上の ID(`ext:<拡張 ID>`) */
+export const EXTENSION_TOOLBAR_PREFIX = 'ext:';
+
+export function toolbarItemId(extensionId: string): string {
+	return `${EXTENSION_TOOLBAR_PREFIX}${extensionId}`;
+}

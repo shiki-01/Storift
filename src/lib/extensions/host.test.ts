@@ -114,3 +114,41 @@ describe('ExtensionHost', () => {
 		expect(await ctx.getProjectTitle('p')).toBe('P');
 	});
 });
+
+describe('ExtensionHost.toolbarItems', () => {
+	const panel = (() => {}) as unknown as NonNullable<Extension['toolbar']>['panel'];
+	function withToolbar(id: string, platforms: ExtensionPlatform[] = ['web', 'desktop']) {
+		const ext = makeExt(id, platforms);
+		return Object.assign(ext, {
+			toolbar: { id, label: `${id}-label`, icon: 'clock', panel }
+		}) satisfies Extension;
+	}
+
+	it('有効で対応する拡張の項目だけを、ext:<id> の項目 ID で返す', async () => {
+		const a = withToolbar('a');
+		const b = withToolbar('b');
+		const c = makeExt('c');
+		const { host } = makeHost([a, b, c]);
+		expect(host.toolbarItems).toEqual([]);
+
+		await host.setEnabled('a', true);
+		await host.setEnabled('c', true);
+		const items = host.toolbarItems;
+		expect(items.map((i) => i.itemId)).toEqual(['ext:a']);
+		expect(items[0]).toMatchObject({ extensionId: 'a', label: 'a-label', icon: 'clock' });
+	});
+
+	it('無効にすると消える', async () => {
+		const { host } = makeHost([withToolbar('a')]);
+		await host.setEnabled('a', true);
+		expect(host.toolbarItems).toHaveLength(1);
+		await host.setEnabled('a', false);
+		expect(host.toolbarItems).toEqual([]);
+	});
+
+	it('非対応のプラットフォームでは、有効が保存されていても出さない', () => {
+		localStorage.setItem(ENABLED_STORAGE_KEY, JSON.stringify(['d']));
+		const { host } = makeHost([withToolbar('d', ['desktop'])], 'web');
+		expect(host.toolbarItems).toEqual([]);
+	});
+});

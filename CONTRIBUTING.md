@@ -28,7 +28,8 @@ bun run build
   - `firestore.rules` を変えた場合: `bun run test:rules`(Java と Firebase Emulator が必要。`firebase emulators:exec` を使います)。あわせて、紹介サイトのガイドに載せたルールの写し(`site/src/lib/firestoreRules.ts`)も同じ内容に更新してください。`bun run test` が一致を検証します。
 - 画面を変えた場合は、関連する E2E を `bun run test:e2e:*` で実行してください。Playwright の Chromium を使い、`vite dev` を空きポートで起動します。**並行して実行すると不安定になるものがあるので、1 本ずつ実行してください。**
   - `test:e2e`(共同編集): Firebase Emulator(auth・firestore)を使います。
-  - `test:e2e:mobile` / `:preview` / `:settings` / `:ai-header` / `:ai-select` / `:user-select` / `:scrollbar` / `:progress` / `:plot` / `:characters` / `:worldbuilding`: エミュレータは不要です。
+  - `test:e2e:mobile` / `:preview` / `:settings` / `:ai-header` / `:ai-select` / `:user-select` / `:scrollbar` / `:progress` / `:plot` / `:characters` / `:worldbuilding` / `:toolbar`: エミュレータは不要です。
+- 拡張機能(`src/lib/extensions/`)を足すときは、[docs/EXTENSIONS.md](docs/EXTENSIONS.md) の「拡張の追加手順」を読んでください。`registry.ts` への登録、ツールバーに出す項目(`toolbar`)、テストの書き方があります。
 - コードの整形は Prettier、静的解析は ESLint に従います(`bun run format` で整形できます)。
 - 挙動を変える場合は、可能な範囲でテストを追加してください。
 - 変更は目的ごとに分け、コミットメッセージは変更の内容が分かるように書いてください。

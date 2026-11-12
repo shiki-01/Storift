@@ -133,6 +133,12 @@ export class MonologSessionManager {
 		return this.session?.phase === 'running';
 	}
 
+	/** 計測中なら、開始時刻(ms)と増減した文字数。計測中でなければ null(ポップアップの表示用) */
+	snapshot(): { startedAtMs: number; delta: number } | null {
+		const s = this.session;
+		return s?.phase === 'running' ? { startedAtMs: s.startedAtMs, delta: s.delta } : null;
+	}
+
 	handleSceneUpdated(event: SceneUpdatedEvent): void {
 		const now = this.now();
 		if (!this.session) this.begin(event, now);

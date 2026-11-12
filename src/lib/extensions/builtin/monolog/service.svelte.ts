@@ -4,6 +4,7 @@
  */
 import { isDesktop } from '$lib/desktop/platform';
 import { ApiError, MonologClient } from './client';
+import type { SessionOutcome } from './session';
 import { DESKTOP_REDIRECT_URI, isConnectAvailable } from './config';
 import {
 	NetworkError,
@@ -37,6 +38,20 @@ export const monologState = $state<{ connection: ConnectionStatus; sessionActive
 	connection: 'unknown',
 	sessionActive: false
 });
+
+/**
+ * 拡張本体(index.ts)が持つセッション管理への窓口。ポップアップなどの UI が、拡張本体を import せずに
+ * 計測中の情報を読み、終了を指示できる(拡張が有効でない間は、何もない状態を返す)
+ */
+export const monologControl: {
+	/** 計測中なら開始時刻(ms)と増減した文字数。計測中でなければ null */
+	snapshot(): { startedAtMs: number; delta: number } | null;
+	/** いま終了して記録する */
+	endNow(): Promise<SessionOutcome>;
+} = {
+	snapshot: () => null,
+	endNow: async () => 'none'
+};
 
 export const monologTokens = new TokenManager({ storage: createTokenStorage(isDesktop()) });
 export const monologClient = new MonologClient({ tokens: monologTokens });

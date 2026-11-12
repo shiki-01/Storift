@@ -288,8 +288,22 @@ Apple Developer ID による署名・公証はしていない。macOS 版はア�
 
 署名する場合は Apple Developer ID / Windows のコード署名証明書を用意し、Tauri の署名用の環境変数(`APPLE_CERTIFICATE` など)をリポジトリの Secrets に登録してワークフローに渡す。
 
+## 単一インスタンスと storift:// (deep link)
+
+外部のサービスの認可(拡張機能「Monolog. 連携」)から、ブラウザの認可後にアプリへ戻るために、`storift://` のリンクを受け取る。
+
+- **スキーム**: `storift`。`src-tauri/tauri.conf.json` の `plugins.deep-link.desktop.schemes` に登録し、`tauri-plugin-deep-link`(`src-tauri/src/lib.rs`)で受け取る。権限は `capabilities/default.json` の `deep-link:default`。Monolog. の戻り先は `storift://monolog/callback`(Monolog. 側にもこの URI を登録済み)。フロントは `src/lib/extensions/builtin/monolog/index.ts` で、起動時に渡された URL(`getCurrent`)と実行中に届く URL(`onOpenUrl`)の両方を処理する。
+- **単一インスタンス**: `tauri-plugin-single-instance`(`deep-link` 機能つき。`Cargo.toml` では macOS・Windows・Linux のみ)を、他のプラグインより先に登録している。Windows / Linux では deep link を開くと別のプロセスが起動するため、その URL を実行中のプロセスへ渡し、2 つ目は終了する。そのため**デスクトップ版は同時に 1 つだけ起動する**。2 つ目を起動しようとすると、既存のウィンドウが最小化解除・表示・フォーカスされる。
+- **登録のしかた**:
+  - インストール版: インストーラーが `tauri.conf.json` の設定で OS にスキームを登録する。
+  - 開発中(未インストール)の Linux / Windows: debug ビルドのときだけ、起動時に `register_all()` で実行時に登録する(`#[cfg(all(debug_assertions, any(target_os = "linux", windows)))]`)。リリースビルドでは呼ばない。
+  - macOS: 実行時の登録はしない(コード上、登録するのは Linux / Windows の debug ビルドのみ)。
+- **注意(Linux / Windows)**: 実行時の登録は debug ビルドだけなので、リリースビルドを手で置いただけ(インストーラーを使わない)の場合に `storift://` が開くかは、この環境では確認できていない。Linux のパッケージ形式(AppImage・deb・rpm)ごとの登録の挙動も未確認。Monolog. の認可からの戻りは、実機での確認が必要。
+- Web 版は `storift://` を使わない。Monolog. の戻り先は Web 版の `https://app.storift.shiki-01.com/monolog/callback`(本番のオリジンのみ)。
+
 ## 既知の制限
 
 - MCP 方式より前に始めた会話は、開き直すと Claude Code 側の続きを引き継がない。表示される過去の回答はそのまま残り、次の送信から新しいセッションで始まる。
+- 同時に起動できるのは 1 つだけ(単一インスタンス)。複数のウィンドウを別々のプロセスで開くことはできない。
 - データ(IndexedDB)は Web 版とは別に、アプリ内に保存される。端末間・Web 版との共有は既存の Firebase 同期を使う。デスクトップ版のオリジン(`tauri://localhost` / `http://tauri.localhost`)で Firebase 認証が通らない場合は、Firebase コンソールの承認済みドメインに `tauri.localhost` を追加する。
 - Claude Code の利用料金・使用量は、ログインしている Claude のアカウントに計上される。OpenAI 互換 API・Anthropic API・Gemini の料金は、設定した API キーのアカウントに計上される。

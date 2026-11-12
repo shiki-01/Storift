@@ -8,8 +8,20 @@ import { SvelteSet } from 'svelte/reactivity';
 import { projectsDB } from '$lib/db/projects';
 import { toast } from '$lib/stores/toast.svelte';
 import { extensionEvents, type ExtensionEvents } from './events';
-import { EXTENSIONS, currentPlatform, isSupported } from './registry';
-import type { Extension, ExtensionContext, ExtensionPlatform } from './types';
+import { EXTENSIONS, currentPlatform, isSupported, toolbarItemId } from './registry';
+import type {
+	Extension,
+	ExtensionContext,
+	ExtensionPlatform,
+	ExtensionToolbarContribution
+} from './types';
+
+/** ツールバーに出す、有効な拡張の項目 */
+export interface ActiveToolbarItem extends ExtensionToolbarContribution {
+	/** 設定に保存する項目 ID(`ext:<拡張 ID>`) */
+	itemId: string;
+	extensionId: string;
+}
 
 export const ENABLED_STORAGE_KEY = 'storift:extensions:enabled';
 
@@ -80,6 +92,21 @@ export class ExtensionHost {
 	/** 実際に activate 済みか */
 	isActive(id: string): boolean {
 		return this.active.has(id);
+	}
+
+	/**
+	 * ツールバーに出す項目の一覧(拡張の登録順)。
+	 * 利用者が有効にしていて、このプラットフォームに対応する拡張だけ。activate の完了は待たない
+	 * (無効にしたら即座に消え、有効にしたら即座に現れる)
+	 */
+	get toolbarItems(): ActiveToolbarItem[] {
+		const items: ActiveToolbarItem[] = [];
+		for (const ext of this.deps.extensions) {
+			const id = ext.manifest.id;
+			if (!ext.toolbar || !this.enabled.has(id) || !this.isSupported(id)) continue;
+			items.push({ ...ext.toolbar, itemId: toolbarItemId(id), extensionId: id });
+		}
+		return items;
 	}
 
 	private createContext(): ExtensionContext {

@@ -48,6 +48,7 @@ Storift は、原稿・プロット・人物・設定資料・進捗を作品ご
 - 作品を章とシーンに分けて執筆します。文字数の表示、ルビ・傍点の記法、書式設定、校正、検索と置換に対応しています。
 - 自動保存は、入力が止まって約 2 秒後に行います。入力し続けているときの最大の待ち時間は設定で変えられます(既定は 30 秒)。
 - 履歴を残し、以前の状態へ戻せます。
+- 執筆画面の上部のツールバーは、ボタンの並べ替えと、三点メニュー(…)へのまとめができます(設定の「エディタ」。端末ごとの設定)。
 
 ### 整理する
 
@@ -65,6 +66,12 @@ Storift は、原稿・プロット・人物・設定資料・進捗を作品ご
 
 - TXT / Markdown / DOCX / PDF / EPUB / JSON に書き出せます。シーン単位では、投稿サイト向けのルビ記法への変換にも対応しています。
 - 外部の AI に添削を頼むために、章ごと・作品全体を Markdown でコピー/保存できます(「AI 添削用にコピー」)。作品の設定も添えられます。
+
+### 拡張機能
+
+- 設定の「拡張機能」で、追加の機能を一つずつ有効にできます(既定はすべて無効。有効/無効は端末ごと)。有効にした拡張機能は、ツールバーにアイコンが加わり、押すとポップアップで操作できます(スマホは「操作」シートから)。
+- **Monolog. 連携**: 執筆している間の時間と増減した文字数を、時間記録アプリ [Monolog.](https://www.monolog.life) に記録します(Web 版は本番のエディタ、およびデスクトップ版)。Monolog. に接続したときだけ、開始・終了時刻、所要時間、タイトル、メモ(増減した文字数)、タグを送ります。**本文は送りません。**
+- 仕組みと拡張の足し方は [docs/EXTENSIONS.md](docs/EXTENSIONS.md) を参照してください。
 
 ### AI 連携(デスクトップ版)
 
@@ -109,6 +116,7 @@ Windows・macOS・Linux 向けを [GitHub Releases](https://github.com/shiki-01/
 - 原稿はブラウザのデータ(IndexedDB)に保存されます。ブラウザのデータを消すと、端末内の作品も消えます。大事な作品は、ときどき書き出してください。設定画面の「データ」から、バックアップ(エクスポート/インポート)ができます。
 - デスクトップ版の AI 連携では、質問のたびに原稿の一部が、選んだプロバイダ(Claude Code・Anthropic API なら Anthropic、Gemini なら Google、OpenAI 互換 API なら設定したサービス、Ollama なら設定した接続先)に送られます。Claude Code を使うには、インストール済みでログイン済みの Claude Code が必要で、利用料金・使用量はそのアカウントに計上されます。
 - API キーは、macOS・Windows では OS のキーチェーンに保存します。それ以外の環境では端末内に平文で保存し、設定画面に警告を出します。
+- 拡張機能「Monolog. 連携」を有効にして接続すると、執筆時間と増減した文字数などが Monolog. に送られます(本文は送りません)。接続情報(トークン)は、デスクトップ版では API キーと同じ保管の仕組み、Web 版ではブラウザの localStorage に、この端末だけで保存し、同期・バックアップ・書き出しには含めません。設定からいつでも解除できます。
 
 ## 開発
 
@@ -128,7 +136,7 @@ bun run test:rules     # Firestore ルールのテスト(Java と Firebase Emula
 bun run test:e2e       # 共同編集の E2E(Firebase Emulator が必要)
 ```
 
-画面ごとの E2E(Playwright の Chromium を使用。1 本ずつ実行してください): `test:e2e:mobile`、`test:e2e:preview`、`test:e2e:settings`、`test:e2e:ai-header`、`test:e2e:ai-select`、`test:e2e:user-select`、`test:e2e:scrollbar`、`test:e2e:progress`、`test:e2e:plot`、`test:e2e:characters`、`test:e2e:worldbuilding`。詳しくは [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください。
+画面ごとの E2E(Playwright の Chromium を使用。1 本ずつ実行してください): `test:e2e:mobile`、`test:e2e:preview`、`test:e2e:settings`、`test:e2e:ai-header`、`test:e2e:ai-select`、`test:e2e:user-select`、`test:e2e:scrollbar`、`test:e2e:progress`、`test:e2e:plot`、`test:e2e:characters`、`test:e2e:worldbuilding`、`test:e2e:toolbar`。詳しくは [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください。
 
 ### 構成
 
@@ -147,7 +155,8 @@ SvelteKit / Svelte 5 / TypeScript / Master CSS / Dexie(IndexedDB) / Yjs(共同�
 
 | ファイル                                                                   | 内容                                |
 | -------------------------------------------------------------------------- | ----------------------------------- |
-| [docs/DESKTOP.md](docs/DESKTOP.md)                                         | デスクトップ版と AI 連携            |
+| [docs/EXTENSIONS.md](docs/EXTENSIONS.md)                                   | 拡張機能の仕組みと Monolog. 連携    |
+| [docs/DESKTOP.md](docs/DESKTOP.md)                                         | デスクトップ版と AI 連携・deep link |
 | [docs/PWA.md](docs/PWA.md)                                                 | オフライン対応と自動更新            |
 | [docs/FIRESTORE_SETUP.md](docs/FIRESTORE_SETUP.md)                         | Firestore の設定とセキュリティ      |
 | [docs/SHARING_RULES.md](docs/SHARING_RULES.md)                             | 共有機能のルールとデータ配置        |

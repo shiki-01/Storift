@@ -1,32 +1,99 @@
 # 拡張機能
 
-Storift に機能を足す仕組みと、最初の拡張「Monolog. 連携」の仕様。
+Storift に機能を足す仕組みと、公式拡張「Monolog. 連携」「Discord Rich Presence」の仕様。
+
+## 拡張の種類
+
+拡張は 3 種類になる予定で、**いま使えるのは「公式」だけ**。
+
+| 種類       | `kind`     | 中身                                                                                                                        | 状態            |
+| ---------- | ---------- | --------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| 公式       | `official` | アプリに同梱する。Svelte のコンポーネントとコードを持ち、特権(Tauri のコマンドなど)を使える                                 | 実装済み        |
+| パック     | `pack`     | コードを含まない JSON(テーマ・辞書など)                                                                                     | 予定(第 2 段階) |
+| スクリプト | `script`   | `sandbox` 属性付きの iframe で隔離して実行する。マニフェストで宣言した権限の範囲だけ、ホストと `postMessage` でやり取りする | 予定(第 3 段階) |
+
+コミュニティの拡張は、リポジトリのトップレベル `extensions/<id>/` に PR で受け、サイトで一覧配信する予定(第 2 段階。まだ受け付けていない)。マニフェストの `kind` と検証(`manifest.ts`)は、この拡張を見越した形にしてあるが、`pack` / `script` を読み込む処理は未実装。
 
 ## 構成
 
 ```
+extensions/<id>/manifest.json   拡張のマニフェスト(単一の情報源。アプリとサイトの両方が読む)
 src/lib/extensions/
-  types.ts            ExtensionManifest / Extension / ExtensionContext / ExtensionToolbarContribution
-  events.ts           型付きのイベントエミッタ(拡張は購読のみ)
-  registry.ts         組み込みの拡張の一覧、プラットフォーム判定、ツールバー項目 ID(`ext:<拡張 ID>`)
-  host.svelte.ts      有効状態(localStorage)、activate / deactivate、ツールバー項目の一覧(toolbarItems)
+  manifest.ts         マニフェストの型・実行時の検証(純関数)・同意の比較・表示用の整形
+  types.ts            Extension / ExtensionContext / ExtensionToolbarContribution
+  events.ts           型付きのイベントエミッタ(拡張は購読のみ)と、イベントの payload の型
+  pages.ts            開いている画面の判定(`page:change` 用。ルートのパス → 画面の種類と固定のラベル)
+  session.ts          執筆セッションの追跡(`session:*` を発行する。本体の機能)
+  sessionSettings.svelte.ts   執筆セッションの設定(無操作時間)
+  registry.ts         同梱する拡張の一覧、プラットフォーム判定、ツールバー項目 ID(`ext:<拡張 ID>`)
+  host.svelte.ts      有効状態・同意の記録(localStorage)、activate / deactivate、権限に応じた API の絞り込み
   builtin/monolog/    Monolog. 連携(下記)
+  builtin/discord/    Discord Rich Presence(下記)
+src/lib/components/settings/ExtensionsSection.svelte, ExtensionCard.svelte   設定の「拡張機能」(マニフェスト駆動)
+src/lib/components/extensions/   同意画面(ConsentDialog)、扱う情報の表示(PrivacyInfo)、拡張の設定の読み込み
+site/src/routes/extensions/      サイトの拡張ページ(マニフェストから生成)
 ```
 
-ツールバー周りの共通部品は拡張の外にある。
+`$extensions`(= リポジトリ直下の `extensions/`)は `svelte.config.js` の alias で、`vite.config.ts` の `server.fs.allow` と `vitest.config.ts` にも設定している。サイト(`site/`)は `site/svelte.config.js` の alias(`$extensions` と、検証の `$manifest`)と `site/vite.config.ts` の `server.fs.allow` で、同じファイルを読む(静的ビルド・デスクトップの静的ビルドでも通る)。
 
-| ファイル                                           | 役割                                                            |
-| -------------------------------------------------- | --------------------------------------------------------------- |
-| `src/lib/utils/toolbarItems.ts`                    | ツールバーの項目の定義と、並び順・まとめる設定の正規化(純関数)  |
-| `src/lib/components/ui/Popover.svelte`             | 起点に追従して開くポップアップ。位置計算は `popoverPosition.ts` |
-| `src/lib/components/settings/EditorSection.svelte` | 設定の「ツールバー」(並べ替え・常時表示/三点メニューの切り替え) |
-| `src/routes/project/[id]/editor/+page.svelte`      | ツールバーの描画、拡張のポップアップ、スマホの「操作」シート    |
+## マニフェスト
 
-- 拡張は `Extension { manifest, activate(ctx), deactivate() }`。`manifest.platforms` は `'web'` と `'desktop'` の組み合わせ。含まれない環境では設定に無効表示で出て、activate もされない。
-- `ExtensionContext` は購読専用の `events`、作品名を読む `getProjectTitle`、通知(`notify`)だけを持つ。**拡張は DB に直接触れない。**
-- 新しい拡張は `registry.ts` の `EXTENSIONS` に足す。
+`extensions/<id>/manifest.json`(`apiVersion: 1`)。フォルダ名と `id` は一致させる。型と検証は `src/lib/extensions/manifest.ts`(`validateManifest` / `parseManifest`。外部ライブラリは使わない)。検証に通らないマニフェストは、アプリでもサイトでも、ビルドまたは起動時に例外になる。
+
+| キー                     | 内容                                                                                               |
+| ------------------------ | -------------------------------------------------------------------------------------------------- |
+| `id`                     | 英小文字・数字・ハイフン(64 文字まで)                                                              |
+| `name` / `description`   | 表示名、説明(1〜2 文)                                                                              |
+| `version`                | semver                                                                                             |
+| `author`                 | 作者                                                                                               |
+| `kind`                   | `official` / `pack` / `script`                                                                     |
+| `apiVersion`             | `1`                                                                                                |
+| `platforms`              | `web` / `desktop` の 1 つ以上。含まない環境では、設定に「…のみ」と出て、有効にも読み込みもできない |
+| `icon`                   | `src/lib/components/editor/icons/*.svg` の名前(サイトに無い名前は、パズルの形で出す)               |
+| `homepage?` / `license?` | `https://` の URL / ライセンス名                                                                   |
+| `permissions`            | 下記                                                                                               |
+| `privacy`                | 下記                                                                                               |
+
+### 権限(`permissions`)
+
+宣言した範囲だけを、拡張に渡す(`ExtensionHost.createContext`)。
+
+| キー      | 内容                                                                                                                                                                                            |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `events`  | 購読できるイベント。宣言していないイベントを `ctx.events.on` すると、例外になる。`page:change` `app:visibility` `scene:updated` `scene:created` `session:start` `session:update` `session:end`  |
+| `read`    | `project:title`(作品名)、`project:chars`(作品の総文字数)。宣言していない拡張には、`session:*` の `projectTitle` を外し、`ctx.getProjectTitle` / `ctx.getProjectCharCount` は `undefined` を返す |
+| `network` | 通信する相手のホスト名(完全一致。スキーム・ポート・パス・ワイルドカードは書けない)。**宣言した拡張は、`privacy.sends` に送る情報を書く必要がある**(検証で拒否する)                              |
+| `storage` | 端末内に設定などを保存するか                                                                                                                                                                    |
+
+公式拡張は特権のあるコードなので、`network` は宣言と説明のためのもので、強制はしていない(公式のコードを読んで確認する)。第 3 段階のスクリプトでは、ホストが宣言を強制する予定。
+
+### プライバシー(`privacy`)
+
+設定画面の「プライバシー」の開閉、有効にするときの同意画面、サイトの拡張ページが、同じ内容をここから出す。
+
+- `sends`: 外部へ送る情報。`{ to: 送り先, items: 送る項目[], when: いつ }` の配列(送らないなら `[]`)
+- `stores`: この端末に保存するものと、保存場所
+- `onDisable`: 無効にした(連携を解除した)ときの扱い
+- `notes?`: 補足(本文は送らない、など)
+
+**マニフェストに書くのは事実だけ。** 実装を変えて送る情報・保存場所・解除時の扱いが変わるときは、同じ変更でマニフェストも直す(同意の再確認が走る。次の節)。
+
+## 同意
+
+拡張を有効にするには、いまのマニフェストの `permissions` / `privacy` への同意が要る。
+
+- 設定のスイッチを入れる → 同意画面(`ConsentDialog`。送る項目・送り先・保存場所・解除時の扱い)→「同意して有効にする」で有効になる。`ExtensionHost.setEnabled(id, true)` は、同意が現在のマニフェストと一致していなければ `false` を返して何もしない。
+- 同意の記録(`storift:extensions:consent`。拡張ごとに版・`permissions`/`privacy` の指紋・時刻)は、有効状態と同じく**端末内の localStorage だけ**。同期・バックアップ・エクスポートの対象外。無効にすると記録も消える(次に有効にするときは、もう一度確認する)。
+- 同意のあとにマニフェストが変わったとき(`consentStatus`):
+  - `version-changed`(版だけが変わった。扱う情報は同じ): そのまま動かし、設定のカードに確認の促しを出す。
+  - `changed`(`permissions` / `privacy` が変わった): 起動時に確認されるまで activate せず(`isSuspended`)、通知を 1 回出す。カードの「内容を確認して再開」で同意すると再開する。
+- 同意画面ができる前から有効にしていた既存ユーザー(記録なし = `none`): **起動時に無効にしない**。そのまま動かし、設定を開いたとき、カードに「内容を確認する」を出す(`needsReview`)。
+
+## 拡張の API
+
+- `Extension { manifest, toolbar?, settings?, activate(ctx), deactivate() }`。`manifest.platforms` に含まれない環境では、設定に「…のみ」と出て、`activate` もされない。
+- `ExtensionContext`: 購読専用の `events`(マニフェストで宣言したイベントだけ)、`session`(`current()` / `endNow()`)、`app`(`page()` = 開いている画面、`visible()` = 前面にあるか)、`getProjectTitle` / `getProjectCharCount`(`read` の宣言が要る)、`notify`。**拡張は DB に直接触れない。**
 - 有効/無効は**端末ごと**に localStorage(`storift:extensions:enabled`)へ保存する。Dexie・Firestore 同期・バックアップ・エクスポートの対象外。既定はすべて無効。読み書きは try/catch で保護している。
-- 拡張は任意で `toolbar`(ツールバー貢献。次の節)を持てる。
 - 起動時(ルートの `+layout.svelte`)に `extensionHost.start()` を呼び、有効な拡張だけ activate する。無効な拡張は何も購読しないので、エディタの動作・性能に影響しない。
 
 ## ツールバーへの貢献
@@ -35,14 +102,16 @@ src/lib/extensions/
 
 ```ts
 export const myExtension: Extension = {
-	manifest: { id: 'my-ext', name: '…', description: '…', platforms: ['web', 'desktop'] },
+	manifest: parseManifest(manifestJson, 'my-ext'), // extensions/my-ext/manifest.json
 	toolbar: {
 		id: 'my-ext', // 拡張の中で一意
 		label: 'My Ext', // ツールチップ・設定の一覧・三点メニューに出る名前
 		icon: 'clock', // Icon.svelte の名前(src/lib/components/editor/icons/*.svg)
 		panel: MyPanel, // Svelte コンポーネント。受け取る props は { close: () => void } だけ
-		badge: () => state.running // 任意。true の間、アイコンに小さなドットを出す
+		badge: () => state.running, // 任意。true の間、アイコンに小さなドットを出す
+		status: MyStatus // 任意。スマホの上部バー(シーン名の下)に出す小さな表示
 	},
+	settings: () => import('./MySettings.svelte'), // 任意。設定のカードに出す拡張固有の設定
 	activate(ctx) {},
 	deactivate() {}
 };
@@ -82,62 +151,91 @@ export const myExtension: Extension = {
 
 ### スマホ
 
-スマホにはツールバーが無いので、並べ替え・まとめる設定は使わない。「操作」シート(上部バーの「その他の操作」)に、有効で対応する拡張の項目が並び(拡張の登録順)、押すとシート(`Sheet`)で同じ `panel` が開く(`close` はシートを閉じる)。Monolog. は、上部バーの「計測中」表示(`MonologBadge`)もそのまま出る。
+スマホにはツールバーが無いので、並べ替え・まとめる設定は使わない。「操作」シート(上部バーの「その他の操作」)に、有効で対応する拡張の項目が並び(拡張の登録順)、押すとシート(`Sheet`)で同じ `panel` が開く(`close` はシートを閉じる)。「操作」シートは、項目を「執筆 / 出力と確認 / 拡張機能 / このシーン」の見出しでまとめ、拡張の項目には、`badge()` が true の間「動作中」の表示を出す。上部バーのシーン名の下には、各拡張の `toolbar.status`(Monolog. は「計測中」)が並ぶ。
 
-### 拡張の追加手順
+### 公式拡張の追加手順
 
-1. `src/lib/extensions/builtin/<id>/` に拡張を作る(`Extension`。`manifest`、必要なら `toolbar`)。
-2. `registry.ts` の `EXTENSIONS` に足す。
-3. ツールバーに出すなら、アイコン(SVG)と `panel` を用意する。`panel` は `ExtensionPanelProps`(`{ close }`)だけを受け取る。
-4. 設定画面の「拡張機能」には、`manifest` の名前・説明・対応プラットフォームから、有効/無効の行が自動で並ぶ(`ExtensionsSection.svelte`)。拡張固有の設定カードが必要なら、同じファイルに足す(現在は Monolog. の `MonologSettings.svelte` を、有効なときだけ読み込む形で直接書いている)。
-5. ユニットテストを書く(`host.test.ts` のように `ExtensionHost` へ差し込める)。
+1. `extensions/<id>/manifest.json` を書く(`kind: "official"`)。送る情報・保存場所・解除時の扱いは、実装の事実どおりに。`manifest.test.ts` が、同梱のマニフェストをすべて検証する(新しい拡張は、そのテストの一覧にも足す)。
+2. `src/lib/extensions/builtin/<id>/index.ts` に `Extension` を作る。`manifest: parseManifest(manifestJson, '<id>')`(`import manifestJson from '$extensions/<id>/manifest.json'`)。必要なら `toolbar`(アイコンとパネル)、`settings`(設定のコンポーネント)を持たせる。購読するイベントは、マニフェストの `permissions.events` に書いたものだけ。
+3. `registry.ts` の `EXTENSIONS` に足す。
+4. 設定画面のカード(アイコン・名前・「公式」・対応環境・説明・スイッチ・プライバシー)は、マニフェストから自動で出る。拡張固有の設定は、`Extension.settings`(`() => import('./XxxSettings.svelte')`)で貢献する。有効で、対応環境のときだけ読み込む。`SettingsGroup` と `SettingsRow` で、意味ごとに区切る。
+5. Tauri のコマンドが要るなら `src-tauri/src/` に足す(`lib.rs` の `invoke_handler` に登録)。このアプリの独自コマンドは、`build.rs` に `AppManifest` を置いていないので、`capabilities` への記載は要らない(既存の `secret_*` などと同じ)。プラグインの権限だけを capabilities に足す。
+6. ユニットテストを書く(`host.test.ts` のように `ExtensionHost` へ差し込める。購読する拡張は、`EventEmitter` で本体のイベントを流して確かめる)。
+7. サイトの拡張ページは、マニフェストから自動で生成される(サイト側の作業は要らない)。プライバシーポリシー(`site/src/routes/privacy/+page.svelte`)の公式拡張の一覧には、リンクを足す。
 
 ## イベント
 
-| イベント        | いつ                                                           | payload                                                                     |
-| --------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `scene:updated` | シーンの本文が**実際に変わって**保存されたとき(文字数の更新後) | `{ sceneId, chapterId, projectId, characterCount, previousCharacterCount }` |
-| `scene:created` | シーンを作成したとき                                           | `{ sceneId, chapterId, projectId }`                                         |
+| イベント         | いつ                                                            | payload                                                                                                                       |
+| ---------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `scene:updated`  | シーンの本文が**実際に変わって**保存されたとき(文字数の更新後)  | `{ sceneId, chapterId, projectId, characterCount, previousCharacterCount, delta, origin }`                                    |
+| `scene:created`  | シーンを作成したとき                                            | `{ sceneId, chapterId, projectId }`                                                                                           |
+| `session:start`  | 執筆セッションの開始(利用者が書いた最初の編集)                  | `WritingSessionEvent`                                                                                                         |
+| `session:update` | 利用者が書くたび。作品名が読み込めたとき(`projectTitle` が入る) | `WritingSessionEvent`                                                                                                         |
+| `session:end`    | 無操作・手動・ページを閉じる/隠れるとき                         | `WritingSessionEvent`(`endedAt`、`reason`: `idle` / `manual` / `pagehide`)                                                    |
+| `page:change`    | 開いている画面が変わったとき(起動時の最初の画面を含む)          | `{ page, projectId? }`。`page` は `home` `editor` `plot` `characters` `worldbuilding` `progress` `preview` `settings` `other` |
+| `app:visibility` | アプリが前面にあるか(`visibilitychange`)が変わったとき          | `{ visible }`                                                                                                                 |
 
-発行は `src/lib/db/scenes.ts` の `scenesDB.update` / `scenesDB.create`。オプション引数 `{ silent: true }`(`update` は第 3 引数、`create` は第 2 引数) で発行を止められる。購読者の例外・失敗した Promise は握りつぶされ、保存には影響しない。
+`WritingSessionEvent` は `{ sessionId, startedAt, lastEditAt, endedAt, netChars, projectId, projectTitle?, reason? }`(時刻は Unix ミリ秒)。`netChars` は利用者が書いた分の増減の合計。`projectTitle` は、権限 `project:title` を宣言した拡張にだけ渡す。
+
+発行は `src/lib/db/scenes.ts` の `scenesDB.update` / `scenesDB.create`(`scene:*`)、`session.ts`(`session:*`)、ルートの `+layout.svelte`(`page:change` / `app:visibility`)。`scenesDB` のオプション引数 `{ silent?, origin?, ai? }`(`update` は第 3 引数、`create` は第 2 引数)で、発行を止めたり、origin を指定したりできる。購読者の例外・失敗した Promise は握りつぶされ、保存には影響しない。
+
+### origin
+
+`scene:updated` の `origin` は、変更が誰(何)によるものか。
+
+| origin         | 意味                                                                         | 発行元                                                                                                                |
+| -------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `user`         | 利用者がエディタで書いた変更(入力・貼り付け・執筆支援・校正の反映・元に戻す) | エディタの保存・離脱時保存                                                                                            |
+| `ai`           | AI の提案を適用した変更                                                      | エディタで開いているシーン(保存時に、AI の適用分と自分の分を別のイベントに分ける)、開いていないシーン(`ai.svelte.ts`) |
+| `collab-local` | 共有プロジェクト(共同編集)のシーンで、**自分が書いた**変更                   | 共同編集のミラー(`sceneText.service.ts` の `mirrorContent`)                                                           |
+
+- **増減の数え方は `delta`**。共同編集では、ミラーの本文に他の人の変更も混ざるので、`characterCount - previousCharacterCount` とは一致しない。`delta` は、この端末で入れた変更(Yjs の `Y.Text` の変更イベントを origin ごとに数えたもの。`LocalChanges`)だけの増減。
+- **執筆セッションに数えるのは `user` と `collab-local` だけ**。`ai` は、セッションを始めも延ばしもせず、文字数にも入れない。
+- エディタで開いているシーン(共同編集でない)では、AI の提案の適用(`editorStore.applyExternalText`)で入った文字数の増減(`aiDelta`)を、次の保存まで覚えておく。保存時に、`origin: 'ai'`(`delta` = その増減)と、残りの `origin: 'user'` を、続けて 2 回発行する(合計は保存の前後の差と一致する)。
+- 共同編集で開いているシーンでは、AI の適用は `ORIGIN_AI` を付けて Y に入れる。検索置換・履歴の復元など、プログラムによる書き換えは `ORIGIN_PROGRAM` を付け、執筆としては数えない(送信とミラーは通常どおり行う)。他の人から届いた変更(`remote`)・保存済みの状態の読み込み(`restore`)も数えない。
+- 元に戻す(UndoManager)は、`ORIGIN_AI` と `ORIGIN_PROGRAM` も対象にしている(利用者が戻せるように)。
 
 ### scene:updated を発行しない経路(調査結果)
 
 「自分が書いたわけではない」変更で発火すると、執筆時間や文字数が誤って記録される。`scenesDB.update` / `db.scenes.*` の呼び出し元を全部調べた結果:
 
-| 経路                                                                     | 書き込み先           | 扱い                                                                               |
-| ------------------------------------------------------------------------ | -------------------- | ---------------------------------------------------------------------------------- |
-| エディタの保存・離脱時保存(`editor/+page.svelte`)                        | `scenesDB.update`    | **発行する**(自分の編集)                                                           |
-| 共同編集のミラー(`sceneText.service.ts` の `mirrorContent`)              | `scenesDB.update`    | `silent: true`。リモート由来の変更や復元を含み、自分の分だけを切り分けられないため |
-| AI による差し替え(開いていないシーン。`ai.svelte.ts`)                    | `scenesDB.update`    | `silent: true`                                                                     |
-| 同期(`sync.service.ts`)・参加(`join.service.ts`)                         | `db.scenes.*` を直接 | 発行されない(`scenesDB.update` を通らない)                                         |
-| 履歴の復元(`version.service.ts`)・検索置換・インポート・バックアップ復元 | `db.scenes.*` を直接 | 発行されない                                                                       |
-| タイトル変更・並び替え                                                   | `scenesDB.update`    | 本文が変わらないので発行されない                                                   |
+| 経路                                                                     | 書き込み先                                    | 扱い                                                                                             |
+| ------------------------------------------------------------------------ | --------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| エディタの保存・離脱時保存(`editor/+page.svelte`)                        | `scenesDB.update`                             | **発行する**(`user`。AI の適用分が混ざれば `ai` を分ける)                                        |
+| 共同編集のミラー(`sceneText.service.ts` の `mirrorContent`)              | `scenesDB.update`                             | `silent: true` で書き、この端末で入れた分だけを `collab-local` / `ai` で、ミラーの側から発行する |
+| AI による差し替え(開いていないシーン。`ai.svelte.ts`)                    | `scenesDB.update`                             | `origin: 'ai'`(共有プロジェクトのシーンは、`ORIGIN_AI` で Y に入れ、ミラーから `ai` を発行)      |
+| 同期(`sync.service.ts`)・参加(`join.service.ts`)                         | `db.scenes.*` を直接                          | 発行されない(`scenesDB.update` を通らない)                                                       |
+| 履歴の復元(`version.service.ts`)・検索置換・インポート・バックアップ復元 | `db.scenes.*` を直接、または `applySceneText` | 発行されない(共同編集のシーンへの `applySceneText` は、既定で `ORIGIN_PROGRAM` なので数えない)   |
+| タイトル変更・並び替え                                                   | `scenesDB.update`                             | 本文が変わらないので発行されない                                                                 |
 
-既知の取りこぼし/混入:
+### origin の既知の制限
 
-- 共同編集(共有プロジェクト)のシーンで書いた分は、Monolog. の計測の対象にならない(ミラーが他の人の変更を含むため)。
-- エディタ内で AI の提案を適用した場合は、エディタの本文の変更として保存されるため、自分の編集として数えられる。
+確実に区別できる範囲だけを直している。次は、推測で区別せず、制限として残している。
+
+- 元に戻す・やり直しは、その変更の出どころに関係なく、操作した利用者の変更(`user` / `collab-local`)として数える。AI の適用を元に戻すと、その分は利用者が削除した文字数(負の増減)になる。
+- エディタで開いているシーン(共同編集でない)で、AI の適用と、その直後の利用者の編集が重なったとき(適用された文章を利用者が書き換える・消す)、AI の分(適用した時点の増減)と利用者の分(保存の前後の差から引いた残り)の配分は、適用の順序にかかわらず保存の時点でまとめて決まる。合計は正しい。
+- 共同編集のシーンのミラーは約 1.5 秒の遅延があるため、`scene:updated` の発行もその分遅れる(エディタの離脱・シーン切替の直前にも、ミラーを実行する)。
+- 共同編集のシーンで書いた分は、ミラーが実行される前にアプリが終了すると、イベントになる前に失われる(本文の保存・送信には影響しない)。
 
 ## Monolog. 連携
 
 仕様の出典は <https://www.monolog.life/developers>。実装は `src/lib/extensions/builtin/monolog/`。
 
-| ファイル                 | 役割                                                                      |
-| ------------------------ | ------------------------------------------------------------------------- |
-| `config.ts`              | client_id、各 URL、リダイレクト URI、連携できる環境の判定                 |
-| `pkce.ts`                | code_verifier / state / code_challenge(S256)                              |
-| `oauth.ts`               | 認可 URL、途中状態の保存、戻りの解釈、トークンの交換・更新・失効          |
-| `tokens.ts`              | トークンの保存先と、更新の直列化(`TokenManager`)                          |
-| `client.ts`              | リソース API(リトライ・Idempotency-Key・401/429 の扱い)                   |
-| `session.ts`             | 執筆セッション(無操作での終了、タイマー/記録方式、pagehide)               |
-| `service.svelte.ts`      | 接続状態、接続・解除・認可の戻りの処理、UI から使う窓口(`monologControl`) |
-| `settings.svelte.ts`     | 記録方式などの設定(この端末の localStorage)                               |
-| `index.ts`               | 拡張本体(購読、pagehide、deep link)                                       |
-| `MonologSettings.svelte` | 設定画面のカード                                                          |
-| `MonologPanel.svelte`    | ツールバーのポップアップ(スマホでは「操作」シート)の中身                  |
-| `panelLogic.ts`          | パネルの表示用ロジック(経過時間・文字数の整形、接続状態の表示名)          |
-| `MonologBadge.svelte`    | スマホの上部バーの「Monolog. 計測中」表示                                 |
+| ファイル                 | 役割                                                                                          |
+| ------------------------ | --------------------------------------------------------------------------------------------- |
+| `config.ts`              | client_id、各 URL、リダイレクト URI、連携できる環境の判定                                     |
+| `pkce.ts`                | code_verifier / state / code_challenge(S256)                                                  |
+| `oauth.ts`               | 認可 URL、途中状態の保存、戻りの解釈、トークンの交換・更新・失効                              |
+| `tokens.ts`              | トークンの保存先と、更新の直列化(`TokenManager`)                                              |
+| `client.ts`              | リソース API(リトライ・Idempotency-Key・401/429 の扱い)                                       |
+| `session.ts`             | 本体の `session:*` を受けて、タイマー/記録方式で Monolog. に記録する(`MonologSessionManager`) |
+| `service.svelte.ts`      | 接続状態、接続・解除・認可の戻りの処理、UI から使う窓口(`monologControl`)                     |
+| `settings.svelte.ts`     | 記録方式などの設定(この端末の localStorage)                                                   |
+| `index.ts`               | 拡張本体(`session:*` の購読、deep link)。マニフェストは `extensions/monolog/manifest.json`    |
+| `MonologSettings.svelte` | 設定のカードに出す、拡張固有の設定(接続 / 記録 / 操作のグループ)                              |
+| `MonologPanel.svelte`    | ツールバーのポップアップ(スマホでは「操作」シート)の中身                                      |
+| `panelLogic.ts`          | パネルの表示用ロジック(経過時間・文字数の整形、接続状態の表示名)                              |
+| `MonologBadge.svelte`    | スマホの上部バーの「計測中」表示(`toolbar.status`)                                            |
 
 ### ツールバーのアイコンとポップアップ
 
@@ -172,15 +270,18 @@ export const myExtension: Extension = {
 
 ### 執筆セッション
 
-- 接続済みで拡張が有効なとき、最初の `scene:updated` でセッションを開始し、最後の編集から N 分(5/10/15/30、既定 5)操作がなければ終了する。作品を切り替えても同じセッションとして続く。
-- 文字数: 各シーンの `characterCount - previousCharacterCount` の合計。memo は `+1,234字 (Storift)` / `-120字 (Storift)`。
-- title: 既定 `執筆(Storift)`。「作品名を Monolog. に送る」(既定オフ)をオンにすると `作品名を執筆`。タグ名は既定 `執筆`。**本文は一切送らない**。
+セッションの判定(最初の編集で開始、無操作で終了、増減した文字数の合計)は**本体**(`src/lib/extensions/session.ts`)が行う。Monolog. は `session:start` / `session:update` / `session:end` を購読して、Monolog. に写す。
+
+- 無操作で終了するまでの時間は、本体の設定(設定の「拡張機能」→「執筆セッション」。5/10/15/30 分、既定 5)。以前の Monolog. 連携の設定(`storift:monolog:settings` の `idleMinutes`)があれば、初回に引き継ぐ。
+- 接続済みで拡張が有効なときだけ記録する。未接続の間に始まったセッションは記録しない。セッションの途中で接続した(拡張を有効にした)場合は、その次の知らせから記録を始め、開始時刻と文字数はその時点から数える(それより前の時間・文字数は含めない)。
+- 文字数: セッションの増減の合計(利用者が書いた分だけ。AI の適用は含まない)。memo は `+1,234字 (Storift)` / `-120字 (Storift)`。
+- title: 既定 `執筆(Storift)`。「作品名を Monolog. に送る」(既定オフ)をオンにすると `作品名を執筆`(作品名は、権限 `project:title` により、`session:*` の `projectTitle` で届く)。タグ名は既定 `執筆`。**本文は一切送らない**。
 - 記録方式(設定。セッション開始時の値が使われる):
   - **タイマー方式(既定)**: 開始で `POST /timer/start`、終了で `POST /timer/stop` のみ。Monolog. アプリ側でも計測中に見える。`/records` は呼ばない。
   - **記録方式**: 終了で `POST /records` のみ。タイマーには触れない。失敗は通知のみ(再送のために保存はしない)。
-- 二重に記録しないため、1 つのセッションで両方を呼ばない(タイマーを止めた時点で記録が保存されるため)。
-- 手動: 設定の「いま終了して記録する」。
-- ページを閉じる/隠れる(`pagehide`)とき、計測中なら `fetch(..., { keepalive: true })` で終了を送る。待てないため、停止前の GET /timer 検証とトークンの更新ができない。起動中に検証済み(開始時に受け取った started_at を保持)であることを前提にし、期限切れで失敗しないよう、編集中は 1 分に 1 回までトークンの期限(5 分前)を確かめて先に更新しておく。結果は確認できず、失敗しても通知されない。
+- 二重に記録しないため、1 つのセッションで両方を呼ばない(タイマーを止めた時点で記録が保存されるため)。409・`Idempotency-Key`・停止前の `GET /timer` の確認は、これまでどおり。
+- 手動: 設定の「いま終了して記録する」(Monolog. の記録を終え、本体のセッションも `manual` で終了する)。連携の解除の前は、Monolog. の記録だけを終える(`monologControl.finishRecording`)。
+- ページを閉じる/隠れる(`session:end` の `reason: 'pagehide'`)とき、計測中なら `fetch(..., { keepalive: true })` で終了を送る。待てないため、停止前の GET /timer 検証とトークンの更新ができない。起動中に検証済み(開始時に受け取った started_at を保持)であることを前提にし、期限切れで失敗しないよう、編集中は 1 分に 1 回までトークンの期限(5 分前)を確かめて先に更新しておく。結果は確認できず、失敗しても通知されない。
 
 ### 既知の制限
 
@@ -188,6 +289,35 @@ export const myExtension: Extension = {
 - **タイマーは Monolog. アプリと共有**: 開始時に 409 `timer_already_running` が返ったら乗っ取らず、そのセッションの連携をスキップして通知する。停止は誰が開始したかに関係なく動いているタイマーを止めてしまうため、停止前に `GET /timer` で「実行中で、started_at が開始時に受け取った値と同じ」ことを確かめ、違えば止めずにセッションを破棄して通知する。pagehide ではこの確認ができない(上記)。
 - 新しいセッションの開始は、直前のセッションの停止の完了を待つ(409 を避けるため)。
 - オフライン時の記録は保存して再送しない(通知のみ)。
-- 共同編集のシーン・エディタ内で適用した AI の提案の扱いは「イベント」の節を参照。
+- 共同編集のシーンで自分が書いた分は記録に入り、AI の提案を適用した分は入らない(「イベント」の節の origin を参照。元に戻す、などの制限がある)。
 - デスクトップ版の deep link、Monolog. での実際の認可は、実機での確認が必要(自動テストは API をモックしている)。
-- 拡張が無効または未接続のときは、`scene:updated` の購読者がいない(無効)か、早期 return する(未接続)だけで、エディタに影響しない。
+- 拡張が無効なときは、`session:*` の購読者がいなければ、本体の追跡(`scene:updated` と pagehide の購読)も動かない。未接続のときは、知らせを受けても何もしない。エディタには影響しない。
+
+## Discord Rich Presence
+
+デスクトップ版のみ(`platforms: ["desktop"]`)。Storift を開いている間、この端末の Discord クライアントに、いま開いている画面と経過時間を表示する(Rich Presence)。実装は `src/lib/extensions/builtin/discord/` と `src-tauri/src/discord.rs`。
+
+| ファイル                 | 役割                                                                                         |
+| ------------------------ | -------------------------------------------------------------------------------------------- |
+| `config.ts`              | `DISCORD_APPLICATION_ID`(既定の Application ID)、画像キー、ID の検証・上書きの解決           |
+| `template.ts`            | 表示文字のテンプレートの評価(純関数)                                                         |
+| `presence.ts`            | 画面・セッション・設定から、Discord に出す内容を作る(純関数)                                 |
+| `controller.ts`          | イベントを購読して、間隔を空けて Rust のコマンドへ送る(`DiscordPresenceController`)          |
+| `settings.svelte.ts`     | 設定(この端末の localStorage)                                                                |
+| `DiscordSettings.svelte` | 設定のカードに出す、拡張固有の設定(表示する内容・プレビュー・前面にないとき・Application ID) |
+| `index.ts`               | 拡張本体。Web 版では、マニフェスト以外を読み込まない(本体は有効にしたときに動的に読み込む)   |
+
+- **表示**: 画面ごとの固定のラベル(`pages.ts` の `PAGE_LABELS`): ホーム / 執筆中 / プロットを練っています / 人物を整理しています / 世界観を作っています / 進捗を見ています / 通読しています / 設定を開いています(上記以外の画面は「Storift」)。経過時間(`timestamps.start`)は、執筆セッション中はセッションの開始、それ以外は Storift を開いた(拡張を有効にした)時刻から。
+- **画像**: `large_image` = `logo`(`large_text` = `Storift`)。`small_image` は執筆セッション中だけ `writing`(`small_text` は画面のラベル)。画像は Discord の Developer Portal に、この名前で登録してある(未登録でも文字の表示は壊れない)。
+- **表示文字のテンプレート**: Details(既定 `{page}`)と State(既定 `{chars} 字`)。State は執筆セッション中だけ出す。プレースホルダーは `{page}`(画面のラベル)、`{project}`(作品名)、`{chars}`(セッションの増減文字数。例 `+1,234`。0 は `±0`)、`{total}`(作品の総文字数)。
+  - `{project}` は「作品名を送る」、`{total}` は「作品の総文字数を送る」をオンにしたときだけ値が入る(**既定はどちらもオフ**。権限 `project:title` / `project:chars` を宣言している)。値が空のプレースホルダーは、それを含む区間(前後の括弧、直後の助詞・単位)ごと省くので、`『{project}』を{page}` で作品名が無いときは「『』を」が残らず「執筆中」になる。
+  - 未知のプレースホルダー(`{foo}`)はそのまま残す。空白を整理し、前後に残った区切りを取り、128 文字(Discord の上限)に切り詰める。Discord は 2 文字未満の文字を受け付けないので、Details が 2 文字未満になったら画面のラベルにし、State は出さない。
+  - 設定画面に、Discord のカード風のプレビューがある(例の値で、入力に応じてその場で変わる)。
+- **前面にないとき**(別のウィンドウに移った・最小化した。`app:visibility`): 「表示を続ける」(既定)/「『離席中』にする」/「表示を消す」から選ぶ。
+- **Application ID**: `config.ts` の `DISCORD_APPLICATION_ID`(Storift の ID。公開してよい値)。設定の「自分の Application ID で上書き(任意)」に 15〜25 桁の数字を入れると、その ID を使う(空、または形式が正しくなければ、既定の ID)。
+  - 自分の ID を用意する手順: [Discord Developer Portal](https://discord.com/developers/applications) で「New Application」を作る。名前(「Storift」など)は、Discord に「…をプレイ中」と出る名前になる。「General Information」の「Application ID」をコピーして、設定に貼る。画像は、「Rich Presence」→「Art Assets」に、`logo`(大きい画像)と `writing`(小さい画像)の名前で登録する。
+- **接続**: Discord が起動していない・つながらないときは、静かに何もしない(通知しない)。つなぎ直しを試みるのは、新しい執筆セッションの開始時と、前回の失敗から 60 秒たったあとの更新(画面の移動など)のときだけ。更新は 5 秒以上あけて、最後の内容だけを送る(Discord の頻度制限を超えないように)。
+- **消すとき**: 無効化、「消す」設定で前面にないとき、アプリの終了で、表示を消して接続を閉じる。
+- **Rust**(`src-tauri/src/discord.rs`): crate `discord-rich-presence`。IPC は専用のスレッド(`discord-presence`)で行い、Tauri のコマンド(`discord_set_activity` / `discord_clear_activity`)は依頼をチャネルで渡して、最長 5 秒だけ結果を待つ。UI は止まらない。アプリの終了(`RunEvent::Exit`)で表示を消す。
+- **プライバシー**: 送る情報は、画面のラベル、(オンのとき)作品名・総文字数、セッションの増減文字数、経過の開始時刻、表示文字のテンプレートを展開した文章、Application ID。本文は送らない。送り先は、ローカルの Discord クライアント(IPC)経由の Discord。詳細は `extensions/discord/manifest.json`。
+- **未確認**: 実際の Discord クライアントでの表示(画像・経過時間・「離席中」など)は、この環境では確認できていない(自動テストは、表示内容の組み立てと送信の制御を、Rust への呼び出しをモックして確かめている)。Windows の名前付きパイプ、macOS・Linux の Unix ソケットでの接続も、実機では未確認。

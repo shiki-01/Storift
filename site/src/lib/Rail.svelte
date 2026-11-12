@@ -10,6 +10,7 @@
 		{ href: '/', label: 'ホーム', icon: 'home' },
 		{ href: '/features', label: '機能', icon: 'grid' },
 		{ href: '/guide', label: '使い方', icon: 'book' },
+		{ href: '/extensions', label: '拡張', icon: 'puzzle' },
 		{ href: '/faq', label: 'Q&A', icon: 'help' }
 	];
 
@@ -166,7 +167,7 @@
 
 		.rail-group {
 			flex-direction: row;
-			flex: 4;
+			flex: 5;
 			gap: 0;
 		}
 

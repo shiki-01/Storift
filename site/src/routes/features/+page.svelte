@@ -5,7 +5,12 @@
 	import type { IconName } from '$lib/icons';
 	import { APP_URL } from '$lib/config';
 
-	type Item = { title: string; body: string; desktop?: boolean };
+	type Item = {
+		title: string;
+		body: string;
+		desktop?: boolean;
+		link?: { href: string; label: string };
+	};
 	type Group = {
 		id: string;
 		icon: IconName;
@@ -168,7 +173,7 @@
 			items: [
 				{
 					title: '拡張機能とは',
-					body: '設定の「拡張機能」から、一つずつ有効・無効を切り替えます。既定はすべて無効で、有効にしたかどうかは端末ごとに覚えます。無効なあいだは、何も動かず、画面にも現れません。'
+					body: '設定の「拡張機能」から、一つずつ有効・無効を切り替えます。既定はすべて無効で、有効にしたかどうかは端末ごとに覚えます。無効なあいだは、何も動かず、画面にも現れません。有効にするときは、その拡張が扱う情報(何を、どこへ送るか)を示した確認画面が出て、同意すると有効になります。同じ内容は、各拡張のページで読めます。'
 				},
 				{
 					title: 'ツールバーのアイコンから操作',
@@ -176,7 +181,19 @@
 				},
 				{
 					title: 'Monolog. 連携',
-					body: '執筆している間の時間と、増減した文字数を、時間記録アプリ Monolog. に記録します。最初の編集で計測を始め、一定時間（5・10・15・30 分から選択、既定 5 分）操作がなければ終了して記録します。Monolog. のアカウントで接続したときだけ動き、本文は送りません。Web 版（本番のエディタ）とデスクトップ版で使えます。'
+					body: '執筆している間の時間と、増減した文字数を、時間記録アプリ Monolog. に記録します。最初の編集で計測を始め、一定時間（5・10・15・30 分から選択、既定 5 分）操作がなければ終了して記録します。Monolog. のアカウントで接続したときだけ動き、本文は送りません。Web 版（本番のエディタ）とデスクトップ版で使えます。',
+					link: { href: '/extensions/monolog', label: 'この拡張が扱う情報' }
+				},
+				{
+					title: 'Discord Rich Presence',
+					body: 'Storift を開いている間、Discord のプロフィールに、いま開いている画面(執筆中、プロットを練っています、など)と経過時間を表示します。執筆中は増減した文字数も出します。作品名と作品の総文字数は、設定でオンにしたときだけ表示に入ります(既定はオフ)。表示する文字は、設定でテンプレートとして書き換えられ、設定画面でプレビューを確認できます。デスクトップ版のみで、Discord が起動しているときだけ動きます。本文は送りません。',
+					desktop: true,
+					link: { href: '/extensions/discord', label: 'この拡張が扱う情報' }
+				},
+				{
+					title: '拡張機能の種類',
+					body: 'いま使えるのは、Storift に同梱する「公式」の拡張機能です。テーマや辞書などの「パック」と、隔離して動く「スクリプト」、コミュニティの拡張機能への対応は、今後の予定です。',
+					link: { href: '/extensions', label: '拡張機能の一覧' }
 				}
 			]
 		},
@@ -208,7 +225,7 @@
 
 <Seo
 	title="機能"
-	description="Storift の機能一覧。執筆、プロット、人物と相関図、設定資料、進捗、通読と縦書きプレビュー、オフライン、同期、共有と共同編集、書き出し、拡張機能（Monolog. 連携）、デスクトップ版の AI パネル。"
+	description="Storift の機能一覧。執筆、プロット、人物と相関図、設定資料、進捗、通読と縦書きプレビュー、オフライン、同期、共有と共同編集、書き出し、拡張機能（Monolog. 連携、Discord Rich Presence）、デスクトップ版の AI パネル。"
 />
 
 <div class="wrap">
@@ -238,7 +255,10 @@
 					{#each g.items as item (item.title)}
 						<div class="row">
 							<dt>{item.title}</dt>
-							<dd>{item.body}</dd>
+							<dd>
+								{item.body}
+								{#if item.link}<a class="item-link" href={item.link.href}>{item.link.label}</a>{/if}
+							</dd>
 						</div>
 					{/each}
 				</dl>
@@ -254,6 +274,12 @@
 </div>
 
 <style>
+	.item-link {
+		display: inline-block;
+		margin-left: 6px;
+		white-space: nowrap;
+	}
+
 	.toc {
 		display: flex;
 		flex-wrap: wrap;

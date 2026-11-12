@@ -8,6 +8,7 @@ import { waitForTargetReady } from '$lib/firebase/targetReady';
 import { isGuestSharing, parseTargetKey } from '$lib/firebase/syncTarget';
 import {
 	CrdtOpenError,
+	ORIGIN_PROGRAM,
 	createDocManager,
 	type CrdtOpenFailure,
 	type OpenOptions,
@@ -18,6 +19,7 @@ import { firestoreTransport } from '$lib/crdt/transport';
 import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { queueChange, revokeGuestAccess } from '$lib/services/sync.service';
+import { extensionEvents } from '$lib/extensions/events';
 import type { Project } from '$lib/types';
 
 /**
@@ -62,10 +64,34 @@ const manager = createDocManager({
 		const scene = await scenesDB.getById(sceneId);
 		return scene ? { content: scene.content, projectId: scene.projectId } : undefined;
 	},
-	async mirrorContent(sceneId, text, { projectId, readOnly }) {
-		// characterCount・履歴・プロジェクトの更新日時は scenesDB.update の既存のロジックに任せる
-		// 共同編集のミラーは他の人の変更や復元を含むため、拡張向けのイベントは発行しない(自分の分だけを切り分けられない)
+	async mirrorContent(sceneId, text, { projectId, readOnly, changes }) {
+		// 拡張向けのイベント用に、ミラー前の文字数を取っておく(購読者がいて、この端末の変更があるときだけ)
+		const notify =
+			(changes.user.edited || changes.ai.edited) && extensionEvents.hasListeners('scene:updated');
+		const before = notify ? await scenesDB.getById(sceneId) : undefined;
+		// characterCount・履歴・プロジェクトの更新日時は scenesDB.update の既存のロジックに任せる。
+		// ミラーする本文には他の人の変更も混ざるので、scenesDB.update からは発行せず(silent)、
+		// この端末で入れた分だけを、Y の変更の origin から数えた増減で発行する
 		await scenesDB.update(sceneId, { content: text }, { silent: true });
+		if (before) {
+			const base = {
+				sceneId,
+				chapterId: before.chapterId,
+				projectId: before.projectId,
+				characterCount: text.length,
+				previousCharacterCount: before.characterCount ?? 0
+			};
+			if (changes.ai.edited) {
+				extensionEvents.emit('scene:updated', { ...base, delta: changes.ai.delta, origin: 'ai' });
+			}
+			if (changes.user.edited) {
+				extensionEvents.emit('scene:updated', {
+					...base,
+					delta: changes.user.delta,
+					origin: 'collab-local'
+				});
+			}
+		}
 		await refreshSceneInStore(sceneId, projectId);
 		// 共有側の scenes 文書の content もミラーとして従来の同期で更新する(読み取り専用は送らない)
 		if (!readOnly) await queueChange('scenes', sceneId, 'update');
@@ -161,14 +187,16 @@ const FAILURE_MESSAGES: Record<CrdtOpenFailure | 'not-crdt' | 'read-only', strin
 };
 
 /**
- * 本文を newText にする(最小差分を適用して送信)。開いていないシーンでも、保存済みの状態または
+ * 本文を newText にする(最小差分を適用して送信)。origin は変更の出どころ(`$lib/crdt/doc` の ORIGIN_*)で、
+ * 既定は「プログラムによる書き換え」(検索置換・復元など。拡張向けの執筆のイベントには数えない)。
+ * AI の提案の適用は ORIGIN_AI を渡す。開いていないシーンでも、保存済みの状態または
  * snapshot から文書を読み込んで適用する。オフラインで初回の snapshot が無い場合は失敗を理由つきで返す。
  * 開いているシーンの場合、送信・保存は文書側のデバウンスに任せる。
  */
 export async function applySceneText(
 	sceneId: string,
 	newText: string,
-	origin: unknown = 'local'
+	origin: unknown = ORIGIN_PROGRAM
 ): Promise<ApplySceneTextResult> {
 	const project = await projectOfScene(sceneId);
 	if (!project || project.sharing?.status !== 'active') {

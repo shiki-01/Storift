@@ -29,6 +29,8 @@ const config = {
 		// 成果物の参照が相対パスだと /monolog/callback のような 2 階層以上の URL で
 		// /monolog/_app/... を探しに行って読み込みに失敗する。常にルートからの絶対パスにする
 		paths: { relative: false },
+		// 拡張のマニフェスト(extensions/<id>/manifest.json)。アプリと紹介サイト(site/)の両方が読む
+		alias: { $extensions: 'extensions' },
 		// Service Worker の登録は src/lib/utils/sw-register.ts で行う(更新の適用を制御するため)
 		serviceWorker: { register: false },
 		version: {

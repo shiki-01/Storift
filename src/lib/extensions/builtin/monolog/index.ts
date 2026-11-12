@@ -2,8 +2,11 @@
  * 拡張「Monolog. 連携」。執筆している間の時間を Monolog.(時間記録アプリ)に記録する。
  * 仕様は docs/EXTENSIONS.md を参照。
  */
+import manifestJson from '$extensions/monolog/manifest.json';
 import { isDesktop } from '$lib/desktop/platform';
+import { parseManifest } from '../../manifest';
 import type { Extension, ExtensionContext } from '../../types';
+import MonologBadge from './MonologBadge.svelte';
 import MonologPanel from './MonologPanel.svelte';
 import { MonologSessionManager } from './session';
 import { monologSettings } from './settings.svelte';
@@ -20,11 +23,6 @@ import {
 
 let manager: MonologSessionManager | null = null;
 let teardown: Array<() => void> = [];
-
-/** 開いているセッションの終了。設定画面の「いま終了して記録する」から使う */
-export function endMonologSessionNow() {
-	return manager?.finish('manual') ?? Promise.resolve('none' as const);
-}
 
 async function listenDeepLinks(ctx: ExtensionContext): Promise<() => void> {
 	const { onOpenUrl, getCurrent } = await import('@tauri-apps/plugin-deep-link');
@@ -47,12 +45,8 @@ async function listenDeepLinks(ctx: ExtensionContext): Promise<() => void> {
 }
 
 export const monologExtension: Extension = {
-	manifest: {
-		id: 'monolog',
-		name: 'Monolog. 連携',
-		description: '執筆している間の時間と増減した文字数を、時間記録アプリ Monolog. に記録します。',
-		platforms: ['web', 'desktop']
-	},
+	// 名前・説明・権限・扱う情報は、extensions/monolog/manifest.json が単一の情報源
+	manifest: parseManifest(manifestJson, 'monolog'),
 
 	toolbar: {
 		id: 'monolog',
@@ -60,15 +54,20 @@ export const monologExtension: Extension = {
 		icon: 'clock',
 		panel: MonologPanel,
 		// 計測中は、アイコンにドットを出す
-		badge: () => monologState.sessionActive
+		badge: () => monologState.sessionActive,
+		// スマホの上部バーの「計測中」表示
+		status: MonologBadge
 	},
+
+	settings: () => import('./MonologSettings.svelte'),
 
 	async activate(ctx) {
 		const session = new MonologSessionManager({
 			client: monologClient,
 			getSettings: () => monologSettings.value,
-			getProjectTitle: ctx.getProjectTitle,
 			notify: ctx.notify,
+			// 未接続のときは記録を始めない(メモリ上の状態を見るだけ)
+			isConnected: () => !['unknown', 'disconnected', 'reauth'].includes(monologState.connection),
 			ensureTokenFresh: (margin) => monologTokens.ensureFresh(margin),
 			onActiveChange: (active) => {
 				monologState.sessionActive = active;
@@ -76,20 +75,18 @@ export const monologExtension: Extension = {
 		});
 		manager = session;
 		monologControl.snapshot = () => session.snapshot();
-		monologControl.endNow = () => session.finish('manual');
+		// 「いま終了して記録する」: Monolog. への記録を終え、本体の執筆セッションも終了する
+		// (先に記録を始めるので、このあと届く session:end では二重に記録しない)
+		monologControl.endNow = () => {
+			const outcome = session.finish('manual');
+			ctx.session.endNow();
+			return outcome;
+		};
+		// 連携の解除の前など、Monolog. への記録だけを終える(本体の執筆セッションは続く)
+		monologControl.finishRecording = () => session.finish('manual');
 
-		teardown.push(
-			ctx.events.on('scene:updated', (event) => {
-				// 未接続のときは何もしない(メモリ上の状態を見るだけ)
-				if (['unknown', 'disconnected', 'reauth'].includes(monologState.connection)) return;
-				session.handleSceneUpdated(event);
-			})
-		);
-
-		// ページを閉じる/隠れるとき、計測中なら終了を送る
-		const onPageHide = () => session.flushOnHide();
-		window.addEventListener('pagehide', onPageHide);
-		teardown.push(() => window.removeEventListener('pagehide', onPageHide));
+		// 本体の執筆セッション(開始・経過・終了。ページを閉じる/隠れるときの終了を含む)を購読する
+		teardown.push(session.attach(ctx.events));
 
 		if (isDesktop()) {
 			try {
@@ -110,6 +107,7 @@ export const monologExtension: Extension = {
 		manager = null;
 		monologControl.snapshot = () => null;
 		monologControl.endNow = async () => 'none';
+		monologControl.finishRecording = async () => 'none';
 		monologState.sessionActive = false;
 		await session?.dispose();
 	}

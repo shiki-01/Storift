@@ -26,6 +26,7 @@ export default defineConfig({
 		conditions: ['browser'],
 		alias: {
 			$lib: resolve(__dirname, './src/lib'),
+			$extensions: resolve(__dirname, './extensions'),
 			// テストでは $app/state を stub に向ける(page はテストごとに差し替える)
 			'$app/state': resolve(__dirname, './src/lib/test/app-state.ts'),
 			'$app/navigation': resolve(__dirname, './src/lib/test/app-navigation.ts'),

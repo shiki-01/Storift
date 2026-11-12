@@ -307,3 +307,14 @@ Apple Developer ID による署名・公証はしていない。macOS 版はア�
 - 同時に起動できるのは 1 つだけ(単一インスタンス)。複数のウィンドウを別々のプロセスで開くことはできない。
 - データ(IndexedDB)は Web 版とは別に、アプリ内に保存される。端末間・Web 版との共有は既存の Firebase 同期を使う。デスクトップ版のオリジン(`tauri://localhost` / `http://tauri.localhost`)で Firebase 認証が通らない場合は、Firebase コンソールの承認済みドメインに `tauri.localhost` を追加する。
 - Claude Code の利用料金・使用量は、ログインしている Claude のアカウントに計上される。OpenAI 互換 API・Anthropic API・Gemini の料金は、設定した API キーのアカウントに計上される。
+
+## Discord Rich Presence(拡張機能)
+
+拡張機能「Discord Rich Presence」(デスクトップ版のみ。仕様は [EXTENSIONS.md](EXTENSIONS.md))のために、Rust 側に Discord の IPC を持つ。
+
+- `src-tauri/src/discord.rs`。crate `discord-rich-presence`(Windows は名前付きパイプ、macOS・Linux は Unix ソケット)で、**ローカルで動いている Discord クライアント**につなぐ。Storift が Discord のサーバーと直接通信することはない。
+- IPC の読み書きは止まることがあるので、専用のスレッド(`discord-presence`)で行う。コマンド `discord_set_activity`(Application ID と表示内容)/ `discord_clear_activity` は、依頼をチャネルで渡して結果を最長 5 秒だけ待つ。Discord が起動していないときは、`false` を返すだけで、エラーにしない。
+- アプリの終了時(`RunEvent::Exit`)に、表示を消す。
+- 独自のコマンドなので、`capabilities/default.json` への追加は要らない(`secret_*` などと同じ)。
+- Application ID は `src/lib/extensions/builtin/discord/config.ts` の `DISCORD_APPLICATION_ID`。設定画面で、自分の ID に上書きできる。自分の ID を作る手順は EXTENSIONS.md の「Discord Rich Presence」を参照。
+- 検証: この環境(Linux)では、`libgtk-3-dev` などを入れて `cargo check` が通る。実際の Discord との接続・表示は、実機で確認していない。

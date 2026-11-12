@@ -1,31 +1,32 @@
 /**
- * 執筆セッションの管理。
+ * Monolog. への記録。本体の執筆セッション(session:start / session:update / session:end)を購読して、
+ * Monolog. のタイマー、または記録に写す。セッションの判定(最初の編集で開始、無操作で終了、
+ * 増減した文字数の合計)は本体(`$lib/extensions/session`)が行う。
  *
- * 最初の scene:updated でセッションを始め、最後の編集から一定時間(無操作時間)操作がなければ終了する。
  * 記録方式は 2 つ。同じセッションで両方を呼ぶと Monolog. に二重に記録されるため、必ずどちらか一方だけを使う。
  * - timer(タイマー方式): 開始で POST /timer/start、終了で POST /timer/stop(停止した時点で記録が保存される)。
  *   Monolog. アプリ側でも計測中に見える。終了時刻は、最後の編集ではなく実際に停止した時刻になる
  * - record(記録方式): 終了時に POST /records で 1 件追加する。タイマーには触れない
+ *
+ * 接続していない間に始まったセッションは記録しない。セッションの途中で接続した(または拡張を有効にした)
+ * ときは、その次の知らせから記録を始める(開始時刻はその時点。それより前の時間と文字数は含めない)。
  */
 import { ApiError } from './client';
 import type { MonologClient } from './client';
 import { NotConnectedError, ReauthRequiredError } from './tokens';
-import type { SceneUpdatedEvent } from '$lib/extensions/events';
+import type { ExtensionEvents, WritingSessionEvent } from '$lib/extensions/events';
 import type { ExtensionNotifier } from '$lib/extensions/types';
 
 export type SessionMode = 'timer' | 'record';
-export const IDLE_MINUTES_OPTIONS = [5, 10, 15, 30] as const;
 
 export interface MonologSettings {
 	mode: SessionMode;
-	idleMinutes: number;
 	tagName: string;
 	sendProjectTitle: boolean;
 }
 
 export const DEFAULT_SETTINGS: MonologSettings = {
 	mode: 'timer',
-	idleMinutes: 5,
 	tagName: '執筆',
 	sendProjectTitle: false
 };
@@ -46,8 +47,9 @@ type SessionClient = Pick<
 export interface SessionDeps {
 	client: SessionClient;
 	getSettings(): MonologSettings;
-	getProjectTitle(projectId: string): Promise<string | undefined>;
 	notify: ExtensionNotifier;
+	/** Monolog. に接続しているか。false の間に届いた知らせでは、記録を始めない(省略すると常に true) */
+	isConnected?(): boolean;
 	/** 送信前にアクセストークンの期限に余裕を持たせる(pagehide の送信は更新できないため) */
 	ensureTokenFresh?(marginMs: number): Promise<void>;
 	/** 実際に計測中かの変化(バッジの表示用) */
@@ -56,18 +58,19 @@ export interface SessionDeps {
 }
 
 interface Session {
+	/** 本体の執筆セッションの ID */
+	sessionId: string;
 	mode: SessionMode;
 	startedAtMs: number;
 	lastEditMs: number;
-	/** 文字数の増減の合計(各シーンの characterCount の差分の和) */
+	/** 記録を始めた時点の、本体のセッションの増減文字数(途中から始めたときは、それより前を含めない) */
+	baseNet: number;
+	/** 文字数の増減の合計(記録を始めてからの分) */
 	delta: number;
 	tagName: string;
-	idleMs: number;
 	sendProjectTitle: boolean;
-	projectId: string;
-	projectTitle: Promise<string | undefined>;
-	/** projectTitle が解決済みならその値(pagehide では待てないため) */
-	resolvedTitle: string | undefined;
+	/** 作品名(本体から届いていれば)。sendProjectTitle のときだけ使う */
+	projectTitle: string | undefined;
 	/** starting: タイマー開始の応答待ち / running: 計測中 / skipped: 連携しない(終了まで何もしない) */
 	phase: 'starting' | 'running' | 'skipped';
 	/** タイマー方式で、開始時に Monolog. から受け取った started_at */
@@ -118,7 +121,6 @@ function failureMessage(error: unknown, what: string): string {
 
 export class MonologSessionManager {
 	private session: Session | null = null;
-	private idleTimer: ReturnType<typeof setTimeout> | null = null;
 	/** 直前のセッションの終了処理。次の開始はこれを待つ(タイマーを止める前に開始して 409 にならないように) */
 	private chain: Promise<unknown> = Promise.resolve();
 	private lastFreshCheck = 0;
@@ -126,6 +128,16 @@ export class MonologSessionManager {
 
 	constructor(private readonly deps: SessionDeps) {
 		this.now = deps.now ?? Date.now;
+	}
+
+	/** 本体の執筆セッションのイベントを購読する。返り値で解除 */
+	attach(events: ExtensionEvents): () => void {
+		const offs = [
+			events.on('session:start', (event) => this.handleProgress(event, false)),
+			events.on('session:update', (event) => this.handleProgress(event, true)),
+			events.on('session:end', (event) => this.handleEnd(event))
+		];
+		return () => offs.forEach((off) => off());
 	}
 
 	/** セッションが計測中か */
@@ -139,46 +151,61 @@ export class MonologSessionManager {
 		return s?.phase === 'running' ? { startedAtMs: s.startedAtMs, delta: s.delta } : null;
 	}
 
-	handleSceneUpdated(event: SceneUpdatedEvent): void {
-		const now = this.now();
-		if (!this.session) this.begin(event, now);
+	/** 執筆セッションの開始・経過。late は、セッションの途中の知らせ(session:update)か */
+	handleProgress(event: WritingSessionEvent, late: boolean): void {
+		if (this.session && this.session.sessionId !== event.sessionId) {
+			// 終了の知らせを受け取れなかった古いセッションが残っている: 先に終わらせる
+			void this.finish('idle');
+		}
+		if (!this.session) {
+			// 未接続のときは何もしない(メモリ上の状態を見るだけ)
+			if (this.deps.isConnected && !this.deps.isConnected()) return;
+			this.begin(event, late);
+		}
 		const s = this.session!;
-		s.lastEditMs = now;
-		s.delta += event.characterCount - event.previousCharacterCount;
-		this.armIdle(s);
-		this.refreshTokenSoon(now);
+		this.follow(s, event);
+		this.refreshTokenSoon(this.now());
 	}
 
-	private begin(event: SceneUpdatedEvent, now: number): void {
+	/** 本体のセッションの最新の値を写す */
+	private follow(s: Session, event: WritingSessionEvent): void {
+		s.lastEditMs = event.lastEditAt;
+		s.delta = event.netChars - s.baseNet;
+		if (event.projectTitle) s.projectTitle = event.projectTitle;
+	}
+
+	private begin(event: WritingSessionEvent, late: boolean): void {
 		const settings = this.deps.getSettings();
 		const s: Session = {
+			sessionId: event.sessionId,
 			mode: settings.mode,
-			startedAtMs: now,
-			lastEditMs: now,
+			// 途中から始めるときは、その時点(最後の編集)からの時間と文字数だけを記録する
+			startedAtMs: late ? event.lastEditAt : event.startedAt,
+			lastEditMs: event.lastEditAt,
+			baseNet: late ? event.netChars : 0,
 			delta: 0,
 			tagName: settings.tagName.trim() || DEFAULT_SETTINGS.tagName,
-			idleMs: Math.max(1, settings.idleMinutes) * 60_000,
 			sendProjectTitle: settings.sendProjectTitle,
-			projectId: event.projectId,
-			projectTitle: Promise.resolve(undefined),
-			resolvedTitle: undefined,
+			projectTitle: undefined,
 			phase: settings.mode === 'timer' ? 'starting' : 'running',
 			timerStartedAt: null,
 			startPromise: null
 		};
 		this.session = s;
-		if (settings.sendProjectTitle) {
-			// 作品名は後で使う(pagehide では待てないので、開始時に取っておく)
-			s.projectTitle = this.deps
-				.getProjectTitle(event.projectId)
-				.catch(() => undefined)
-				.then((title) => (s.resolvedTitle = title));
-		}
 		if (s.mode === 'timer') {
 			s.startPromise = this.chain.then(() => this.startTimer(s));
 		} else {
 			this.deps.onActiveChange?.(true);
 		}
+	}
+
+	/** 執筆セッションの終了。pagehide は待てないので keepalive で送り、それ以外は通常の終了処理をする */
+	handleEnd(event: WritingSessionEvent): void {
+		const s = this.session;
+		if (!s || s.sessionId !== event.sessionId) return;
+		this.follow(s, event);
+		if (event.reason === 'pagehide') this.flushOnHide();
+		else void this.finish(event.reason === 'idle' ? 'idle' : 'manual');
 	}
 
 	private async startTimer(s: Session): Promise<void> {
@@ -208,14 +235,6 @@ export class MonologSessionManager {
 		}
 	}
 
-	private armIdle(s: Session): void {
-		if (this.idleTimer) clearTimeout(this.idleTimer);
-		this.idleTimer = setTimeout(() => {
-			this.idleTimer = null;
-			void this.finish('idle');
-		}, s.idleMs);
-	}
-
 	/** 期限切れ間近のトークンを先に更新しておく(pagehide の送信は更新できないため)。頻度は絞る */
 	private refreshTokenSoon(now: number): void {
 		if (!this.deps.ensureTokenFresh || now - this.lastFreshCheck < FRESH_CHECK_INTERVAL_MS) return;
@@ -223,15 +242,11 @@ export class MonologSessionManager {
 		void this.deps.ensureTokenFresh(TOKEN_FRESH_MARGIN_MS).catch(() => {});
 	}
 
-	/** セッションを終了して記録する。trigger: idle=無操作 / manual=ボタン / deactivate=拡張の無効化 */
+	/** 記録中のセッションを終了して記録する。trigger: idle=無操作 / manual=ボタン・連携の解除 / deactivate=拡張の無効化 */
 	finish(trigger: 'idle' | 'manual' | 'deactivate'): Promise<SessionOutcome> {
 		const s = this.session;
 		if (!s) return this.chain.then(() => 'none' as const);
 		this.session = null;
-		if (this.idleTimer) {
-			clearTimeout(this.idleTimer);
-			this.idleTimer = null;
-		}
 		if (s.phase === 'running') this.deps.onActiveChange?.(false);
 		// 記録方式で無操作により終わるときは、最後の編集の時刻を終了時刻にする
 		const endMs = trigger === 'idle' ? s.lastEditMs : this.now();
@@ -245,7 +260,7 @@ export class MonologSessionManager {
 			if (s.startPromise) await s.startPromise;
 			if (s.phase === 'skipped') return 'none';
 
-			const title = buildTitle(await s.projectTitle, s.sendProjectTitle);
+			const title = buildTitle(s.projectTitle, s.sendProjectTitle);
 			const memo = formatMemo(s.delta);
 
 			if (s.mode === 'timer') {
@@ -295,16 +310,12 @@ export class MonologSessionManager {
 		const s = this.session;
 		if (!s || s.phase !== 'running') return;
 		this.session = null;
-		if (this.idleTimer) {
-			clearTimeout(this.idleTimer);
-			this.idleTimer = null;
-		}
 		this.deps.onActiveChange?.(false);
 
 		const endMs = this.now();
 		const memo = formatMemo(s.delta);
-		// 作品名は開始時に取得を始めている。解決していなければ(同期では読めない)既定のタイトルにする
-		const title = buildTitle(s.resolvedTitle, s.sendProjectTitle);
+		// 作品名は本体から届いた分を使う。まだ届いていなければ既定のタイトルにする
+		const title = buildTitle(s.projectTitle, s.sendProjectTitle);
 		if (s.mode === 'timer') {
 			this.deps.client.sendKeepalive('/timer/stop', { title, memo });
 		} else {

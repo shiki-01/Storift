@@ -1,0 +1,49 @@
+{
+	"id": "monolog",
+	"name": "Monolog. 連携",
+	"description": "執筆している間の時間と増減した文字数を、時間記録アプリ Monolog. に記録します。",
+	"version": "1.0.0",
+	"author": "Storift",
+	"kind": "official",
+	"apiVersion": 1,
+	"platforms": ["web", "desktop"],
+	"icon": "clock",
+	"homepage": "https://www.monolog.life/",
+	"license": "MIT",
+	"permissions": {
+		"events": ["session:start", "session:update", "session:end"],
+		"read": ["project:title"],
+		"network": ["www.monolog.life", "api.monolog.life"],
+		"storage": true
+	},
+	"privacy": {
+		"sends": [
+			{
+				"to": "www.monolog.life(認可)",
+				"items": ["Monolog. への接続を許可するための認可の情報(作品の内容は含みません)"],
+				"when": "「Monolog. に接続」を押して、Monolog. の画面で接続を許可するとき"
+			},
+			{
+				"to": "api.monolog.life(記録)",
+				"items": [
+					"執筆の開始時刻・終了時刻",
+					"所要時間",
+					"タイトル(既定は「執筆(Storift)」。設定で「作品名を Monolog. に送る」をオンにしたときだけ作品名が入ります)",
+					"メモ(増減した文字数)",
+					"タグ"
+				],
+				"when": "Monolog. に接続している間の、執筆の開始時と終了時"
+			}
+		],
+		"stores": [
+			"Monolog. のトークン: 端末内のみ(デスクトップ版は OS のキーチェーン。キーチェーンを使えない環境と Web 版はブラウザの localStorage)",
+			"記録方式・タグ名などの設定: 端末内のみ(localStorage)"
+		],
+		"onDisable": "設定画面の「連携を解除」で、トークンを Monolog. 側で失効させ、端末内から削除します。拡張を無効にするだけの場合は、送信を止めますが、トークンは端末内に残ります(もう一度有効にすると、同じ接続で再開します)。",
+		"notes": [
+			"作品の本文は送信しません。",
+			"トークンは運営者のサーバーには送信しません。同期・バックアップ・書き出しにも含めません。",
+			"Monolog. に送られた内容の扱いは、Monolog. の規約とプライバシーポリシーに従います。"
+		]
+	}
+}

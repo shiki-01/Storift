@@ -263,7 +263,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 0 8px 8px 16px;
+		padding: 0 4px 6px 20px;
 	}
 
 	.sheet-title {
@@ -282,12 +282,13 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 36px;
-		height: 36px;
+		/* タップ領域は 44px 以上 */
+		width: 44px;
+		height: 44px;
 		border: none;
 		background: transparent;
 		color: var(--color-text-secondary);
-		border-radius: 8px;
+		border-radius: 10px;
 		cursor: pointer;
 	}
 

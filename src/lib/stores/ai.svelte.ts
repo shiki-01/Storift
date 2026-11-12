@@ -38,6 +38,7 @@ import type {
 } from '$lib/types';
 import { queueChanges } from '$lib/services/sync.service';
 import { applySceneText, getSceneText, isCrdtScene } from '$lib/services/sceneText.service';
+import { ORIGIN_AI } from '$lib/crdt/doc';
 import {
 	attachNativeRun,
 	cancelNativeRun,
@@ -524,12 +525,12 @@ async function editScene(
 					({ ok: false, reason: 'このシーンは読み取り専用のため反映できません' }) as ReplaceResult
 			);
 	} else if (crdt) {
-		const applied = await applySceneText(sceneId, content);
+		const applied = await applySceneText(sceneId, content, ORIGIN_AI);
 		if (!applied.ok)
 			return changes.map(() => ({ ok: false, reason: applied.message }) as ReplaceResult);
 	} else {
-		// AI による差し替えは自分が書いた変更ではないので、拡張向けのイベントは発行しない
-		await scenesDB.update(sceneId, { content }, { silent: true });
+		// AI による差し替えは利用者が書いた変更ではない(拡張向けのイベントは origin: 'ai' で発行する)
+		await scenesDB.update(sceneId, { content }, { origin: 'ai' });
 		const fresh = await scenesDB.getById(sceneId);
 		const index = currentProjectStore.scenes.findIndex((s) => s.id === sceneId);
 		if (fresh && index !== -1) currentProjectStore.scenes[index] = fresh;

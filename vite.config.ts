@@ -17,7 +17,7 @@ export default defineConfig({
 	plugins: [sveltekit(), masterCSS()],
 	server: {
 		fs: {
-			allow: ['master.css.ts']
+			allow: ['master.css.ts', 'extensions']
 		}
 	}
 });

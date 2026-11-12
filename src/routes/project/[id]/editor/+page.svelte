@@ -54,7 +54,7 @@
 		supportsHighlight,
 		textRange
 	} from '$lib/utils/editorInput';
-	import { CrdtOpenError, type SceneDocHandle } from '$lib/crdt/doc';
+	import { CrdtOpenError, ORIGIN_AI, type SceneDocHandle } from '$lib/crdt/doc';
 	import { EditorBinding, type TextSelection } from '$lib/crdt/editorBinding';
 	import { createDomAdapter, type DomEditorAdapter } from '$lib/crdt/domAdapter';
 	import { trackLocalGrowth, type LocalGrowthTracker } from '$lib/crdt/progress';
@@ -83,7 +83,6 @@
 	import { defaultPreviewSettings } from '$lib/types';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import SaveState from '$lib/components/ui/SaveState.svelte';
-	import MonologBadge from '$lib/extensions/builtin/monolog/MonologBadge.svelte';
 	import { getSystemFontName, systemFontToCss } from '$lib/utils/fonts';
 	import MemoPanel from '$lib/components/memo/MemoPanel.svelte';
 	import { aiStore } from '$lib/stores/ai.svelte';
@@ -470,8 +469,15 @@
 		const previousCount = editorStore.currentScene.characterCount;
 
 		editorStore.isSaving = true;
+		// 拡張向けのイベント用に、AI の提案を適用した分と自分で書いた分を分けて渡す
+		const origins = editorStore.takeSaveOrigins();
 		try {
-			await scenesDB.update(sceneId, { content: savedContent });
+			try {
+				await scenesDB.update(sceneId, { content: savedContent }, { ai: origins.ai });
+			} catch (error) {
+				editorStore.restoreSaveOrigins(origins);
+				throw error;
+			}
 			saveFailed = false;
 			// 保存中に入力が続いていた場合は未保存のまま残す(次の自動保存で拾う)
 			if (editorStore.content === savedContent) editorStore.isDirty = false;
@@ -524,14 +530,16 @@
 		if (!scene || !editorStore.isDirty) return;
 		const sceneId = scene.id;
 		const content = editorStore.content;
+		const origins = editorStore.takeSaveOrigins();
 		try {
-			await scenesDB.update(sceneId, { content });
+			await scenesDB.update(sceneId, { content }, { ai: origins.ai });
 			if (editorStore.currentScene?.id === sceneId && editorStore.content === content) {
 				editorStore.isDirty = false;
 			}
 			await queueChange('scenes', sceneId, 'update');
 		} catch (error) {
 			console.error('Failed to save scene on leave:', error);
+			editorStore.restoreSaveOrigins(origins);
 			saveFailed = true;
 		}
 	}
@@ -710,7 +718,8 @@
 		editorStore.isDirty = false;
 		// 元に戻す/やり直す(補助入力バー)も自分の編集だけを対象にした履歴へ
 		setHistoryHandler({ undo: () => binding.undo(), redo: () => binding.redo() });
-		editorStore.externalTextSink = (text) => binding.setExternalText(text);
+		// この入口を使うのは AI の提案の適用だけ(利用者が書いた分として数えないよう、origin を分ける)
+		editorStore.externalTextSink = (text) => binding.setExternalText(text, ORIGIN_AI);
 		collab = 'on';
 	}
 
@@ -2263,7 +2272,9 @@
 									/>
 								{/if}
 								<SaveState state={saveState} />
-								<MonologBadge />
+								{#each extToolbar as ext (ext.itemId)}
+									{#if ext.status}{@const Status = ext.status}<Status />{/if}
+								{/each}
 								{#if otherMembers.length > 0}
 									<span class="presence-mini" title={presenceText ?? ''}
 										><Icon name="users" class="presence-icon" />{otherMembers.length}</span
@@ -2782,65 +2793,119 @@
 	</form>
 </Sheet>
 
-<!-- スマホ: その他の操作 -->
+<!-- スマホ: その他の操作(執筆 / 出力と確認 / 拡張機能 / シーン の順に、見出しと区切りでまとめる) -->
+{#snippet actionBtn(
+	icon: string,
+	label: string,
+	run: () => void,
+	opts: { disabled?: boolean; danger?: boolean; testid?: string } = {}
+)}
+	<button
+		type="button"
+		class="act"
+		class:danger={opts.danger}
+		disabled={opts.disabled}
+		data-testid={opts.testid}
+		onclick={() => runAction(run)}
+	>
+		<Icon name={icon} class="act-ico" />
+		<span class="act-label">{label}</span>
+	</button>
+{/snippet}
+
 <Sheet bind:open={showActionSheet} title="操作" size="auto">
 	<div class="actions">
 		{#if goalRatio !== null}
-			<button class="goal-line" onclick={() => runAction(openGoalSheet)}>
-				<GoalRing ratio={goalRatio} size={20} />
-				<span>
-					{goal?.type === 'total' ? '全体' : '今日'}
-					{goalDone.toLocaleString()} / {goal?.target.toLocaleString()}字 ({Math.round(
-						goalRatio * 100
-					)}%)
+			<button type="button" class="goal-line" onclick={() => runAction(openGoalSheet)}>
+				<GoalRing ratio={goalRatio} size={22} />
+				<span class="goal-text">
+					<span class="goal-name">{goal?.type === 'total' ? '全体の目標' : '今日の目標'}</span>
+					<span class="goal-num">
+						{goalDone.toLocaleString()} / {goal?.target.toLocaleString()}字 ({Math.round(
+							goalRatio * 100
+						)}%)
+					</span>
 				</span>
-				<span class="goal-edit">目標を変更</span>
+				<span class="goal-edit">変更</span>
 			</button>
 		{/if}
-		<button onclick={() => runAction(() => void handleSave())} disabled={!editorStore.isDirty}>
-			今すぐ保存
-		</button>
-		<button onclick={() => runAction(() => (showProofread = true))}>校正</button>
-		<button onclick={() => runAction(() => void openSearch())}>検索・置換</button>
-		<button onclick={() => runAction(() => (editorStore.focusMode = true))}>集中モード</button>
-		<button disabled={readOnly} onclick={() => runAction(() => (showWritingAssistant = true))}
-			>執筆支援(字下げ・ルビ)</button
-		>
-		<button onclick={() => runAction(() => (showExportModal = true))}>エクスポート</button>
-		<button data-testid="open-review-export" onclick={() => runAction(openReviewExport)}
-			>AI 添削用にコピー</button
-		>
-		<button onclick={() => runAction(openManuscriptPreview)}>作品全体を通して読む</button>
-		<button onclick={() => runAction(() => (showPrintPreview = true))}>印刷プレビュー</button>
-		<button disabled={readOnly} onclick={() => runAction(() => (showVersionManager = true))}
-			>バージョン履歴</button
-		>
-		{#each extToolbar as ext (ext.itemId)}
-			<button
-				data-testid={`action-ext-${ext.extensionId}`}
-				onclick={() =>
-					runAction(() => {
-						extSheetItemId = ext.itemId;
-						showExtSheet = true;
-					})}
-			>
-				{ext.label}
-			</button>
-		{/each}
+
+		<section class="act-group" aria-labelledby="act-h-write">
+			<h3 id="act-h-write" class="act-head">執筆</h3>
+			{@render actionBtn('device-sd-card', '今すぐ保存', () => void handleSave(), {
+				disabled: !editorStore.isDirty
+			})}
+			{@render actionBtn('search', '検索・置換', () => void openSearch())}
+			{@render actionBtn('check', '校正', () => (showProofread = true))}
+			{@render actionBtn(
+				'pencil-bolt',
+				'執筆支援(字下げ・ルビ)',
+				() => (showWritingAssistant = true),
+				{
+					disabled: readOnly
+				}
+			)}
+			{@render actionBtn('focus-centered', '集中モード', () => (editorStore.focusMode = true))}
+		</section>
+
+		<section class="act-group" aria-labelledby="act-h-out">
+			<h3 id="act-h-out" class="act-head">出力と確認</h3>
+			{@render actionBtn('book-2', '作品全体を通して読む', openManuscriptPreview)}
+			{@render actionBtn('package-export', 'エクスポート', () => (showExportModal = true))}
+			{@render actionBtn('clipboard-text', 'AI 添削用にコピー', openReviewExport, {
+				testid: 'open-review-export'
+			})}
+			{@render actionBtn('printer', '印刷プレビュー', () => (showPrintPreview = true))}
+			{@render actionBtn('history', 'バージョン履歴', () => (showVersionManager = true), {
+				disabled: readOnly
+			})}
+		</section>
+
+		{#if extToolbar.length > 0}
+			<section class="act-group" aria-labelledby="act-h-ext">
+				<h3 id="act-h-ext" class="act-head">拡張機能</h3>
+				{#each extToolbar as ext (ext.itemId)}
+					<button
+						type="button"
+						class="act"
+						data-testid={`action-ext-${ext.extensionId}`}
+						onclick={() =>
+							runAction(() => {
+								extSheetItemId = ext.itemId;
+								showExtSheet = true;
+							})}
+					>
+						<Icon name={ext.icon} class="act-ico" />
+						<span class="act-label">{ext.label}</span>
+						{#if ext.badge?.()}
+							<span class="act-live" role="status"><span class="act-live-dot"></span>動作中</span>
+						{/if}
+						<Icon name="chevron-right" class="act-chev" />
+					</button>
+				{/each}
+			</section>
+		{/if}
+
 		{#if editorStore.currentScene && !readOnly}
-			<div class="actions-sep"></div>
-			<button onclick={() => runAction(() => handleRenameScene(editorStore.currentScene!))}
-				>シーン名を変更</button
-			>
-			<button onclick={() => runAction(() => void handleDuplicateScene(editorStore.currentScene!))}
-				>シーンを複製</button
-			>
-			<button
-				class="danger"
-				onclick={() => runAction(() => void handleDeleteScene(editorStore.currentScene!))}
-			>
-				シーンを削除
-			</button>
+			<section class="act-group" aria-labelledby="act-h-scene">
+				<h3 id="act-h-scene" class="act-head">このシーン</h3>
+				{@render actionBtn('edit', 'シーン名を変更', () =>
+					handleRenameScene(editorStore.currentScene!)
+				)}
+				{@render actionBtn(
+					'copy',
+					'シーンを複製',
+					() => void handleDuplicateScene(editorStore.currentScene!)
+				)}
+				{@render actionBtn(
+					'trash',
+					'シーンを削除',
+					() => void handleDeleteScene(editorStore.currentScene!),
+					{
+						danger: true
+					}
+				)}
+			</section>
 		{/if}
 	</div>
 </Sheet>
@@ -3939,6 +4004,12 @@
 		line-height: 1.2;
 		color: var(--color-text-secondary);
 		white-space: nowrap;
+		/* 状態の表示が増えても、右のボタンに重ならないよう、はみ出した分は切る */
+		overflow: hidden;
+	}
+
+	.m-title-sub > :global(:not(.ellipsis)) {
+		flex: none;
 	}
 
 	.m-title-sub :global(.save-state) {
@@ -4123,43 +4194,117 @@
 	}
 
 	.ext-sheet {
-		padding: 4px 16px 16px;
+		padding: 4px 16px 20px;
 	}
 
 	.actions {
 		display: flex;
 		flex-direction: column;
-		padding: 0 8px 8px;
+		padding: 0 12px 12px;
 	}
 
-	.actions button {
-		height: 48px;
+	.act-group {
+		display: flex;
+		flex-direction: column;
+		padding-top: 6px;
+	}
+
+	.act-group + .act-group {
+		margin-top: 6px;
+		border-top: 1px solid var(--color-border);
+	}
+
+	.act-head {
+		margin: 0;
+		padding: 8px 12px 4px;
+		font-size: 12px;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		color: var(--color-text-secondary);
+	}
+
+	.act {
+		display: flex;
+		align-items: center;
+		gap: 14px;
+		width: 100%;
+		min-height: 48px;
 		padding: 0 12px;
 		border: none;
 		border-radius: 10px;
 		background: transparent;
 		color: var(--color-text);
 		text-align: left;
+		font: inherit;
 		font-size: 15px;
 		cursor: pointer;
 	}
 
-	.actions button:active:not(:disabled) {
+	.act:active:not(:disabled) {
 		background: var(--color-surface);
 	}
 
-	.actions button:disabled {
+	.act:disabled {
 		opacity: 0.4;
 	}
 
-	.actions .danger {
-		color: var(--color-error);
+	.act :global(.act-ico) {
+		flex: none;
+		width: 22px;
+		height: 22px;
+		color: var(--color-text-secondary);
 	}
 
-	.actions-sep {
-		height: 1px;
-		margin: 4px 8px;
-		background: var(--color-border);
+	.act :global(.act-ico svg) {
+		width: 100%;
+		height: 100%;
+	}
+
+	.act-label {
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+
+	.act :global(.act-chev) {
+		flex: none;
+		width: 18px;
+		height: 18px;
+		color: var(--color-text-secondary);
+		opacity: 0.7;
+	}
+
+	.act :global(.act-chev svg) {
+		width: 100%;
+		height: 100%;
+	}
+
+	.act-live {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 22px;
+		padding: 0 9px;
+		border-radius: 999px;
+		font-size: 11.5px;
+		color: var(--color-primary);
+		background: color-mix(in srgb, var(--color-primary) 12%, var(--color-background));
+	}
+
+	:root[data-scheme='dark'] .act-live {
+		color: color-mix(in srgb, var(--color-primary) 60%, var(--color-text));
+	}
+
+	.act-live-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: currentColor;
+	}
+
+	.act.danger,
+	.act.danger :global(.act-ico) {
+		color: var(--color-error);
 	}
 
 	.goal-btn {
@@ -4202,22 +4347,48 @@
 	}
 
 	.goal-edit {
-		margin-left: auto;
+		flex: none;
+		font-size: 13px;
 		color: var(--color-primary);
 	}
 
+	:root[data-scheme='dark'] .goal-edit {
+		color: color-mix(in srgb, var(--color-primary) 60%, var(--color-text));
+	}
+
 	.goal-line {
-		width: 100%;
-		border: none;
-		background: transparent;
-		text-align: left;
-		cursor: pointer;
 		display: flex;
 		align-items: center;
-		gap: 10px;
-		padding: 4px 12px 10px;
-		font-size: 13px;
+		gap: 12px;
+		width: 100%;
+		min-height: 56px;
+		margin-bottom: 4px;
+		padding: 8px 14px;
+		border: 1px solid var(--color-border);
+		border-radius: 12px;
+		background: color-mix(in srgb, var(--color-surface) 55%, var(--color-background));
+		color: var(--color-text);
+		text-align: left;
+		font: inherit;
+		cursor: pointer;
+	}
+
+	.goal-text {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+	}
+
+	.goal-name {
+		font-size: 12px;
 		color: var(--color-text-secondary);
+	}
+
+	.goal-num {
+		font-size: 14px;
+		font-variant-numeric: tabular-nums;
 	}
 
 	@media (max-width: 1024px) {

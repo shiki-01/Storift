@@ -6,6 +6,14 @@ on:
     branches: [main]
     paths:
       - 'site/**'
+      # 拡張機能のマニフェスト・コンテンツ(サイトの一覧とレジストリの元データ)と、それを検証・生成するもの
+      - 'extensions/**'
+      - 'scripts/validate-extensions.ts'
+      - 'scripts/build-registry.ts'
+      - 'scripts/lib/**'
+      - 'src/lib/extensions/manifest.ts'
+      - 'src/lib/extensions/pack.ts'
+      - 'src/lib/extensions/registryIndex.ts'
       - '.github/workflows/deploy-site.yml'
   workflow_dispatch:
 

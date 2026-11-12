@@ -24,6 +24,7 @@
 		<nav aria-label="ガイドと規約">
 			<p class="head">ガイドと規約</p>
 			<a href="/guide/firebase">Firebase 設定ガイド</a>
+			<a href="/extensions/submit">拡張機能を投稿する</a>
 			<a href="/privacy">プライバシーポリシー</a>
 			<a href="/terms">利用規約</a>
 		</nav>

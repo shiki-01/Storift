@@ -8,6 +8,7 @@
 		applyAllSuggestions,
 		type ProofreadingIssue
 	} from '$lib/utils/proofreading';
+	import { packRuntime } from '$lib/extensions/packRuntime.svelte';
 
 	interface Props {
 		open?: boolean;
@@ -21,7 +22,7 @@
 
 	let { open = $bindable(false), text, onChange, onJump }: Props = $props();
 
-	let issues = $derived(open ? proofread(text) : []);
+	let issues = $derived(open ? proofread(text, packRuntime.ruleSources) : []);
 	let summary = $derived(getProofreadingSummary(issues));
 	let fixable = $derived(issues.filter((i) => i.suggestion).length);
 

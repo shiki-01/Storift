@@ -8,6 +8,8 @@ import {
 	type ThemeMirror
 } from '$lib/utils/themeBoot';
 import { get as idbGet, set as idbSet } from 'idb-keyval';
+import { packRuntime, type PackThemeEntry } from '$lib/extensions/packRuntime.svelte';
+import { DEFAULT_THEME_FONTS } from '$lib/utils/themeTools';
 
 export interface Theme {
 	id: string;
@@ -173,6 +175,17 @@ export const themes: Record<string, Theme> = { ...builtinThemes };
 
 const CUSTOM_THEMES_KEY = 'app-custom-themes';
 
+/** パックのテーマを、アプリのテーマにする(フォントは既定。パックは指定できない) */
+function packEntryToTheme(entry: PackThemeEntry): Theme {
+	return {
+		id: entry.themeId,
+		name: entry.theme.name,
+		colors: { ...entry.theme.colors },
+		editor: { ...entry.theme.editor },
+		fonts: { ...DEFAULT_THEME_FONTS }
+	};
+}
+
 function findTheme(themeId: string): Theme | undefined {
 	return Object.hasOwn(themes, themeId) ? themes[themeId] : undefined;
 }
@@ -183,6 +196,10 @@ function findTheme(themeId: string): Theme | undefined {
 class ThemeStore {
 	private currentTheme: Theme = $state(builtinThemes.light);
 	private customList: Theme[] = $state([]);
+	/** 有効なパックが足したテーマ(`pack:<パック>:<テーマ>`)。パックの有効/無効で増減する */
+	private packList: Theme[] = $state([]);
+	/** 保存済みのテーマがパックのもので、パックがまだ読み込まれていないときの ID */
+	private pendingPackThemeId: string | null = null;
 	private autoTheme: boolean = $state(false);
 	private initialized = false;
 	/** システムが最後にダークと判定できたか(判定できないときの代わり) */
@@ -228,6 +245,11 @@ class ThemeStore {
 			if (savedAutoTheme) {
 				this.autoTheme = true;
 				this.applySystemTheme();
+			} else if (!savedTheme && savedThemeId?.startsWith('pack:')) {
+				// パックのテーマ。パックは拡張の起動(あと)で読み込まれるので、それまでは直前の見た目を保ち、
+				// 保存済みの ID は書き換えない(syncPackThemes / settlePackThemes で確定する)
+				this.pendingPackThemeId = savedThemeId;
+				if (mirror) this.restoreFromMirror(mirror);
 			} else if (savedTheme) {
 				this.currentTheme = savedTheme;
 				this.applyTheme(this.currentTheme);
@@ -300,7 +322,52 @@ class ThemeStore {
 	 * 組み込みテーマとカスタムテーマをすべて返す
 	 */
 	get allThemes(): Theme[] {
-		return [...Object.values(builtinThemes), ...this.customList];
+		return [...Object.values(builtinThemes), ...this.customList, ...this.packList];
+	}
+
+	/** パックが足したテーマ */
+	get packThemes(): Theme[] {
+		return this.packList;
+	}
+
+	/**
+	 * 有効なパックのテーマを取り込み直す(パックの有効化・無効化・更新のたびに呼ばれる)。
+	 * 使っていたテーマを足していたパックが無効になったら、ライトに戻す
+	 */
+	async syncPackThemes() {
+		this.packList = packRuntime.themes.map(packEntryToTheme);
+		this.rebuildRegistry();
+		await this.ready;
+		if (this.autoTheme) return;
+		const pending = this.pendingPackThemeId;
+		if (pending) {
+			const theme = findTheme(pending);
+			if (!theme) return;
+			this.pendingPackThemeId = null;
+			this.currentTheme = theme;
+			this.applyTheme(theme);
+			this.writeMirror();
+			return;
+		}
+		if (!this.currentTheme.id.startsWith('pack:')) return;
+		const latest = findTheme(this.currentTheme.id);
+		if (latest) {
+			// パックの更新で色が変わっていたら反映する
+			this.currentTheme = latest;
+			this.applyTheme(latest);
+			this.writeMirror();
+		} else {
+			await this.setTheme('light');
+		}
+	}
+
+	/** 拡張の起動が終わったあと、読み込めなかったパックのテーマの設定をライトに戻す */
+	async settlePackThemes() {
+		await this.ready;
+		if (this.pendingPackThemeId && !findTheme(this.pendingPackThemeId)) {
+			this.pendingPackThemeId = null;
+			if (!this.autoTheme) await this.setTheme('light');
+		}
 	}
 
 	/**
@@ -405,10 +472,15 @@ class ThemeStore {
 	 */
 	private setCustomList(list: Theme[]) {
 		this.customList = list;
+		this.rebuildRegistry();
+	}
+
+	/** ID 参照用の登録を、組み込み・カスタム・パックのテーマで作り直す */
+	private rebuildRegistry() {
 		for (const id of Object.keys(themes)) {
 			if (!Object.hasOwn(builtinThemes, id)) delete themes[id];
 		}
-		for (const theme of list) {
+		for (const theme of [...this.customList, ...this.packList]) {
 			themes[theme.id] = theme;
 		}
 	}

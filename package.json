@@ -2,7 +2,7 @@
 	"name": "storift",
 	"private": true,
 	"license": "MIT",
-	"version": "0.8.0",
+	"version": "0.9.0",
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
@@ -18,6 +18,8 @@
 		"test:coverage": "vitest --coverage",
 		"tauri": "tauri",
 		"icons": "node scripts/build-icons.mjs",
+		"validate:extensions": "bun scripts/validate-extensions.ts",
+		"build:registry": "bun scripts/build-registry.ts",
 		"desktop:dev": "tauri dev",
 		"desktop:build": "tauri build",
 		"test:rules": "firebase emulators:exec --only firestore --project demo-storift \"vitest run --config vitest.rules.config.ts\"",
@@ -34,7 +36,8 @@
 		"test:e2e:characters": "node tests/e2e/characters.spec.mjs",
 		"test:e2e:worldbuilding": "node tests/e2e/worldbuilding.spec.mjs",
 		"test:e2e:toolbar": "node tests/e2e/toolbar-ext.spec.mjs",
-		"test:e2e:extensions": "node tests/e2e/extensions.spec.mjs"
+		"test:e2e:extensions": "node tests/e2e/extensions.spec.mjs",
+		"test:e2e:packs": "node tests/e2e/packs.spec.mjs"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^1.4.0",

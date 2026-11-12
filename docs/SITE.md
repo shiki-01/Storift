@@ -7,7 +7,7 @@
 | サイト（紹介）     | `storift.shiki-01.com`     | `site/`        | `storift-site`                |
 | エディタ（アプリ） | `app.storift.shiki-01.com` | リポジトリ直下 | `storift`（既存）             |
 
-- サイトは SvelteKit + `adapter-static` の静的サイト。ページは `/`、`/features`、`/guide`、`/guide/firebase`(Firebase 同期の設定ガイド)、`/extensions`(拡張機能の一覧)、`/extensions/<id>`(拡張ごとのページ。リポジトリ直下の `extensions/<id>/manifest.json` から、ビルド時に生成する。「この拡張が扱う情報」はプライバシーポリシーの一部)、`/faq`、`/privacy`(プライバシーポリシー)、`/terms`(利用規約)。
+- サイトは SvelteKit + `adapter-static` の静的サイト。ページは `/`、`/features`、`/guide`、`/guide/firebase`(Firebase 同期の設定ガイド)、`/extensions`(拡張機能の一覧)、`/extensions/<id>`(拡張ごとのページ。リポジトリ直下の `extensions/<id>/manifest.json` から、ビルド時に生成する。公式とコミュニティ(パック)の両方を載せ、コミュニティには出所のラベルを出す。「この拡張が扱う情報」はプライバシーポリシーの一部)、`/extensions/submit`(拡張機能を投稿する方法。固定のルートなので、`[id]` より優先される。そのため `submit` は拡張の id に使えない)、`/faq`、`/privacy`(プライバシーポリシー)、`/terms`(利用規約)。
 - アプリのコード・ビルドは変更しない。サイトは `site/` に独立した `package.json` を持つ。
 - サイトとアプリは別オリジンになる。Cookie・IndexedDB・Service Worker は共有されない（意図した分離）。
 
@@ -114,3 +114,11 @@ Cloudflare でドメインを管理している場合、Pages のカスタムド
 ## 証明書
 
 `app.storift.shiki-01.com` は 2 階層のサブドメインになる。Cloudflare Pages のカスタムドメインとして追加すれば証明書は個別に発行されるが、発行されない場合は、Cloudflare の SSL/TLS 設定でこのホスト名が対象になっているか確認する。
+
+## 拡張機能のレジストリ
+
+- サイトのビルド(`bun run build` / `dev`)の前に、`bun run registry`(`bun ../scripts/build-registry.ts`)が、`extensions/*/manifest.json` から `site/static/extensions-registry/` を生成する(`index.json` と `<id>/<version>.storiftext.json`。コミットしない。`site/.gitignore`)。`site/build` に出て、アプリが `https://storift.shiki-01.com/extensions-registry/` から取得する。仕様は [docs/EXTENSIONS.md](EXTENSIONS.md)。
+- `/extensions` と `/extensions/<id>` は、同じ `extensions/*/manifest.json` から作る(`site/src/lib/extensions.ts`。`_template` は除く)。
+- `site/static/_headers` で `/extensions-registry/*` に CORS(`Access-Control-Allow-Origin: *`)と Cache-Control を付ける。規則を重ねない(重なると Cache-Control が連結される)。
+- デプロイ: `.github/workflows/deploy-site.yml` は、`site/**` に加えて `extensions/**`、`scripts/` のうち検証・生成に使うもの、`src/lib/extensions/` の `manifest.ts` / `pack.ts` / `registryIndex.ts` の変更でも動く。アプリ(`deploy-app.yml`)は `site/**` などを除く変更で動くので、`extensions/**` の変更では両方が動く。
+- ビルド確認のとき、リポジトリ直下の `.svelte-kit/` が無い状態でも通ること(CI にはそれが無い。`site/vite.config.ts` の `esbuild.tsconfigRaw: '{}'` が、直下の tsconfig を読み込ませないために必要)。成果物(`site/build`)の HTML が、`/_app/...` の絶対パスで CSS / JS を参照していること(`kit.paths.relative: false`)も確認する。

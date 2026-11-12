@@ -3,7 +3,17 @@
 	import Icon from '$lib/Icon.svelte';
 	import { APP_URL, RELEASES_URL } from '$lib/config';
 	import { icons, type IconName } from '$lib/icons';
-	import { KIND_LABELS, PLATFORM_LABELS, platformsLabel, summarizePermissions } from '$manifest';
+	import {
+		CONTRIBUTION_LABELS,
+		KIND_LABELS,
+		ORIGIN_LABELS,
+		ORIGIN_NOTES,
+		PLATFORM_LABELS,
+		contributionKinds,
+		platformsLabel,
+		summarizePermissions
+	} from '$manifest';
+	import { bundleUrl, sourceUrl } from '$lib/extensions';
 
 	let { data } = $props();
 
@@ -11,6 +21,8 @@
 	const summary = $derived(summarizePermissions(ext.permissions));
 	const iconName = $derived<IconName>(ext.icon in icons ? (ext.icon as IconName) : 'puzzle');
 	const webAvailable = $derived(ext.platforms.includes('web'));
+	const community = $derived(ext.source === 'community');
+	const contributes = $derived(contributionKinds(ext.contributions));
 </script>
 
 <Seo
@@ -34,6 +46,7 @@
 		<p>{ext.description}</p>
 		<ul class="facts" aria-label="拡張の情報">
 			<li class="chip kind">{KIND_LABELS[ext.kind]}</li>
+			{#if community}<li class="chip origin">{ORIGIN_LABELS.community}</li>{/if}
 			<li class="chip">{platformsLabel(ext.platforms)}</li>
 			<li class="chip">版 {ext.version}</li>
 			<li class="chip">作者: {ext.author}</li>
@@ -42,12 +55,36 @@
 	</div>
 
 	<div class="doc">
+		{#if community}
+			<section aria-labelledby="origin-h">
+				<h2 id="origin-h">出所</h2>
+				<p class="policy">{ORIGIN_NOTES.community}</p>
+				<p>
+					この拡張は、公式リポジトリの <a href={sourceUrl(ext.id)} rel="noopener noreferrer"
+						>extensions/{ext.id}/</a
+					>
+					で公開されています。作者: {ext.author}。
+				</p>
+			</section>
+		{/if}
+
 		<section>
 			<h2>使い方</h2>
-			<p>
-				Storift
-				の設定の「拡張機能」で、この拡張のスイッチを入れます。有効にするときに、下の「この拡張が扱う情報」と同じ内容が確認画面に出るので、同意すると有効になります。既定では無効です。
-			</p>
+			{#if community}
+				<p>
+					Storift の設定の「拡張機能」→「拡張機能を探す」で「{ext.name}」を探し、「インストール」を押します。インストールすると、下の「この拡張が扱う情報」と同じ内容が確認画面に出るので、同意すると有効になります。インストールしただけでは有効になりません。
+				</p>
+				<p>
+					ファイルから追加する場合は、<a href={bundleUrl(ext)} download
+						>バンドル(.storiftext.json)</a
+					>を保存して、設定の「ファイルから追加」で選びます(その場合の出所は「個人追加(未審査)」と表示されます)。
+				</p>
+			{:else}
+				<p>
+					Storift
+					の設定の「拡張機能」で、この拡張のスイッチを入れます。有効にするときに、下の「この拡張が扱う情報」と同じ内容が確認画面に出るので、同意すると有効になります。既定では無効です。
+				</p>
+			{/if}
 			<p>
 				対応している環境: {ext.platforms
 					.map((p) => PLATFORM_LABELS[p])
@@ -56,11 +93,23 @@
 			</p>
 		</section>
 
+		{#if contributes.length > 0}
+			<section aria-labelledby="contrib-h">
+				<h2 id="contrib-h">この拡張が追加するもの</h2>
+				<ul>
+					{#each contributes as kind (kind)}<li>{CONTRIBUTION_LABELS[kind]}</li>{/each}
+				</ul>
+				<p>
+					パックはコードを含まない設定ファイル(JSON)だけで、通信せず、コードも実行しません。作品の本文は読み取りません。
+				</p>
+			</section>
+		{/if}
+
 		<section id="privacy" aria-labelledby="privacy-h">
 			<h2 id="privacy-h">この拡張が扱う情報</h2>
 			<p class="policy">
 				このページの「この拡張が扱う情報」は、<a href="/privacy">プライバシーポリシー</a
-				>の一部です。この拡張を有効にした場合は、ここに記載した範囲で、情報が外部へ送信されます。
+				>の一部です。この拡張を有効にした場合は、ここに記載した範囲で、情報が{#if ext.privacy.sends.length === 0}扱われます(外部へは送信されません){:else}外部へ送信されます{/if}。
 			</p>
 
 			<h3>送る情報</h3>
@@ -106,10 +155,8 @@
 				{#if summary.network.length > 0}
 					<li>通信できる相手: {summary.network.join(' / ')}(ホスト名の完全一致)</li>
 				{/if}
+				{#if ext.kind === 'pack'}<li>通信: しません(コードも実行しません)</li>{/if}
 				{#if summary.storage}<li>端末内への保存: 設定などを保存します</li>{/if}
-				{#if summary.receives.length === 0 && summary.network.length === 0 && !summary.storage}
-					<li>なし</li>
-				{/if}
 			</ul>
 		</section>
 
@@ -121,7 +168,10 @@
 				</li>
 				<li><a href="/terms">利用規約</a></li>
 				{#if ext.homepage}
-					<li>連携先: <a href={ext.homepage} rel="noopener noreferrer">{ext.homepage}</a></li>
+					<li>
+						{ext.kind === 'official' ? '連携先' : '作者のページ'}:
+						<a href={ext.homepage} rel="noopener noreferrer">{ext.homepage}</a>
+					</li>
 				{/if}
 			</ul>
 		</section>
@@ -194,6 +244,12 @@
 		border-radius: 999px;
 		font-size: 12.5px;
 		color: var(--color-text-secondary);
+	}
+
+	.chip.origin {
+		border-color: color-mix(in srgb, var(--color-text) 30%, var(--color-border));
+		color: var(--color-text);
+		font-weight: 600;
 	}
 
 	.chip.kind {

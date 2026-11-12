@@ -1,0 +1,26 @@
+{
+	"id": "wakakusa",
+	"name": "若草",
+	"scheme": "light",
+	"colors": {
+		"primary": "#3f6b3a",
+		"secondary": "#5c6b4a",
+		"background": "#f3f6ec",
+		"surface": "#e6ecd9",
+		"text": "#243020",
+		"textSecondary": "#5d6a55",
+		"border": "#d3dcc3",
+		"accent": "#a2523a",
+		"success": "#3f6b3a",
+		"warning": "#9a6c1c",
+		"error": "#a33a3a",
+		"info": "#35607a"
+	},
+	"editor": {
+		"background": "#f9fbf4",
+		"text": "#243020",
+		"selection": "#cfe0bd",
+		"lineHighlight": "#eef3e3",
+		"cursor": "#3f6b3a"
+	}
+}

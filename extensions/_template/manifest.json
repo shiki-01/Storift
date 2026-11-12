@@ -1,0 +1,28 @@
+{
+	"id": "my-pack",
+	"name": "私のパック",
+	"description": "ここに 1 〜 2 文で、このパックが何を足すのかを書きます。",
+	"version": "1.0.0",
+	"author": "あなたの名前",
+	"kind": "pack",
+	"apiVersion": 1,
+	"platforms": ["web", "desktop"],
+	"icon": "puzzle",
+	"license": "MIT",
+	"updatedAt": "2026-11-12",
+	"permissions": { "storage": true },
+	"privacy": {
+		"sends": [],
+		"stores": ["インストールしたパックの内容: この端末のブラウザ内(IndexedDB)にだけ保存"],
+		"onDisable": "無効にすると、このパックが足す機能がすべて止まります。アンインストールすると、この端末に保存した内容を削除します。",
+		"notes": [
+			"通信しません。コードも実行しません(JSON のデータだけです)。",
+			"作品の本文は読み取りません。",
+			"同期・バックアップ・書き出しには含まれません。"
+		]
+	},
+	"contributions": {
+		"proofreadRules": ["contents/rules.json"],
+		"assistKeys": ["contents/keys.json"]
+	}
+}

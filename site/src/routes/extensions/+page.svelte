@@ -2,18 +2,54 @@
 	import Seo from '$lib/Seo.svelte';
 	import Icon from '$lib/Icon.svelte';
 	import { APP_URL } from '$lib/config';
-	import { extensions } from '$lib/extensions';
-	import { KIND_LABELS, platformsLabel } from '$manifest';
+	import { extensions, type SiteExtension } from '$lib/extensions';
+	import { CONTRIBUTION_LABELS, contributionKinds } from '$manifest';
+	import { KIND_LABELS, ORIGIN_LABELS, platformsLabel } from '$manifest';
 	import { icons, type IconName } from '$lib/icons';
 
 	/** マニフェストのアイコン名がサイトの線画に無いときは、パズルの形にする */
 	const iconFor = (name: string): IconName => (name in icons ? (name as IconName) : 'puzzle');
+
+	const official = extensions.filter((e) => e.source === 'official');
+	const community = extensions.filter((e) => e.source === 'community');
 </script>
 
 <Seo
 	title="拡張機能"
-	description="Storift の拡張機能の一覧。公式の拡張機能が、何を扱い、何を外部に送るのかを、一つずつ説明します。"
+	description="Storift の拡張機能の一覧。公式とコミュニティの拡張機能が、何を扱い、何を外部に送るのかを、一つずつ説明します。"
 />
+
+{#snippet card(ext: SiteExtension)}
+	<li>
+		<a class="card" href={`/extensions/${ext.id}`}>
+			<span class="ico"><Icon name={iconFor(ext.icon)} size={26} /></span>
+			<span class="body">
+				<span class="title-line">
+					<span class="name">{ext.name}</span>
+					<span class="chip kind">{KIND_LABELS[ext.kind]}</span>
+					{#if ext.source === 'community'}
+						<span class="chip origin">{ORIGIN_LABELS.community}</span>
+					{/if}
+				</span>
+				<span class="desc">{ext.description}</span>
+				<span class="meta">
+					<span class="chip">{platformsLabel(ext.platforms)}</span>
+					{#if ext.kind === 'pack'}
+						{#each contributionKinds(ext.contributions) as kind (kind)}
+							<span class="chip">{CONTRIBUTION_LABELS[kind]}</span>
+						{/each}
+					{/if}
+					<span class="send">
+						{ext.privacy.sends.length === 0
+							? '外部へは何も送りません'
+							: `送り先: ${ext.privacy.sends.map((s) => s.to.split(/[(（]/)[0]).join('、')}`}
+					</span>
+				</span>
+			</span>
+			<span class="more">詳しく <Icon name="arrow" size={16} /></span>
+		</a>
+	</li>
+{/snippet}
 
 <div class="wrap">
 	<div class="page-head">
@@ -33,30 +69,26 @@
 			>の一部です。
 		</p>
 		<ul class="cards">
-			{#each extensions as ext (ext.id)}
-				<li>
-					<a class="card" href={`/extensions/${ext.id}`}>
-						<span class="ico"><Icon name={iconFor(ext.icon)} size={26} /></span>
-						<span class="body">
-							<span class="title-line">
-								<span class="name">{ext.name}</span>
-								<span class="chip kind">{KIND_LABELS[ext.kind]}</span>
-							</span>
-							<span class="desc">{ext.description}</span>
-							<span class="meta">
-								<span class="chip">{platformsLabel(ext.platforms)}</span>
-								<span class="send">
-									{ext.privacy.sends.length === 0
-										? '外部へは何も送りません'
-										: `送り先: ${ext.privacy.sends.map((s) => s.to.split(/[(（]/)[0]).join('、')}`}
-								</span>
-							</span>
-						</span>
-						<span class="more">詳しく <Icon name="arrow" size={16} /></span>
-					</a>
-				</li>
-			{/each}
+			{#each official as ext (ext.id)}{@render card(ext)}{/each}
 		</ul>
+	</section>
+
+	<section aria-labelledby="community">
+		<h2 id="community" class="sec">コミュニティの拡張機能</h2>
+		<p class="lead">
+			コミュニティの作者が作った拡張機能です。<strong>公式のものではありません。</strong
+			>公式リポジトリへの提案(プルリクエスト)として受け付け、公開前に、ライセンス・内容・扱う情報の記述を確認しています。ただし、運営者は内容を保証しません。アプリの設定の「拡張機能」→「拡張機能を探す」から入れられます。
+		</p>
+		<ul class="cards">
+			{#each community as ext (ext.id)}{@render card(ext)}{/each}
+		</ul>
+		{#if community.length === 0}
+			<p class="lead">いまのところ、公開している拡張機能はありません。</p>
+		{/if}
+		<p class="lead submit">
+			拡張機能を作って公開したい方は、<a href="/extensions/submit">拡張機能を投稿する</a
+			>を参照してください。
+		</p>
 	</section>
 
 	<section aria-labelledby="kinds">
@@ -64,23 +96,24 @@
 		<dl class="kinds">
 			<div>
 				<dt>公式</dt>
-				<dd>Storift に同梱する拡張機能です(上の一覧)。この種類だけが、いま使えます。</dd>
+				<dd>Storift に同梱する拡張機能です(上の一覧)。</dd>
 			</div>
 			<div>
-				<dt>パック <span class="plan">予定</span></dt>
+				<dt>パック</dt>
 				<dd>
-					テーマや辞書など、コードを含まない設定ファイルだけの拡張機能です。対応は今後の予定です。
+					テーマ・校正の辞書・入力補助キーなど、コードを含まない設定ファイル(JSON)だけの拡張機能です。通信せず、コードも実行しません。端末内にだけ保存し、同期やバックアップには含まれません。
 				</dd>
 			</div>
 			<div>
 				<dt>スクリプト <span class="plan">予定</span></dt>
 				<dd>
-					隔離した環境で動き、宣言した権限の範囲だけで本体とやり取りする拡張機能です。対応は今後の予定です。
+					隔離した環境で動き、宣言した権限の範囲だけで本体とやり取りする拡張機能です。対応は今後の予定で、まだ提供していません。
 				</dd>
 			</div>
 		</dl>
+		<h3 class="sub">出所のラベル</h3>
 		<p class="lead">
-			コミュニティの拡張機能は、今後、リポジトリで受け付けて、このページで紹介する予定です(まだ公開していません)。コミュニティの拡張機能は第三者が作るもので、運営者はそのデータを受け取りません。扱う情報は、作者の説明に従います。詳しくは<a
+			アプリでは、拡張機能の出所を必ずラベルで示します。「コミュニティ」は、このページに載っている拡張機能です。「個人追加(未審査)」(ファイルから追加)と「個人フォルダ(未審査)」(デスクトップ版の拡張フォルダ)は、運営者もコミュニティも確認していないもので、公式のものではありません。内容を確認できるものだけを追加してください(自己責任)。詳しくは<a
 				href="/privacy">プライバシーポリシー</a
 			>と<a href="/terms">利用規約</a>を参照してください。
 		</p>
@@ -88,7 +121,7 @@
 
 	<div class="next">
 		<p>拡張機能は、設定の「拡張機能」から有効にします。</p>
-		<a class="btn secondary" href="/guide">使い方を見る</a>
+		<a class="btn secondary" href="/extensions/submit">拡張機能を投稿する</a>
 		<a class="btn primary" href={APP_URL}>エディタを開く</a>
 	</div>
 </div>
@@ -172,11 +205,14 @@
 	}
 
 	.desc {
+		overflow-wrap: anywhere;
 		color: var(--color-text-secondary);
 		font-size: 14px;
 	}
 
 	.meta {
+		min-width: 0;
+		overflow-wrap: anywhere;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
@@ -258,8 +294,29 @@
 		}
 
 		.more {
-			flex-basis: 100%;
+			flex-basis: calc(100% - 64px);
 			margin-left: 64px;
 		}
+	}
+
+	.chip.origin {
+		border-color: color-mix(
+			in srgb,
+			var(--color-info, var(--color-primary)) 45%,
+			var(--color-border)
+		);
+		color: var(--color-text);
+		background: color-mix(in srgb, var(--color-primary) 4%, var(--color-background));
+		font-weight: 600;
+	}
+
+	.sub {
+		margin: 28px 0 8px;
+		font-size: 1rem;
+		letter-spacing: 0.04em;
+	}
+
+	.submit {
+		margin-top: 16px;
 	}
 </style>

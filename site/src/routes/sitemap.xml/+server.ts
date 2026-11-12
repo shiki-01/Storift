@@ -9,6 +9,7 @@ const paths = [
 	'/guide',
 	'/guide/firebase',
 	'/extensions',
+	'/extensions/submit',
 	...extensions.map((e) => `/extensions/${e.id}`),
 	'/faq',
 	'/privacy',

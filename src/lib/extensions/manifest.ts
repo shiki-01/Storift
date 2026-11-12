@@ -3,8 +3,19 @@
  *
  * マニフェストは、アプリ(同梱する拡張の一覧・同意画面・設定)と紹介サイト(拡張ページ)の両方が読む、
  * 拡張についての単一の情報源。このファイルは紹介サイト(site/)からも読み込むので、
- * 他のモジュールに依存させない(純関数と定数だけを置く)。
+ * パックの検証(pack.ts)以外のモジュールに依存させない(純関数と定数だけを置く)。
  */
+
+import { validateContributions, type PackContributions } from './pack';
+
+// 紹介サイト(site/)は manifest.ts だけを読み込むので、表示に使うパックの定数もここから出す
+export {
+	ALLOWED_LICENSES,
+	CONTRIBUTION_LABELS,
+	PACK_LIMITS,
+	contributionKinds,
+	type ContributionKind
+} from './pack';
 
 /** マニフェストの形式の版。互換性のない変更をしたら上げる */
 export const MANIFEST_API_VERSION = 1;
@@ -15,7 +26,7 @@ export type ExtensionPlatform = 'web' | 'desktop';
 /**
  * 拡張の種類。
  * - official: アプリに同梱する公式の拡張(特権が必要なものを含む)
- * - pack: コードを含まない JSON(テーマ・辞書など)。第 2 段階で対応する予定
+ * - pack: コードを含まない JSON(テーマ・辞書など)。通信せず、コードも実行しない
  * - script: sandbox 付きの iframe で隔離して実行するスクリプト。第 3 段階で対応する予定
  */
 export type ExtensionKind = 'official' | 'pack' | 'script';
@@ -89,8 +100,23 @@ export interface ExtensionManifest {
 	icon: string;
 	homepage?: string;
 	license?: string;
+	/** 最後に更新した日(YYYY-MM-DD)。レジストリの一覧に載せる(ビルドを再現可能にするため、コミット日時ではなくこの値を使う)。パックでは必須 */
+	updatedAt?: string;
 	permissions: ExtensionPermissions;
 	privacy: ExtensionPrivacy;
+	/** パック(kind: 'pack')の貢献。貢献の種類ごとに、コンテンツ(JSON)への相対パスを書く */
+	contributions?: PackContributions;
+}
+
+/** 公式の拡張(アプリに同梱)の ID。kind: 'official' を名乗れるのはこれだけ */
+export const OFFICIAL_EXTENSION_IDS: readonly string[] = ['monolog', 'discord'];
+
+/** 公式以外が使えない ID(公式と誤認させない)。`official-` で始まるものも不可 */
+export const RESERVED_EXTENSION_IDS: readonly string[] = [...OFFICIAL_EXTENSION_IDS, 'submit'];
+
+/** 公式以外が使えない ID か */
+export function isReservedId(id: string): boolean {
+	return RESERVED_EXTENSION_IDS.includes(id) || id.startsWith('official-');
 }
 
 export type ManifestValidation =
@@ -118,8 +144,10 @@ const MANIFEST_KEYS = [
 	'icon',
 	'homepage',
 	'license',
+	'updatedAt',
 	'permissions',
-	'privacy'
+	'privacy',
+	'contributions'
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -136,6 +164,13 @@ function isTextArray(value: unknown): value is string[] {
 
 function unknownKeys(obj: Record<string, unknown>, allowed: readonly string[]): string[] {
 	return Object.keys(obj).filter((key) => !allowed.includes(key));
+}
+
+/** YYYY-MM-DD の実在する日付か */
+function isIsoDate(value: unknown): boolean {
+	if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+	const date = new Date(`${value}T00:00:00Z`);
+	return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 function isHttpsUrl(value: unknown): boolean {
@@ -219,6 +254,39 @@ function validatePrivacy(value: unknown, errors: string[]): void {
 		errors.push('privacy.notes は文字列の配列で指定してください');
 }
 
+/** 種類(kind)ごとの決まり。パックは通信せず、イベントも購読せず、本体の情報も読まない */
+function validateKindRules(input: Record<string, unknown>, errors: string[]): void {
+	const id = typeof input.id === 'string' ? input.id : '';
+	if (input.kind !== 'official' && id && isReservedId(id)) {
+		errors.push(`id「${id}」は予約されています(公式と誤認させないため、別の ID にしてください)`);
+	}
+	if (input.kind !== 'pack') {
+		if (input.contributions !== undefined)
+			errors.push('contributions は kind: pack の拡張だけが持てます');
+		return;
+	}
+	if (input.contributions === undefined) {
+		errors.push('パックには contributions(貢献するコンテンツ)が必要です');
+	} else {
+		validateContributions(input.contributions, errors);
+	}
+	if (!isText(input.license)) errors.push('パックには license(ライセンス)が必要です');
+	if (input.updatedAt === undefined) errors.push('パックには updatedAt(更新日)が必要です');
+	const permissions = isRecord(input.permissions) ? input.permissions : {};
+	for (const key of ['network', 'events', 'read']) {
+		const value = permissions[key];
+		if (value !== undefined && !(Array.isArray(value) && value.length === 0)) {
+			errors.push(
+				`パックは permissions.${key} を持てません(通信せず、本体のイベントも情報も扱いません)`
+			);
+		}
+	}
+	const privacy = isRecord(input.privacy) ? input.privacy : {};
+	if (Array.isArray(privacy.sends) && privacy.sends.length > 0) {
+		errors.push('パックは外部へ情報を送れません(privacy.sends は [] にしてください)');
+	}
+}
+
 /** マニフェストを検証する。問題があれば、すべての問題を日本語の文で返す */
 export function validateManifest(input: unknown): ManifestValidation {
 	if (!isRecord(input)) return { ok: false, errors: ['マニフェストは JSON のオブジェクトです'] };
@@ -255,9 +323,13 @@ export function validateManifest(input: unknown): ManifestValidation {
 		errors.push('homepage は https:// の URL で指定してください');
 	if (input.license !== undefined && !isText(input.license))
 		errors.push('license は文字列で指定してください');
+	if (input.updatedAt !== undefined && !isIsoDate(input.updatedAt))
+		errors.push('updatedAt は実在する日付を YYYY-MM-DD の形式で指定してください');
 
 	validatePermissions(input.permissions, errors);
 	validatePrivacy(input.privacy, errors);
+
+	validateKindRules(input, errors);
 
 	// 宣言と説明の食い違い: 通信を宣言したのに、送る情報の説明が無い
 	if (
@@ -319,6 +391,33 @@ export const KIND_LABELS: Record<ExtensionKind, string> = {
 	official: '公式',
 	pack: 'パック',
 	script: 'スクリプト'
+};
+
+/**
+ * 拡張の出所。UI では必ずラベルを出し、公式と誤認させない。
+ * - official: Storift に同梱
+ * - community: 公式リポジトリの extensions/<id>/ に PR で追加されたもの(リポジトリ上でレビューされる)
+ * - personal-file: 「ファイルから追加」で入れたもの(未審査)
+ * - personal-folder: デスクトップ版の「拡張フォルダ」から読み込んだもの(未審査)
+ */
+export type ExtensionOrigin = 'official' | 'community' | 'personal-file' | 'personal-folder';
+
+export const ORIGIN_LABELS: Record<ExtensionOrigin, string> = {
+	official: '公式',
+	community: 'コミュニティ',
+	'personal-file': '個人追加(未審査)',
+	'personal-folder': '個人フォルダ(未審査)'
+};
+
+/** 出所の補足(詳細・同意画面に出す) */
+export const ORIGIN_NOTES: Record<ExtensionOrigin, string> = {
+	official: 'Storift に同梱している拡張です。',
+	community:
+		'コミュニティの作者が公開した拡張です。公式のものではありません。公開前にリポジトリ上でレビューされますが、内容は保証されません。',
+	'personal-file':
+		'ファイルから追加した拡張です。未審査で、公式のものではありません。内容を確認できるものだけを追加してください(自己責任)。',
+	'personal-folder':
+		'拡張フォルダから読み込んだ拡張です。未審査で、公式のものではありません。内容を確認できるものだけを置いてください(自己責任)。'
 };
 
 const EVENT_LABELS: Record<PermissionEvent, string> = {

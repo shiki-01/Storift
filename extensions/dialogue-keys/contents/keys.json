@@ -1,0 +1,17 @@
+{
+	"id": "dialogue",
+	"name": "会話文の記号",
+	"keys": [
+		{ "label": "！", "text": "！" },
+		{ "label": "？", "text": "？" },
+		{ "label": "！？", "text": "！？" },
+		{ "label": "？！", "text": "？！" },
+		{ "label": "〜", "text": "〜" },
+		{ "label": "・・・", "text": "・・・" },
+		{ "label": "（）", "text": "（）", "caretBack": 1 },
+		{ "label": "〈〉", "text": "〈〉", "caretBack": 1 },
+		{ "label": "【】", "text": "【】", "caretBack": 1 },
+		{ "label": "※", "text": "※" },
+		{ "label": "＊", "text": "＊" }
+	]
+}

@@ -1,6 +1,14 @@
 <script lang="ts">
 	import Icon from '$lib/components/ui/Icon.svelte';
-	import { applyInsertion, moveCaret, undo, redo, type InsertKind } from '$lib/utils/editorInput';
+	import {
+		applyInsertion,
+		insertText,
+		moveCaret,
+		undo,
+		redo,
+		type InsertKind
+	} from '$lib/utils/editorInput';
+	import { packRuntime } from '$lib/extensions/packRuntime.svelte';
 
 	interface Props {
 		hasPrev?: boolean;
@@ -41,6 +49,20 @@
 			>
 				{item.label}
 			</button>
+		{/each}
+		{#each packRuntime.keySets as entry (entry.packId + ':' + entry.set.id)}
+			<span class="divider"></span>
+			{#each entry.set.keys as key, i (i)}
+				<button
+					class="key"
+					data-pack-key
+					aria-label={`${key.label}を入力(${entry.packName})`}
+					onpointerdown={keepFocus}
+					onclick={() => insertText(key.text, key.caretBack)}
+				>
+					{key.label}
+				</button>
+			{/each}
 		{/each}
 		<span class="divider"></span>
 		<button class="key" aria-label="元に戻す" onpointerdown={keepFocus} onclick={undo}

@@ -105,8 +105,11 @@ export class ExtensionHost {
 	/** 扱う情報が変わったため、確認されるまで動かしていない拡張 */
 	private suspended = new SvelteSet<string>();
 	private started = false;
+	/** 拡張の一覧。同梱の拡張(公式)に加えて、パックを後から足し引きできる */
+	private list: Extension[] = $state.raw([]);
 
 	constructor(private deps: ExtensionHostDeps) {
+		this.list = [...deps.extensions];
 		this.enabled = new SvelteSet(this.load());
 		this.consents = new SvelteMap(this.loadConsents());
 	}
@@ -149,7 +152,7 @@ export class ExtensionHost {
 	}
 
 	private find(id: string): Extension | undefined {
-		return this.deps.extensions.find((e) => e.manifest.id === id);
+		return this.list.find((e) => e.manifest.id === id);
 	}
 
 	/** いまのマニフェストに対する、同意の状態 */
@@ -212,7 +215,7 @@ export class ExtensionHost {
 	}
 
 	get extensions(): readonly Extension[] {
-		return this.deps.extensions;
+		return this.list;
 	}
 
 	get platform(): ExtensionPlatform {
@@ -242,7 +245,7 @@ export class ExtensionHost {
 	 */
 	get toolbarItems(): ActiveToolbarItem[] {
 		const items: ActiveToolbarItem[] = [];
-		for (const ext of this.deps.extensions) {
+		for (const ext of this.list) {
 			const id = ext.manifest.id;
 			if (!ext.toolbar || !this.enabled.has(id) || !this.isSupported(id)) continue;
 			if (this.suspended.has(id)) continue;
@@ -339,7 +342,7 @@ export class ExtensionHost {
 	async start(): Promise<void> {
 		if (this.started) return;
 		this.started = true;
-		for (const ext of this.deps.extensions) {
+		for (const ext of [...this.list]) {
 			const id = ext.manifest.id;
 			if (!this.enabled.has(id) || !isSupported(ext.manifest, this.deps.platform)) continue;
 			if (this.consentStatus(id) === 'changed') {
@@ -380,8 +383,42 @@ export class ExtensionHost {
 
 	/** 全部止める(テストや終了処理用。有効状態は変えない) */
 	async stop(): Promise<void> {
-		for (const ext of this.deps.extensions) await this.deactivate(ext);
+		for (const ext of this.list) await this.deactivate(ext);
 		this.started = false;
+	}
+
+	/**
+	 * パックを追加する(同じ ID のパックがあれば置き換える)。公式の拡張は置き換えられない。
+	 * 有効にしていて起動済みなら、すぐ activate する。置き換えで扱う情報(permissions / privacy)が
+	 * 変わり、同意のときと違えば、確認されるまで動かさない(start と同じ扱い)
+	 */
+	async addExtension(ext: Extension): Promise<boolean> {
+		const id = ext.manifest.id;
+		const prev = this.find(id);
+		if (ext.manifest.kind !== 'pack' || (prev && prev.manifest.kind !== 'pack')) return false;
+		if (prev) await this.deactivate(prev);
+		this.list = prev ? this.list.map((e) => (e.manifest.id === id ? ext : e)) : [...this.list, ext];
+		if (!this.started || !this.enabled.has(id) || !isSupported(ext.manifest, this.deps.platform)) {
+			return true;
+		}
+		if (this.consentStatus(id) === 'changed') {
+			this.suspended.add(id);
+			this.deps.notify.info(
+				`拡張機能「${ext.manifest.name}」が扱う情報が変わりました。設定の「拡張機能」で確認すると再開します`
+			);
+			return true;
+		}
+		await this.activate(ext);
+		return true;
+	}
+
+	/** パックを取り除く(有効/無効・同意の記録も消す)。公式の拡張は取り除けない */
+	async removeExtension(id: string): Promise<boolean> {
+		const ext = this.find(id);
+		if (!ext || ext.manifest.kind !== 'pack') return false;
+		await this.setEnabled(id, false);
+		this.list = this.list.filter((e) => e.manifest.id !== id);
+		return true;
 	}
 }
 

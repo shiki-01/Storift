@@ -1,0 +1,6 @@
+# 拡張機能とその検証・実行の仕組みは、オーナーのレビューを必須にする。
+# (「Require review from Code Owners」は、リポジトリのブランチ保護の設定で有効にする。ファイルだけでは強制されない)
+/extensions/ @shiki-01
+/src/lib/extensions/ @shiki-01
+/scripts/ @shiki-01
+/.github/ @shiki-01

@@ -4,15 +4,126 @@ Storift に機能を足す仕組みと、公式拡張「Monolog. 連携」「Dis
 
 ## 拡張の種類
 
-拡張は 3 種類になる予定で、**いま使えるのは「公式」だけ**。
+拡張は 3 種類。**いま使えるのは「公式」と「パック」**で、スクリプトは第 3 段階の予定。
 
-| 種類       | `kind`     | 中身                                                                                                                        | 状態            |
-| ---------- | ---------- | --------------------------------------------------------------------------------------------------------------------------- | --------------- |
-| 公式       | `official` | アプリに同梱する。Svelte のコンポーネントとコードを持ち、特権(Tauri のコマンドなど)を使える                                 | 実装済み        |
-| パック     | `pack`     | コードを含まない JSON(テーマ・辞書など)                                                                                     | 予定(第 2 段階) |
-| スクリプト | `script`   | `sandbox` 属性付きの iframe で隔離して実行する。マニフェストで宣言した権限の範囲だけ、ホストと `postMessage` でやり取りする | 予定(第 3 段階) |
+| 種類       | `kind`     | 中身                                                                                                                        | 状態                |
+| ---------- | ---------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| 公式       | `official` | アプリに同梱する。Svelte のコンポーネントとコードを持ち、特権(Tauri のコマンドなど)を使える                                 | 実装済み            |
+| パック     | `pack`     | コードを含まない JSON(テーマ・校正の辞書・入力補助キー・書き出しのプリセット)。通信せず、コードも実行しない                 | 実装済み(第 2 段階) |
+| スクリプト | `script`   | `sandbox` 属性付きの iframe で隔離して実行する。マニフェストで宣言した権限の範囲だけ、ホストと `postMessage` でやり取りする | 予定(第 3 段階)     |
 
-コミュニティの拡張は、リポジトリのトップレベル `extensions/<id>/` に PR で受け、サイトで一覧配信する予定(第 2 段階。まだ受け付けていない)。マニフェストの `kind` と検証(`manifest.ts`)は、この拡張を見越した形にしてあるが、`pack` / `script` を読み込む処理は未実装。
+コミュニティの拡張は、リポジトリのトップレベル `extensions/<id>/` に PR で受け、サイトで一覧配信し、アプリの「拡張機能を探す」から入れられる(パックのみ。投稿の手順は [docs/COMMUNITY.md](COMMUNITY.md))。`script` は、マニフェストの検証は通るが、読み込む処理は未実装で、`extensions/` への PR でも受け付けない(`validate-extensions` が拒否する)。
+
+## パック
+
+コードを含まない拡張。マニフェスト(`kind: 'pack'`)に `contributions` を持ち、貢献の種類ごとに、コンテンツ(JSON)への相対パスを書く。型・検証・上限は `src/lib/extensions/pack.ts`(アプリ・サイト・検証スクリプトが同じ実装を使う)。
+
+### マニフェストの決まり(パック)
+
+- `contributions` 必須(1 つ以上)。`license`・`updatedAt`(`YYYY-MM-DD`)も必須。
+- `permissions` に `network` / `events` / `read` は書けない(通信せず、本体のイベントも情報も扱わない)。`{ "storage": true }` だけにする。
+- `privacy.sends` は `[]`。既定の文面は「通信しない。端末内にだけ保存」(ひな形 `extensions/_template/` を参照)。
+- `id` は予約済み(`monolog`・`discord`・`submit`・`official-*`)を使えない。公式と誤認させないため。
+
+### 上限
+
+| 項目                   | 上限                  |
+| ---------------------- | --------------------- |
+| コンテンツ 1 ファイル  | 256KB                 |
+| パック全体(コンテンツ) | 1MB                   |
+| マニフェスト           | 64KB                  |
+| バンドル全体           | 1.25MB                |
+| 種類ごとのファイル数   | 8                     |
+| リポジトリ上の画像     | 1 枚 256KB(png / svg) |
+
+### 貢献の種類
+
+パスは、小文字英数字・`-`・`_`・`.` の `.json`(階層は 3 つまで)。`..`・絶対パス・バックスラッシュ・隠しファイルは検証で拒否する(`isSafeContentPath`)。各ファイルは `id`(英小文字・数字・ハイフン)と `name` を持ち、`id` は同じ種類の中で一意。
+
+- **`themes`(配色テーマ)**: アプリのテーマ(`theme.svelte.ts` の `Theme`)と同じ `colors`(12 色)と `editor`(5 色)のトークンを、`#rgb` / `#rrggbb` で書く。`scheme` は `light` / `dark` で、背景色の明暗と一致させる。**フォントは指定できない**(CSS への注入を避ける)。検証するコントラスト比(WCAG): 文字と背景・原稿の文字と原稿の背景・文字と面は 4.5 以上、薄い文字・primary・accent と背景、原稿の文字と選択範囲は 3 以上。有効なパックのテーマは、設定の外観に「パック」付きで並ぶ(ID は `pack:<パック>:<テーマ>`。この ID は同期・バックアップされる設定には書かない)。使っているテーマのパックを無効にすると、ライトに戻る。起動時は、パックの読み込みが終わるまで直前の見た目(ミラー)を保つ。
+- **`proofreadRules`(校正の辞書)**: `rules: [{ from, to, message? }]`。**固定の文字列だけで、正規表現は使えない**(ReDoS の余地が無い)。`from` 1〜32 文字・前後の空白と制御文字は不可、`to` は 0〜32 文字(空は削除の提案)、`message` は 80 文字まで。1 ファイル 500 件、パック全体 1000 件まで。実行時も、検索は `indexOf` のみで、100ms で打ち切り、指摘は 500 件まで(`packProofread.ts`)。有効なパックの辞書は、スマホの「校正」(`ProofreadSheet`)の指摘に、本体の校閲と並んで出る(種類は「提案」)。範囲が重なる指摘を「すべて直す」でまとめて適用するときは、後ろの指摘だけを適用して、本文を壊さない。
+- **`assistKeys`(入力補助キー)**: `keys: [{ label?, text, caretBack? }]`。文字列のみ。制御文字・書字方向の制御・ゼロ幅文字は不可。`text` 16 文字、`label` 8 文字、1 セット 32 個まで。`caretBack` は挿入後にカーソルを左へ戻す文字数。スマホのエディタの入力補助バー(`AssistBar`)に、セットごとに区切って追加される。
+- **`exportPresets`(書き出しのプリセット)**: `ruby`(`keep` / `pipe-ascii` / `paren` / `strip`)、`bouten`(`keep` / `ruby-dots` / `strip`)、`blankLines`(`keep` / `between-paragraphs` / `collapse`)。**テキスト・Markdown の書き出しだけ**に適用する(書き出す文字列だけを変え、原稿は変えない)。書き出しダイアログに「記法のプリセット」として出る。PDF・EPUB・RTF(docx)・JSON は対象外(予定)。投稿サイトごとの具体的な記法(なろう・カクヨムなど)は、仕様を確認できないため、プリセットとしては同梱していない。
+
+### バンドル形式(`.storiftext.json`)
+
+マニフェストと全コンテンツを 1 つの JSON にしたもの。レジストリの配信物であり、「ファイルから追加」で読む形式。
+
+```json
+{
+	"format": "storift-extension-bundle",
+	"bundleVersion": 1,
+	"manifest": { "...": "manifest.json の内容" },
+	"files": { "contents/rules.json": { "...": "contributions に書いたパス → 解析済みの JSON" } }
+}
+```
+
+- `files` は `contributions` に書いたパスと過不足なく一致する(パスの昇順)。
+- 1 行の JSON(末尾に改行 1 つ)。入力が同じなら同じバイト列になる(`buildBundle` / `serializeBundle`)。`sha256` はこのバイト列のもの。
+- 取り込むときは必ず `parseBundleText`(`packBundle.ts`)を通る: 大きさ → JSON → 外側の形 → マニフェストの検証(`kind: 'pack'`)→ コンテンツの検証。レジストリ・ファイル・フォルダのどの経路も同じ検証。
+
+### 出所のラベル
+
+UI では、公式と誤認させないよう、出所を必ず表示する(`ORIGIN_LABELS`)。
+
+| `origin`          | 表示                 | 入れ方                                                |
+| ----------------- | -------------------- | ----------------------------------------------------- |
+| `official`        | 公式                 | アプリに同梱                                          |
+| `community`       | コミュニティ         | レジストリ(`extensions/<id>/` に PR で追加されたもの) |
+| `personal-file`   | 個人追加(未審査)     | 「ファイルから追加」                                  |
+| `personal-folder` | 個人フォルダ(未審査) | デスクトップ版の拡張フォルダ                          |
+
+カード・同意画面・詳細に出す(未審査のものは注意の文も出す)。同意画面は、どの出所でも必須(公式と同じ `ConsentDialog`)。
+
+### 保存場所
+
+- インストール済みのパック(レジストリ・ファイル): **別の IndexedDB `storift-extensions`**(ストア `packs`。`packStore.ts`、`idb-keyval`)。メインの DB(Dexie `StoriftDB`)のスキーマは触らない。**Firestore 同期・バックアップ(`createFullBackup` など)・書き出しには含まれない**(`packStore.test.ts` で、別 DB であること・バックアップに入らないこと・各サービスのコードが参照しないことを確認している)。
+- 初回のインストールで `navigator.storage.persist()` を試みる(断られても続行)。
+- 読み込むたびに、マニフェストとコンテンツを検証し直す(壊れたものは読み込まない)。
+- 拡張フォルダのパックは保存しない(起動時と「再読み込み」で読み直す)。
+- 有効/無効と同意の記録は、公式と同じ localStorage(端末内のみ)。
+
+### ホストの扱い(`ExtensionHost`)
+
+パックは `Extension`(`createPackExtension`)として、`addExtension` / `removeExtension` で出し入れする。`activate` で `packRuntime`(リアクティブな置き場)にコンテンツを出し、各機能(テーマ・校正・入力補助バー・書き出し)が読む。コードは実行しない。更新(`addExtension` で同じ ID を置き換え)で `permissions` / `privacy` が同意のときと変わっていれば、`changed` として確認まで止める(公式と同じ)。公式の拡張は置き換え・取り除きができない。
+
+### レジストリ(リポジトリ → サイト → アプリ)
+
+```
+extensions/<id>/ ──(scripts/build-registry.ts)──▶ site/static/extensions-registry/ ──(サイトのビルド)──▶ site/build
+                                                  index.json
+                                                  <id>/<version>.storiftext.json
+```
+
+- 配信 URL: `https://storift.shiki-01.com/extensions-registry/index.json` と `.../<id>/<version>.storiftext.json`。生成物はコミットしない(`site/.gitignore`)。サイトの `build` / `dev` の前に `bun run registry` が走る。
+- 出力は入力だけで決まる(コミット日時・実行時刻を使わない。更新日はマニフェストの `updatedAt`)。ひな形(`_template`)は含めない。
+- `index.json`: `{ "indexVersion": 1, "extensions": [...] }`。各項目は `id` `name` `description` `version` `author` `kind` `platforms` `icon` `license` `homepage` `permissions`(要約)`privacy`(要約)`contributes` `bundle`(URL)`sha256` `size` `updatedAt` `source`(`official` / `community`)。公式(monolog・discord)は載るが、`bundle` / `sha256` / `size` は `null`(アプリに同梱)。型と検証は `registryIndex.ts`。
+- `site/static/_headers`: `/extensions-registry/*` に `Access-Control-Allow-Origin: *`。`index.json` は `max-age=300`、バンドルは版付きの URL なので `max-age=31536000, immutable`(**公開済みの版の内容は変えない。変えるときは版を上げる**。ルールが重なると Cache-Control が連結されるので、`index.json` と `:id/:file` で重ならないようにしている)。
+- デプロイ: `extensions/**` などを変えると `deploy-site.yml` が動く(`paths`)。アプリ(`deploy-app.yml`)も `extensions/**` で動く(公式のマニフェストを同梱しているため)。
+
+### インストールの流れ(アプリ)
+
+1. 設定の「拡張機能」→「拡張機能を探す」を開いたときだけ、一覧を取得する(`registryState.load`。起動時には取得しない。「更新を確認」も同じ)。失敗(オフラインなど)しても、すでに入れたものは何も変わらない。
+2. 一覧(検索・種類・出所で絞り込み)→ 詳細(説明・権限・プライバシー・作者・ライセンス・版・サイズ・出所)→「インストール」。
+3. 取得(`registryClient.fetchBundle`): 取得先は **`storift.shiki-01.com` の `/extensions-registry/` 配下だけ**(`isRegistryUrl`。コードに固定。`https`・ポートなし・認証情報なし・リダイレクトなし・`credentials: omit`)→ 上限つきで読み取り → **SHA-256 が一覧と一致**すること → マニフェストとコンテンツを再検証 → 一覧の id・版と一致すること。
+4. 保存(`storift-extensions`)→ 同意画面(出所のラベルと、権限・プライバシー)→「同意して有効にする」で有効化。同意するまで有効にならない。
+5. 更新(手動): 「更新を確認」で一覧を取得し、入れてある版より新しいものにだけ「更新」を出す。更新で権限・プライバシーが変わると、確認するまで止まり、再同意を求める。
+6. アンインストール: 無効化(同意の記録も消える)→ 取り除く → `storift-extensions` から削除。
+7. 同じ ID が別の出所で入っているときは、上書きしない(先にアンインストールする)。
+
+### ファイルから追加
+
+設定の「ファイルから追加」で `.storiftext.json` を選ぶ。レジストリと同じ検証(`parseBundleText`)を通り、出所は「個人追加(未審査)」。注意の文と、同意画面は必須。
+
+### 拡張フォルダ(デスクトップ版)
+
+設定の「拡張フォルダ」に絶対パスを書く(空なら、アプリのデータフォルダ内の `extensions/`)。直下の `<id>/manifest.json` を持つフォルダをパックとして読み込む(起動時と「再読み込み」)。出所は「個人フォルダ(未審査)」。Rust(`src-tauri/src/extensions.rs`)は読み取り専用で、拡張フォルダの外を読まず、シンボリックリンクをたどらず、`.json` だけを読む(上限あり)。TypeScript 側(`packFolder.ts`)は、マニフェストが宣言した安全なパスのファイルだけを引き、レジストリと同じ検証にかける。フォルダ選択のダイアログは使わない(Tauri のダイアログプラグインを足していないため。パスの入力と「フォルダを開く」)。
+
+### 第 3 段階(スクリプト)に向けて
+
+- `kind: 'script'` の読み込みは未実装。`sandbox` iframe(オリジンなし)+ `postMessage` + 宣言した権限だけの API、という方針。
+- パックのインストール・同意・出所・レジストリ・更新・保存の仕組みは、そのまま流用できる(バンドルに `files` としてスクリプトを入れる拡張が必要)。
+- 未決: スクリプトのバンドルの上限と署名、権限の粒度、CSP でスクリプトの通信を止める方法、審査の重さ。
 
 ## 構成
 
@@ -25,6 +136,13 @@ src/lib/extensions/
   pages.ts            開いている画面の判定(`page:change` 用。ルートのパス → 画面の種類と固定のラベル)
   session.ts          執筆セッションの追跡(`session:*` を発行する。本体の機能)
   sessionSettings.svelte.ts   執筆セッションの設定(無操作時間)
+  pack.ts             パックの貢献・コンテンツ・バンドルの型と検証(純関数。サイト・scripts からも読む)
+  packBundle.ts       バンドル文字列の検証(レジストリ・ファイル追加の共通の入口)
+  packRuntime.svelte.ts / packExtension.ts   有効なパックのコンテンツの置き場と、パックを Extension にする変換
+  packManager.svelte.ts / packStore.ts       導入・更新・削除・起動時の読み込みと、別の IndexedDB への保存
+  packFolder.ts       拡張フォルダの読み取り結果の検証(Rust: src-tauri/src/extensions.rs)
+  packProofread.ts / packExport.ts           校正の辞書(固定文字列)と、書き出しの記法の変換
+  registryIndex.ts / registryClient.ts / registryState.svelte.ts   レジストリの形式・取得・状態
   registry.ts         同梱する拡張の一覧、プラットフォーム判定、ツールバー項目 ID(`ext:<拡張 ID>`)
   host.svelte.ts      有効状態・同意の記録(localStorage)、activate / deactivate、権限に応じた API の絞り込み
   builtin/monolog/    Monolog. 連携(下記)
@@ -50,7 +168,9 @@ site/src/routes/extensions/      サイトの拡張ページ(マニフェスト�
 | `apiVersion`             | `1`                                                                                                |
 | `platforms`              | `web` / `desktop` の 1 つ以上。含まない環境では、設定に「…のみ」と出て、有効にも読み込みもできない |
 | `icon`                   | `src/lib/components/editor/icons/*.svg` の名前(サイトに無い名前は、パズルの形で出す)               |
-| `homepage?` / `license?` | `https://` の URL / ライセンス名                                                                   |
+| `homepage?` / `license?` | `https://` の URL / ライセンス名(パックは `license` 必須)                                          |
+| `updatedAt?`             | 更新日 `YYYY-MM-DD`(レジストリの一覧に載せる。パックは必須)                                        |
+| `contributions?`         | パックの貢献(上記「パック」)                                                                       |
 | `permissions`            | 下記                                                                                               |
 | `privacy`                | 下記                                                                                               |
 

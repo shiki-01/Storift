@@ -1,6 +1,7 @@
 /**
  * 文章校閲ユーティリティ
  */
+import { findRuleMatches, type PackRuleSource } from '$lib/extensions/packProofread';
 
 export interface ProofreadingIssue {
 	type: 'typo' | 'redundancy' | 'style' | 'grammar' | 'suggestion';
@@ -9,12 +10,17 @@ export interface ProofreadingIssue {
 	position: { start: number; end: number };
 	suggestion?: string;
 	original: string;
+	/** 指摘のもとになった拡張(パック)の ID。本体の校閲なら無い */
+	packId?: string;
 }
 
 /**
- * 文章をチェック
+ * 文章をチェック。packRules に、有効なパックの辞書(表記ゆれ)を渡すと、本体の校閲に合わせて指摘する
  */
-export function proofread(text: string): ProofreadingIssue[] {
+export function proofread(
+	text: string,
+	packRules: readonly PackRuleSource[] = []
+): ProofreadingIssue[] {
 	const issues: ProofreadingIssue[] = [];
 
 	// 各種チェックを実行
@@ -22,11 +28,28 @@ export function proofread(text: string): ProofreadingIssue[] {
 	issues.push(...checkRedundancy(text));
 	issues.push(...checkStyle(text));
 	issues.push(...checkGrammar(text));
+	issues.push(...checkPackRules(text, packRules));
 
 	// 位置でソート
 	issues.sort((a, b) => a.position.start - b.position.start);
 
 	return issues;
+}
+
+/**
+ * パックの辞書(固定の文字列の対応)による表記ゆれのチェック
+ */
+function checkPackRules(text: string, packRules: readonly PackRuleSource[]): ProofreadingIssue[] {
+	if (packRules.length === 0) return [];
+	return findRuleMatches(text, packRules).map((m) => ({
+		type: 'style' as const,
+		severity: 'info' as const,
+		message: m.message,
+		position: { start: m.start, end: m.end },
+		suggestion: m.suggestion,
+		original: m.original,
+		packId: m.packId
+	}));
 }
 
 /**
@@ -286,8 +309,12 @@ export function applyAllSuggestions(text: string, issues: ProofreadingIssue[]): 
 		.filter((issue) => issue.suggestion)
 		.sort((a, b) => b.position.start - a.position.start);
 
+	// 範囲が重なる指摘(辞書の語が互いに含み合う場合など)は、後ろのものだけを適用して、本文を壊さない
+	let appliedFrom = Infinity;
 	for (const issue of sortedIssues) {
+		if (issue.position.end > appliedFrom) continue;
 		result = applyProofreadingSuggestion(result, issue);
+		appliedFrom = issue.position.start;
 	}
 
 	return result;

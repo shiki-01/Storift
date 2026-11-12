@@ -1,0 +1,26 @@
+{
+	"id": "dialogue-keys",
+	"name": "会話文の記号セット",
+	"description": "会話文や間(ま)を書くときによく使う記号を、スマホの入力補助バーに足します。",
+	"version": "1.0.0",
+	"author": "shiki-01",
+	"kind": "pack",
+	"apiVersion": 1,
+	"platforms": ["web", "desktop"],
+	"icon": "edit",
+	"homepage": "https://github.com/shiki-01/Storift/tree/main/extensions/dialogue-keys",
+	"license": "MIT",
+	"updatedAt": "2026-11-12",
+	"permissions": { "storage": true },
+	"privacy": {
+		"sends": [],
+		"stores": ["インストールしたキーの内容: この端末のブラウザ内(IndexedDB)にだけ保存"],
+		"onDisable": "無効にすると、入力補助バーからこのセットのキーが消えます。アンインストールすると、この端末に保存した内容を削除します。",
+		"notes": [
+			"通信しません。コードも実行しません(JSON のデータだけです)。",
+			"作品の本文は読み取りません。キーを押したときに、決まった記号を入力するだけです。",
+			"同期・バックアップ・書き出しには含まれません。"
+		]
+	},
+	"contributions": { "assistKeys": ["contents/keys.json"] }
+}

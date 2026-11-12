@@ -3,15 +3,27 @@
 	// 設定画面のカードの「プライバシー」と、有効にするときの同意画面で同じ表示を使う
 	import { isDesktop } from '$lib/desktop/platform';
 	import { extensionPageUrl } from '$lib/extensions/links';
-	import { summarizePermissions, type ExtensionManifest } from '$lib/extensions/manifest';
+	import {
+		ORIGIN_NOTES,
+		summarizePermissions,
+		type ExtensionManifest,
+		type ExtensionOrigin
+	} from '$lib/extensions/manifest';
+	import type { PackContent } from '$lib/extensions/pack';
+	import ContributionSummary from './ContributionSummary.svelte';
+	import OriginBadge from './OriginBadge.svelte';
 
 	interface Props {
 		manifest: ExtensionManifest;
 		/** 紹介サイトの拡張ページへのリンクを出すか */
 		showLink?: boolean;
+		/** 出所。公式以外は、出所のラベルと注意を出す */
+		origin?: ExtensionOrigin;
+		/** パックのコンテンツ(あれば、追加するものの件数を出す) */
+		content?: PackContent;
 	}
 
-	let { manifest, showLink = true }: Props = $props();
+	let { manifest, showLink = true, origin = 'official', content }: Props = $props();
 
 	const summary = $derived(summarizePermissions(manifest.permissions));
 	const pageUrl = $derived(extensionPageUrl(manifest.id));
@@ -24,6 +36,23 @@
 </script>
 
 <div class="info selectable">
+	{#if origin !== 'official'}
+		<section class="origin-note" data-testid="origin-note">
+			<h4>出所 <OriginBadge {origin} /></h4>
+			<p>{ORIGIN_NOTES[origin]}</p>
+			<p class="meta">
+				作者: {manifest.author}{#if manifest.license}・ライセンス: {manifest.license}{/if}・版 {manifest.version}
+			</p>
+		</section>
+	{/if}
+
+	{#if manifest.contributions}
+		<section>
+			<h4>この拡張が追加するもの</h4>
+			<ContributionSummary contributions={manifest.contributions} {content} />
+		</section>
+	{/if}
+
 	<section>
 		<h4>送る情報</h4>
 		{#if manifest.privacy.sends.length === 0}
@@ -104,6 +133,9 @@
 	}
 
 	h4 {
+		display: flex;
+		align-items: center;
+		gap: 8px;
 		margin: 0;
 		font-size: 12px;
 		font-weight: 600;
@@ -132,6 +164,17 @@
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
 		background: color-mix(in srgb, var(--color-surface) 55%, var(--color-background));
+	}
+
+	.origin-note {
+		padding: 10px 12px;
+		border: 1px solid color-mix(in srgb, var(--color-warning) 50%, var(--color-border));
+		border-radius: 8px;
+		background: color-mix(in srgb, var(--color-warning) 7%, var(--color-background));
+	}
+
+	.meta {
+		font-size: 12px;
 	}
 
 	.send + .send {

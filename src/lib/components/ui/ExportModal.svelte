@@ -3,6 +3,7 @@
 	import { exportProject, type ExportOptions } from '$lib/services/export.service';
 	import Modal from './Modal.svelte';
 	import Select from './Select.svelte';
+	import { packRuntime } from '$lib/extensions/packRuntime.svelte';
 
 	interface Props {
 		projectId: string;
@@ -20,6 +21,10 @@
 	let pageBreaks = $state(false);
 	let fontSize = $state(12);
 	let isExporting = $state(false);
+	/** 有効なパックの書き出しのプリセット(空文字は、変換しない) */
+	let presetKey = $state('');
+	const presets = $derived(packRuntime.exportPresets);
+	const presetApplies = $derived(format === 'txt' || format === 'md');
 
 	const handleExport = async () => {
 		isExporting = true;
@@ -32,6 +37,14 @@
 				pageBreaks,
 				fontSize
 			};
+			const preset = presetApplies && presetKey ? packRuntime.findPreset(presetKey) : undefined;
+			if (preset) {
+				options.notation = {
+					ruby: preset.ruby,
+					bouten: preset.bouten,
+					blankLines: preset.blankLines
+				};
+			}
 
 			await exportProject(projectId, options);
 
@@ -73,6 +86,24 @@
 					]}
 				/>
 			</div>
+
+			{#if presetApplies && presets.length > 0}
+				<!-- 有効なパックの書き出しのプリセット -->
+				<div>
+					<label for="exportPreset" class="block mb-2 font-semibold">記法のプリセット</label>
+					<Select
+						id="exportPreset"
+						bind:value={presetKey}
+						options={[
+							{ value: '', label: '変換しない' },
+							...presets.map((e) => ({ value: e.key, label: `${e.preset.name}(${e.packName})` }))
+						]}
+					/>
+					<p class="text-sm fg:theme-text-secondary mt-1">
+						ルビ・傍点・空行の書き方を変えて書き出します。保存している原稿は変わりません
+					</p>
+				</div>
+			{/if}
 
 			{#if format !== 'json'}
 				<!-- メタデータ -->

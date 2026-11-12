@@ -1,0 +1,26 @@
+{
+	"id": "shinkai",
+	"name": "深海",
+	"scheme": "dark",
+	"colors": {
+		"primary": "#7fc4d1",
+		"secondary": "#9db6d8",
+		"background": "#0f1a22",
+		"surface": "#17252f",
+		"text": "#dbe7ec",
+		"textSecondary": "#8fa6b1",
+		"border": "#25384a",
+		"accent": "#e0a36a",
+		"success": "#8fc9a0",
+		"warning": "#e0bd6a",
+		"error": "#ee9a94",
+		"info": "#7fc4d1"
+	},
+	"editor": {
+		"background": "#121f28",
+		"text": "#dbe7ec",
+		"selection": "#2b4a5e",
+		"lineHighlight": "#182733",
+		"cursor": "#7fc4d1"
+	}
+}

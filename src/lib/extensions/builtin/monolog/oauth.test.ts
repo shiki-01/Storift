@@ -104,7 +104,7 @@ describe('トークン', () => {
 			scope: 'records:write timer'
 		});
 		const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
-		expect(url).toBe('https://api.monolog.life/oauth/token');
+		expect(url).toBe('https://api.monolog.life/v1/oauth/token');
 		expect((init.headers as Record<string, string>)['Content-Type']).toBe(
 			'application/x-www-form-urlencoded'
 		);
@@ -167,7 +167,7 @@ describe('トークン', () => {
 		const fetchFn = vi.fn(async () => new Response(null, { status: 200 }));
 		await revokeToken('r1', fetchFn as unknown as typeof fetch);
 		const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
-		expect(url).toBe('https://api.monolog.life/oauth/revoke');
+		expect(url).toBe('https://api.monolog.life/v1/oauth/revoke');
 		const params = new URLSearchParams(init.body as string);
 		expect(params.get('token')).toBe('r1');
 		expect(params.get('client_id')).toBe('mlc_7vwiiiwkcdglzq4ggnsq');

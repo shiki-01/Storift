@@ -1,9 +1,13 @@
 import { isDesktop } from '$lib/desktop/platform';
+import { discordExtension } from './builtin/discord';
 import { monologExtension } from './builtin/monolog';
 import type { Extension, ExtensionManifest, ExtensionPlatform } from './types';
 
-/** 組み込みの拡張。新しい拡張はここに足す */
-export const EXTENSIONS: readonly Extension[] = [monologExtension];
+/**
+ * アプリに同梱する拡張(公式)。新しい拡張はここに足す。
+ * マニフェストは extensions/<id>/manifest.json(各拡張の index.ts が読み込んで検証する)
+ */
+export const EXTENSIONS: readonly Extension[] = [monologExtension, discordExtension];
 
 export function currentPlatform(): ExtensionPlatform {
 	return isDesktop() ? 'desktop' : 'web';

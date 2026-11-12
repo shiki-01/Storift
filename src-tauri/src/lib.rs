@@ -1,4 +1,5 @@
 mod claude;
+mod discord;
 mod mcp;
 mod ollama;
 mod secrets;
@@ -39,6 +40,8 @@ pub fn run() {
         )
         .manage(claude::ClaudeState::default())
         .manage(std::sync::Arc::new(ollama::OllamaState::default()))
+        // Discord Rich Presence(拡張機能)。IPC は専用のスレッドで行う
+        .manage(discord::DiscordState::default())
         .setup(|app| {
             // GUI から起動すると PATH がログインシェルと異なるため、先に読み込んでおく
             std::thread::spawn(shell_env::load);
@@ -81,9 +84,17 @@ pub fn run() {
             workspace::workspace_sync,
             workspace::workspace_info,
             workspace::workspace_open,
+            discord::discord_set_activity,
+            discord::discord_clear_activity,
         ])
-        .run(tauri::generate_context!())
-        .expect("Storift の起動に失敗しました");
+        .build(tauri::generate_context!())
+        .expect("Storift の起動に失敗しました")
+        .run(|app, event| {
+            // アプリの終了時に、Discord の表示を消す(接続していなければ何もしない)
+            if let tauri::RunEvent::Exit = event {
+                app.state::<discord::DiscordState>().clear_on_exit();
+            }
+        });
 }
 
 /// アプリが使うディレクトリを取得する(コマンドから共通で使う)

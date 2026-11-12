@@ -1,5 +1,6 @@
 mod claude;
 mod discord;
+mod extensions;
 mod mcp;
 mod ollama;
 mod secrets;
@@ -86,6 +87,8 @@ pub fn run() {
             workspace::workspace_open,
             discord::discord_set_activity,
             discord::discord_clear_activity,
+            extensions::extension_folder_scan,
+            extensions::extension_folder_open,
         ])
         .build(tauri::generate_context!())
         .expect("Storift の起動に失敗しました")

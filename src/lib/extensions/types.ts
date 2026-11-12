@@ -1,9 +1,10 @@
 import type { Component } from 'svelte';
 import type { ExtensionEvents, PageChangeEvent, WritingSessionEvent } from './events';
 
-import type { ExtensionManifest, ExtensionPlatform } from './manifest';
+import type { ExtensionManifest, ExtensionOrigin, ExtensionPlatform } from './manifest';
+import type { PackContent } from './pack';
 
-export type { ExtensionManifest, ExtensionPlatform } from './manifest';
+export type { ExtensionManifest, ExtensionOrigin, ExtensionPlatform } from './manifest';
 
 /** 拡張に渡す通知(トースト)。UI の実装には依存させない */
 export interface ExtensionNotifier {
@@ -76,6 +77,10 @@ export interface ExtensionToolbarContribution {
 
 export interface Extension {
 	manifest: ExtensionManifest;
+	/** 出所。省略は公式(アプリに同梱) */
+	origin?: ExtensionOrigin;
+	/** パックのコンテンツ(検証済み。パックのみ) */
+	content?: PackContent;
 	/** ツールバーに出す項目(任意) */
 	toolbar?: ExtensionToolbarContribution;
 	/**

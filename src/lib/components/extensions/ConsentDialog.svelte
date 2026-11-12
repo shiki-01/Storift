@@ -4,7 +4,8 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import IconBadge from '$lib/components/items/IconBadge.svelte';
-	import type { ExtensionManifest } from '$lib/extensions/manifest';
+	import type { ExtensionManifest, ExtensionOrigin } from '$lib/extensions/manifest';
+	import type { PackContent } from '$lib/extensions/pack';
 	import PrivacyInfo from './PrivacyInfo.svelte';
 
 	interface Props {
@@ -15,9 +16,21 @@
 		/** 変わった内容の説明(再同意のとき) */
 		reason?: string;
 		onconsent: () => void | Promise<void>;
+		/** 出所(公式以外は、出所のラベルと注意を出す) */
+		origin?: ExtensionOrigin;
+		/** パックのコンテンツ */
+		content?: PackContent;
 	}
 
-	let { open = $bindable(), manifest, mode = 'enable', reason, onconsent }: Props = $props();
+	let {
+		open = $bindable(),
+		manifest,
+		mode = 'enable',
+		reason,
+		onconsent,
+		origin = 'official',
+		content
+	}: Props = $props();
 
 	const confirmText = $derived(mode === 'enable' ? '同意して有効にする' : '確認した');
 </script>
@@ -39,7 +52,7 @@
 		<!-- キーボードだけでも、長い内容をスクロールして読めるようにする -->
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 		<div class="scroll" tabindex="0" role="region" aria-label="この拡張が扱う情報">
-			<PrivacyInfo {manifest} />
+			<PrivacyInfo {manifest} {origin} {content} />
 		</div>
 	</div>
 	{#snippet footer()}

@@ -361,3 +361,84 @@ describe('ExtensionHost.toolbarItems', () => {
 		expect(host.toolbarItems).toEqual([]);
 	});
 });
+
+describe('パックの追加・更新・取り除き', () => {
+	const pack = (id: string, over: Partial<ExtensionManifest> = {}) =>
+		makeExt(id, ['web', 'desktop'], { kind: 'pack', ...over });
+
+	it('起動後に追加したパックも、同意して有効にすれば activate される', async () => {
+		const { host } = makeHost([]);
+		await host.start();
+		const p = pack('p');
+		expect(await host.addExtension(p)).toBe(true);
+		expect(host.extensions.map((e) => e.manifest.id)).toEqual(['p']);
+		expect(p.activate).not.toHaveBeenCalled();
+		await enable(host, 'p');
+		expect(p.activate).toHaveBeenCalledTimes(1);
+	});
+
+	it('公式の拡張を、パックで置き換えたり取り除いたりできない', async () => {
+		const official = makeExt('o');
+		const { host } = makeHost([official]);
+		await host.start();
+		expect(await host.addExtension(pack('o'))).toBe(false);
+		expect(await host.addExtension(makeExt('x'))).toBe(false);
+		expect(await host.removeExtension('o')).toBe(false);
+		expect(host.extensions).toHaveLength(1);
+	});
+
+	it('更新で扱う情報が同じなら、止めずに新しい版へ入れ替える', async () => {
+		const { host } = makeHost([]);
+		await host.start();
+		const v1 = pack('p');
+		await host.addExtension(v1);
+		await enable(host, 'p');
+		const v2 = pack('p', { version: '1.1.0' });
+		await host.addExtension(v2);
+		expect(v1.deactivate).toHaveBeenCalledTimes(1);
+		expect(v2.activate).toHaveBeenCalledTimes(1);
+		expect(host.consentStatus('p')).toBe('version-changed');
+		expect(host.isSuspended('p')).toBe(false);
+	});
+
+	it('更新で扱う情報が変わったら、再同意まで動かさない', async () => {
+		const { host, notify } = makeHost([]);
+		await host.start();
+		await host.addExtension(pack('p'));
+		await enable(host, 'p');
+		const v2 = pack('p', {
+			version: '2.0.0',
+			privacy: { sends: [], stores: ['新しく保存するもの'], onDisable: '消えます' }
+		});
+		await host.addExtension(v2);
+		expect(host.consentStatus('p')).toBe('changed');
+		expect(host.isSuspended('p')).toBe(true);
+		expect(v2.activate).not.toHaveBeenCalled();
+		expect(notify.info).toHaveBeenCalled();
+		await host.grantConsent('p');
+		expect(v2.activate).toHaveBeenCalledTimes(1);
+	});
+
+	it('取り除くと、無効化・同意の記録の削除・一覧からの削除が行われる', async () => {
+		const { host } = makeHost([]);
+		await host.start();
+		const p = pack('p');
+		await host.addExtension(p);
+		await enable(host, 'p');
+		expect(await host.removeExtension('p')).toBe(true);
+		expect(p.deactivate).toHaveBeenCalled();
+		expect(host.extensions).toHaveLength(0);
+		expect(host.isEnabled('p')).toBe(false);
+		expect(JSON.parse(localStorage.getItem(CONSENT_STORAGE_KEY) ?? '{}')).toEqual({});
+	});
+
+	it('start より前に追加したパックは、有効なら start で activate される', async () => {
+		localStorage.setItem(ENABLED_STORAGE_KEY, JSON.stringify(['p']));
+		const { host } = makeHost([]);
+		const p = pack('p');
+		await host.addExtension(p);
+		expect(p.activate).not.toHaveBeenCalled();
+		await host.start();
+		expect(p.activate).toHaveBeenCalledTimes(1);
+	});
+});

@@ -56,6 +56,12 @@ export function applyInsertion(kind: InsertKind): void {
 	moveCaret(-caretBack);
 }
 
+/** 任意の文字列を、選択範囲を置き換える形で挿入する(パックの入力補助キー用。caretBack は挿入後に左へ戻す文字数) */
+export function insertText(text: string, caretBack = 0): void {
+	document.execCommand('insertText', false, text);
+	moveCaret(-caretBack);
+}
+
 /** カーソルを文字単位で動かす(負:左 / 正:右) */
 export function moveCaret(delta: number): void {
 	const selection = window.getSelection() as

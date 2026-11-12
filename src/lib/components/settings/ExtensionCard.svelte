@@ -3,13 +3,19 @@
 	// 「プライバシー」の開閉(マニフェストから生成)、拡張固有の設定。有効にするときは同意画面を挟む
 	import ConsentDialog from '$lib/components/extensions/ConsentDialog.svelte';
 	import ExtensionSettingsHost from '$lib/components/extensions/ExtensionSettingsHost.svelte';
+	import ContributionSummary from '$lib/components/extensions/ContributionSummary.svelte';
+	import OriginBadge from '$lib/components/extensions/OriginBadge.svelte';
 	import PrivacyInfo from '$lib/components/extensions/PrivacyInfo.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 	import IconBadge from '$lib/components/items/IconBadge.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Switch from '$lib/components/ui/Switch.svelte';
 	import { extensionHost } from '$lib/extensions/host.svelte';
 	import { KIND_LABELS, PLATFORM_LABELS } from '$lib/extensions/manifest';
+	import { packManager } from '$lib/extensions/packManager.svelte';
+	import { registryState } from '$lib/extensions/registryState.svelte';
 	import type { Extension } from '$lib/extensions/types';
+	import { confirmDialog, toast } from '$lib/stores/toast.svelte';
 
 	let { extension }: { extension: Extension } = $props();
 
@@ -20,6 +26,49 @@
 	const status = $derived(extensionHost.consentStatus(id));
 	const suspended = $derived(extensionHost.isSuspended(id));
 	const needsReview = $derived(extensionHost.needsReview(id));
+	const origin = $derived(extension.origin ?? 'official');
+	const isPack = $derived(manifest.kind === 'pack');
+	// 手動で取得した一覧に、新しい版があるとき(「更新を確認」で取得したあと)
+	const latest = $derived(registryState.entry(id));
+	const updatable = $derived(!!latest && packManager.updateAvailable(latest));
+
+	async function uninstall() {
+		const ok = await confirmDialog({
+			title: origin === 'personal-folder' ? '読み込みを外す' : '拡張機能のアンインストール',
+			message:
+				origin === 'personal-folder'
+					? `「${manifest.name}」の読み込みを外します。フォルダのファイルは削除しません(再読み込みで、また読み込まれます)。`
+					: `「${manifest.name}」をアンインストールします。この端末に保存した内容を削除し、使っていた機能は止まります。`,
+			confirmText: origin === 'personal-folder' ? '外す' : 'アンインストール',
+			danger: true
+		});
+		if (!ok) return;
+		busy = true;
+		try {
+			await packManager.uninstall(id);
+			toast.success(`「${manifest.name}」をアンインストールしました`);
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function update() {
+		if (!latest) return;
+		busy = true;
+		try {
+			const result = await packManager.installFromRegistry(latest);
+			if (result.reconsent) {
+				toast.info('扱う情報が変わりました。内容を確認してください');
+				review();
+			} else {
+				toast.success(`「${manifest.name}」を ${latest.version} に更新しました`);
+			}
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : '更新できませんでした');
+		} finally {
+			busy = false;
+		}
+	}
 
 	let consentOpen = $state(false);
 	let consentMode = $state<'enable' | 'review'>('enable');
@@ -76,6 +125,7 @@
 			<div class="title-line">
 				<h4 id={`ext-title-${id}`} class="name">{manifest.name}</h4>
 				<span class="chip kind" data-kind={manifest.kind}>{KIND_LABELS[manifest.kind]}</span>
+				{#if origin !== 'official'}<OriginBadge {origin} />{/if}
 			</div>
 			<ul class="platforms" aria-label="対応プラットフォーム">
 				{#each manifest.platforms as p (p)}
@@ -94,6 +144,10 @@
 	</header>
 
 	<p class="desc">{manifest.description}</p>
+
+	{#if isPack}
+		<ContributionSummary contributions={manifest.contributions} content={extension.content} />
+	{/if}
 
 	{#if !supported}
 		<p class="note" role="status">
@@ -114,6 +168,13 @@
 		</div>
 	{/if}
 
+	{#if updatable && latest}
+		<div class="banner info" role="status" data-testid={`ext-update-${id}`}>
+			<p>新しい版 {latest.version} があります(いまは {manifest.version})。</p>
+			<button type="button" class="banner-btn" disabled={busy} onclick={update}>更新</button>
+		</div>
+	{/if}
+
 	<details class="privacy">
 		<summary>
 			<Icon name="shield-lock" class="sum-ico" />
@@ -121,9 +182,26 @@
 			<Icon name="chevron-down" class="chev" />
 		</summary>
 		<div class="privacy-body">
-			<PrivacyInfo {manifest} />
+			<PrivacyInfo {manifest} {origin} content={extension.content} />
 		</div>
 	</details>
+
+	{#if isPack}
+		<div class="pack-foot">
+			<span class="pack-meta"
+				>版 {manifest.version}{#if manifest.license}・{manifest.license}{/if}・作者 {manifest.author}</span
+			>
+			<Button
+				variant="ghost"
+				size="sm"
+				disabled={busy}
+				onclick={uninstall}
+				data-testid={`ext-uninstall-${id}`}
+			>
+				{origin === 'personal-folder' ? '読み込みを外す' : 'アンインストール'}
+			</Button>
+		</div>
+	{/if}
 
 	{#if enabled && !suspended && extension.settings}
 		<div class="ext-settings">
@@ -136,6 +214,8 @@
 <ConsentDialog
 	bind:open={consentOpen}
 	{manifest}
+	{origin}
+	content={extension.content}
 	mode={consentMode}
 	reason={consentMode === 'review' ? reviewReason : undefined}
 	onconsent={consent}
@@ -278,6 +358,26 @@
 		font: inherit;
 		font-size: 13px;
 		cursor: pointer;
+	}
+
+	.banner.info {
+		border-color: color-mix(in srgb, var(--color-info) 50%, var(--color-border));
+		background: color-mix(in srgb, var(--color-info) 8%, var(--color-background));
+	}
+
+	.pack-foot {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 4px 12px;
+		padding-top: 8px;
+		border-top: 1px solid var(--color-border);
+	}
+
+	.pack-meta {
+		font-size: 12px;
+		color: var(--color-text-secondary);
 	}
 
 	.privacy {

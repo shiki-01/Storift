@@ -26,7 +26,8 @@
 	import TourOverlay from '$lib/components/tutorial/TourOverlay.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
 	import { installNativeContextMenuPolicy } from '$lib/desktop/nativeContextMenu';
-	import { extensionHost, publishPage, publishVisibility } from '$lib/extensions/host.svelte';
+	import { publishPage, publishVisibility } from '$lib/extensions/host.svelte';
+	import { startExtensions } from '$lib/extensions/packManager.svelte';
 	import { pageFromPath } from '$lib/extensions/pages';
 	import { aiStore } from '$lib/stores/ai.svelte';
 	import { updaterStore } from '$lib/stores/updater.svelte';
@@ -146,7 +147,7 @@
 		initializeErrorHandler();
 
 		// 有効にしている拡張だけ開始する(無効なら何も購読しない)
-		void extensionHost.start();
+		void startExtensions();
 
 		// Service Workerを登録（開発環境では既存のSWを削除）
 		// デスクトップ版はファイルをアプリに同梱しているので使わない

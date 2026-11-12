@@ -3,6 +3,7 @@ import { projectForBackup } from '$lib/firebase/syncTarget';
 import type { Project } from '$lib/types/project';
 import type { Chapter } from '$lib/types/chapter';
 import type { Scene } from '$lib/types/scene';
+import { applyExportNotation, type ExportNotation } from '$lib/extensions/packExport';
 
 export interface ExportOptions {
 	format: 'txt' | 'md' | 'docx' | 'pdf' | 'json' | 'epub';
@@ -12,6 +13,8 @@ export interface ExportOptions {
 	pageBreaks?: boolean;
 	fontSize?: number;
 	fontFamily?: string;
+	/** 有効なパックの書き出しのプリセット(テキスト・Markdown のみ。ルビ・傍点・空行の記法を変換する) */
+	notation?: ExportNotation;
 }
 
 /**
@@ -75,7 +78,9 @@ async function exportAsText(
 		}
 
 		for (const scene of chapterScenes) {
-			content += scene.content;
+			content += options.notation
+				? applyExportNotation(scene.content, options.notation)
+				: scene.content;
 			if (options.sceneBreaker) {
 				content += `\n\n${options.sceneBreaker}\n\n`;
 			} else {
@@ -127,7 +132,9 @@ async function exportAsMarkdown(
 		}
 
 		for (const scene of chapterScenes) {
-			content += scene.content;
+			content += options.notation
+				? applyExportNotation(scene.content, options.notation)
+				: scene.content;
 			if (options.sceneBreaker) {
 				content += `\n\n${options.sceneBreaker}\n\n`;
 			} else {

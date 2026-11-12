@@ -20,6 +20,12 @@
 - フォント（`/font/*`）は大きいため、初回使用時にキャッシュする。Google Fonts は表示しながら裏で更新する。
 - Firebase など外部への通信には介入しない（SDK がオフラインを扱う）。
 
+## アプリの殻と、成果物の URL を絶対パスにする理由
+
+- Service Worker は、ページの表示(`navigate` のリクエスト)に、URL にかかわらず保存済みの「/」の殻を返す(`handleNavigation`)。`/monolog/callback?code=…` のような、実在しないパスの URL も同じ殻で起動し、クライアント側のルーターが画面を決める。
+- 殻の HTML が相対パスで成果物を参照していると、`/monolog/callback` のような 2 階層以上の URL では、`/monolog/_app/…` を探しに行って読み込みに失敗する。そのため `svelte.config.js` で `kit.paths.relative: false` にして、常にルートからの絶対パスで参照している。
+- 影響する経路の例: Monolog. の認可からの戻り(`/monolog/callback`)、`/project/<id>/editor` の再読み込み・オフラインでの直接アクセス。
+
 ## 配信元が更新されたとき
 
 1. アプリを開いたとき、画面に戻ったとき、オンラインに戻ったとき、20 分ごと、`/_app/version.json` の変化を検知したときに、Service Worker の更新を確認する。

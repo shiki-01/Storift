@@ -61,7 +61,11 @@ UI の操作部品は選択できず、本文や、コピーしたくなる情�
 - 色選択: `<input type="color">` は使わず `src/lib/components/ui/ColorPicker.svelte`(インライン表示と `popover` 表示)。計算は `colorLogic.ts`。
 - 相関図の操作: ズームなどは `src/lib/components/relation/RelationControls.svelte`。ライブラリ既定のコントロールやラベルの白い箱は使わず、`--color-background` / `--color-text` のトークンで描く。
 - AI 返答の資料リンク: AI には内部名や id を出させず、`[[種別:id|表示名]]` で書かせる(指示は `src/lib/ai/refs.ts`)。描画は `linkifyRefs`、遷移は `src/lib/desktop/refLinks.ts` の `openRef`、同じ画面での選択は `itemNav.svelte.ts`。
-- ツールバーの表示設定: 項目は `src/lib/utils/toolbarItems.ts` に定義し、三点メニューへまとめる項目は `AppSettings.toolbarMenuItems` に保存する。項目を足すときは定義に加える(既定は全表示)。
+- ツールバーの表示設定: 項目は `src/lib/utils/toolbarItems.ts` に定義し、三点メニューへまとめる項目は `AppSettings.toolbarMenuItems`、並び順は `AppSettings.toolbarOrder` に保存する(どちらも未設定なら既定の順で全表示)。項目を足すときは定義(`TOOLBAR_ITEMS`)と、`editor/+page.svelte` の `toolDefs`(`Record<ToolbarItemId, …>` なので、足し忘れると型エラーになる)に加える。既存の ID と `data-tour` は変えない。AI のボタンは並べ替えの対象外で、右端側に固定する。拡張の項目(`ext:<拡張 ID>`)も同じ仕組みで並べ替え・まとめができる(詳細は [EXTENSIONS.md](EXTENSIONS.md))。
+- ポップオーバー: ボタンから開く小さな非モーダルのパネルは `src/lib/components/ui/Popover.svelte`(`bind:open` / `anchor` / `label` / `align`、中身は `children` スニペットで、`close` を受け取る)。
+  本体は `body` 直下に `position: fixed` で出し、起点の下に開く。収まらなければ上へ反転し、画面端では補正する(計算は `popoverPosition.ts`)。
+  Escape と外側のクリックで閉じ、Escape と `close()` では起点にフォーカスを戻す。`role="dialog"` と `label` が付き、起点には `aria-haspopup`・`aria-expanded`・`aria-controls` が付く。起点を押したときの開閉(`open` の切り替え)は呼び出し側で行う。
+  選択肢の一覧には `Select`、右クリックのメニューには `ContextMenu`、スマホの下から出る面には `mobile/Sheet.svelte` を使い、Popover は「小さな操作パネル」に使う。色は `--color-*` のトークンに従い、固定の色は使わない。
 - ネイティブのコンテキストメニュー: Tauri の本番ビルドでは、入力欄と選択テキスト以外の既定メニューを `src/lib/desktop/nativeContextMenu.ts` で止める。
 - アクティブ状態: 開閉するボタンは `disabled` ではなく、選択中の見た目(`aria-pressed`)にする。
 

@@ -47,8 +47,16 @@
 	});
 
 	const entries = $derived(registryState.index?.extensions ?? []);
+	// 公式を先に、コミュニティをあとに(それぞれ名前順)
+	const sorted = $derived(
+		[...entries].sort(
+			(a, b) =>
+				Number(b.source === 'official') - Number(a.source === 'official') ||
+				a.name.localeCompare(b.name, 'ja')
+		)
+	);
 	const filtered = $derived(
-		entries.filter((e) => {
+		sorted.filter((e) => {
 			if (kindFilter !== 'all' && e.kind !== kindFilter) return false;
 			if (sourceFilter !== 'all' && e.source !== sourceFilter) return false;
 			const q = query.trim().toLowerCase();
@@ -74,6 +82,9 @@
 	}
 
 	const supported = (entry: RegistryEntry) => entry.platforms.includes(platform);
+	/** インストール(または更新)できる状態か */
+	const installable = (entry: RegistryEntry) =>
+		supported(entry) && ['new', 'update'].includes(stateOf(entry));
 
 	async function install(entry: RegistryEntry) {
 		installing = true;
@@ -132,7 +143,7 @@
 					<div class="d-title">
 						<div class="chips">
 							<span class="chip kind">{KIND_LABELS[entry.kind]}</span>
-							<OriginBadge origin={originOf(entry)} />
+							{#if entry.source !== 'official'}<OriginBadge origin={originOf(entry)} />{/if}
 						</div>
 						<p class="d-desc">{entry.description}</p>
 					</div>
@@ -209,19 +220,9 @@
 					{#if state === 'bundled'}
 						<p class="small">Storift に同梱されています。設定の一覧から有効にします。</p>
 					{:else if !supported(entry)}
-						<p class="small">
-							この環境({PLATFORM_LABELS[platform]})では使えません。
-						</p>
+						<p class="small">この環境({PLATFORM_LABELS[platform]})では使えません。</p>
 					{:else if state === 'installed'}
 						<span class="done"><Icon name="check" class="done-ico" />インストール済み</span>
-					{:else}
-						<Button
-							disabled={installing}
-							onclick={() => void install(entry)}
-							data-testid="pack-install"
-						>
-							{installing ? 'インストール中…' : state === 'update' ? '更新' : 'インストール'}
-						</Button>
 					{/if}
 				</div>
 			</div>
@@ -229,7 +230,7 @@
 			<div class="filters">
 				<label class="search">
 					<span class="sr-only">拡張機能を検索</span>
-					<Icon name="search" class="search-ico" />
+					<span class="search-ico" aria-hidden="true"><Icon name="search" /></span>
 					<input
 						type="search"
 						placeholder="名前・説明・作者で検索"
@@ -261,7 +262,7 @@
 									<span class="r-title">
 										<span class="r-name">{entry.name}</span>
 										<span class="chip kind">{KIND_LABELS[entry.kind]}</span>
-										<OriginBadge origin={originOf(entry)} />
+										{#if entry.source !== 'official'}<OriginBadge origin={originOf(entry)} />{/if}
 									</span>
 									<span class="r-desc">{entry.description}</span>
 									<span class="r-meta">
@@ -283,6 +284,19 @@
 		<div class="foot">
 			<p class="small">取得先: storift.shiki-01.com のみ。開いたときだけ取得します。</p>
 			<div class="foot-btns">
+				{#if selected && installable(selected)}
+					<Button
+						disabled={installing}
+						onclick={() => void install(selected)}
+						data-testid="pack-install"
+					>
+						{installing
+							? 'インストール中…'
+							: stateOf(selected) === 'update'
+								? '更新'
+								: 'インストール'}
+					</Button>
+				{/if}
 				<Button
 					variant="secondary"
 					size="sm"
@@ -296,11 +310,22 @@
 </Modal>
 
 <style>
+	/* 内容が長くても、下のボタンが常に見えるよう、内容だけをスクロールさせる */
 	.browser {
 		display: flex;
 		flex-direction: column;
 		gap: 14px;
 		min-height: 240px;
+		max-height: min(62dvh, 560px);
+		overflow-y: auto;
+		padding-right: 4px;
+		overscroll-behavior: contain;
+	}
+
+	@media (max-width: 768px) {
+		.browser {
+			max-height: calc(100dvh - 210px - var(--safe-top, 0px));
+		}
 	}
 
 	.sr-only {
@@ -323,15 +348,20 @@
 		display: block;
 	}
 
-	.search :global(.search-ico) {
+	.search-ico {
 		position: absolute;
-		left: 10px;
-		top: 50%;
-		width: 16px;
-		height: 16px;
-		transform: translateY(-50%);
+		inset: 0 auto 0 10px;
+		display: flex;
+		align-items: center;
 		color: var(--color-text-secondary);
 		pointer-events: none;
+	}
+
+	.search-ico :global(svg),
+	.search-ico :global(div) {
+		display: flex;
+		width: 16px;
+		height: 16px;
 	}
 
 	.search input {

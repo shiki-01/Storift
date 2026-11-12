@@ -193,7 +193,10 @@
 		{#if packManager.folderErrors.length > 0}
 			<ul class="folder-errors" role="alert" data-testid="folder-errors">
 				{#each packManager.folderErrors as item (item.dir)}
-					<li><b>{item.dir}</b>: {item.errors.join(' / ')}</li>
+					<li>
+						<b>{item.dir}</b>: {item.errors.slice(0, 3).join(' / ')}{#if item.errors.length > 3}
+							(ほか {item.errors.length - 3} 件){/if}
+					</li>
 				{/each}
 			</ul>
 		{/if}

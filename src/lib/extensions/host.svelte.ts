@@ -409,8 +409,12 @@ export class ExtensionHost {
 			const id = ext.manifest.id;
 			if (!this.enabled.has(id) || !isSupported(ext.manifest, this.deps.platform)) continue;
 			// 運営が失効させた版は、動かさずに無効にする
-			if (this.revocationOf(id)) {
+			const revoked = this.revocationOf(id);
+			if (revoked) {
 				await this.setEnabled(id, false);
+				this.deps.notify.error(
+					`「${ext.manifest.name}」は運営により失効されたため、無効にしました: ${revoked.reason}`
+				);
 				continue;
 			}
 			if (this.consentStatus(id) === 'changed') {

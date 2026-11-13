@@ -224,6 +224,7 @@ async function main() {
 	const vite = await startVite();
 	const browser = await chromium.launch();
 	const requests = { evil: [], ok: [], registry: [] };
+	const registryMock = { revoked: [] };
 	try {
 		const context = await browser.newContext({
 			viewport: { width: 1280, height: 900 },
@@ -253,11 +254,15 @@ async function main() {
 			requests.registry.push(url.pathname);
 			const file = path.join(registryDir, url.pathname.slice(REGISTRY_PREFIX.length));
 			if (!fs.existsSync(file)) return route.fulfill({ status: 404, body: 'not found' });
+			let body = fs.readFileSync(file, 'utf8');
+			if (file.endsWith('index.json') && registryMock.revoked.length > 0) {
+				body = JSON.stringify({ ...JSON.parse(body), revoked: registryMock.revoked });
+			}
 			return route.fulfill({
 				status: 200,
 				contentType: 'application/json',
 				headers: { 'access-control-allow-origin': '*' },
-				body: fs.readFileSync(file, 'utf8')
+				body
 			});
 		});
 
@@ -276,15 +281,16 @@ async function main() {
 			pageErrors.push(e.message);
 			console.log(`  pageerror: ${e.message}`);
 		});
-		context.on('page', (p) => {
-			if (p !== page) popups.push(p.url());
+		// ポップアップ = ほかのページから開かれたページ(テスト自身が newPage で開くものは数えない)
+		context.on('page', async (p) => {
+			if (p !== page && (await p.opener().catch(() => null))) popups.push(p.url());
 		});
 		page.on('framenavigated', (f) => {
 			if (f === page.mainFrame()) mainNavigations.push(f.url());
 		});
 		const base = vite.base;
 		await page.goto(`${base}/home`);
-		await seedProject(page, { title: 'E2E スクリプト' });
+		const pid = await seedProject(page, { title: 'E2E スクリプト' });
 		await page.goto(`${base}/settings#extensions`);
 		await page.locator(CARD('monolog')).waitFor({ timeout: 30_000 });
 		const settingsUrl = page.url();
@@ -693,6 +699,255 @@ async function main() {
 			(await runtimeState(page, 'attack-loop')) === null
 		);
 
+		console.log('[同意画面: 個人追加のスクリプトは「未審査のコードを実行する」が必須]');
+		await page.getByTestId('pack-file-input').setInputFiles({
+			name: 'consent.storiftext.json',
+			mimeType: 'application/json',
+			buffer: Buffer.from(
+				bundleText(
+					manifestOf('consent-check', {
+						ui: true,
+						storage: true,
+						notify: true,
+						events: ['session:end'],
+						read: ['project:title'],
+						network: ['ok.example.com']
+					}),
+					'1'
+				)
+			)
+		});
+		await page.getByTestId('consent-confirm').waitFor({ timeout: 10_000 });
+		const consentText = await page.locator('[role="dialog"]').last().innerText();
+		check(
+			'同意画面に、平易な日本語の権限が並ぶ',
+			[
+				'執筆の終了を受け取ります',
+				'作品名を受け取ります',
+				'次のサーバーと通信します: ok.example.com',
+				'通知',
+				'操作画面'
+			].every((t) => consentText.includes(t)),
+			consentText.slice(0, 300)
+		);
+		check(
+			'隔離と取り消せないことの注意が出る',
+			consentText.includes('隔離された環境') && consentText.includes('取り消せません')
+		);
+		check('運営者は保証しないと出る', consentText.includes('保証しません'));
+		check(
+			'個人追加(未審査)のラベルと赤い警告が出る',
+			consentText.includes('個人追加(未審査)') &&
+				(await page.locator('[role="dialog"]').last().getByTestId('unreviewed-warning').count()) ===
+					1
+		);
+		check(
+			'チェックするまで「同意して有効にする」は押せない',
+			await page.getByTestId('consent-confirm').isDisabled()
+		);
+		await shot(page, 'phase3-consent-personal-desktop-light');
+		await page.getByTestId('consent-ack').locator('input').check();
+		check('チェックすると押せる', !(await page.getByTestId('consent-confirm').isDisabled()));
+		await page.getByRole('button', { name: 'キャンセル' }).last().click();
+		await sleep(400);
+		check(
+			'キャンセルすると有効にならない(スクリプトは動かない)',
+			(await sandboxFramesOf(page, 'consent-check')) === 0
+		);
+
+		console.log('[コミュニティ(レビュー済み)のスクリプトをレジストリから入れる: ポモドーロ]');
+		await page.getByTestId('open-pack-browser').click();
+		await page.getByTestId('pack-row-pomodoro-timer').waitFor({ timeout: 15_000 });
+		await page.getByTestId('pack-row-discord-webhook').waitFor({ timeout: 5000 });
+		await page.getByTestId('pack-row-pomodoro-timer').click();
+		await page.getByTestId('pack-detail').waitFor({ timeout: 5000 });
+		const detail = await page.getByTestId('pack-detail').innerText();
+		check(
+			'詳細に、スクリプトの注意と権限が出る',
+			detail.includes('隔離された環境') && detail.includes('通信しません')
+		);
+		await shot(page, 'phase3-browser-detail');
+		await page.getByTestId('pack-install').click();
+		await page.getByTestId('consent-confirm').waitFor({ timeout: 15_000 });
+		const communityConsent = await page.locator('[role="dialog"]').last().innerText();
+		check(
+			'コミュニティ(レビュー済み)のラベルが出て、未審査のチェックは無い',
+			communityConsent.includes('コミュニティ(レビュー済み)') &&
+				(await page.getByTestId('consent-ack').count()) === 0 &&
+				(await page.locator('[role="dialog"]').last().getByTestId('unreviewed-warning').count()) ===
+					0
+		);
+		check(
+			'同意前でも押せる(公式のレビュー済み)',
+			!(await page.getByTestId('consent-confirm').isDisabled())
+		);
+		await shot(page, 'phase3-consent-community-desktop-light');
+		check('同意するまで、スクリプトは動かない', (await sandboxFramesOf(page, 'ポモドーロ')) === 0);
+		await page.getByTestId('consent-confirm').click();
+		await page.locator(CARD('pomodoro-timer')).waitFor({ timeout: 10_000 });
+		await page.locator(`${CARD('pomodoro-timer')} .ui`).waitFor({ timeout: 20_000 });
+		check(
+			'ポモドーロが動き、設定欄が出る',
+			(await page.locator(CARD('pomodoro-timer')).innerText()).includes('作業の時間')
+		);
+		await page.locator(CARD('pomodoro-timer')).scrollIntoViewIfNeeded();
+		await shot(page, 'phase3-card-pomodoro-desktop-light');
+
+		console.log('[ツールバーのポップアップ(宣言的な UI)]');
+		await page.goto(`${base}/project/${pid}/editor`);
+		await page.locator('[role="textbox"][aria-label="エディタ"]').waitFor({ timeout: 30_000 });
+		await page.locator('[data-testid="toolbar-ext-pomodoro-timer"]').waitFor({ timeout: 20_000 });
+		await page.locator('[data-testid="toolbar-ext-pomodoro-timer"]').click();
+		const panel = page.getByTestId('script-panel-pomodoro-timer');
+		await panel.waitFor({ timeout: 10_000 });
+		await panel.getByTestId('script-btn-start').waitFor({ timeout: 10_000 });
+		check('ポップアップに 25:00 と開始ボタンが出る', (await panel.innerText()).includes('25:00'));
+		await panel.getByTestId('script-btn-start').click();
+		await panel.getByTestId('script-btn-stop').waitFor({ timeout: 5000 });
+		await sleep(2200);
+		check(
+			'開始すると秒が進む',
+			!(await panel.innerText()).includes('25:00'),
+			(await panel.innerText()).replace(/\s+/g, ' ')
+		);
+		check(
+			'動作中は、ツールバーのアイコンにインジケータが出る',
+			(await page.locator('[data-testid="toolbar-ext-pomodoro-timer"] .tool-dot').count()) === 1
+		);
+		await shot(page, 'phase3-popup-pomodoro-desktop-light');
+		await panel.getByTestId('script-btn-stop').click();
+		await panel.getByTestId('script-btn-start').waitFor({ timeout: 5000 });
+		await page.keyboard.press('Escape');
+
+		console.log('[失効(キルスイッチ): 設定を開くと確認し、該当する拡張を無効にして理由を出す]');
+		check(
+			'失効が無いときは、有効のまま',
+			await page.evaluate(() =>
+				JSON.parse(localStorage.getItem('storift:extensions:enabled') || '[]').includes(
+					'pomodoro-timer'
+				)
+			)
+		);
+		registryMock.revoked = [
+			{
+				id: 'pomodoro-timer',
+				versions: ['1.0.0'],
+				reason: 'E2E: 不正な通信が見つかったため',
+				at: '2026-11-12'
+			}
+		];
+		await page.goto(`${base}/settings#extensions`);
+		await page.getByTestId('ext-revoked-pomodoro-timer').waitFor({ timeout: 20_000 });
+		const revokedText = await page.getByTestId('ext-revoked-pomodoro-timer').innerText();
+		check(
+			'無効になり、理由が表示される',
+			revokedText.includes('不正な通信が見つかったため'),
+			revokedText
+		);
+		check(
+			'スイッチはオフで、押せない',
+			(await page
+				.locator(`${CARD('pomodoro-timer')} [role="switch"]`)
+				.getAttribute('aria-checked')) === 'false' &&
+				(await page.locator(`${CARD('pomodoro-timer')} [role="switch"]`).isDisabled())
+		);
+		check('iframe が取り除かれた', (await sandboxFramesOf(page, 'ポモドーロ')) === 0);
+		check(
+			'失効の通知(トースト)が出る',
+			(await page.getByText('運営により失効されたため、無効にしました').count()) > 0
+		);
+		await shot(page, 'phase3-revoked-desktop-light');
+		check(
+			'再起動しても(オフラインでも)失効した版は動かない',
+			await page.evaluate(
+				() =>
+					!JSON.parse(localStorage.getItem('storift:extensions:enabled') || '[]').includes(
+						'pomodoro-timer'
+					)
+			)
+		);
+
+		console.log('[起動時の失効リストの確認: スクリプトを有効にしているときだけ、1 日 1 回まで]');
+		registryMock.revoked = [];
+		const indexCount = () => requests.registry.filter((p) => p.endsWith('index.json')).length;
+		const bootCheck = async (label, prepare, expectRequest) => {
+			const p = await context.newPage();
+			await p.goto(`${base}/home`);
+			await p.evaluate(prepare);
+			const before = indexCount();
+			await p.goto(`${base}/home`);
+			await sleep(3500);
+			check(
+				label,
+				indexCount() > before === expectRequest,
+				`index.json の取得: ${indexCount() - before}`
+			);
+			await p.close();
+		};
+		await bootCheck(
+			'スクリプトを有効にしていなければ、起動しても通信しない',
+			() => {
+				localStorage.setItem('storift:extensions:enabled', '[]');
+				localStorage.removeItem('storift:extensions:revocation:last');
+			},
+			false
+		);
+		await page.goto(`${base}/home`);
+		await page.goto(`${base}/settings#extensions`);
+		await page.locator(CARD('pomodoro-timer')).waitFor();
+		// 設定を開いたとき、失効リストを確認する。失効が解除されている(一覧に無い)ので、有効にできる
+		await page.waitForFunction(
+			(sel) => !document.querySelector(sel)?.hasAttribute('disabled'),
+			`${CARD('pomodoro-timer')} [role="switch"]`,
+			{ timeout: 20_000 }
+		);
+		await page.locator(`${CARD('pomodoro-timer')} [role="switch"]`).click();
+		await page.getByTestId('consent-confirm').click();
+		await page.locator(`${CARD('pomodoro-timer')} .ui`).waitFor({ timeout: 20_000 });
+		await bootCheck(
+			'スクリプトを有効にしていて、1 日以上経っていれば、起動時に確認する',
+			() => localStorage.removeItem('storift:extensions:revocation:last'),
+			true
+		);
+		await bootCheck(
+			'確認した直後(1 日以内)の起動では、確認しない',
+			() => localStorage.setItem('storift:extensions:revocation:last', String(Date.now())),
+			false
+		);
+		await bootCheck(
+			'設定「失効リストを自動で確認」をオフにすると、確認しない',
+			() => {
+				localStorage.setItem('storift:extensions:revocation:auto', '0');
+				localStorage.removeItem('storift:extensions:revocation:last');
+			},
+			false
+		);
+		await page.goto(`${base}/home`);
+		await page.goto(`${base}/settings#extensions`);
+		await page.getByTestId('revocation-off-note').waitFor({ timeout: 10_000 });
+		check('オフにしたときの注意が表示される', true);
+		await shot(page, 'phase3-revocation-setting-desktop-light');
+		await page.evaluate(() => localStorage.removeItem('storift:extensions:revocation:auto'));
+
+		console.log('[フェイルクローズ: ワーカーを起動できない環境では、スクリプトを実行しない]');
+		const p2 = await context.newPage();
+		await p2.addInitScript(() => {
+			Object.defineProperty(window, 'Worker', { value: undefined, configurable: true });
+		});
+		await p2.goto(`${base}/settings#extensions`);
+		await p2.getByTestId('ext-unsupported-pomodoro-timer').waitFor({ timeout: 30_000 });
+		check('「この環境では実行できません」と表示される', true);
+		check(
+			'隔離環境(iframe)を作らず、スクリプトを実行していない',
+			(await p2.locator('iframe[data-storift-sandbox]').count()) === 0
+		);
+		check(
+			'スイッチは押せない',
+			await p2.locator(`${CARD('pomodoro-timer')} [role="switch"]`).isDisabled()
+		);
+		await shot(p2, 'phase3-unsupported-desktop-light');
+		await p2.close();
+
 		console.log('[まとめ]');
 		check(
 			'evil.example.net へは最後まで 1 件も届いていない',
@@ -701,8 +956,9 @@ async function main() {
 		);
 		check('ポップアップは最後まで開かなかった', popups.length === 0);
 		check(
-			'ホストのページは最後まで移動していない',
-			page.url() === settingsUrl && mainNavigations.length === 0
+			'ホストのページは、攻撃で外部へ移動していない',
+			!page.url().includes('evil') && !mainNavigations.some((u) => u.includes('evil')),
+			mainNavigations.join(',')
 		);
 		check(
 			'ホストの localStorage は変わっていない',

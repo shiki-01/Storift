@@ -442,3 +442,83 @@ describe('パックの追加・更新・取り除き', () => {
 		expect(p.activate).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('失効(キルスイッチ)', () => {
+	const entry = (over = {}) => ({
+		id: 'bad',
+		versions: '*' as const,
+		reason: '情報を不正に送っていた',
+		at: '2026-11-12',
+		...over
+	});
+
+	it('失効の一覧を反映すると、該当する有効な拡張はすぐ無効になり、理由が返る', async () => {
+		const ext = makeExt('bad', ['web'], { kind: 'pack' });
+		const other = makeExt('good', ['web'], { kind: 'pack' });
+		const { host } = makeHost([ext, other]);
+		await host.start();
+		await enable(host, 'bad');
+		await enable(host, 'good');
+		const disabled = await host.applyRevocations([entry()]);
+		expect(disabled).toEqual([{ name: 'bad', reason: '情報を不正に送っていた' }]);
+		expect(host.isEnabled('bad')).toBe(false);
+		expect(host.isActive('bad')).toBe(false);
+		expect(ext.deactivate).toHaveBeenCalled();
+		expect(host.isEnabled('good')).toBe(true);
+		expect(host.revocationOf('bad')?.reason).toContain('不正');
+	});
+
+	it('失効した拡張は、同意しても有効にできない', async () => {
+		const ext = makeExt('bad', ['web'], { kind: 'pack' });
+		const { host } = makeHost([ext]);
+		await host.applyRevocations([entry()]);
+		expect(await enable(host, 'bad')).toBe(false);
+		expect(host.isEnabled('bad')).toBe(false);
+	});
+
+	it('版を指定した失効は、その版だけ。別の版に更新すれば有効にできる', async () => {
+		const v1 = makeExt('bad', ['web'], { kind: 'pack', version: '1.0.0' });
+		const { host } = makeHost([v1]);
+		await host.applyRevocations([entry({ versions: ['1.0.0'] })]);
+		expect(host.revocationOf('bad')).toBeDefined();
+		const v2 = makeExt('bad', ['web'], { kind: 'pack', version: '1.0.1' });
+		await host.addExtension(v2);
+		expect(host.revocationOf('bad')).toBeUndefined();
+		expect(await enable(host, 'bad')).toBe(true);
+	});
+
+	it('失効の一覧は保存され、再起動しても動かさない。一覧から消えれば解除される', async () => {
+		const ext = makeExt('bad', ['web'], { kind: 'pack' });
+		const first = makeHost([ext]);
+		await first.host.start();
+		await enable(first.host, 'bad');
+		await first.host.applyRevocations([entry()]);
+
+		const again = makeExt('bad', ['web'], { kind: 'pack' });
+		localStorage.setItem(ENABLED_STORAGE_KEY, JSON.stringify(['bad']));
+		const second = makeHost([again]);
+		await second.host.start();
+		expect(again.activate).not.toHaveBeenCalled();
+		expect(second.host.isEnabled('bad')).toBe(false);
+
+		await second.host.applyRevocations([]);
+		expect(second.host.revocationOf('bad')).toBeUndefined();
+	});
+
+	it('公式の拡張は、失効の一覧に載っていても止めない', async () => {
+		const ext = makeExt('official-one');
+		const { host } = makeHost([ext]);
+		await host.start();
+		await enable(host, 'official-one');
+		expect(await host.applyRevocations([entry({ id: 'official-one' })])).toEqual([]);
+		expect(host.isEnabled('official-one')).toBe(true);
+	});
+
+	it('スクリプトとパックは後から足し引きできる', async () => {
+		const { host } = makeHost([]);
+		const script = makeExt('s', ['web'], { kind: 'script' });
+		expect(await host.addExtension(script)).toBe(true);
+		expect(await host.addExtension(makeExt('o', ['web'], { kind: 'official' }))).toBe(false);
+		expect(await host.removeExtension('s')).toBe(true);
+	});
+});

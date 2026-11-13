@@ -6,7 +6,8 @@
 //!
 //! - 読み取り専用。何も書き込まない・削除しない(既定のフォルダを作る場合を除く)。
 //! - 拡張フォルダの外は読まない。シンボリックリンク(フォルダ・ファイルとも)はたどらない。
-//! - 読むのは `.json` だけ。隠しファイルは読まない。階層・ファイル数・大きさに上限がある。
+//! - 読むのは `.json` と `.js`(スクリプト拡張の本体)だけ。隠しファイルは読まない。階層・ファイル数・大きさに上限がある。
+//!   `.js` は読み取るだけで、ここでは実行しない(実行は隔離された環境。docs/SCRIPT_API.md)。
 
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -106,7 +107,8 @@ fn collect(
             }
             continue;
         }
-        if !meta.is_file() || !name.to_ascii_lowercase().ends_with(".json") {
+        let lower = name.to_ascii_lowercase();
+        if !meta.is_file() || !(lower.ends_with(".json") || lower.ends_with(".js")) {
             continue;
         }
         if meta.len() > MAX_FILE_BYTES {
@@ -219,6 +221,9 @@ mod tests {
         fs::write(root.join("my-pack/contents/a.json"), "[]").unwrap();
         fs::write(root.join("my-pack/readme.md"), "x").unwrap();
         fs::write(root.join("my-pack/.hidden.json"), "x").unwrap();
+        // スクリプト拡張の本体(.js)は読む。それ以外の拡張子(.ts・.html)は読まない
+        fs::write(root.join("my-pack/main.js"), "// script").unwrap();
+        fs::write(root.join("my-pack/page.html"), "x").unwrap();
         // manifest.json の無いフォルダ・隠しフォルダ・ひな形は読まない
         fs::create_dir_all(root.join("other")).unwrap();
         fs::write(root.join("other/a.json"), "{}").unwrap();
@@ -231,7 +236,7 @@ mod tests {
         assert_eq!(pack.dir, "my-pack");
         assert!(pack.error.is_none());
         let keys: Vec<_> = pack.files.keys().cloned().collect();
-        assert_eq!(keys, vec!["contents/a.json", "manifest.json"]);
+        assert_eq!(keys, vec!["contents/a.json", "main.js", "manifest.json"]);
         fs::remove_dir_all(&root).unwrap();
     }
 

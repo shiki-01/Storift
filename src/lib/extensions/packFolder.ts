@@ -6,7 +6,15 @@
  * マニフェストが参照できるのは、isSafeContentPath を通った相対パスだけ(`..`・絶対パス・バックスラッシュは検証で拒否される)。
  */
 import { validateManifest } from './manifest';
-import { PACK_LIMITS, contributionPaths, validatePackContent, byteLength } from './pack';
+import {
+	PACK_LIMITS,
+	contributionPaths,
+	emptyContent,
+	validatePackContent,
+	byteLength
+} from './pack';
+import { validateScriptFiles } from './script/files';
+import { SCRIPT_LIMITS } from './script/limits';
 import type { ParsedBundle } from './packBundle';
 
 /** Rust が返す、フォルダ 1 つ分の読み取り結果 */
@@ -47,9 +55,32 @@ export function assembleFolderPack(entry: FolderScanEntry): FolderPack {
 	const m = validateManifest(raw);
 	if (!m.ok) return fail(...m.errors.map((e) => `manifest.json: ${e}`));
 	const manifest = m.manifest;
-	if (manifest.kind !== 'pack') return fail('パック(kind: pack)以外は読み込めません');
+	if (manifest.kind !== 'pack' && manifest.kind !== 'script')
+		return fail('パック(kind: pack)かスクリプト(kind: script)以外は読み込めません');
 	if (manifest.id !== entry.dir) {
 		return fail(`id「${manifest.id}」がフォルダ名「${entry.dir}」と一致しません`);
+	}
+
+	if (manifest.kind === 'script') {
+		const path = manifest.entry!;
+		const text = Object.hasOwn(entry.files, path) ? entry.files[path] : undefined;
+		if (text === undefined) return fail(`${path}: ファイルがありません`);
+		if (byteLength(text) > SCRIPT_LIMITS.sourceBytes)
+			return fail(`${path}: スクリプトが大きすぎます`);
+		// 宣言した 1 ファイルだけを見る(それ以外のファイルは読み取っても使わない)
+		const script = validateScriptFiles(manifest, { [path]: text });
+		if (!script.ok) return fail(...script.errors);
+		return {
+			ok: true,
+			dir: entry.dir,
+			bundle: {
+				manifest,
+				files: { [path]: text },
+				content: emptyContent(),
+				size: byteLength(manifestText) + byteLength(text),
+				script: script.source
+			}
+		};
 	}
 
 	// 宣言されたパスだけを引く(検証済みの安全なパス)。それ以外のファイルは見ない

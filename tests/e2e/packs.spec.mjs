@@ -90,13 +90,13 @@ async function main() {
 		await page.goto(`${base}/home`);
 		const pid = await seedProject(page, { title: 'E2E パック', content: 'お願い下さい。' });
 
-		console.log('[起動時には取得しない]');
+		console.log('[設定を開いたとき失効リストだけ取得する(起動時には取得しない)]');
 		await page.goto(`${base}/settings#extensions`);
 		await page.locator(CARD('monolog')).waitFor({ timeout: 30_000 });
 		await sleep(800);
 		check(
-			'設定を開いただけでは、レジストリへアクセスしない',
-			state.requests.length === 0,
+			'設定を開いても、取得するのは失効リスト(index.json)だけで、拡張のバンドルは取得しない',
+			state.requests.every((r) => r === `${PREFIX}index.json`),
 			state.requests.join(',')
 		);
 		await snap(page, 'phase2-settings-desktop-light', true);
@@ -119,7 +119,7 @@ async function main() {
 		await page.getByTestId('pack-row-common-notation').waitFor({ timeout: 10_000 });
 		check('一覧を開いたときに取得する', state.requests.includes(`${PREFIX}index.json`));
 		const rows = await page.locator('[data-testid^="pack-row-"]').count();
-		check('公式 2 件とコミュニティ 3 件が並ぶ', rows === 5, String(rows));
+		check('公式 2 件とコミュニティ 5 件(パック 3・スクリプト 2)が並ぶ', rows === 7, String(rows));
 		const rowText = await page.getByTestId('pack-row-common-notation').innerText();
 		check('コミュニティのラベルが出る', rowText.includes('コミュニティ'));
 		check(
@@ -137,7 +137,7 @@ async function main() {
 		await page.getByRole('option', { name: 'すべての種類' }).click();
 		await page.getByRole('combobox', { name: '出所で絞り込み' }).click();
 		await page.getByRole('option', { name: 'コミュニティ' }).click();
-		check('出所で絞り込める', (await page.locator('[data-testid^="pack-row-"]').count()) === 3);
+		check('出所で絞り込める', (await page.locator('[data-testid^="pack-row-"]').count()) === 5);
 
 		console.log('[詳細とインストール]');
 		await page.getByTestId('pack-row-common-notation').click();

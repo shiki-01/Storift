@@ -9,7 +9,11 @@
 import { OFFICIAL_EXTENSION_IDS, parseManifest, type ExtensionManifest } from '$manifest';
 
 const modules = import.meta.glob(
-	['../../../extensions/*/manifest.json', '!../../../extensions/_template/manifest.json'],
+	[
+		'../../../extensions/*/manifest.json',
+		'!../../../extensions/_template/manifest.json',
+		'!../../../extensions/_template-script/manifest.json'
+	],
 	{
 		eager: true,
 		import: 'default'

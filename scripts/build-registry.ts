@@ -4,14 +4,15 @@
  *   bun scripts/build-registry.ts [出力先]   既定: site/static/extensions-registry
  *
  * - index.json: 公式を含む全拡張の一覧(ひな形は含めない)
- * - <id>/<version>.storiftext.json: パックのバンドル
+ * - <id>/<version>.storiftext.json: パック・スクリプトのバンドル
+ * - index.json の revoked: 失効(キルスイッチ)。extensions/revoked.json から作る
  * 出力は入力だけで決まる(コミット日時・実行時刻を使わない)ので、何度作っても同じバイト列になる。
  * 生成物はコミットしない(site/.gitignore)。
  */
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadExtensions, TEMPLATE_DIR } from './lib/extensions';
+import { isTemplateDir, loadExtensions } from './lib/extensions';
 import {
 	REGISTRY_INDEX_VERSION,
 	bundlePath,
@@ -25,18 +26,18 @@ export interface BuildResult {
 }
 
 export async function buildRegistry(repoRoot: string, outDir: string): Promise<BuildResult> {
-	const { extensions, errors } = await loadExtensions(repoRoot);
+	const { extensions, errors, revoked } = await loadExtensions(repoRoot);
 	if (errors.length > 0) {
 		throw new Error(`extensions に問題があるため、レジストリを作れません:\n${errors.join('\n')}`);
 	}
 	const targets = extensions
-		.filter((e) => e.dir !== TEMPLATE_DIR)
+		.filter((e) => !isTemplateDir(e.dir))
 		.sort((a, b) => (a.manifest.id < b.manifest.id ? -1 : 1));
 
 	await rm(outDir, { recursive: true, force: true });
 	await mkdir(outDir, { recursive: true });
 	const files: string[] = [];
-	const index: RegistryIndex = { indexVersion: REGISTRY_INDEX_VERSION, extensions: [] };
+	const index: RegistryIndex = { indexVersion: REGISTRY_INDEX_VERSION, extensions: [], revoked };
 
 	for (const ext of targets) {
 		const bundle = ext.bundle ? { sha256: ext.bundle.sha256, size: ext.bundle.size } : null;

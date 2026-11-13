@@ -1,0 +1,30 @@
+{
+	"id": "pomodoro-timer",
+	"name": "ポモドーロタイマー",
+	"description": "ツールバーのポップアップで、作業と休憩を交互に計るタイマー。時間は設定で変えられ、終わると通知します。",
+	"version": "1.0.0",
+	"author": "shiki-01",
+	"kind": "script",
+	"apiVersion": 1,
+	"platforms": ["web", "desktop"],
+	"icon": "clock",
+	"homepage": "https://github.com/shiki-01/Storift/tree/main/extensions/pomodoro-timer",
+	"license": "MIT",
+	"updatedAt": "2026-11-12",
+	"entry": "main.js",
+	"permissions": {
+		"storage": true,
+		"notify": true,
+		"ui": true
+	},
+	"privacy": {
+		"sends": [],
+		"stores": ["作業と休憩の時間の設定: この端末の中(拡張ごとの領域)にだけ保存"],
+		"onDisable": "無効にすると、タイマーが止まります。アンインストールすると、この端末に保存した設定を削除します。",
+		"notes": [
+			"通信しません(permissions.network が空です)。",
+			"執筆のイベントも、作品名も、本文も受け取りません。",
+			"同期・バックアップ・書き出しには含まれません。"
+		]
+	}
+}

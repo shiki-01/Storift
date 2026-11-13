@@ -72,7 +72,7 @@ Storift は、原稿・プロット・人物・設定資料・進捗を作品ご
 - 設定の「拡張機能」で、追加の機能を一つずつ有効にできます(既定はすべて無効。有効にするときは、その拡張が扱う情報を確認して同意します。有効/無効と同意は端末ごと)。拡張は、`extensions/<id>/manifest.json` で、名前・対応環境・権限・扱う情報を宣言します。有効にした拡張機能は、ツールバーにアイコンが加わり、押すとポップアップで操作できます(スマホは「操作」シートから)。
 - **Monolog. 連携**: 執筆している間の時間と増減した文字数を、時間記録アプリ [Monolog.](https://www.monolog.life) に記録します(Web 版は本番のエディタ、およびデスクトップ版)。Monolog. に接続したときだけ、開始・終了時刻、所要時間、タイトル、メモ(増減した文字数)、タグを送ります。**本文は送りません。**
 - **Discord Rich Presence**(デスクトップ版のみ): Storift を開いている間、Discord のプロフィールに、いま開いている画面と経過時間を表示します。執筆中は増減した文字数も出ます。作品名・総文字数は、設定でオンにしたときだけ表示します(既定はオフ)。表示する文字はテンプレートで変えられます。本文は送りません。
-- 各拡張が扱う情報は、サイトの[拡張機能のページ](https://storift.shiki-01.com/extensions)に載せています。拡張の種類は「公式」と「パック」(コードを含まない JSON。テーマ・校正の辞書・入力補助キー・書き出しのプリセット。通信しません)に対応しています。「拡張機能を探す」でコミュニティの拡張を入れたり、ファイル・デスクトップ版の拡張フォルダから追加したりできます(出所は「コミュニティ」「個人追加(未審査)」「個人フォルダ(未審査)」と表示されます)。スクリプトは今後の予定です。拡張の投稿方法は [docs/COMMUNITY.md](docs/COMMUNITY.md) を参照してください。
+- 各拡張が扱う情報は、サイトの[拡張機能のページ](https://storift.shiki-01.com/extensions)に載せています。拡張の種類は「公式」「パック」(コードを含まない JSON。テーマ・校正の辞書・入力補助キー・書き出しのプリセット。通信しません)「スクリプト」(隔離された環境で動く JavaScript。宣言した通信先にだけ通信でき、宣言して同意したイベントだけを受け取ります)に対応しています。「拡張機能を探す」でコミュニティの拡張を入れたり、ファイル・デスクトップ版の拡張フォルダから追加したりできます(出所は「コミュニティ(レビュー済み)」「個人追加(未審査)」「個人フォルダ(未審査)」と表示されます。個人のスクリプトは「未審査のコードを実行する」への同意が必要です)。スクリプトの書き方は [docs/SCRIPT_API.md](docs/SCRIPT_API.md) です。拡張の投稿方法は [docs/COMMUNITY.md](docs/COMMUNITY.md) を参照してください。
 - 仕組みと拡張の足し方は [docs/EXTENSIONS.md](docs/EXTENSIONS.md) を参照してください。
 
 ### AI 連携(デスクトップ版)
@@ -118,7 +118,7 @@ Windows・macOS・Linux 向けを [GitHub Releases](https://github.com/shiki-01/
 - 原稿はブラウザのデータ(IndexedDB)に保存されます。ブラウザのデータを消すと、端末内の作品も消えます。大事な作品は、ときどき書き出してください。設定画面の「データ」から、バックアップ(エクスポート/インポート)ができます。
 - デスクトップ版の AI 連携では、質問のたびに原稿の一部が、選んだプロバイダ(Claude Code・Anthropic API なら Anthropic、Gemini なら Google、OpenAI 互換 API なら設定したサービス、Ollama なら設定した接続先)に送られます。Claude Code を使うには、インストール済みでログイン済みの Claude Code が必要で、利用料金・使用量はそのアカウントに計上されます。
 - API キーは、macOS・Windows では OS のキーチェーンに保存します。それ以外の環境では端末内に平文で保存し、設定画面に警告を出します。
-- 拡張機能を有効にすると、各拡張のページ(`/extensions/<id>`)に書いた範囲の情報が外部に送られます。拡張機能「Monolog. 連携」を有効にして接続すると、執筆時間と増減した文字数などが Monolog. に、「Discord Rich Presence」を有効にすると、開いている画面の名前などが Discord(端末の Discord クライアント経由)に送られます(どちらも本文は送りません)。接続情報(トークン)は、デスクトップ版では API キーと同じ保管の仕組み、Web 版ではブラウザの localStorage に、この端末だけで保存し、同期・バックアップ・書き出しには含めません。設定からいつでも解除できます。
+- スクリプトの拡張機能を有効にしている場合は、運営者が停止した拡張を無効にするため、アプリの起動時に 1 日 1 回まで、失効リストを `storift.shiki-01.com` から取得します(設定でオフにできます。スクリプトを有効にしていなければ、起動時に通信しません)。拡張機能を有効にすると、各拡張のページ(`/extensions/<id>`)に書いた範囲の情報が外部に送られます。拡張機能「Monolog. 連携」を有効にして接続すると、執筆時間と増減した文字数などが Monolog. に、「Discord Rich Presence」を有効にすると、開いている画面の名前などが Discord(端末の Discord クライアント経由)に送られます(どちらも本文は送りません)。接続情報(トークン)は、デスクトップ版では API キーと同じ保管の仕組み、Web 版ではブラウザの localStorage に、この端末だけで保存し、同期・バックアップ・書き出しには含めません。設定からいつでも解除できます。
 
 ## 開発
 
@@ -155,22 +155,23 @@ SvelteKit / Svelte 5 / TypeScript / Master CSS / Dexie(IndexedDB) / Yjs(共同�
 
 ## ドキュメント
 
-| ファイル                                                                   | 内容                                 |
-| -------------------------------------------------------------------------- | ------------------------------------ |
-| [docs/EXTENSIONS.md](docs/EXTENSIONS.md)                                   | 拡張機能の仕組みと公式拡張           |
-| [docs/COMMUNITY.md](docs/COMMUNITY.md)                                     | コミュニティ拡張(パック)の投稿ガイド |
-| [docs/DESKTOP.md](docs/DESKTOP.md)                                         | デスクトップ版と AI 連携・deep link  |
-| [docs/PWA.md](docs/PWA.md)                                                 | オフライン対応と自動更新             |
-| [docs/FIRESTORE_SETUP.md](docs/FIRESTORE_SETUP.md)                         | Firestore の設定とセキュリティ       |
-| [docs/SHARING_RULES.md](docs/SHARING_RULES.md)                             | 共有機能のルールとデータ配置         |
-| [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)                               | 自分の環境での配信                   |
-| [docs/SYNC_OPTIMIZATION.md](docs/SYNC_OPTIMIZATION.md)                     | 同期の仕組みと最適化                 |
-| [docs/FIREBASE_USAGE_ESTIMATE.md](docs/FIREBASE_USAGE_ESTIMATE.md)         | Firebase 無料枠での使用量の見積もり  |
-| [docs/SITE.md](docs/SITE.md)                                               | 紹介サイトとドメイン構成             |
-| [docs/BRAND.md](docs/BRAND.md)                                             | ロゴとアイコンの素材                 |
-| [docs/UI_GUIDELINES.md](docs/UI_GUIDELINES.md)                             | 画面の共通の取り決め                 |
-| [docs/UI_UX_IMPROVEMENTS.md](docs/UI_UX_IMPROVEMENTS.md)                   | UI/UX の改善項目と対応状況           |
-| [docs/PreviewViewerImplementation.md](docs/PreviewViewerImplementation.md) | プレビューの実装計画(履歴)           |
+| ファイル                                                                   | 内容                                |
+| -------------------------------------------------------------------------- | ----------------------------------- |
+| [docs/EXTENSIONS.md](docs/EXTENSIONS.md)                                   | 拡張機能の仕組みと公式拡張          |
+| [docs/COMMUNITY.md](docs/COMMUNITY.md)                                     | コミュニティ拡張の投稿ガイド        |
+| [docs/SCRIPT_API.md](docs/SCRIPT_API.md)                                   | スクリプト拡張の API と隔離の仕組み |
+| [docs/DESKTOP.md](docs/DESKTOP.md)                                         | デスクトップ版と AI 連携・deep link |
+| [docs/PWA.md](docs/PWA.md)                                                 | オフライン対応と自動更新            |
+| [docs/FIRESTORE_SETUP.md](docs/FIRESTORE_SETUP.md)                         | Firestore の設定とセキュリティ      |
+| [docs/SHARING_RULES.md](docs/SHARING_RULES.md)                             | 共有機能のルールとデータ配置        |
+| [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)                               | 自分の環境での配信                  |
+| [docs/SYNC_OPTIMIZATION.md](docs/SYNC_OPTIMIZATION.md)                     | 同期の仕組みと最適化                |
+| [docs/FIREBASE_USAGE_ESTIMATE.md](docs/FIREBASE_USAGE_ESTIMATE.md)         | Firebase 無料枠での使用量の見積もり |
+| [docs/SITE.md](docs/SITE.md)                                               | 紹介サイトとドメイン構成            |
+| [docs/BRAND.md](docs/BRAND.md)                                             | ロゴとアイコンの素材                |
+| [docs/UI_GUIDELINES.md](docs/UI_GUIDELINES.md)                             | 画面の共通の取り決め                |
+| [docs/UI_UX_IMPROVEMENTS.md](docs/UI_UX_IMPROVEMENTS.md)                   | UI/UX の改善項目と対応状況          |
+| [docs/PreviewViewerImplementation.md](docs/PreviewViewerImplementation.md) | プレビューの実装計画(履歴)          |
 
 ## コントリビュート
 

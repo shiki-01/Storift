@@ -4,14 +4,21 @@
  */
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadExtensions } from './lib/extensions';
+import { isTemplateDir, loadExtensions } from './lib/extensions';
 
 export async function validateExtensions(repoRoot: string): Promise<string[]> {
-	const { extensions, errors } = await loadExtensions(repoRoot);
+	return (await validateExtensionsDetailed(repoRoot)).errors;
+}
+
+/** エラーと警告(難読化・圧縮の疑いなど。PR で人が見る)を返す */
+export async function validateExtensionsDetailed(
+	repoRoot: string
+): Promise<{ errors: string[]; warnings: string[] }> {
+	const { extensions, errors, warnings } = await loadExtensions(repoRoot);
 	// 拡張どうしの重複(ひな形は除く)
 	const seen = new Map<string, string>();
 	for (const ext of extensions) {
-		if (ext.dir === '_template') continue;
+		if (isTemplateDir(ext.dir)) continue;
 		const first = seen.get(ext.manifest.id);
 		if (first)
 			errors.push(
@@ -19,19 +26,28 @@ export async function validateExtensions(repoRoot: string): Promise<string[]> {
 			);
 		else seen.set(ext.manifest.id, `extensions/${ext.dir}`);
 	}
-	return errors;
+	return { errors, warnings };
 }
 
 async function main(): Promise<void> {
 	const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-	const errors = await validateExtensions(repoRoot);
+	const { errors, warnings } = await validateExtensionsDetailed(repoRoot);
+	// 警告は失敗にしない。GitHub Actions では、PR の注釈(annotation)として表示する
+	for (const warning of warnings) {
+		const [file, ...rest] = warning.split(':');
+		console.warn(
+			process.env.GITHUB_ACTIONS ? `::warning file=${file}::${rest.join(':')}` : `警告 ${warning}`
+		);
+	}
 	if (errors.length > 0) {
 		for (const error of errors) console.error(error);
 		console.error(`\n${errors.length} 件の問題があります`);
 		process.exit(1);
 	}
 	const { extensions } = await loadExtensions(repoRoot);
-	console.log(`extensions: ${extensions.length} 件を検証しました(問題なし)`);
+	console.log(
+		`extensions: ${extensions.length} 件を検証しました(問題なし${warnings.length > 0 ? `。警告 ${warnings.length} 件` : ''})`
+	);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

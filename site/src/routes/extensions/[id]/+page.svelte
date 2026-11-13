@@ -9,7 +9,9 @@
 		ORIGIN_LABELS,
 		ORIGIN_NOTES,
 		PLATFORM_LABELS,
+		SCRIPT_ISOLATION_NOTES,
 		contributionKinds,
+		describeScriptPermissions,
 		platformsLabel,
 		summarizePermissions
 	} from '$manifest';
@@ -23,6 +25,8 @@
 	const webAvailable = $derived(ext.platforms.includes('web'));
 	const community = $derived(ext.source === 'community');
 	const contributes = $derived(contributionKinds(ext.contributions));
+	const isScript = $derived(ext.kind === 'script');
+	const scriptLines = $derived(describeScriptPermissions(ext.permissions));
 </script>
 
 <Seo
@@ -93,6 +97,31 @@
 			</p>
 		</section>
 
+		{#if isScript}
+			<section aria-labelledby="script-h" data-testid="script-permissions">
+				<h2 id="script-h">このスクリプトができること</h2>
+				<ul>
+					{#each scriptLines as line, i (i)}<li>{line}</li>{/each}
+					<li>作品の本文、設定、AI の API キー、Monolog. のトークンには触れません</li>
+				</ul>
+				<dl class="script-perms">
+					<dt>受け取るイベント</dt>
+					<dd>{ext.permissions.events?.join('、') || 'なし'}</dd>
+					<dt>通信先</dt>
+					<dd>{ext.permissions.network?.join('、') || '通信しません'}</dd>
+					<dt>端末内ストレージ</dt>
+					<dd>{ext.permissions.storage ? '使います(1 拡張あたり 256KB まで)' : '使いません'}</dd>
+					<dt>通知</dt>
+					<dd>{ext.permissions.notify ? '出します(1 分に 5 回まで)' : '出しません'}</dd>
+					<dt>操作画面</dt>
+					<dd>{ext.permissions.ui ? '表示します(ポップアップ・設定欄)' : '表示しません'}</dd>
+				</dl>
+				<p class="policy">
+					{#each SCRIPT_ISOLATION_NOTES as note, i (i)}{note}{#if i < SCRIPT_ISOLATION_NOTES.length - 1}{/if}{/each}
+				</p>
+			</section>
+		{/if}
+
 		{#if contributes.length > 0}
 			<section aria-labelledby="contrib-h">
 				<h2 id="contrib-h">この拡張が追加するもの</h2>
@@ -156,7 +185,17 @@
 					<li>通信できる相手: {summary.network.join(' / ')}(ホスト名の完全一致)</li>
 				{/if}
 				{#if ext.kind === 'pack'}<li>通信: しません(コードも実行しません)</li>{/if}
+				{#if isScript}
+					<li>
+						通信: {summary.network.length > 0
+							? '宣言したホストだけ(ほかは遮断されます)'
+							: 'しません'}
+					</li>
+					<li>コード: 隔離された Web Worker の中だけで動きます</li>
+				{/if}
 				{#if summary.storage}<li>端末内への保存: 設定などを保存します</li>{/if}
+				{#if summary.notify}<li>通知: 出します(1 分に 5 回まで)</li>{/if}
+				{#if summary.ui}<li>画面: ポップアップ・設定欄を宣言的に表示します</li>{/if}
 			</ul>
 		</section>
 
@@ -188,6 +227,40 @@
 </div>
 
 <style>
+	.script-perms {
+		display: grid;
+		grid-template-columns: max-content 1fr;
+		gap: 6px 16px;
+		margin: 12px 0;
+		padding: 12px 14px;
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		background: color-mix(in srgb, var(--color-surface) 55%, var(--color-background));
+		font-size: 14px;
+	}
+
+	.script-perms dt {
+		font-weight: 600;
+		color: var(--color-text);
+	}
+
+	.script-perms dd {
+		margin: 0;
+		color: var(--color-text-secondary);
+		overflow-wrap: anywhere;
+	}
+
+	@media (max-width: 520px) {
+		.script-perms {
+			grid-template-columns: 1fr;
+			gap: 2px;
+		}
+
+		.script-perms dd {
+			margin-bottom: 8px;
+		}
+	}
+
 	.crumb {
 		display: flex;
 		flex-wrap: wrap;

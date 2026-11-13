@@ -5,6 +5,8 @@
 	import { extensionPageUrl } from '$lib/extensions/links';
 	import {
 		ORIGIN_NOTES,
+		SCRIPT_ISOLATION_NOTES,
+		describeScriptPermissions,
 		summarizePermissions,
 		type ExtensionManifest,
 		type ExtensionOrigin
@@ -26,6 +28,9 @@
 	let { manifest, showLink = true, origin = 'official', content }: Props = $props();
 
 	const summary = $derived(summarizePermissions(manifest.permissions));
+	const isScript = $derived(manifest.kind === 'script');
+	const unreviewed = $derived(origin === 'personal-file' || origin === 'personal-folder');
+	const scriptLines = $derived(describeScriptPermissions(manifest.permissions));
 	const pageUrl = $derived(extensionPageUrl(manifest.id));
 
 	function openPage(e: MouseEvent) {
@@ -43,6 +48,31 @@
 			<p class="meta">
 				作者: {manifest.author}{#if manifest.license}・ライセンス: {manifest.license}{/if}・版 {manifest.version}
 			</p>
+		</section>
+	{/if}
+
+	{#if isScript && unreviewed}
+		<section class="unreviewed" role="alert" data-testid="unreviewed-warning">
+			<h4>未審査のコードを実行します</h4>
+			<p>
+				このスクリプトは、公式にも運営にもレビューされていません。作者を信頼できるときだけ有効にしてください。通信先に送られた情報は取り消せません。
+			</p>
+		</section>
+	{/if}
+
+	{#if isScript}
+		<section data-testid="script-permissions">
+			<h4>このスクリプトができること</h4>
+			<ul>
+				{#each scriptLines as line, i (i)}<li>{line}</li>{/each}
+				<li>作品の本文、設定、AI の API キー、Monolog. のトークンには触れません</li>
+			</ul>
+		</section>
+		<section class="isolation">
+			<h4>隔離についての注意</h4>
+			<ul>
+				{#each SCRIPT_ISOLATION_NOTES as note, i (i)}<li>{note}</li>{/each}
+			</ul>
 		</section>
 	{/if}
 
@@ -81,16 +111,18 @@
 		{/if}
 	</section>
 
-	<section>
-		<h4>Storift から受け取る情報と通信先</h4>
-		<ul>
-			{#each summary.receives as item, i (i)}<li>{item}</li>{/each}
-			{#if summary.receives.length === 0}<li>なし</li>{/if}
-		</ul>
-		{#if summary.network.length > 0}
-			<p class="hosts"><span class="key">通信先</span>{summary.network.join(' / ')}</p>
-		{/if}
-	</section>
+	{#if !isScript}
+		<section>
+			<h4>Storift から受け取る情報と通信先</h4>
+			<ul>
+				{#each summary.receives as item, i (i)}<li>{item}</li>{/each}
+				{#if summary.receives.length === 0}<li>なし</li>{/if}
+			</ul>
+			{#if summary.network.length > 0}
+				<p class="hosts"><span class="key">通信先</span>{summary.network.join(' / ')}</p>
+			{/if}
+		</section>
+	{/if}
 
 	<section>
 		<h4>無効にしたとき</h4>
@@ -171,6 +203,28 @@
 		border: 1px solid color-mix(in srgb, var(--color-warning) 50%, var(--color-border));
 		border-radius: 8px;
 		background: color-mix(in srgb, var(--color-warning) 7%, var(--color-background));
+	}
+
+	.unreviewed {
+		padding: 10px 12px;
+		border: 1px solid color-mix(in srgb, var(--color-error) 55%, var(--color-border));
+		border-radius: 8px;
+		background: color-mix(in srgb, var(--color-error) 8%, var(--color-background));
+	}
+
+	.unreviewed h4 {
+		color: var(--color-error);
+	}
+
+	:global(:root[data-scheme='dark']) .unreviewed h4 {
+		color: color-mix(in srgb, var(--color-error) 70%, var(--color-text));
+	}
+
+	.isolation {
+		padding: 10px 12px;
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		background: color-mix(in srgb, var(--color-surface) 55%, var(--color-background));
 	}
 
 	.meta {

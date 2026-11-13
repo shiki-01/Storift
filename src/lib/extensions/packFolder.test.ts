@@ -80,3 +80,36 @@ describe('assembleFolderPack', () => {
 		expect(r.ok).toBe(false);
 	});
 });
+
+describe('assembleFolderPack(スクリプト)', () => {
+	const script = (patch: Record<string, unknown> = {}) =>
+		manifest({
+			id: 'my-script',
+			kind: 'script',
+			entry: 'main.js',
+			contributions: undefined,
+			permissions: { ui: true },
+			...patch
+		});
+
+	it('entry の 1 ファイルを読み、検査して返す', () => {
+		const r = assembleFolderPack(
+			entry(script(), { 'main.js': 'storift.ui.set("panel", []);' }, 'my-script')
+		);
+		expect(r.ok && r.bundle.script).toContain('storift.ui.set');
+	});
+
+	it('eval を含む・本体が無い・大きすぎる・別のファイルは拒否し、余計なファイルは読まない', () => {
+		expect(assembleFolderPack(entry(script(), { 'main.js': 'eval("1")' }, 'my-script')).ok).toBe(
+			false
+		);
+		expect(assembleFolderPack(entry(script(), {}, 'my-script')).ok).toBe(false);
+		expect(
+			assembleFolderPack(entry(script(), { 'main.js': 'x'.repeat(210 * 1024) }, 'my-script')).ok
+		).toBe(false);
+		const r = assembleFolderPack(
+			entry(script(), { 'main.js': '1', 'other.js': 'eval(1)' }, 'my-script')
+		);
+		expect(r.ok && Object.keys(r.bundle.files)).toEqual(['main.js']);
+	});
+});

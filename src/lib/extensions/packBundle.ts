@@ -8,9 +8,11 @@ import {
 	PACK_LIMITS,
 	byteLength,
 	checkBundleShape,
+	emptyContent,
 	validatePackContent,
 	type PackContent
 } from './pack';
+import { validateScriptFiles } from './script/files';
 
 export interface ParsedBundle {
 	manifest: ExtensionManifest;
@@ -18,6 +20,8 @@ export interface ParsedBundle {
 	content: PackContent;
 	/** バンドルのバイト数 */
 	size: number;
+	/** スクリプト(kind: script)のソース。検査済み */
+	script?: string;
 }
 
 export type BundleParse = { ok: true; bundle: ParsedBundle } | { ok: false; errors: string[] };
@@ -41,8 +45,25 @@ export function parseBundleText(text: string): BundleParse {
 	if (!shape.ok) return shape;
 	const manifest = validateManifest(shape.bundle.manifest);
 	if (!manifest.ok) return { ok: false, errors: manifest.errors.map((e) => `manifest: ${e}`) };
+	if (manifest.manifest.kind === 'script') {
+		const script = validateScriptFiles(manifest.manifest, shape.bundle.files);
+		if (!script.ok) return script;
+		return {
+			ok: true,
+			bundle: {
+				manifest: manifest.manifest,
+				files: shape.bundle.files,
+				content: emptyContent(),
+				size,
+				script: script.source
+			}
+		};
+	}
 	if (manifest.manifest.kind !== 'pack') {
-		return { ok: false, errors: ['パック(kind: pack)以外の拡張は、追加できません'] };
+		return {
+			ok: false,
+			errors: ['パック(kind: pack)かスクリプト(kind: script)以外は、追加できません']
+		};
 	}
 	const content = validatePackContent(manifest.manifest.contributions, shape.bundle.files);
 	if (!content.ok) return content;
@@ -64,9 +85,24 @@ export function reviveRecord(
 ): { ok: true; bundle: Omit<ParsedBundle, 'size'> } | { ok: false; errors: string[] } {
 	const m = validateManifest(manifest);
 	if (!m.ok) return m;
-	if (m.manifest.kind !== 'pack') return { ok: false, errors: ['パックではありません'] };
+	if (m.manifest.kind !== 'pack' && m.manifest.kind !== 'script')
+		return { ok: false, errors: ['パックでもスクリプトでもありません'] };
 	if (typeof files !== 'object' || files === null || Array.isArray(files)) {
 		return { ok: false, errors: ['コンテンツがありません'] };
+	}
+	if (m.manifest.kind === 'script') {
+		// 保存済みのものも、読み込むたびに検査し直す
+		const script = validateScriptFiles(m.manifest, files as Record<string, unknown>);
+		if (!script.ok) return script;
+		return {
+			ok: true,
+			bundle: {
+				manifest: m.manifest,
+				files: files as Record<string, unknown>,
+				content: emptyContent(),
+				script: script.source
+			}
+		};
 	}
 	const content = validatePackContent(m.manifest.contributions, files as Record<string, unknown>);
 	if (!content.ok) return content;

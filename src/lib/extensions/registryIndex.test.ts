@@ -3,6 +3,7 @@ import {
 	REGISTRY_INDEX_URL,
 	bundlePath,
 	compareVersions,
+	isRevokedVersion,
 	isRegistryUrl,
 	sha256Hex,
 	toRegistryEntry,
@@ -107,5 +108,56 @@ describe('sha256Hex', () => {
 		expect(await sha256Hex('abc')).toBe(
 			'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
 		);
+	});
+});
+
+describe('失効(revoked)', () => {
+	const base = { indexVersion: 1, extensions: [] as unknown[] };
+
+	it('一覧に revoked が無ければ空。正しい項目だけ残し、形の合わないものは捨てる', () => {
+		expect(validateRegistryIndex(base)).toMatchObject({ ok: true, index: { revoked: [] } });
+		const r = validateRegistryIndex({
+			...base,
+			revoked: [
+				{ id: 'a-b', versions: ['1.0.0'], reason: '悪用', at: '2026-11-12' },
+				{ id: 'c', versions: '*', reason: '全部', at: '2026-11-12' },
+				{ id: 'Bad', versions: '*', reason: 'x', at: '2026-11-12' },
+				{ id: 'd', versions: [], reason: 'x', at: '2026-11-12' },
+				{ id: 'e', versions: '*', reason: '', at: '2026-11-12' },
+				{ id: 'f', versions: '*', reason: 'x', at: '昨日' },
+				'x',
+				null
+			]
+		});
+		expect(r.ok && r.index.revoked.map((e) => e.id)).toEqual(['a-b', 'c']);
+	});
+
+	it('isRevokedVersion', () => {
+		expect(
+			isRevokedVersion({ id: 'a', versions: '*', reason: 'x', at: '2026-11-12' }, '9.9.9')
+		).toBe(true);
+		expect(
+			isRevokedVersion({ id: 'a', versions: ['1.0.0'], reason: 'x', at: '2026-11-12' }, '1.0.0')
+		).toBe(true);
+		expect(
+			isRevokedVersion({ id: 'a', versions: ['1.0.0'], reason: 'x', at: '2026-11-12' }, '1.0.1')
+		).toBe(false);
+	});
+
+	it('スクリプトの権限(通知・画面)が一覧の要約に載る', () => {
+		const entry = toRegistryEntry(
+			{
+				...manifest,
+				kind: 'script',
+				entry: 'main.js',
+				contributions: undefined,
+				permissions: { ui: true, notify: true }
+			},
+			'community',
+			{ sha256: 'a'.repeat(64), size: 10 }
+		);
+		expect(entry.permissions).toMatchObject({ ui: true, notify: true });
+		const r = validateRegistryIndex({ ...base, extensions: [entry] });
+		expect(r.ok && r.index.extensions[0].permissions).toMatchObject({ ui: true, notify: true });
 	});
 });

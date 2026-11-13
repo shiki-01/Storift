@@ -3,6 +3,7 @@ import discord from '$extensions/discord/manifest.json';
 import monolog from '$extensions/monolog/manifest.json';
 import {
 	consentFingerprint,
+	describeScriptPermissions,
 	parseManifest,
 	platformsLabel,
 	summarizePermissions,
@@ -94,7 +95,7 @@ describe('validateManifest', () => {
 				contributions: { themes: ['themes/a.json'] }
 			})
 		).toEqual([]);
-		expect(errorsOf({ kind: 'script' })).toEqual([]);
+		expect(errorsOf({ kind: 'script' }).join()).toContain('entry');
 		expect(errorsOf({ apiVersion: 2 }).join()).toContain('apiVersion');
 		expect(errorsOf({ platforms: [] }).join()).toContain('platforms');
 		expect(errorsOf({ platforms: ['mobile'] }).join()).toContain('platforms');
@@ -202,12 +203,126 @@ describe('表示用の整形', () => {
 		expect(s.receives).toHaveLength(2);
 		expect(s.network).toEqual(['a.example.com']);
 		expect(s.storage).toBe(true);
-		expect(summarizePermissions({})).toEqual({ receives: [], network: [], storage: false });
+		expect(summarizePermissions({})).toEqual({
+			receives: [],
+			network: [],
+			storage: false,
+			notify: false,
+			ui: false
+		});
 	});
 
 	it('対応プラットフォームの表示', () => {
 		expect(platformsLabel(['web', 'desktop'])).toBe('Web 版・デスクトップ版');
 		expect(platformsLabel(['desktop'])).toBe('デスクトップ版のみ');
 		expect(platformsLabel(['web'])).toBe('Web 版のみ');
+	});
+});
+
+describe('スクリプト(kind: script)のマニフェスト', () => {
+	const script = (patch: Record<string, unknown> = {}) => ({
+		...valid(),
+		kind: 'script',
+		license: 'MIT',
+		updatedAt: '2026-11-12',
+		entry: 'main.js',
+		permissions: { ui: true, notify: true, storage: true },
+		...patch
+	});
+	const errors = (patch: Record<string, unknown> = {}) => {
+		const r = validateManifest(script(patch));
+		return r.ok ? [] : r.errors;
+	};
+	const sends = (to: string) => [{ to, items: ['x'], when: 'y' }];
+
+	it('正しいスクリプトを受け付ける', () => {
+		expect(errors()).toEqual([]);
+		expect(
+			errors({
+				permissions: { network: ['discord.com'], events: ['session:end'], read: ['project:title'] },
+				privacy: { sends: sends('discord.com(Webhook)'), stores: [], onDisable: 'x' }
+			})
+		).toEqual([]);
+	});
+
+	it('entry・license・updatedAt が必須で、entry は 1 つの .js のファイル名', () => {
+		expect(errors({ entry: undefined }).join()).toContain('entry');
+		for (const bad of ['../main.js', 'a/b.js', 'main.ts', 'Main.js', '/x.js', 'main.js.json'])
+			expect(errors({ entry: bad }).join(), bad).toContain('entry');
+		expect(errors({ license: undefined }).join()).toContain('license');
+		expect(errors({ updatedAt: undefined }).join()).toContain('updatedAt');
+	});
+
+	it('通信先は完全一致のホスト名だけ(ワイルドカード・IP・localhost・ポート・内部名は不可)', () => {
+		for (const host of [
+			'*.example.com',
+			'127.0.0.1',
+			'192.168.0.1',
+			'localhost',
+			'example.com:8080',
+			'a.localhost',
+			'printer.local',
+			'Example.com',
+			'https://example.com',
+			'example.com/path'
+		]) {
+			expect(
+				errors({
+					permissions: { network: [host] },
+					privacy: { sends: sends(host), stores: [], onDisable: 'x' }
+				}).join(),
+				host
+			).toContain('permissions.network');
+		}
+	});
+
+	it('permissions.network の各ホストは privacy.sends[].to のどこかに現れる', () => {
+		const e = errors({
+			permissions: { network: ['a.example.com', 'b.example.com'] },
+			privacy: { sends: sends('a.example.com'), stores: [], onDisable: 'x' }
+		});
+		expect(e.join()).toContain('b.example.com');
+		expect(e.join()).not.toContain('「a.example.com」');
+	});
+
+	it('送ると書いたのに通信先を宣言していない、は拒否する', () => {
+		expect(
+			errors({ privacy: { sends: sends('example.com'), stores: [], onDisable: 'x' } }).join()
+		).toContain('permissions.network');
+	});
+
+	it('ui / notify はスクリプトだけ。entry もスクリプトだけ', () => {
+		expect(errorsOf({ permissions: { ui: true } }).join()).toContain('kind: script');
+		expect(errorsOf({ permissions: { notify: true } }).join()).toContain('kind: script');
+		expect(errorsOf({ entry: 'main.js' }).join()).toContain('entry');
+		expect(errors({ permissions: { ui: 'yes' } }).join()).toContain('permissions.ui');
+	});
+
+	it('公式を名乗る ID は使えない', () => {
+		expect(errors({ id: 'discord' }).join()).toContain('予約');
+		expect(errors({ id: 'official-timer' }).join()).toContain('予約');
+	});
+
+	it('権限を平易な日本語で列挙する', () => {
+		const lines = describeScriptPermissions({
+			events: ['session:start', 'session:end', 'page:change'],
+			read: ['project:title', 'project:chars'],
+			network: ['discord.com', 'example.org'],
+			storage: true,
+			notify: true,
+			ui: true
+		});
+		expect(lines).toContain('あなたの執筆の開始・終了を受け取ります');
+		expect(lines).toContain('作品名を受け取ります');
+		expect(lines).toContain('作品の総文字数を受け取ります');
+		expect(lines).toContain('次のサーバーと通信します: discord.com、example.org');
+		expect(lines.join()).toContain('通知');
+		expect(describeScriptPermissions({})).toEqual([]);
+	});
+
+	it('同意の対象(consentFingerprint)に、ui / notify の権限も含まれる', () => {
+		const a = script();
+		const b = script({ permissions: { ui: true, notify: false, storage: true } });
+		expect(consentFingerprint(a as never)).not.toBe(consentFingerprint(b as never));
 	});
 });

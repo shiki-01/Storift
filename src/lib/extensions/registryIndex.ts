@@ -59,9 +59,46 @@ export interface RegistryEntry {
 	source: RegistrySource;
 }
 
+/** 失効(キルスイッチ)の 1 件。extensions/revoked.json から作る */
+export interface RevokedEntry {
+	id: string;
+	/** 失効する版。'*' はすべての版 */
+	versions: string[] | '*';
+	/** 理由(利用者に表示する) */
+	reason: string;
+	/** 失効させた日(YYYY-MM-DD) */
+	at: string;
+}
+
 export interface RegistryIndex {
 	indexVersion: typeof REGISTRY_INDEX_VERSION;
 	extensions: RegistryEntry[];
+	/** 失効した拡張。古い一覧には無い(その場合は空) */
+	revoked: RevokedEntry[];
+}
+
+/** 失効の 1 件の形を検証する。問題があれば null */
+export function readRevoked(value: unknown): RevokedEntry | null {
+	if (!isRecord(value)) return null;
+	const { id, versions, reason, at } = value;
+	if (typeof id !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id) || id.length > 64)
+		return null;
+	if (typeof reason !== 'string' || reason.trim() === '' || reason.length > 300) return null;
+	if (typeof at !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(at)) return null;
+	if (versions === '*') return { id, versions: '*', reason, at };
+	if (
+		!Array.isArray(versions) ||
+		versions.length === 0 ||
+		versions.length > 100 ||
+		!versions.every((v) => typeof v === 'string' && v.length > 0 && v.length <= 64)
+	)
+		return null;
+	return { id, versions: [...(versions as string[])], reason, at };
+}
+
+/** その版が、失効の対象か */
+export function isRevokedVersion(entry: RevokedEntry, version: string): boolean {
+	return entry.versions === '*' || entry.versions.includes(version);
 }
 
 /** バンドルの置き場所(サイト上のパス) */
@@ -172,7 +209,9 @@ function readEntry(value: unknown): RegistryEntry | null {
 		permissions: {
 			receives: (perms.receives as unknown[]).filter((v): v is string => typeof v === 'string'),
 			network: (perms.network as unknown[]).filter((v): v is string => typeof v === 'string'),
-			storage: perms.storage
+			storage: perms.storage,
+			notify: perms.notify === true,
+			ui: perms.ui === true
 		},
 		privacy: {
 			sends: (privacy.sends as unknown[]).filter((v): v is string => typeof v === 'string'),
@@ -208,7 +247,14 @@ export function validateRegistryIndex(input: unknown): IndexValidation {
 		seen.add(entry.id);
 		extensions.push(entry);
 	}
-	return { ok: true, index: { indexVersion: REGISTRY_INDEX_VERSION, extensions } };
+	const revoked: RevokedEntry[] = [];
+	if (Array.isArray(input.revoked)) {
+		for (const raw of input.revoked.slice(0, 1000)) {
+			const entry = readRevoked(raw);
+			if (entry) revoked.push(entry);
+		}
+	}
+	return { ok: true, index: { indexVersion: REGISTRY_INDEX_VERSION, extensions, revoked } };
 }
 
 /** SHA-256(16 進)。ブラウザ・Node・Bun の Web Crypto を使う */

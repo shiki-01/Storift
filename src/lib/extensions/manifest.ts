@@ -7,6 +7,7 @@
  */
 
 import { validateContributions, type PackContributions } from './pack';
+import { SCRIPT_LIMITS } from './script/limits';
 
 // 紹介サイト(site/)は manifest.ts だけを読み込むので、表示に使うパックの定数もここから出す
 export {
@@ -27,7 +28,7 @@ export type ExtensionPlatform = 'web' | 'desktop';
  * 拡張の種類。
  * - official: アプリに同梱する公式の拡張(特権が必要なものを含む)
  * - pack: コードを含まない JSON(テーマ・辞書など)。通信せず、コードも実行しない
- * - script: sandbox 付きの iframe で隔離して実行するスクリプト。第 3 段階で対応する予定
+ * - script: sandbox 付きの iframe の中の Web Worker で隔離して実行するスクリプト(docs/SCRIPT_API.md)
  */
 export type ExtensionKind = 'official' | 'pack' | 'script';
 
@@ -59,6 +60,10 @@ export interface ExtensionPermissions {
 	network?: string[];
 	/** 端末内に設定などを保存するか */
 	storage?: boolean;
+	/** 通知(トースト)を出すか。スクリプトだけ */
+	notify?: boolean;
+	/** 画面(ツールバーのポップアップ・設定欄)を宣言的に描画するか。スクリプトだけ */
+	ui?: boolean;
 }
 
 /** 外部へ送る情報の 1 件(送り先ごと) */
@@ -106,6 +111,8 @@ export interface ExtensionManifest {
 	privacy: ExtensionPrivacy;
 	/** パック(kind: 'pack')の貢献。貢献の種類ごとに、コンテンツ(JSON)への相対パスを書く */
 	contributions?: PackContributions;
+	/** スクリプト(kind: 'script')の本体のファイル名(拡張のフォルダ直下の 1 ファイル) */
+	entry?: string;
 }
 
 /** 公式の拡張(アプリに同梱)の ID。kind: 'official' を名乗れるのはこれだけ */
@@ -131,6 +138,21 @@ const SEMVER_PATTERN =
 // ホスト名(ラベルを . でつないだもの。スキーム・ポート・パス・ワイルドカードは不可)
 const HOSTNAME_PATTERN =
 	/^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+// スクリプトの本体のファイル名(拡張のフォルダ直下の .js)
+const ENTRY_PATTERN = /^[a-z0-9][a-z0-9_-]*\.js$/;
+// 通信先に使えないホスト(内部のネットワークを指すもの)
+const INTERNAL_SUFFIXES = ['.localhost', '.local', '.internal', '.lan', '.home', '.corp'];
+
+/** 通信先として宣言できるホスト名か(完全一致のホスト名のみ。IP アドレス・localhost・内部用の名前は不可) */
+export function isDeclarableHost(host: unknown): host is string {
+	if (typeof host !== 'string' || !HOSTNAME_PATTERN.test(host)) return false;
+	// IP アドレス(IPv4 の形)は不可。最後のラベルが数字だけのものも不可
+	const labels = host.split('.');
+	if (/^\d+$/.test(labels[labels.length - 1])) return false;
+	if (host === 'localhost' || INTERNAL_SUFFIXES.some((suffix) => host.endsWith(suffix)))
+		return false;
+	return true;
+}
 
 const MANIFEST_KEYS = [
 	'id',
@@ -147,7 +169,8 @@ const MANIFEST_KEYS = [
 	'updatedAt',
 	'permissions',
 	'privacy',
-	'contributions'
+	'contributions',
+	'entry'
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -187,7 +210,7 @@ function validatePermissions(value: unknown, errors: string[]): void {
 		errors.push('permissions はオブジェクトで指定してください(何も使わないなら {})');
 		return;
 	}
-	for (const key of unknownKeys(value, ['events', 'read', 'network', 'storage'])) {
+	for (const key of unknownKeys(value, ['events', 'read', 'network', 'storage', 'notify', 'ui'])) {
 		errors.push(`permissions.${key} は使えない項目です`);
 	}
 	if (value.events !== undefined) {
@@ -210,14 +233,18 @@ function validatePermissions(value: unknown, errors: string[]): void {
 		if (!Array.isArray(value.network)) errors.push('permissions.network は配列で指定してください');
 		else
 			for (const host of value.network) {
-				if (typeof host !== 'string' || !HOSTNAME_PATTERN.test(host))
+				if (!isDeclarableHost(host))
 					errors.push(
-						`permissions.network はホスト名(小文字。完全一致)で指定してください: ${String(host)}`
+						`permissions.network はホスト名(小文字。完全一致。ワイルドカード・IP・localhost・内部用の名前は不可)で指定してください: ${String(host)}`
 					);
 			}
+		if (Array.isArray(value.network) && new Set(value.network).size !== value.network.length)
+			errors.push('permissions.network に同じホストが重複しています');
 	}
-	if (value.storage !== undefined && typeof value.storage !== 'boolean') {
-		errors.push('permissions.storage は true / false で指定してください');
+	for (const key of ['storage', 'notify', 'ui'] as const) {
+		if (value[key] !== undefined && typeof value[key] !== 'boolean') {
+			errors.push(`permissions.${key} は true / false で指定してください`);
+		}
 	}
 }
 
@@ -254,6 +281,41 @@ function validatePrivacy(value: unknown, errors: string[]): void {
 		errors.push('privacy.notes は文字列の配列で指定してください');
 }
 
+/** スクリプト(kind: script)の決まり。通信先の宣言と、送る情報の説明の整合も見る */
+function validateScriptRules(input: Record<string, unknown>, errors: string[]): void {
+	if (typeof input.entry !== 'string' || !ENTRY_PATTERN.test(input.entry)) {
+		errors.push(
+			`スクリプトには entry(本体のファイル名。小文字英数字・ハイフン・アンダースコアの .js。例: main.js)が必要です`
+		);
+	} else if (input.entry.length > SCRIPT_LIMITS.entryNameLength) {
+		errors.push(`entry は ${SCRIPT_LIMITS.entryNameLength} 文字までです`);
+	}
+	if (!isText(input.license)) errors.push('スクリプトには license(ライセンス)が必要です');
+	if (input.updatedAt === undefined) errors.push('スクリプトには updatedAt(更新日)が必要です');
+	const permissions = isRecord(input.permissions) ? input.permissions : {};
+	const privacy = isRecord(input.privacy) ? input.privacy : {};
+	const hosts = Array.isArray(permissions.network)
+		? permissions.network.filter((h): h is string => typeof h === 'string')
+		: [];
+	const sends = Array.isArray(privacy.sends) ? privacy.sends : [];
+	// permissions.network の各ホストは、privacy.sends[].to のどこかに現れること(宣言と説明の整合)
+	const targets = sends.map((send) =>
+		isRecord(send) && typeof send.to === 'string' ? send.to : ''
+	);
+	for (const host of hosts) {
+		if (!targets.some((to) => to.toLowerCase().includes(host))) {
+			errors.push(
+				`permissions.network の「${host}」が、privacy.sends[].to のどこにも書かれていません(送り先として説明してください)`
+			);
+		}
+	}
+	if (sends.length > 0 && hosts.length === 0) {
+		errors.push(
+			'privacy.sends を書いたスクリプトは、permissions.network に通信先のホストを宣言してください(通信できるのは宣言したホストだけです)'
+		);
+	}
+}
+
 /** 種類(kind)ごとの決まり。パックは通信せず、イベントも購読せず、本体の情報も読まない */
 function validateKindRules(input: Record<string, unknown>, errors: string[]): void {
 	const id = typeof input.id === 'string' ? input.id : '';
@@ -263,8 +325,17 @@ function validateKindRules(input: Record<string, unknown>, errors: string[]): vo
 	if (input.kind !== 'pack') {
 		if (input.contributions !== undefined)
 			errors.push('contributions は kind: pack の拡張だけが持てます');
-		return;
 	}
+	if (input.kind !== 'script') {
+		if (input.entry !== undefined) errors.push('entry は kind: script の拡張だけが持てます');
+		const permissions = isRecord(input.permissions) ? input.permissions : {};
+		for (const key of ['notify', 'ui']) {
+			if (permissions[key] === true)
+				errors.push(`permissions.${key} は kind: script の拡張だけが宣言できます`);
+		}
+	}
+	if (input.kind === 'script') validateScriptRules(input, errors);
+	if (input.kind !== 'pack') return;
 	if (input.contributions === undefined) {
 		errors.push('パックには contributions(貢献するコンテンツ)が必要です');
 	} else {
@@ -404,7 +475,7 @@ export type ExtensionOrigin = 'official' | 'community' | 'personal-file' | 'pers
 
 export const ORIGIN_LABELS: Record<ExtensionOrigin, string> = {
 	official: '公式',
-	community: 'コミュニティ',
+	community: 'コミュニティ(レビュー済み)',
 	'personal-file': '個人追加(未審査)',
 	'personal-folder': '個人フォルダ(未審査)'
 };
@@ -443,6 +514,10 @@ export interface PermissionSummary {
 	network: string[];
 	/** 端末内に保存するか */
 	storage: boolean;
+	/** 通知(トースト)を出すか */
+	notify: boolean;
+	/** 画面(ポップアップ・設定欄)を描画するか */
+	ui: boolean;
 }
 
 export function summarizePermissions(permissions: ExtensionPermissions): PermissionSummary {
@@ -452,9 +527,56 @@ export function summarizePermissions(permissions: ExtensionPermissions): Permiss
 			...(permissions.read ?? []).map((name) => READ_LABELS[name])
 		],
 		network: [...(permissions.network ?? [])],
-		storage: permissions.storage === true
+		storage: permissions.storage === true,
+		notify: permissions.notify === true,
+		ui: permissions.ui === true
 	};
 }
+
+const SCRIPT_EVENT_LINES: Record<PermissionEvent, string> = {
+	'page:change': '開いている画面の種類(ホーム・執筆・プロットなど)を受け取ります',
+	'app:visibility': 'アプリが前面にあるか(別のウィンドウに移ったか)を受け取ります',
+	'scene:updated': '本文が保存されたこと(文字数の増減だけ。本文は含みません)を受け取ります',
+	'scene:created': 'シーンが作成されたことを受け取ります',
+	'session:start': '執筆の開始を受け取ります',
+	'session:update': '執筆中の経過(最後に編集した時刻と、増減した文字数)を受け取ります',
+	'session:end': '執筆の終了を受け取ります'
+};
+
+/**
+ * スクリプトの権限を、平易な日本語の文にする(同意画面・サイトで同じ文を出す)。
+ * 宣言していないことは書かない。本文・設定・API キーなどに触れないことは、別に必ず示す
+ */
+export function describeScriptPermissions(permissions: ExtensionPermissions): string[] {
+	const lines: string[] = [];
+	const events = permissions.events ?? [];
+	const hasStart = events.includes('session:start');
+	const hasEnd = events.includes('session:end');
+	if (hasStart && hasEnd) lines.push('あなたの執筆の開始・終了を受け取ります');
+	for (const name of events) {
+		if (hasStart && hasEnd && (name === 'session:start' || name === 'session:end')) continue;
+		lines.push(SCRIPT_EVENT_LINES[name]);
+	}
+	if (permissions.read?.includes('project:title')) lines.push('作品名を受け取ります');
+	if (permissions.read?.includes('project:chars')) lines.push('作品の総文字数を受け取ります');
+	if (permissions.network?.length)
+		lines.push(`次のサーバーと通信します: ${permissions.network.join('、')}`);
+	if (permissions.storage)
+		lines.push(
+			'この端末の中に、設定などを保存します(同期・バックアップ・書き出しには含まれません)'
+		);
+	if (permissions.notify) lines.push('画面に通知(トースト)を出します');
+	if (permissions.ui)
+		lines.push('Storift の画面に、ボタンや入力欄などの操作画面(ポップアップ・設定欄)を表示します');
+	return lines;
+}
+
+/** スクリプトの同意画面・詳細ページに必ず出す、隔離についての説明 */
+export const SCRIPT_ISOLATION_NOTES: readonly string[] = [
+	'このコードは隔離された環境で動きます。作品の本文・Firebase の設定・AI の API キー・Monolog. のトークンなど、Storift の保存領域には触れません。',
+	'ただし、通信先に送られた情報は取り消せません。送られた情報の扱いは、作者と通信先に従います。',
+	'運営者は、スクリプトの内容を保証しません。'
+];
 
 /** 対応プラットフォームの表示(例: 「Web 版・デスクトップ版」「デスクトップ版のみ」) */
 export function platformsLabel(platforms: readonly ExtensionPlatform[]): string {

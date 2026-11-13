@@ -21,12 +21,23 @@ import {
 	validatePackContent,
 	type PackBundle
 } from '../../src/lib/extensions/pack';
-import { sha256Hex, type RegistrySource } from '../../src/lib/extensions/registryIndex';
+import { lintScript } from '../../src/lib/extensions/script/lint';
+import { SCRIPT_LIMITS } from '../../src/lib/extensions/script/limits';
+import {
+	readRevoked,
+	sha256Hex,
+	type RegistrySource,
+	type RevokedEntry
+} from '../../src/lib/extensions/registryIndex';
 
-/** extensions/ の直下に置けるディレクトリ名のひな形 */
+/** extensions/ の直下に置けるディレクトリ名のひな形(パック用・スクリプト用) */
 export const TEMPLATE_DIR = '_template';
-/** 置いてよいファイルの拡張子 */
-export const ALLOWED_EXTENSIONS = ['.json', '.md', '.png', '.svg'] as const;
+export const SCRIPT_TEMPLATE_DIR = '_template-script';
+export const isTemplateDir = (dir: string) => dir === TEMPLATE_DIR || dir === SCRIPT_TEMPLATE_DIR;
+/** 失効(キルスイッチ)の一覧のファイル名(extensions/ の直下) */
+export const REVOKED_FILE = 'revoked.json';
+/** 置いてよいファイルの拡張子(.js はスクリプトの本体 1 つだけ。.ts はひな形の sdk.d.ts だけ) */
+export const ALLOWED_EXTENSIONS = ['.json', '.md', '.png', '.svg', '.js'] as const;
 const IMAGE_EXTENSIONS = ['.png', '.svg'];
 const MAX_DEPTH = 3;
 const MAX_FILES = 40;
@@ -47,6 +58,10 @@ export interface LoadResult {
 	extensions: LoadedExtension[];
 	/** `ファイル:メッセージ` の形のエラー */
 	errors: string[];
+	/** `ファイル:メッセージ` の形の警告(PR で人が見る。難読化・圧縮の疑いなど) */
+	warnings: string[];
+	/** 失効(キルスイッチ)の一覧 */
+	revoked: RevokedEntry[];
 }
 
 interface FoundFile {
@@ -98,21 +113,24 @@ async function loadOne(
 	root: string,
 	dir: string,
 	iconExists: (name: string) => Promise<boolean>
-): Promise<{ loaded?: LoadedExtension; errors: string[] }> {
+): Promise<{ loaded?: LoadedExtension; errors: string[]; warnings: string[] }> {
 	const errors: string[] = [];
+	const warnings: string[] = [];
 	const label = `extensions/${dir}`;
 	const abs = join(root, dir);
-	const isTemplate = dir === TEMPLATE_DIR;
+	const isTemplate = isTemplateDir(dir);
 
 	if (!isTemplate && !DIR_PATTERN.test(dir)) {
 		errors.push(`${label}:ディレクトリ名は小文字英数字とハイフンで付けてください`);
-		return { errors };
+		return { errors, warnings };
 	}
 
 	const found = await walk(abs, abs, label, errors);
 	if (found.length > MAX_FILES) errors.push(`${label}:ファイルが多すぎます(${MAX_FILES} 個まで)`);
 	for (const file of found) {
 		const ext = extensionOf(file.rel);
+		// ひな形(スクリプト)には、型定義 sdk.d.ts を置く
+		if (dir === SCRIPT_TEMPLATE_DIR && file.rel === 'sdk.d.ts') continue;
 		if (!(ALLOWED_EXTENSIONS as readonly string[]).includes(ext)) {
 			errors.push(
 				`${label}/${file.rel}:置けないファイルです(許可: ${ALLOWED_EXTENSIONS.join(' / ')})`
@@ -127,25 +145,25 @@ async function loadOne(
 	const manifestFile = found.find((f) => f.rel === 'manifest.json');
 	if (!manifestFile) {
 		errors.push(`${label}/manifest.json:ありません`);
-		return { errors };
+		return { errors, warnings };
 	}
 	if (manifestFile.size > PACK_LIMITS.manifestBytes) {
 		errors.push(
 			`${label}/manifest.json:${Math.round(PACK_LIMITS.manifestBytes / 1024)}KB を超えています`
 		);
-		return { errors };
+		return { errors, warnings };
 	}
 	let raw: unknown;
 	try {
 		raw = JSON.parse(await readFile(manifestFile.abs, 'utf8'));
 	} catch (error) {
 		errors.push(`${label}/manifest.json:JSON として読み込めません(${(error as Error).message})`);
-		return { errors };
+		return { errors, warnings };
 	}
 	const result = validateManifest(raw);
 	if (!result.ok) {
 		for (const message of result.errors) errors.push(`${label}/manifest.json:${message}`);
-		return { errors };
+		return { errors, warnings };
 	}
 	const manifest = result.manifest;
 	const at = (message: string) => errors.push(`${label}/manifest.json:${message}`);
@@ -158,8 +176,8 @@ async function loadOne(
 		if (manifest.kind !== 'official') at('公式の拡張は kind: official です');
 	} else {
 		if (manifest.kind === 'official') at('kind: official は公式の拡張だけが使えます');
-		else if (manifest.kind !== 'pack')
-			at(`kind: ${manifest.kind} はまだ受け付けていません(現在は pack のみです)`);
+		else if (manifest.kind !== 'pack' && manifest.kind !== 'script')
+			at(`kind: ${manifest.kind} は受け付けていません(pack か script です)`);
 		if (!manifest.license || !ALLOWED_LICENSES.includes(manifest.license)) {
 			at(`license は次のいずれかにしてください: ${ALLOWED_LICENSES.join(' / ')}`);
 		}
@@ -193,6 +211,9 @@ async function loadOne(
 			}
 		}
 		for (const file of found) {
+			if (extensionOf(file.rel) === '.js') {
+				errors.push(`${label}/${file.rel}:パックにはコード(.js)を置けません`);
+			}
 			if (file.rel === 'manifest.json' || extensionOf(file.rel) !== '.json') continue;
 			if (!declared.includes(file.rel)) {
 				errors.push(`${label}/${file.rel}:contributions に書かれていない JSON は置けません`);
@@ -202,8 +223,37 @@ async function loadOne(
 			const content = validatePackContent(manifest.contributions, files);
 			if (!content.ok) for (const message of content.errors) errors.push(`${label}/${message}`);
 		}
+	} else if (manifest.kind === 'script') {
+		// スクリプトの本体: entry の 1 ファイルだけ(.js はほかに置けない)
+		for (const file of found) {
+			if (extensionOf(file.rel) === '.json' && file.rel !== 'manifest.json') {
+				errors.push(`${label}/${file.rel}:スクリプトには、マニフェスト以外の JSON は置けません`);
+			}
+			if (extensionOf(file.rel) === '.js' && file.rel !== manifest.entry) {
+				errors.push(
+					`${label}/${file.rel}:スクリプトは 1 ファイルだけです(entry: ${manifest.entry})。別のファイルは置けません`
+				);
+			}
+		}
+		const entryFile = found.find((f) => f.rel === manifest.entry);
+		if (!entryFile) {
+			errors.push(`${label}/${manifest.entry}:ありません(manifest.json の entry に書かれています)`);
+		} else if (entryFile.size > SCRIPT_LIMITS.sourceBytes) {
+			errors.push(
+				`${label}/${manifest.entry}:${Math.round(SCRIPT_LIMITS.sourceBytes / 1024)}KB を超えています`
+			);
+		} else {
+			const source = await readFile(entryFile.abs, 'utf8');
+			const lint = lintScript(source, manifest.permissions.network ?? []);
+			for (const message of lint.errors) errors.push(`${label}/${manifest.entry}:${message}`);
+			for (const message of lint.warnings) warnings.push(`${label}/${manifest.entry}:${message}`);
+			files[manifest.entry!] = source;
+		}
 	} else {
 		for (const file of found) {
+			if (extensionOf(file.rel) === '.js') {
+				errors.push(`${label}/${file.rel}:スクリプト(kind: script)以外にはコード(.js)を置けません`);
+			}
 			if (file.rel !== 'manifest.json' && extensionOf(file.rel) === '.json') {
 				errors.push(
 					`${label}/${file.rel}:パック以外の拡張には、マニフェスト以外の JSON は置けません`
@@ -212,7 +262,7 @@ async function loadOne(
 		}
 	}
 
-	if (errors.length > 0) return { errors };
+	if (errors.length > 0) return { errors, warnings };
 
 	const loaded: LoadedExtension = {
 		dir,
@@ -220,25 +270,28 @@ async function loadOne(
 		source: official ? 'official' : 'community',
 		files
 	};
-	if (manifest.kind === 'pack') {
+	if (manifest.kind === 'pack' || manifest.kind === 'script') {
 		const data = buildBundle(manifest, files);
 		const text = serializeBundle(data);
 		const size = new TextEncoder().encode(text).length;
 		if (size > PACK_LIMITS.bundleBytes) {
 			return {
-				errors: [`${label}:バンドルが ${Math.round(PACK_LIMITS.bundleBytes / 1024)}KB を超えます`]
+				errors: [`${label}:バンドルが ${Math.round(PACK_LIMITS.bundleBytes / 1024)}KB を超えます`],
+				warnings
 			};
 		}
 		loaded.bundle = { data, text, size, sha256: await sha256Hex(text) };
 	}
-	return { loaded, errors };
+	return { loaded, errors, warnings };
 }
 
 /** extensions/ の全体を検証する。リポジトリの規則: id の重複なし・ディレクトリ以外は置かない */
 export async function loadExtensions(repoRoot: string): Promise<LoadResult> {
 	const root = join(repoRoot, 'extensions');
 	const errors: string[] = [];
+	const warnings: string[] = [];
 	const extensions: LoadedExtension[] = [];
+	const revoked = await loadRevoked(root, errors);
 	const iconExists = async (name: string) => {
 		try {
 			return (
@@ -253,18 +306,53 @@ export async function loadExtensions(repoRoot: string): Promise<LoadResult> {
 	try {
 		entries = await readdir(root, { withFileTypes: true });
 	} catch {
-		return { extensions, errors: ['extensions:ディレクトリがありません'] };
+		return { extensions, errors: ['extensions:ディレクトリがありません'], warnings, revoked };
 	}
 	for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
 		if (!entry.isDirectory()) {
-			if (entry.name !== 'README.md') {
+			if (entry.name !== 'README.md' && entry.name !== REVOKED_FILE) {
 				errors.push(`extensions/${entry.name}:直下にはディレクトリ(拡張ごと)だけを置けます`);
 			}
 			continue;
 		}
 		const one = await loadOne(root, entry.name, iconExists);
 		errors.push(...one.errors);
+		warnings.push(...one.warnings);
 		if (one.loaded) extensions.push(one.loaded);
 	}
-	return { extensions, errors };
+	return { extensions, errors, warnings, revoked };
+}
+
+/** extensions/revoked.json(失効の一覧)を読む。無ければ空。形が正しくなければエラー */
+export async function loadRevoked(root: string, errors: string[]): Promise<RevokedEntry[]> {
+	const label = `extensions/${REVOKED_FILE}`;
+	let text: string;
+	try {
+		text = await readFile(join(root, REVOKED_FILE), 'utf8');
+	} catch {
+		return [];
+	}
+	let raw: unknown;
+	try {
+		raw = JSON.parse(text);
+	} catch (error) {
+		errors.push(`${label}:JSON として読み込めません(${(error as Error).message})`);
+		return [];
+	}
+	if (!Array.isArray(raw)) {
+		errors.push(`${label}:配列で書いてください([{ id, versions, reason, at }])`);
+		return [];
+	}
+	const out: RevokedEntry[] = [];
+	raw.forEach((item, i) => {
+		const entry = readRevoked(item);
+		if (!entry) {
+			errors.push(
+				`${label}:[${i}] が正しくありません(id・versions(版の配列か "*")・reason(300 文字まで)・at(YYYY-MM-DD)が必要です)`
+			);
+		} else {
+			out.push(entry);
+		}
+	});
+	return out;
 }

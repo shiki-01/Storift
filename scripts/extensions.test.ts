@@ -5,7 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildRegistry } from './build-registry';
-import { validateExtensions } from './validate-extensions';
+import { validateExtensions, validateExtensionsDetailed } from './validate-extensions';
 import { parseBundleText } from '../src/lib/extensions/packBundle';
 import { sha256Hex, validateRegistryIndex } from '../src/lib/extensions/registryIndex';
 
@@ -92,7 +92,7 @@ describe('validateExtensions', () => {
 		await symlink(join(root, 'extensions/common-notation/manifest.json'), join(dir, 'link.md'));
 		const joined = (await validateExtensions(root)).join('\n');
 		expect(joined).toContain('extra.json:contributions に書かれていない');
-		expect(joined).toContain('run.js:置けないファイルです');
+		expect(joined).toContain('run.js:パックにはコード');
 		expect(joined).toContain('.secret:隠しファイル');
 		expect(joined).toContain('link.md:シンボリックリンク');
 	});
@@ -124,12 +124,119 @@ describe('validateExtensions', () => {
 		expect(joined).toContain('extensions/stray.txt');
 	});
 
-	it('パック以外の kind(script)は、まだ受け付けない', async () => {
+	it('公式を名乗らない kind と、未知の kind を拒否する', async () => {
 		const m = await manifestOf('dialogue-keys');
 		const rest = { ...m };
 		delete rest.contributions;
-		await writeManifest('dialogue-keys', { ...rest, kind: 'script' });
-		expect((await validateExtensions(root)).join()).toContain('まだ受け付けていません');
+		await writeManifest('dialogue-keys', { ...rest, kind: 'plugin' });
+		expect((await validateExtensions(root)).join()).toContain('kind');
+	});
+});
+
+describe('スクリプト拡張の検証', () => {
+	const scriptManifest = (over: Record<string, unknown> = {}) => ({
+		id: 'my-script',
+		name: 'スクリプト',
+		description: '説明',
+		version: '1.0.0',
+		author: 'a',
+		kind: 'script',
+		apiVersion: 1,
+		platforms: ['web'],
+		icon: 'puzzle',
+		license: 'MIT',
+		updatedAt: '2026-11-12',
+		entry: 'main.js',
+		permissions: { ui: true },
+		privacy: { sends: [], stores: [], onDisable: 'なし' },
+		...over
+	});
+
+	async function addScript(source: string, over: Record<string, unknown> = {}) {
+		const dir = join(root, 'extensions/my-script');
+		await mkdir(dir, { recursive: true });
+		await writeFile(join(dir, 'manifest.json'), JSON.stringify(scriptManifest(over)));
+		await writeFile(join(dir, 'main.js'), source);
+	}
+
+	it('正しいスクリプトは通り、バンドルにソースが入り、SHA-256 が一覧と一致する', async () => {
+		await addScript('storift.ui.set("panel", []);');
+		expect(await validateExtensions(root)).toEqual([]);
+		const out = join(root, 'out');
+		const { index } = await buildRegistry(root, out);
+		const entry = index.extensions.find((e) => e.id === 'my-script')!;
+		expect(entry.kind).toBe('script');
+		expect(entry.permissions.ui).toBe(true);
+		const text = await readFile(join(out, 'my-script/1.0.0.storiftext.json'), 'utf8');
+		expect(await sha256Hex(text)).toBe(entry.sha256);
+		const parsed = parseBundleText(text);
+		expect(parsed.ok && parsed.bundle.script).toContain('storift.ui.set');
+	});
+
+	it('eval / new Function / importScripts / WebAssembly / 動的 import を拒否する', async () => {
+		for (const code of [
+			'eval("1")',
+			'new Function("return 1")',
+			'importScripts("x")',
+			'WebAssembly.compile(b)',
+			'import("https://x.example.com/m.js")'
+		]) {
+			await addScript(code);
+			expect((await validateExtensions(root)).join(), code).toContain('main.js:');
+		}
+	});
+
+	it('コメントや文字列の中の <script や eval は許可する', async () => {
+		await addScript(
+			'// eval(1)\nconst s = "<script>eval(1)</script>"; const t = `x ${1} importScripts`;'
+		);
+		expect(await validateExtensions(root)).toEqual([]);
+	});
+
+	it('通信を宣言していないのに fetch を使うとエラー、宣言と食い違う URL と難読化は警告', async () => {
+		await addScript('fetch("https://a.example.com/")');
+		expect((await validateExtensions(root)).join()).toContain('permissions.network');
+		await addScript('fetch("https://a.example.com/")', {
+			permissions: { network: ['b.example.com'] },
+			privacy: {
+				sends: [{ to: 'b.example.com', items: ['x'], when: 'y' }],
+				stores: [],
+				onDisable: 'x'
+			}
+		});
+		const detailed = await validateExtensionsDetailed(root);
+		expect(detailed.errors).toEqual([]);
+		expect(detailed.warnings.join()).toContain('a.example.com');
+		await addScript(`const x = ${'1'.repeat(1200)};`);
+		expect((await validateExtensionsDetailed(root)).warnings.join()).toContain('極端に長い');
+	});
+
+	it('通信先が privacy.sends に無い・entry が無い・大きすぎる・予約 ID・2 つ目の .js を拒否する', async () => {
+		await addScript('1', { permissions: { network: ['a.example.com'] } });
+		expect((await validateExtensions(root)).join()).toContain('privacy.sends');
+		await addScript('1', { entry: 'other.js' });
+		expect((await validateExtensions(root)).join()).toContain('other.js');
+		await addScript('x'.repeat(201 * 1024));
+		expect((await validateExtensions(root)).join()).toContain('200KB');
+		await addScript('1', { id: 'official-x' });
+		expect((await validateExtensions(root)).join()).toContain('予約');
+		await rm(join(root, 'extensions/my-script'), { recursive: true });
+		await addScript('1');
+		await writeFile(join(root, 'extensions/my-script/extra.js'), '1');
+		expect((await validateExtensions(root)).join()).toContain('extra.js');
+	});
+
+	it('revoked.json を一覧(index.json)に載せ、壊れていればエラーにする', async () => {
+		await writeFile(
+			join(root, 'extensions/revoked.json'),
+			JSON.stringify([{ id: 'bad-ext', versions: '*', reason: '悪用', at: '2026-11-12' }])
+		);
+		const { index } = await buildRegistry(root, join(root, 'out'));
+		expect(index.revoked).toEqual([
+			{ id: 'bad-ext', versions: '*', reason: '悪用', at: '2026-11-12' }
+		]);
+		await writeFile(join(root, 'extensions/revoked.json'), JSON.stringify([{ id: 'X' }]));
+		expect((await validateExtensions(root)).join()).toContain('revoked.json');
 	});
 });
 

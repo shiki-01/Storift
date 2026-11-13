@@ -37,7 +37,8 @@
 		"test:e2e:worldbuilding": "node tests/e2e/worldbuilding.spec.mjs",
 		"test:e2e:toolbar": "node tests/e2e/toolbar-ext.spec.mjs",
 		"test:e2e:extensions": "node tests/e2e/extensions.spec.mjs",
-		"test:e2e:packs": "node tests/e2e/packs.spec.mjs"
+		"test:e2e:packs": "node tests/e2e/packs.spec.mjs",
+		"test:e2e:scripts": "node tests/e2e/scripts.spec.mjs"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^1.4.0",

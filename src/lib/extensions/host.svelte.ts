@@ -20,6 +20,7 @@ import {
 	type WritingSessionEvent
 } from './events';
 import { consentFingerprint, type PermissionEvent } from './manifest';
+import { isRevokedVersion, type RevokedEntry } from './registryIndex';
 import { EXTENSIONS, currentPlatform, isSupported, toolbarItemId } from './registry';
 import { WritingSessionTracker } from './session';
 import { sessionSettings } from './sessionSettings.svelte';
@@ -39,6 +40,8 @@ export interface ActiveToolbarItem extends ExtensionToolbarContribution {
 
 export const ENABLED_STORAGE_KEY = 'storift:extensions:enabled';
 export const CONSENT_STORAGE_KEY = 'storift:extensions:consent';
+/** 失効(キルスイッチ)の最新の一覧。オフラインで再起動しても、失効した拡張を動かさないために保存する */
+export const REVOKED_STORAGE_KEY = 'storift:extensions:revoked';
 
 /** 同意の記録(拡張ごと) */
 export interface ConsentRecord {
@@ -98,6 +101,11 @@ function defaultStorage(): ExtensionHostDeps['storage'] {
 	}
 }
 
+/** 後から足し引きできる拡張(パックとスクリプト。公式は同梱のみ) */
+function isAddable(ext: Extension): boolean {
+	return ext.manifest.kind === 'pack' || ext.manifest.kind === 'script';
+}
+
 export class ExtensionHost {
 	private enabled: SvelteSet<string>;
 	private active = new SvelteSet<string>();
@@ -105,6 +113,8 @@ export class ExtensionHost {
 	/** 扱う情報が変わったため、確認されるまで動かしていない拡張 */
 	private suspended = new SvelteSet<string>();
 	private started = false;
+	/** 運営が失効させた拡張(最後に取得できた一覧)。該当する版は有効にできない */
+	private revoked: RevokedEntry[] = $state.raw([]);
 	/** 拡張の一覧。同梱の拡張(公式)に加えて、パックを後から足し引きできる */
 	private list: Extension[] = $state.raw([]);
 
@@ -112,6 +122,59 @@ export class ExtensionHost {
 		this.list = [...deps.extensions];
 		this.enabled = new SvelteSet(this.load());
 		this.consents = new SvelteMap(this.loadConsents());
+		this.revoked = this.loadRevoked();
+	}
+
+	private loadRevoked(): RevokedEntry[] {
+		try {
+			const raw = this.deps.storage?.getItem(REVOKED_STORAGE_KEY);
+			if (!raw) return [];
+			const parsed: unknown = JSON.parse(raw);
+			if (!Array.isArray(parsed)) return [];
+			return parsed.filter(
+				(e): e is RevokedEntry =>
+					!!e &&
+					typeof e.id === 'string' &&
+					typeof e.reason === 'string' &&
+					(e.versions === '*' || Array.isArray(e.versions))
+			);
+		} catch {
+			return [];
+		}
+	}
+
+	/** この拡張の、いまの版に当てはまる失効(無ければ undefined)。公式の拡張は失効の対象にしない */
+	revocationOf(id: string): RevokedEntry | undefined {
+		const ext = this.find(id);
+		if (ext?.manifest.kind === 'official') return undefined;
+		const version = ext?.manifest.version;
+		return this.revoked.find(
+			(e) =>
+				e.id === id && (version === undefined ? e.versions === '*' : isRevokedVersion(e, version))
+		);
+	}
+
+	/**
+	 * 失効の一覧を反映する(取得に成功したときだけ呼ぶ)。該当する有効な拡張は、すぐ無効にする。
+	 * 一覧は保存して、次の起動でも失効した版を動かさない。無効にした拡張の名前と理由を返す
+	 */
+	async applyRevocations(
+		list: readonly RevokedEntry[]
+	): Promise<{ name: string; reason: string }[]> {
+		this.revoked = list.filter((e) => e.id).slice(0, 1000);
+		try {
+			this.deps.storage?.setItem(REVOKED_STORAGE_KEY, JSON.stringify(this.revoked));
+		} catch (error) {
+			console.warn('失効の一覧を保存できませんでした:', error);
+		}
+		const disabled: { name: string; reason: string }[] = [];
+		for (const ext of [...this.list]) {
+			const entry = this.revocationOf(ext.manifest.id);
+			if (!entry || !this.enabled.has(ext.manifest.id)) continue;
+			await this.setEnabled(ext.manifest.id, false);
+			disabled.push({ name: ext.manifest.name, reason: entry.reason });
+		}
+		return disabled;
 	}
 
 	private loadConsents(): [string, ConsentRecord][] {
@@ -345,6 +408,11 @@ export class ExtensionHost {
 		for (const ext of [...this.list]) {
 			const id = ext.manifest.id;
 			if (!this.enabled.has(id) || !isSupported(ext.manifest, this.deps.platform)) continue;
+			// 運営が失効させた版は、動かさずに無効にする
+			if (this.revocationOf(id)) {
+				await this.setEnabled(id, false);
+				continue;
+			}
 			if (this.consentStatus(id) === 'changed') {
 				this.suspended.add(id);
 				this.deps.notify.info(
@@ -366,6 +434,7 @@ export class ExtensionHost {
 		if (!ext) return false;
 		if (value) {
 			if (!isSupported(ext.manifest, this.deps.platform)) return false;
+			if (this.revocationOf(id)) return false;
 			if (this.consentStatus(id) !== 'current') return false;
 			this.enabled.add(id);
 			this.save();
@@ -388,14 +457,14 @@ export class ExtensionHost {
 	}
 
 	/**
-	 * パックを追加する(同じ ID のパックがあれば置き換える)。公式の拡張は置き換えられない。
+	 * パック・スクリプトを追加する(同じ ID のものがあれば置き換える)。公式の拡張は置き換えられない。
 	 * 有効にしていて起動済みなら、すぐ activate する。置き換えで扱う情報(permissions / privacy)が
 	 * 変わり、同意のときと違えば、確認されるまで動かさない(start と同じ扱い)
 	 */
 	async addExtension(ext: Extension): Promise<boolean> {
 		const id = ext.manifest.id;
 		const prev = this.find(id);
-		if (ext.manifest.kind !== 'pack' || (prev && prev.manifest.kind !== 'pack')) return false;
+		if (!isAddable(ext) || (prev && !isAddable(prev))) return false;
 		if (prev) await this.deactivate(prev);
 		this.list = prev ? this.list.map((e) => (e.manifest.id === id ? ext : e)) : [...this.list, ext];
 		if (!this.started || !this.enabled.has(id) || !isSupported(ext.manifest, this.deps.platform)) {
@@ -412,10 +481,10 @@ export class ExtensionHost {
 		return true;
 	}
 
-	/** パックを取り除く(有効/無効・同意の記録も消す)。公式の拡張は取り除けない */
+	/** パック・スクリプトを取り除く(有効/無効・同意の記録も消す)。公式の拡張は取り除けない */
 	async removeExtension(id: string): Promise<boolean> {
 		const ext = this.find(id);
-		if (!ext || ext.manifest.kind !== 'pack') return false;
+		if (!ext || !isAddable(ext)) return false;
 		await this.setEnabled(id, false);
 		this.list = this.list.filter((e) => e.manifest.id !== id);
 		return true;

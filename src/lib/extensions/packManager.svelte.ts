@@ -1,5 +1,5 @@
 /**
- * パックの導入・更新・削除と、起動時の読み込み。
+ * パック・スクリプトの導入・更新・削除と、起動時の読み込み。
  *
  * 出所は 3 つ。レジストリから入れたもの(コミュニティ)・「ファイルから追加」(個人追加・未審査)は
  * 別の IndexedDB(packStore.ts)に保存する。デスクトップ版の「拡張フォルダ」(個人フォルダ・未審査)は
@@ -11,6 +11,10 @@ import { themeStore } from '$lib/stores/theme.svelte';
 import { extensionHost } from './host.svelte';
 import { consentFingerprint, type ExtensionOrigin } from './manifest';
 import { createPackExtension } from './packExtension';
+import { revocation } from './revocation.svelte';
+import { createScriptExtension } from './script/scriptExtension';
+import { scriptRuntime } from './script/scriptRuntime.svelte';
+import { deleteExtensionData } from './script/storage';
 import { assembleFolderPack, type FolderPack, type FolderScanResult } from './packFolder';
 import { parseBundleText, reviveRecord, type ParsedBundle } from './packBundle';
 import {
@@ -117,8 +121,11 @@ class PackManager {
 		size: number,
 		installedAt: number
 	): Promise<boolean> {
+		const { manifest } = bundle;
 		const ok = await extensionHost.addExtension(
-			createPackExtension(bundle.manifest, bundle.content, origin)
+			manifest.kind === 'script'
+				? createScriptExtension(manifest, bundle.script ?? '', origin)
+				: createPackExtension(manifest, bundle.content, origin)
 		);
 		if (ok) {
 			this.infos.set(bundle.manifest.id, {
@@ -200,6 +207,8 @@ class PackManager {
 		if (!info) return;
 		await extensionHost.removeExtension(id);
 		if (info.origin !== 'personal-folder') await deleteInstalledPack(id);
+		// スクリプトの端末内データは、拡張を削除したら消す
+		await deleteExtensionData(id);
 		this.infos.delete(id);
 		this.folderIds.delete(id);
 		await themeStore.syncPackThemes();
@@ -270,6 +279,7 @@ class PackManager {
 
 	private async uninstallFolderPack(id: string): Promise<void> {
 		await extensionHost.removeExtension(id);
+		await deleteExtensionData(id);
 		this.infos.delete(id);
 		await themeStore.syncPackThemes();
 	}
@@ -284,11 +294,16 @@ class PackManager {
 
 export const packManager = new PackManager();
 
+// スクリプトが続けて止まったら、自動で無効にする
+scriptRuntime.onAutoDisable = (id) => void extensionHost.setEnabled(id, false);
+
 /** 起動時に呼ぶ: パックを読み込み、拡張を開始し、パックのテーマの設定を確定する */
 export async function startExtensions(): Promise<void> {
 	await packManager.init();
 	await extensionHost.start();
 	await themeStore.settlePackThemes();
+	// スクリプトを有効にしているときだけ、失効リストを 1 日 1 回まで確認する
+	void revocation.checkOnStartup();
 }
 
 export { RegistryError };

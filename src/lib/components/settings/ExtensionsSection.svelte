@@ -6,11 +6,14 @@
 	import PackBrowser from '$lib/components/extensions/PackBrowser.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Select from '$lib/components/ui/Select.svelte';
+	import Switch from '$lib/components/ui/Switch.svelte';
+	import { onMount } from 'svelte';
 	import { isDesktop } from '$lib/desktop/platform';
 	import { extensionHost } from '$lib/extensions/host.svelte';
 	import { PACK_LIMITS } from '$lib/extensions/pack';
 	import { packManager, type InstallResult } from '$lib/extensions/packManager.svelte';
 	import { registryState } from '$lib/extensions/registryState.svelte';
+	import { revocation } from '$lib/extensions/revocation.svelte';
 	import { IDLE_MINUTES_OPTIONS } from '$lib/extensions/session';
 	import { sessionSettings } from '$lib/extensions/sessionSettings.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
@@ -21,6 +24,11 @@
 	const official = $derived(extensionHost.extensions.filter((e) => e.manifest.kind === 'official'));
 	const packs = $derived(extensionHost.extensions.filter((e) => e.manifest.kind !== 'official'));
 	const desktop = isDesktop();
+
+	// 設定の「拡張機能」を開いたとき、失効リストを確認する(失敗しても何も壊さない)
+	onMount(() => {
+		void revocation.check();
+	});
 
 	let browserOpen = $state(false);
 	let fileInput: HTMLInputElement | undefined = $state();
@@ -85,6 +93,8 @@
 			checkMessage = registryState.error;
 			return;
 		}
+		// 同じ一覧に載っている失効も反映する
+		if (registryState.index) await revocation.apply(registryState.index.revoked);
 		checkMessage =
 			updateCount > 0
 				? `${updateCount} 件の更新があります。各カードの「更新」を押してください`
@@ -118,7 +128,7 @@
 
 <SettingsCard
 	title="拡張機能を探す"
-	description="コミュニティが公開した拡張機能を、一覧から探して入れます。パックは、コードを含まない設定ファイル(テーマ・辞書・入力補助キーなど)で、通信しません。"
+	description="コミュニティが公開した拡張機能を、一覧から探して入れます。パックは、コードを含まない設定ファイル(テーマ・辞書・入力補助キーなど)で、通信しません。スクリプトは、隔離された環境で動くコードで、宣言した通信先にだけ通信できます。"
 	data-testid="ext-discover"
 >
 	<div class="actions">
@@ -202,6 +212,31 @@
 		{/if}
 	</SettingsCard>
 {/if}
+
+<SettingsCard
+	title="失効リスト"
+	description="運営が停止した拡張機能(失効した版)を、自動で無効にするための一覧です。取得先は storift.shiki-01.com に固定で、取得に失敗しても何も変わりません。"
+	data-testid="ext-revocation"
+>
+	<SettingsRow
+		label="失効リストを自動で確認"
+		labelFor="revocation-auto"
+		description="スクリプトの拡張機能を有効にしているときだけ、アプリの起動時に 1 日 1 回まで確認します(設定を開いたときと「更新を確認」では、この設定にかかわらず確認します)。通信するのは storift.shiki-01.com だけで、利用者を識別する情報は送りません。"
+	>
+		<Switch
+			id="revocation-auto"
+			checked={revocation.auto}
+			aria-label="失効リストを自動で確認"
+			onchange={(v) => revocation.setAuto(v)}
+		/>
+	</SettingsRow>
+	{#if !revocation.auto}
+		<p class="caution" role="status" data-testid="revocation-off-note">
+			<b>自動確認をオフにしています。</b
+			>運営が有害と判断して停止した拡張機能があっても、設定の「拡張機能」を開くか「更新を確認」を押すまで、気付かずに動き続けることがあります。
+		</p>
+	{/if}
+</SettingsCard>
 
 <SettingsCard
 	title="執筆セッション"

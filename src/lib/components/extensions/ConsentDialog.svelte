@@ -33,6 +33,15 @@
 	}: Props = $props();
 
 	const confirmText = $derived(mode === 'enable' ? '同意して有効にする' : '確認した');
+
+	// 個人で追加したスクリプト(未審査)は、「未審査のコードを実行する」のチェックが必須
+	const needsAck = $derived(
+		manifest.kind === 'script' && (origin === 'personal-file' || origin === 'personal-folder')
+	);
+	let acknowledged = $state(false);
+	$effect(() => {
+		if (open) acknowledged = false;
+	});
 </script>
 
 <Modal
@@ -57,10 +66,17 @@
 	</div>
 	{#snippet footer()}
 		<!-- 内容が長くても、押す場所が常に見えるよう、下に貼り付ける -->
+		{#if needsAck}
+			<label class="ack" data-testid="consent-ack">
+				<input type="checkbox" bind:checked={acknowledged} />
+				<span>未審査のコードを実行する</span>
+			</label>
+		{/if}
 		<div class="foot">
 			<Button variant="secondary" onclick={() => (open = false)}>キャンセル</Button>
 			<Button
 				data-testid="consent-confirm"
+				disabled={needsAck && !acknowledged}
 				onclick={() => {
 					open = false;
 					void onconsent();
@@ -84,6 +100,28 @@
 		justify-content: flex-end;
 		flex-wrap: wrap;
 		gap: 8px;
+	}
+
+	.ack {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 8px;
+		margin-bottom: 10px;
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--color-error);
+		cursor: pointer;
+	}
+
+	:global(:root[data-scheme='dark']) .ack {
+		color: color-mix(in srgb, var(--color-error) 70%, var(--color-text));
+	}
+
+	.ack input {
+		width: 18px;
+		height: 18px;
+		accent-color: var(--color-error);
 	}
 
 	.consent {

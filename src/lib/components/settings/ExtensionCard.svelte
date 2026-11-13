@@ -13,6 +13,8 @@
 	import { extensionHost } from '$lib/extensions/host.svelte';
 	import { KIND_LABELS, PLATFORM_LABELS } from '$lib/extensions/manifest';
 	import { packManager } from '$lib/extensions/packManager.svelte';
+	import { STOP_MESSAGES } from '$lib/extensions/script/bridge';
+	import { scriptRuntime } from '$lib/extensions/script/scriptRuntime.svelte';
 	import { registryState } from '$lib/extensions/registryState.svelte';
 	import type { Extension } from '$lib/extensions/types';
 	import { confirmDialog, toast } from '$lib/stores/toast.svelte';
@@ -21,13 +23,21 @@
 
 	const manifest = $derived(extension.manifest);
 	const id = $derived(manifest.id);
+	const isScript = $derived(manifest.kind === 'script');
+	// スクリプトは、隔離して実行できる環境でだけ動かす(できなければ、実行せず「この環境では実行できません」)
+	const sandboxOk = $derived(!isScript || scriptRuntime.supported);
 	const supported = $derived(extensionHost.isSupported(id));
 	const enabled = $derived(supported && extensionHost.isEnabled(id));
+	const revoked = $derived(extensionHost.revocationOf(id));
+	const scriptState = $derived(isScript ? scriptRuntime.state(id) : undefined);
+	const autoDisabled = $derived(isScript ? scriptRuntime.autoDisabledReason(id) : undefined);
 	const status = $derived(extensionHost.consentStatus(id));
 	const suspended = $derived(extensionHost.isSuspended(id));
 	const needsReview = $derived(extensionHost.needsReview(id));
 	const origin = $derived(extension.origin ?? 'official');
 	const isPack = $derived(manifest.kind === 'pack');
+	// アンインストールできる(あとから追加した)拡張
+	const isAdded = $derived(manifest.kind === 'pack' || manifest.kind === 'script');
 	// 手動で取得した一覧に、新しい版があるとき(「更新を確認」で取得したあと)
 	const latest = $derived(registryState.entry(id));
 	const updatable = $derived(!!latest && packManager.updateAvailable(latest));
@@ -137,7 +147,7 @@
 		<Switch
 			id={`ext-${id}`}
 			checked={enabled}
-			disabled={!supported || busy}
+			disabled={!supported || !sandboxOk || !!revoked || busy}
 			aria-labelledby={`ext-title-${id}`}
 			onchange={toggle}
 		/>
@@ -156,6 +166,17 @@
 				.map((p) => PLATFORM_LABELS[p])
 				.join('・')}で利用できます。
 		</p>
+	{:else if revoked}
+		<div class="banner danger" role="alert" data-testid={`ext-revoked-${id}`}>
+			<p>
+				<b>運営により失効されました。</b>この版は有効にできません。理由: {revoked.reason}
+			</p>
+		</div>
+	{:else if !sandboxOk}
+		<p class="note" role="status" data-testid={`ext-unsupported-${id}`}>
+			<Icon name="alert-triangle" class="note-ico" />
+			この環境では実行できません(スクリプトを隔離して動かす機能が使えません)。
+		</p>
 	{:else if suspended}
 		<div class="banner warn" role="alert">
 			<p>扱う情報が変わったため、確認するまで停止しています。</p>
@@ -165,6 +186,35 @@
 		<div class="banner" role="status" data-testid={`ext-review-${id}`}>
 			<p>{reviewReason}</p>
 			<button type="button" class="banner-btn" onclick={review}>内容を確認する</button>
+		</div>
+	{/if}
+
+	{#if isScript && enabled && !suspended && !revoked}
+		{#if scriptState?.status === 'stopped'}
+			<div class="banner warn" role="alert" data-testid={`ext-stopped-${id}`}>
+				<p>
+					<b>停止しています。</b>{scriptState.reason ? STOP_MESSAGES[scriptState.reason] : ''}
+				</p>
+				<button
+					type="button"
+					class="banner-btn"
+					data-testid={`ext-restart-${id}`}
+					onclick={() => scriptRuntime.restart(id)}>再開</button
+				>
+			</div>
+		{:else if scriptState?.status === 'unsupported'}
+			<p class="note" role="status">
+				<Icon name="alert-triangle" class="note-ico" />
+				この環境では実行できません(隔離された環境でスクリプトを起動できませんでした)。
+			</p>
+		{/if}
+	{:else if isScript && autoDisabled}
+		<div class="banner warn" role="alert" data-testid={`ext-autodisabled-${id}`}>
+			<p>
+				<b>続けて停止したため、無効にしました。</b>{STOP_MESSAGES[
+					autoDisabled
+				]}。内容を確認してから、もう一度有効にしてください。
+			</p>
 		</div>
 	{/if}
 
@@ -186,7 +236,7 @@
 		</div>
 	</details>
 
-	{#if isPack}
+	{#if isAdded}
 		<div class="pack-foot">
 			<span class="pack-meta"
 				>版 {manifest.version}{#if manifest.license}・{manifest.license}{/if}・作者 {manifest.author}</span
@@ -358,6 +408,11 @@
 		font: inherit;
 		font-size: 13px;
 		cursor: pointer;
+	}
+
+	.banner.danger {
+		border-color: color-mix(in srgb, var(--color-error) 55%, var(--color-border));
+		background: color-mix(in srgb, var(--color-error) 8%, var(--color-background));
 	}
 
 	.banner.info {

@@ -102,7 +102,8 @@
 	const KIND_OPTIONS = [
 		{ value: 'all', label: 'すべての種類' },
 		{ value: 'official', label: KIND_LABELS.official },
-		{ value: 'pack', label: KIND_LABELS.pack }
+		{ value: 'pack', label: KIND_LABELS.pack },
+		{ value: 'script', label: KIND_LABELS.script }
 	];
 	const SOURCE_OPTIONS = [
 		{ value: 'all', label: 'すべての出所' },
@@ -197,7 +198,14 @@
 							<li>通信しません</li>
 						{/if}
 						{#if entry.permissions.storage}<li>この端末に内容を保存します</li>{/if}
+						{#if entry.permissions.notify}<li>画面に通知(トースト)を出します</li>{/if}
+						{#if entry.permissions.ui}<li>操作画面(ポップアップ・設定欄)を表示します</li>{/if}
 					</ul>
+					{#if entry.kind === 'script'}
+						<p class="small" data-testid="script-browser-note">
+							スクリプトは隔離された環境で動きますが、通信先に送られた情報は取り消せません。運営者は内容を保証しません。
+						</p>
+					{/if}
 				</section>
 
 				<section>

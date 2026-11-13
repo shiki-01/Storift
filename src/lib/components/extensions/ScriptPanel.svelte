@@ -58,6 +58,13 @@
 		letter-spacing: 0.02em;
 	}
 
+	/* モバイルの操作シートは、タイトルを自分で出すので、重ねて出さない */
+	@media (max-width: 640px) {
+		.title {
+			display: none;
+		}
+	}
+
 	.note {
 		display: flex;
 		flex-direction: column;

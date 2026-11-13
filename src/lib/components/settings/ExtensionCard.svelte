@@ -253,7 +253,7 @@
 		</div>
 	{/if}
 
-	{#if enabled && !suspended && extension.settings}
+	{#if enabled && !suspended && extension.settings && (!isScript || scriptState?.settings)}
 		<div class="ext-settings">
 			<h5 class="settings-title">{manifest.name}の設定</h5>
 			<ExtensionSettingsHost {extension} />

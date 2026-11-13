@@ -84,10 +84,10 @@ describe('checkUiEvent', () => {
 		expect(checkUiEvent(tree, 't', 'change', true)).toBe(true);
 		expect(checkUiEvent(tree, 's', 'change', 'a')).toBe(true);
 		expect(checkUiEvent(tree, 'i', 'change', 'text')).toBe(true);
-		expect(checkUiEvent(tree, 'zzz', 'press')).toBe(false);
+		expect(checkUiEvent(tree, 'zzz', 'press', undefined)).toBe(false);
 		expect(checkUiEvent(tree, 't', 'change', 'true')).toBe(false);
 		expect(checkUiEvent(tree, 's', 'change', 'not-an-option')).toBe(false);
 		expect(checkUiEvent(tree, 'b', 'change', 'x')).toBe(false);
-		expect(checkUiEvent(null, 'b', 'press')).toBe(false);
+		expect(checkUiEvent(null, 'b', 'press', undefined)).toBe(false);
 	});
 });

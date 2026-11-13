@@ -1,6 +1,12 @@
 <script lang="ts">
 	import Seo from '$lib/Seo.svelte';
-	import { PACK_LIMITS, ALLOWED_LICENSES, CONTRIBUTION_LABELS, ORIGIN_NOTES } from '$manifest';
+	import {
+		PACK_LIMITS,
+		ALLOWED_LICENSES,
+		CONTRIBUTION_LABELS,
+		ORIGIN_NOTES,
+		SCRIPT_ISOLATION_NOTES
+	} from '$manifest';
 
 	const REPO_URL = 'https://github.com/shiki-01/Storift';
 	const kb = (bytes: number) => `${Math.round(bytes / 1024)}KB`;
@@ -8,7 +14,7 @@
 
 <Seo
 	title="拡張機能を投稿する"
-	description="Storift のコミュニティ拡張機能(パック)の作り方と投稿の手順。ひな形、プルリクエストの流れ、基準、ライセンス、プライバシーの書き方、審査と削除の方針。"
+	description="Storift のコミュニティ拡張機能(パック・スクリプト)の作り方と投稿の手順。ひな形、プルリクエストの流れ、基準、ライセンス、プライバシーの書き方、審査と削除の方針。"
 />
 
 <div class="wrap">
@@ -21,7 +27,7 @@
 		<h1>拡張機能を投稿する</h1>
 		<p>
 			Storift
-			の拡張機能(パック)を作って、公式リポジトリに提案(プルリクエスト)すると、レビューのうえで、この紹介サイトの一覧に載り、アプリの「拡張機能を探す」から入れられるようになります。
+			の拡張機能(パックまたはスクリプト)を作って、公式リポジトリに提案(プルリクエスト)すると、レビューのうえで、この紹介サイトの一覧に載り、アプリの「拡張機能を探す」から入れられるようになります。
 		</p>
 	</div>
 
@@ -29,8 +35,9 @@
 		<section aria-labelledby="what">
 			<h2 id="what">受け付けるもの</h2>
 			<p>
-				いま投稿できるのは<strong>パック</strong
-				>です。パックは、コードを含まない設定ファイル(JSON)だけの拡張機能で、通信せず、コードも実行しません。スクリプトを動かす拡張機能は、今後の予定で、まだ受け付けていません。
+				いま投稿できるのは<strong>パック</strong>と<strong>スクリプト</strong
+				>です。パックは、コードを含まない設定ファイル(JSON)だけの拡張機能で、通信せず、コードも実行しません。スクリプトは、隔離された環境で動く
+				1 ファイルの JavaScript で、宣言した通信先にだけ通信できます(下の「スクリプトを投稿する」)。
 			</p>
 			<p>パックでは、次のものを足せます。</p>
 			<ul>
@@ -97,7 +104,9 @@
 					)}。自分で作った、または再配布を許されたものだけを投稿してください。他人の著作物(辞書データなど)を、許諾なく含めることはできません。
 				</li>
 				<li>
-					<strong>通信しない</strong>: パックは通信できません。<code>permissions</code> に
+					<strong>通信しない(パックの場合)</strong>: パックは通信できません。<code>permissions</code
+					>
+					に
 					<code>network</code>・<code>events</code>・<code>read</code>
 					は書けません。外部へ送る情報も、ありません(<code>privacy.sends</code> は空)。
 				</li>
@@ -117,8 +126,7 @@
 				</li>
 				<li>
 					<strong>置けるファイル</strong>: <code>.json</code>・<code>.md</code>・<code>.png</code
-					>・<code>.svg</code
-					>だけです。実行できるファイル、隠しファイル、シンボリックリンクは置けません。マニフェストに書かれていない
+					>・<code>.svg</code>だけです(スクリプトは、これに本体の <code>.js</code> が 1 つ)。パックには実行できるファイルを置けません。隠しファイル、シンボリックリンクは置けません。マニフェストに書かれていない
 					JSON も置けません。
 				</li>
 				<li>
@@ -128,6 +136,63 @@
 				<li>
 					<strong>更新</strong>: 内容を変えるときは、<code>version</code> と <code>updatedAt</code>
 					を更新します。公開済みの版の内容は、変えないでください(版ごとに配信し、長くキャッシュされます)。権限やプライバシーの記述が変わる更新は、利用者に再度の同意を求めます。
+				</li>
+			</ul>
+		</section>
+
+		<section aria-labelledby="script">
+			<h2 id="script">スクリプトを投稿する</h2>
+			<p>
+				スクリプト(<code>kind: script</code>)は、Storift の画面から隔離された Web Worker
+				の中で動きます。本文・設定・API
+				キーには触れず、マニフェストで宣言して利用者が同意した範囲のイベントと、宣言した通信先だけを使えます。
+			</p>
+			<ol>
+				<li>
+					<code>extensions/_template-script/</code> を <code>extensions/&lt;あなたの id&gt;/</code>
+					にコピーします。<code>manifest.json</code>・<code>main.js</code>(スクリプト本体。1
+					ファイルだけ。200KB まで)・<code>sdk.d.ts</code>(型定義)があります。
+				</li>
+				<li>
+					<code>permissions</code> に、使うものだけを宣言します: <code>events</code>・<code
+						>read</code
+					>(<code>project:title</code>・<code>project:chars</code>)・<code>network</code
+					>(完全一致のホスト名だけ。ワイルドカード・IP・localhost は不可)・<code>storage</code
+					>・<code>notify</code>・<code>ui</code>。
+				</li>
+				<li>
+					<code>permissions.network</code> の各ホストは、<code>privacy.sends[].to</code>
+					のどこかに書きます。送る項目・いつ送るか・端末に保存するものを、実際の動作のとおりに書きます。
+				</li>
+				<li>
+					<code>bun run validate:extensions</code> で検証します。<code>eval</code>・<code
+						>new Function</code
+					>・<code>importScripts</code>・<code>WebAssembly</code>・動的
+					<code>import()</code>
+					は拒否されます。圧縮・難読化が疑われるコード(極端に長い行、1 文字の変数名だらけなど)は警告になり、レビューで人が確認します。読めるコードで書いてください。
+				</li>
+				<li>
+					プルリクエストを作ります。オーナーのレビューが必須です(<code>extensions/**</code>
+					は CODEOWNERS の対象)。
+				</li>
+			</ol>
+			<p>
+				API・上限・デバッグの方法は、<a
+					href={`${REPO_URL}/blob/main/docs/SCRIPT_API.md`}
+					rel="noopener noreferrer">docs/SCRIPT_API.md</a
+				>にあります。サンプルは<a
+					href={`${REPO_URL}/tree/main/extensions/pomodoro-timer`}
+					rel="noopener noreferrer">ポモドーロタイマー</a
+				>(通信なし)と<a
+					href={`${REPO_URL}/tree/main/extensions/discord-webhook`}
+					rel="noopener noreferrer">Discord Webhook 投稿</a
+				>(通信先は discord.com だけ)です。
+			</p>
+			<ul>
+				{#each SCRIPT_ISOLATION_NOTES as note, i (i)}<li>{note}</li>{/each}
+				<li>
+					有害と分かった拡張は、失効の一覧(<code>extensions/revoked.json</code
+					>)に載せます。利用者のアプリは、これを確認して、該当する版を自動で無効にします。
 				</li>
 			</ul>
 		</section>

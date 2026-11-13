@@ -74,7 +74,8 @@ describe('ワーカー側の SDK(storift)', () => {
 			addEventListener: (_: string, fn: (e: { data: unknown }) => void) => listeners.push(fn)
 		};
 		new Function('self', 'setTimeout', WORKER_BOOTSTRAP)(self, (fn: () => void) => fn());
-		const storift = (self as { storift: Record<string, any> }).storift;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const storift = (self as { storift: any }).storift;
 		const deliver = (data: unknown) => listeners.forEach((l) => l({ data }));
 		return { posted, storift, deliver };
 	}

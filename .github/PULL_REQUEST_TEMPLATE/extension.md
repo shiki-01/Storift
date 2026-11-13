@@ -1,4 +1,4 @@
-<!-- 拡張機能(パック)の投稿用テンプレートです。URL の末尾に ?template=extension.md を付けると使えます -->
+<!-- 拡張機能(パック・スクリプト)の投稿用テンプレートです。URL の末尾に ?template=extension.md を付けると使えます -->
 
 ## 拡張機能
 
@@ -12,10 +12,18 @@
 - [ ] `bun run validate:extensions` が通ります
 - [ ] **ライセンス**: `license` を許可リスト(MIT / Apache-2.0 / CC0-1.0 / CC-BY-4.0 / ISC など)から選びました。含まれる内容は、自分で作った、または再配布を許されたものです
 - [ ] **プライバシー**: `privacy`(保存するもの・無効にしたときの扱い・補足)を、実際の動作のとおりに書きました。確認できないことは書いていません
-- [ ] **通信しません**: パックは通信せず、コードも含みません(`permissions` に `network` / `events` / `read` はありません。`privacy.sends` は空です)
+- [ ] **(パック)通信しません**: パックは通信せず、コードも含みません(`permissions` に `network` / `events` / `read` はありません。`privacy.sends` は空です)
 - [ ] **権限は最小**です(`permissions` は `{ "storage": true }` だけ)
 - [ ] 名前・説明は正確で、公式のものと誤認させません
 - [ ] 他者の権利を侵害する内容・公序良俗に反する内容を含みません
 - [ ] 公開済みの版の内容を書き換えていません(変更は新しい版で)
 
 ## 補足
+
+## スクリプトの場合(`kind: script`)
+
+- [ ] `permissions` は、使うものだけを宣言しています(`events`・`read`・`network`・`storage`・`notify`・`ui`)
+- [ ] `permissions.network` の各ホストを、`privacy.sends[].to` に書き、送る項目・いつ送るかを実際の動作のとおりに書きました
+- [ ] 本文は受け取らず、受け取った情報を、宣言していない相手へ送っていません
+- [ ] スクリプトは `entry` の 1 ファイルで、読める形のコードです(圧縮・難読化していません。`bun run validate:extensions` の警告を確認しました)
+- [ ] `eval`・`new Function`・`importScripts`・`WebAssembly`・動的 `import()` を使っていません

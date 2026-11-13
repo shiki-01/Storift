@@ -20,6 +20,7 @@
 			<p class="head">アプリ</p>
 			<a href={APP_URL}>エディタを開く(Web)</a>
 			<a href={RELEASES_URL}>デスクトップ版</a>
+			<a href="/support">開発の支援</a>
 		</nav>
 		<nav aria-label="ガイドと規約">
 			<p class="head">ガイドと規約</p>

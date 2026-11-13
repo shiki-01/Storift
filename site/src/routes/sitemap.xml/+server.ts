@@ -12,6 +12,7 @@ const paths = [
 	'/extensions/submit',
 	...extensions.map((e) => `/extensions/${e.id}`),
 	'/faq',
+	'/support',
 	'/privacy',
 	'/terms'
 ];

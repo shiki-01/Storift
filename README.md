@@ -168,7 +168,7 @@ SvelteKit / Svelte 5 / TypeScript / Master CSS / Dexie(IndexedDB) / Yjs(共同�
 | [docs/SYNC_OPTIMIZATION.md](docs/SYNC_OPTIMIZATION.md)                     | 同期の仕組みと最適化                |
 | [docs/FIREBASE_USAGE_ESTIMATE.md](docs/FIREBASE_USAGE_ESTIMATE.md)         | Firebase 無料枠での使用量の見積もり |
 | [docs/SITE.md](docs/SITE.md)                                               | 紹介サイトとドメイン構成            |
-| [docs/BRAND.md](docs/BRAND.md)                                             | ロゴとアイコンの素材                |
+| [docs/BRAND.md](docs/BRAND.md)                                             | ロゴとアイコンの素材、名称の利用    |
 | [docs/UI_GUIDELINES.md](docs/UI_GUIDELINES.md)                             | 画面の共通の取り決め                |
 | [docs/UI_UX_IMPROVEMENTS.md](docs/UI_UX_IMPROVEMENTS.md)                   | UI/UX の改善項目と対応状況          |
 | [docs/PreviewViewerImplementation.md](docs/PreviewViewerImplementation.md) | プレビューの実装計画(履歴)          |
@@ -177,6 +177,17 @@ SvelteKit / Svelte 5 / TypeScript / Master CSS / Dexie(IndexedDB) / Yjs(共同�
 
 [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください。
 
+## 支援
+
+Storift はすべての機能を無料で使えます。開発を支援していただける場合は、次のどちらかからお願いします。支援の有無で使える機能は変わりません。
+
+- [GitHub Sponsors](https://github.com/sponsors/shiki-01)(開発者 shiki-01 個人への支援で、Storift を含むプロジェクト全体に充てます。GitHub アカウントが必要です)
+- [BOOTH](https://shiki-01.booth.pm/items/9119351)(支援用の商品の購入。アプリ本体は含みません)
+
+支援してくださった方のうち、希望された方の名前を載せています。GitHub Sponsors の支援者は [shiki-01 のプロフィール](https://github.com/shiki-01)、BOOTH の支援者は [SUPPORTERS.md](SUPPORTERS.md) にあります。詳しくは[公開サイトの「開発の支援」](https://storift.shiki-01.com/support)を参照してください。
+
 ## ライセンス
 
 [MIT License](LICENSE)。同梱の第三者の素材(フォントなど)は、それぞれのライセンスに従います。一覧は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) にあります。
+
+名称「Storift」とロゴ・アイコンは MIT License の対象外です。使ってよい範囲は [docs/BRAND.md](docs/BRAND.md#名称とロゴの利用) にあります。改変した版を配布するときは、別の名前とアイコンを付けてください。

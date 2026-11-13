@@ -7,7 +7,7 @@
 | サイト（紹介）     | `storift.shiki-01.com`     | `site/`        | `storift-site`                |
 | エディタ（アプリ） | `app.storift.shiki-01.com` | リポジトリ直下 | `storift`（既存）             |
 
-- サイトは SvelteKit + `adapter-static` の静的サイト。ページは `/`、`/features`、`/guide`、`/guide/firebase`(Firebase 同期の設定ガイド)、`/extensions`(拡張機能の一覧)、`/extensions/<id>`(拡張ごとのページ。リポジトリ直下の `extensions/<id>/manifest.json` から、ビルド時に生成する。公式とコミュニティ(パック・スクリプト)の両方を載せ、スクリプトには権限(イベント・通信先・ストレージ・通知・画面)と隔離の注意を表示し、コミュニティには出所のラベルを出す。「この拡張が扱う情報」はプライバシーポリシーの一部)、`/extensions/submit`(拡張機能を投稿する方法。固定のルートなので、`[id]` より優先される。そのため `submit` は拡張の id に使えない)、`/faq`、`/privacy`(プライバシーポリシー)、`/terms`(利用規約)。
+- サイトは SvelteKit + `adapter-static` の静的サイト。ページは `/`、`/features`、`/guide`、`/guide/firebase`(Firebase 同期の設定ガイド)、`/extensions`(拡張機能の一覧)、`/extensions/<id>`(拡張ごとのページ。リポジトリ直下の `extensions/<id>/manifest.json` から、ビルド時に生成する。公式とコミュニティ(パック・スクリプト)の両方を載せ、スクリプトには権限(イベント・通信先・ストレージ・通知・画面)と隔離の注意を表示し、コミュニティには出所のラベルを出す。「この拡張が扱う情報」はプライバシーポリシーの一部)、`/extensions/submit`(拡張機能を投稿する方法。固定のルートなので、`[id]` より優先される。そのため `submit` は拡張の id に使えない)、`/faq`、`/support`(開発の支援)、`/privacy`(プライバシーポリシー)、`/terms`(利用規約)。
 - アプリのコード・ビルドは変更しない。サイトは `site/` に独立した `package.json` を持つ。
 - サイトとアプリは別オリジンになる。Cookie・IndexedDB・Service Worker は共有されない（意図した分離）。
 

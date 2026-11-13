@@ -1,5 +1,6 @@
 import * as Y from 'yjs';
 import { applyEditToYText, diffText, type TextDiff } from './diff';
+import { ORIGIN_AI, ORIGIN_PROGRAM } from './doc';
 
 /**
  * エディタ(contenteditable)と Y.Text の結合のコア。DOM には依存しない(アダプタ経由で読み書きする)。
@@ -146,7 +147,8 @@ export class EditorBinding {
 		this.origin = options.origin ?? 'local';
 		this.onText = options.onText;
 		this.undoManager = new Y.UndoManager(this.ytext, {
-			trackedOrigins: new Set([this.origin]),
+			// AI の提案の適用・検索置換などの書き換えも、利用者が元に戻せるようにする
+			trackedOrigins: new Set([this.origin, ORIGIN_AI, ORIGIN_PROGRAM]),
 			captureTimeout: options.captureTimeout ?? 500,
 			doc: this.ydoc
 		});
@@ -560,12 +562,15 @@ export class EditorBinding {
 
 	// ---------- 外部からの本文の置き換え ----------
 
-	/** エディタ以外(執筆支援・校正など)が本文を書き換えた。Y に差分を入れ、DOM を更新する */
-	setExternalText(text: string): boolean {
+	/**
+	 * エディタ以外(執筆支援・校正など)が本文を書き換えた。Y に差分を入れ、DOM を更新する。
+	 * AI の提案の適用は origin に ORIGIN_AI を渡す(利用者が書いた分として数えないため)
+	 */
+	setExternalText(text: string, origin: unknown = this.origin): boolean {
 		if (this.destroyed || this.doc.readOnly) return false;
 		if (this.ytext.toString() === text) return false;
 		const edit = diffText(this.ytext.toString(), text);
-		applyEditToYText(this.ytext, edit, this.origin);
+		applyEditToYText(this.ytext, edit, origin);
 		return true;
 	}
 

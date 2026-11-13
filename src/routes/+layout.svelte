@@ -26,6 +26,9 @@
 	import TourOverlay from '$lib/components/tutorial/TourOverlay.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
 	import { installNativeContextMenuPolicy } from '$lib/desktop/nativeContextMenu';
+	import { publishPage, publishVisibility } from '$lib/extensions/host.svelte';
+	import { startExtensions } from '$lib/extensions/packManager.svelte';
+	import { pageFromPath } from '$lib/extensions/pages';
 	import { aiStore } from '$lib/stores/ai.svelte';
 	import { updaterStore } from '$lib/stores/updater.svelte';
 	import TitleBar from '$lib/components/desktop/TitleBar.svelte';
@@ -120,7 +123,17 @@
 			: ''
 	);
 
+	// 開いている画面を拡張へ知らせる(購読者がいなければ、値を覚えるだけ)
+	$effect(() => {
+		publishPage(pageFromPath(page.url.pathname));
+	});
+
 	onMount(() => {
+		// アプリが前面にあるか(別のウィンドウに移った・最小化した)を拡張へ知らせる
+		const onVisibility = () => publishVisibility(document.visibilityState !== 'hidden');
+		document.addEventListener('visibilitychange', onVisibility);
+		onVisibility();
+
 		// ビューポート(スマホ判定・キーボード高さ)の監視を開始
 		const stopViewport = initViewport();
 
@@ -132,6 +145,9 @@
 
 		// グローバルエラーハンドラーを初期化
 		initializeErrorHandler();
+
+		// 有効にしている拡張だけ開始する(無効なら何も購読しない)
+		void startExtensions();
 
 		// Service Workerを登録（開発環境では既存のSWを削除）
 		// デスクトップ版はファイルをアプリに同梱しているので使わない
@@ -214,6 +230,7 @@
 		return () => {
 			updaterStore.stopAutoCheck();
 			stopViewport();
+			document.removeEventListener('visibilitychange', onVisibility);
 			stopContextMenuPolicy();
 			unsubscribe();
 			stopNetworkMonitoring();
@@ -238,7 +255,7 @@
 			<AppRail />
 		{/if}
 
-		<div class="app-column">
+		<div class="app-column" class:has-fixed-header={showMobileHeader}>
 			{#if showMobileHeader}
 				<header class="app-header">
 					<div class="app-header-inner">
@@ -375,7 +392,17 @@
 		flex-direction: column;
 	}
 
+	/* ヘッダーは fixed にする。画面上端に固定要素がないと iOS が上端に OS 側のぼかしを付け、文字がぼやける */
+	.app-column.has-fixed-header {
+		padding-top: calc(var(--safe-top) + var(--bar-height) + 1px);
+	}
+
 	.app-header {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		z-index: 5;
 		flex: none;
 		background: var(--color-background);
 		border-bottom: 1px solid var(--color-border);

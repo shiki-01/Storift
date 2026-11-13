@@ -6,8 +6,17 @@ const config = {
 	preprocess: vitePreprocess(),
 	kit: {
 		adapter: adapter({ pages: 'build', assets: 'build', fallback: undefined, strict: true }),
+		// 配信先は拡張子なしの URL(/extensions/monolog など)なので、相対パスのままだと
+		// 階層の違う URL で /extensions/_app/... を探しに行って読み込みに失敗する。ルートからの絶対パスにする
+		paths: { relative: false },
 		// PUBLIC_ 接頭辞の環境変数だけをクライアントへ公開する
-		env: { publicPrefix: 'PUBLIC_' }
+		env: { publicPrefix: 'PUBLIC_' },
+		alias: {
+			// 拡張のマニフェスト(リポジトリ直下の extensions/<id>/manifest.json)。アプリと同じファイルを読む
+			$extensions: '../extensions',
+			// マニフェストの型と検証(アプリと同じ実装を使う。他のモジュールに依存しない純関数)
+			$manifest: '../src/lib/extensions/manifest.ts'
+		}
 	}
 };
 

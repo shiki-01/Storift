@@ -27,5 +27,6 @@ export const SITE_DESCRIPTION =
 export const NAV = [
 	{ href: '/features', label: '機能' },
 	{ href: '/guide', label: '使い方' },
+	{ href: '/extensions', label: '拡張機能' },
 	{ href: '/faq', label: 'Q&A' }
 ] as const;

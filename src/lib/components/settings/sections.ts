@@ -6,6 +6,7 @@ export type SettingsSectionId =
 	| 'sync'
 	| 'sharing'
 	| 'ai'
+	| 'extensions'
 	| 'data'
 	| 'about';
 
@@ -53,6 +54,12 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 			'AI のプロバイダ(Claude Code・Ollama・OpenAI 互換 API など)と、本文の編集の扱いを設定します。',
 		icon: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/>',
 		desktopOnly: true
+	},
+	{
+		id: 'extensions',
+		label: '拡張機能',
+		description: '外部のアプリとの連携など、追加の機能を有効にします。',
+		icon: '<path d="M10 4a2 2 0 1 1 4 0v2h4a1 1 0 0 1 1 1v4h-2a2 2 0 1 0 0 4h2v4a1 1 0 0 1-1 1h-4v-2a2 2 0 1 0-4 0v2H6a1 1 0 0 1-1-1v-4h2a2 2 0 1 0 0-4H5V7a1 1 0 0 1 1-1h4z"/>'
 	},
 	{
 		id: 'data',

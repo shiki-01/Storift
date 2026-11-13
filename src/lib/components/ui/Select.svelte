@@ -316,7 +316,7 @@
 				}}
 			>
 				<span class="texts">
-					<span class="option-label" title={option.label}>{option.label}</span>
+					<span class="option-label" title={option.label} style={option.style}>{option.label}</span>
 					{#if option.description}
 						<span class="option-desc" title={option.description}>{option.description}</span>
 					{/if}

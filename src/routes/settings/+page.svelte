@@ -14,6 +14,7 @@
 	import SyncSection from '$lib/components/settings/SyncSection.svelte';
 	import SharingSection from '$lib/components/settings/SharingSection.svelte';
 	import AiSection from '$lib/components/settings/AiSection.svelte';
+	import ExtensionsSection from '$lib/components/settings/ExtensionsSection.svelte';
 	import DataSection from '$lib/components/settings/DataSection.svelte';
 	import AboutSection from '$lib/components/settings/AboutSection.svelte';
 
@@ -169,6 +170,8 @@
 						<SharingSection />
 					{:else if current.id === 'ai'}
 						<AiSection />
+					{:else if current.id === 'extensions'}
+						<ExtensionsSection />
 					{:else if current.id === 'data'}
 						<DataSection />
 					{:else if current.id === 'about'}

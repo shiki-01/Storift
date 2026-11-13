@@ -77,6 +77,8 @@ export const TOUR_STEPS: TourStep[] = [
 		target: '[data-tour="editor-memo-button"]',
 		advance: 'click',
 		when: 'wide',
+		// 設定でメモのボタンを三点メニューにまとめている場合は、画面に出ないので飛ばす
+		optional: true,
 		skipWhen: () => editorStore.memoOpen
 	},
 	{
@@ -88,7 +90,9 @@ export const TOUR_STEPS: TourStep[] = [
 		],
 		target: '[data-tour="memo-panel"]',
 		placement: 'left',
-		when: 'wide'
+		when: 'wide',
+		// メモを開いていない(上のステップを飛ばした)場合は、パネルも無い
+		optional: true
 	},
 	{
 		id: 'toolbar-export',

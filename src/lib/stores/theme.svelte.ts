@@ -1,5 +1,15 @@
-import { isDarkColor } from '$lib/utils/themeTools';
+import {
+	THEME_MIRROR_KEY,
+	applySnapshot,
+	buildMirror,
+	parseMirror,
+	resolveSystemDark,
+	toSnapshot,
+	type ThemeMirror
+} from '$lib/utils/themeBoot';
 import { get as idbGet, set as idbSet } from 'idb-keyval';
+import { packRuntime, type PackThemeEntry } from '$lib/extensions/packRuntime.svelte';
+import { DEFAULT_THEME_FONTS } from '$lib/utils/themeTools';
 
 export interface Theme {
 	id: string;
@@ -165,6 +175,17 @@ export const themes: Record<string, Theme> = { ...builtinThemes };
 
 const CUSTOM_THEMES_KEY = 'app-custom-themes';
 
+/** パックのテーマを、アプリのテーマにする(フォントは既定。パックは指定できない) */
+function packEntryToTheme(entry: PackThemeEntry): Theme {
+	return {
+		id: entry.themeId,
+		name: entry.theme.name,
+		colors: { ...entry.theme.colors },
+		editor: { ...entry.theme.editor },
+		fonts: { ...DEFAULT_THEME_FONTS }
+	};
+}
+
 function findTheme(themeId: string): Theme | undefined {
 	return Object.hasOwn(themes, themeId) ? themes[themeId] : undefined;
 }
@@ -175,13 +196,26 @@ function findTheme(themeId: string): Theme | undefined {
 class ThemeStore {
 	private currentTheme: Theme = $state(builtinThemes.light);
 	private customList: Theme[] = $state([]);
+	/** 有効なパックが足したテーマ(`pack:<パック>:<テーマ>`)。パックの有効/無効で増減する */
+	private packList: Theme[] = $state([]);
+	/** 保存済みのテーマがパックのもので、パックがまだ読み込まれていないときの ID */
+	private pendingPackThemeId: string | null = null;
 	private autoTheme: boolean = $state(false);
 	private initialized = false;
+	/** システムが最後にダークと判定できたか(判定できないときの代わり) */
+	private lastSystemDark = false;
+	/**
+	 * 保存済みの設定の読み込みが終わったら解決する。
+	 * 読み込み前に書き込むと既定のライトで上書きしてしまうので、書き込みはこれを待つ。
+	 */
+	readonly ready: Promise<void>;
 
 	constructor() {
 		// ブラウザ環境でのみ初期化
 		if (typeof window !== 'undefined') {
-			this.init();
+			this.ready = this.init();
+		} else {
+			this.ready = Promise.resolve();
 		}
 	}
 
@@ -189,33 +223,85 @@ class ThemeStore {
 		if (this.initialized) return;
 		this.initialized = true;
 
-		// カスタムテーマを先に読み込み、保存済みのテーマ ID がカスタムでも復元できるようにする
-		const savedCustom = await idbGet<Theme[]>(CUSTOM_THEMES_KEY);
-		this.setCustomList(Array.isArray(savedCustom) ? savedCustom : []);
+		// 起動前スクリプト(app.html)が適用した直前のテーマ。読み込めなければこれを保つ
+		const mirror = this.readMirror();
+		if (mirror) this.lastSystemDark = mirror.lastSystemDark;
 
-		// 保存されたテーマ設定を読み込み
-		const savedThemeId = await idbGet<string>('app-theme');
-		const savedAutoTheme = await idbGet<boolean>('app-auto-theme');
-		const savedTheme = savedThemeId ? findTheme(savedThemeId) : undefined;
+		// システムテーマの変更を監視(読み込みの成否によらず登録する)
+		window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+			if (this.autoTheme) this.applySystemTheme();
+		});
 
-		if (savedAutoTheme) {
-			this.autoTheme = true;
-			this.applySystemTheme();
-		} else if (savedTheme) {
-			this.currentTheme = savedTheme;
-			this.applyTheme(this.currentTheme);
-		} else {
-			this.applyTheme(builtinThemes.light);
+		try {
+			// カスタムテーマを先に読み込み、保存済みのテーマ ID がカスタムでも復元できるようにする
+			const savedCustom = await idbGet<Theme[]>(CUSTOM_THEMES_KEY);
+			this.setCustomList(Array.isArray(savedCustom) ? savedCustom : []);
+
+			// 保存されたテーマ設定を読み込み
+			const savedThemeId = await idbGet<string>('app-theme');
+			const savedAutoTheme = await idbGet<boolean>('app-auto-theme');
+			const savedTheme = savedThemeId ? findTheme(savedThemeId) : undefined;
+
+			if (savedAutoTheme) {
+				this.autoTheme = true;
+				this.applySystemTheme();
+			} else if (!savedTheme && savedThemeId?.startsWith('pack:')) {
+				// パックのテーマ。パックは拡張の起動(あと)で読み込まれるので、それまでは直前の見た目を保ち、
+				// 保存済みの ID は書き換えない(syncPackThemes / settlePackThemes で確定する)
+				this.pendingPackThemeId = savedThemeId;
+				if (mirror) this.restoreFromMirror(mirror);
+			} else if (savedTheme) {
+				this.currentTheme = savedTheme;
+				this.applyTheme(this.currentTheme);
+			} else if (mirror && savedThemeId === undefined && savedAutoTheme === undefined) {
+				// IndexedDB に何も無いが、ミラーはある。直前のテーマを捨てずに引き継ぐ
+				this.restoreFromMirror(mirror);
+			} else {
+				this.applyTheme(builtinThemes.light);
+			}
+			this.writeMirror();
+		} catch (error) {
+			// 読み込めなかったときは、起動前に適用したテーマのままにする(ライトに戻さない)
+			console.error('Failed to load theme settings:', error);
+			if (mirror) this.restoreFromMirror(mirror);
 		}
+	}
 
-		// システムテーマの変更を監視
-		if (typeof window !== 'undefined') {
-			window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-				if (this.autoTheme) {
-					this.applySystemTheme();
-				}
+	private readMirror(): ThemeMirror | null {
+		try {
+			return parseMirror(localStorage.getItem(THEME_MIRROR_KEY));
+		} catch {
+			return null;
+		}
+	}
+
+	/** 確定したテーマを、起動前スクリプトが読める場所に書く(プレビュー中は呼ばない) */
+	private writeMirror() {
+		if (typeof localStorage === 'undefined') return;
+		try {
+			const mirror = buildMirror({
+				auto: this.autoTheme,
+				current: this.currentTheme,
+				light: builtinThemes.light,
+				dark: builtinThemes.dark,
+				lastSystemDark: this.lastSystemDark
 			});
+			localStorage.setItem(THEME_MIRROR_KEY, JSON.stringify(mirror));
+		} catch {
+			// 保存できなくても、通常の保存先(IndexedDB)には書かれる
 		}
+	}
+
+	private restoreFromMirror(mirror: ThemeMirror) {
+		this.autoTheme = mirror.auto;
+		if (mirror.auto) {
+			this.applySystemTheme();
+			return;
+		}
+		const theme = findTheme(mirror.fixed.id);
+		if (theme) this.currentTheme = theme;
+		// 画面にはミラーの内容を適用する(カスタムテーマが未読み込みでも見た目は保てる)
+		applySnapshot(document.documentElement, theme ? toSnapshot(theme) : mirror.fixed);
 	}
 
 	/**
@@ -236,18 +322,65 @@ class ThemeStore {
 	 * 組み込みテーマとカスタムテーマをすべて返す
 	 */
 	get allThemes(): Theme[] {
-		return [...Object.values(builtinThemes), ...this.customList];
+		return [...Object.values(builtinThemes), ...this.customList, ...this.packList];
+	}
+
+	/** パックが足したテーマ */
+	get packThemes(): Theme[] {
+		return this.packList;
+	}
+
+	/**
+	 * 有効なパックのテーマを取り込み直す(パックの有効化・無効化・更新のたびに呼ばれる)。
+	 * 使っていたテーマを足していたパックが無効になったら、ライトに戻す
+	 */
+	async syncPackThemes() {
+		this.packList = packRuntime.themes.map(packEntryToTheme);
+		this.rebuildRegistry();
+		await this.ready;
+		if (this.autoTheme) return;
+		const pending = this.pendingPackThemeId;
+		if (pending) {
+			const theme = findTheme(pending);
+			if (!theme) return;
+			this.pendingPackThemeId = null;
+			this.currentTheme = theme;
+			this.applyTheme(theme);
+			this.writeMirror();
+			return;
+		}
+		if (!this.currentTheme.id.startsWith('pack:')) return;
+		const latest = findTheme(this.currentTheme.id);
+		if (latest) {
+			// パックの更新で色が変わっていたら反映する
+			this.currentTheme = latest;
+			this.applyTheme(latest);
+			this.writeMirror();
+		} else {
+			await this.setTheme('light');
+		}
+	}
+
+	/** 拡張の起動が終わったあと、読み込めなかったパックのテーマの設定をライトに戻す */
+	async settlePackThemes() {
+		await this.ready;
+		if (this.pendingPackThemeId && !findTheme(this.pendingPackThemeId)) {
+			this.pendingPackThemeId = null;
+			if (!this.autoTheme) await this.setTheme('light');
+		}
 	}
 
 	/**
 	 * テーマを設定(組み込み・カスタムのどちらも可)
 	 */
 	async setTheme(themeId: string) {
+		await this.ready;
 		const theme = findTheme(themeId);
 		if (theme) {
 			this.currentTheme = theme;
 			this.autoTheme = false;
 			this.applyTheme(this.currentTheme);
+			this.writeMirror();
 			if (typeof window !== 'undefined') {
 				await idbSet('app-theme', themeId);
 				await idbSet('app-auto-theme', false);
@@ -259,6 +392,7 @@ class ThemeStore {
 	 * 自動テーマを設定
 	 */
 	async setAutoTheme(auto: boolean) {
+		await this.ready;
 		this.autoTheme = auto;
 		if (typeof window !== 'undefined') {
 			await idbSet('app-auto-theme', auto);
@@ -267,12 +401,14 @@ class ThemeStore {
 		if (auto) {
 			this.applySystemTheme();
 		}
+		this.writeMirror();
 	}
 
 	/**
 	 * カスタムテーマを保存する(同じ ID があれば上書き)。適用はしない
 	 */
 	async saveCustomTheme(theme: Theme) {
+		await this.ready;
 		if (!theme.id.startsWith('custom-')) {
 			throw new Error('カスタムテーマの ID ではありません');
 		}
@@ -287,6 +423,7 @@ class ThemeStore {
 		if (this.currentTheme.id === snapshot.id) {
 			this.currentTheme = snapshot;
 			this.applyTheme(snapshot);
+			this.writeMirror();
 		}
 		await this.persistCustomThemes();
 	}
@@ -295,6 +432,7 @@ class ThemeStore {
 	 * カスタムテーマを削除する。適用中だった場合はライトテーマに戻す
 	 */
 	async deleteCustomTheme(themeId: string) {
+		await this.ready;
 		const next = this.customList.filter((t) => t.id !== themeId);
 		this.setCustomList(next);
 		await this.persistCustomThemes();
@@ -316,9 +454,16 @@ class ThemeStore {
 	 */
 	private applySystemTheme() {
 		if (typeof window !== 'undefined') {
-			const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+			// どちらにも一致しない(取得できない)ときは、ライトに確定せず直前の判定を使う
+			const prefersDark = resolveSystemDark(
+				window.matchMedia('(prefers-color-scheme: dark)').matches,
+				window.matchMedia('(prefers-color-scheme: light)').matches,
+				this.lastSystemDark
+			);
+			this.lastSystemDark = prefersDark;
 			this.currentTheme = prefersDark ? builtinThemes.dark : builtinThemes.light;
 			this.applyTheme(this.currentTheme);
+			this.writeMirror();
 		}
 	}
 
@@ -327,10 +472,15 @@ class ThemeStore {
 	 */
 	private setCustomList(list: Theme[]) {
 		this.customList = list;
+		this.rebuildRegistry();
+	}
+
+	/** ID 参照用の登録を、組み込み・カスタム・パックのテーマで作り直す */
+	private rebuildRegistry() {
 		for (const id of Object.keys(themes)) {
 			if (!Object.hasOwn(builtinThemes, id)) delete themes[id];
 		}
-		for (const theme of list) {
+		for (const theme of [...this.customList, ...this.packList]) {
 			themes[theme.id] = theme;
 		}
 	}
@@ -349,39 +499,7 @@ class ThemeStore {
 
 		const root = document.documentElement;
 
-		// CSS変数として設定
-		root.style.setProperty('--color-primary', theme.colors.primary);
-		root.style.setProperty('--color-secondary', theme.colors.secondary);
-		root.style.setProperty('--color-background', theme.colors.background);
-		root.style.setProperty('--color-surface', theme.colors.surface);
-		root.style.setProperty('--color-text', theme.colors.text);
-		root.style.setProperty('--color-text-secondary', theme.colors.textSecondary);
-		root.style.setProperty('--color-border', theme.colors.border);
-		root.style.setProperty('--color-accent', theme.colors.accent);
-		root.style.setProperty('--color-success', theme.colors.success);
-		root.style.setProperty('--color-warning', theme.colors.warning);
-		root.style.setProperty('--color-error', theme.colors.error);
-		root.style.setProperty('--color-info', theme.colors.info);
-
-		// エディタカラー
-		root.style.setProperty('--editor-background', theme.editor.background);
-		root.style.setProperty('--editor-text', theme.editor.text);
-		root.style.setProperty('--editor-selection', theme.editor.selection);
-		root.style.setProperty('--editor-line-highlight', theme.editor.lineHighlight);
-		root.style.setProperty('--editor-cursor', theme.editor.cursor);
-
-		// フォント
-		root.style.setProperty('--font-body', theme.fonts.body);
-		root.style.setProperty('--font-editor', theme.fonts.editor);
-		root.style.setProperty('--font-heading', theme.fonts.heading);
-
-		// data-theme属性を設定(カスタムテーマは ID がそのまま入る)
-		root.setAttribute('data-theme', theme.id);
-		// スクロールバーや入力欄の配色を、背景の明暗に合わせる
-		const scheme = isDarkColor(theme.colors.background) ? 'dark' : 'light';
-		root.style.colorScheme = scheme;
-		// 暗い配色向けの部品スタイル(app.css)を、カスタムテーマにも効かせる
-		root.setAttribute('data-scheme', scheme);
+		applySnapshot(root, toSnapshot(theme));
 	}
 
 	/**

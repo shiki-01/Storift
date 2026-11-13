@@ -1,0 +1,45 @@
+{
+	"id": "discord",
+	"name": "Discord Rich Presence",
+	"description": "アプリを開いている間、Discord のプロフィールに、いま開いている画面と経過時間を表示します。執筆中は増減した文字数も表示します。",
+	"version": "1.0.0",
+	"author": "Storift",
+	"kind": "official",
+	"apiVersion": 1,
+	"platforms": ["desktop"],
+	"icon": "brand-discord",
+	"homepage": "https://discord.com/",
+	"license": "MIT",
+	"permissions": {
+		"events": ["page:change", "app:visibility", "session:start", "session:update", "session:end"],
+		"read": ["project:title", "project:chars"],
+		"storage": true
+	},
+	"privacy": {
+		"sends": [
+			{
+				"to": "Discord(この端末で起動している Discord クライアントのローカル通信(IPC)経由)",
+				"items": [
+					"いま開いている画面の名前(ホーム・執筆中・プロットを練っています など、決まった言葉)",
+					"執筆セッション中の、増減した文字数",
+					"経過時間の起点(執筆を始めた時刻、または Storift を開いた時刻)",
+					"作品名(設定で「作品名を送る」をオンにしたときだけ。既定はオフ)",
+					"作品の総文字数(設定で「総文字数を送る」をオンにしたときだけ。既定はオフ)",
+					"設定で変えた表示文字(テンプレートを展開した文章)",
+					"Discord のアプリケーション ID(表示名と画像を決めるための公開の ID)"
+				],
+				"when": "拡張を有効にして Storift を開いている間、画面の移動や執筆のたびに。この端末で Discord が起動しているときだけ(設定で、Storift が前面にないときは消す・離席中にする、も選べます)"
+			}
+		],
+		"stores": [
+			"作品名・総文字数を送るか、表示文字のテンプレート、前面にないときの扱い、Application ID の上書き: 端末内のみ(localStorage)"
+		],
+		"onDisable": "無効にすると、Discord の表示を消して、Discord クライアントとの接続を閉じます。アプリの終了でも表示を消します。",
+		"notes": [
+			"作品の本文は送信しません。",
+			"表示内容は、この端末の Discord クライアントを通じて Discord に送られ、Discord の公開設定に従って他の利用者に表示されます。Discord に送られた内容の扱いは、Discord の規約とプライバシーポリシーに従います。",
+			"Storift が Discord のサーバーと直接通信することはありません。Discord のアカウント情報やトークンは扱いません。",
+			"Discord が起動していない、または接続できないときは、何も送りません。"
+		]
+	}
+}

@@ -8,7 +8,7 @@ export default defineConfig({
 	test: {
 		globals: true,
 		environment: 'happy-dom',
-		include: ['src/**/*.{test,spec}.{js,ts}'],
+		include: ['src/**/*.{test,spec}.{js,ts}', 'scripts/**/*.{test,spec}.{js,ts}'],
 		coverage: {
 			provider: 'v8',
 			reporter: ['text', 'json', 'html'],
@@ -26,8 +26,11 @@ export default defineConfig({
 		conditions: ['browser'],
 		alias: {
 			$lib: resolve(__dirname, './src/lib'),
+			$extensions: resolve(__dirname, './extensions'),
 			// テストでは $app/state を stub に向ける(page はテストごとに差し替える)
 			'$app/state': resolve(__dirname, './src/lib/test/app-state.ts'),
+			'$app/navigation': resolve(__dirname, './src/lib/test/app-navigation.ts'),
+			'$app/paths': resolve(__dirname, './src/lib/test/app-paths.ts'),
 			$app: resolve(__dirname, './.svelte-kit/runtime/app')
 		}
 	}

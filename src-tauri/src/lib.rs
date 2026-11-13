@@ -1,4 +1,6 @@
 mod claude;
+mod discord;
+mod extensions;
 mod mcp;
 mod ollama;
 mod secrets;
@@ -9,7 +11,22 @@ use tauri::Manager;
 use tauri_plugin_window_state::StateFlags;
 
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    // 単一インスタンス。Windows / Linux では storift:// の deep link が新しいプロセスとして起動するため、
+    // その URL を実行中のプロセスへ渡して(deep-link 機能)、自分は終了する。他のプラグインより先に登録する
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }));
+
+    builder
+        // storift://(Monolog. 連携の認可の戻りなど)
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         // 更新の確認・ダウンロード・再起動(署名付きの配布物だけを受け付ける)
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -24,6 +41,8 @@ pub fn run() {
         )
         .manage(claude::ClaudeState::default())
         .manage(std::sync::Arc::new(ollama::OllamaState::default()))
+        // Discord Rich Presence(拡張機能)。IPC は専用のスレッドで行う
+        .manage(discord::DiscordState::default())
         .setup(|app| {
             // GUI から起動すると PATH がログインシェルと異なるため、先に読み込んでおく
             std::thread::spawn(shell_env::load);
@@ -33,6 +52,14 @@ pub fn run() {
             claude::remove_stale_mcp_configs(app.handle());
             let mcp_state = mcp::start(app.handle())?;
             app.manage(mcp_state);
+
+            // 開発中(未インストール)でも storift:// を受け取れるよう、実行時にスキームを登録する。
+            // インストール版は、インストーラーが tauri.conf.json の設定で登録する
+            #[cfg(all(debug_assertions, any(target_os = "linux", windows)))]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                app.deep_link().register_all()?;
+            }
 
             // Windows / Linux は OS の枠を外し、アプリ側のタイトルバー(TitleBar.svelte)を使う。
             // 設定ファイル(tauri.windows.conf.json など)でも外しているが、念のため起動時にも外す
@@ -58,9 +85,19 @@ pub fn run() {
             workspace::workspace_sync,
             workspace::workspace_info,
             workspace::workspace_open,
+            discord::discord_set_activity,
+            discord::discord_clear_activity,
+            extensions::extension_folder_scan,
+            extensions::extension_folder_open,
         ])
-        .run(tauri::generate_context!())
-        .expect("Storift の起動に失敗しました");
+        .build(tauri::generate_context!())
+        .expect("Storift の起動に失敗しました")
+        .run(|app, event| {
+            // アプリの終了時に、Discord の表示を消す(接続していなければ何もしない)
+            if let tauri::RunEvent::Exit = event {
+                app.state::<discord::DiscordState>().clear_on_exit();
+            }
+        });
 }
 
 /// アプリが使うディレクトリを取得する(コマンドから共通で使う)

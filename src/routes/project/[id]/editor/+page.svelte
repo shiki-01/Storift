@@ -7,7 +7,14 @@
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
 	import { itemNav } from '$lib/stores/itemNav.svelte';
-	import { splitToolbar, type ToolbarItem } from '$lib/utils/toolbarItems';
+	import {
+		isExtensionItemId,
+		splitToolbar,
+		type ToolbarItem,
+		type ToolbarItemId
+	} from '$lib/utils/toolbarItems';
+	import { extensionHost, type ActiveToolbarItem } from '$lib/extensions/host.svelte';
+	import Popover from '$lib/components/ui/Popover.svelte';
 	import { page } from '$app/state';
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
@@ -29,6 +36,7 @@
 	import PreviewViewer from '$lib/components/preview/PreviewViewer.svelte';
 	import PreviewSettings from '$lib/components/preview/PreviewSettings.svelte';
 	import SceneExportModal from '$lib/components/ui/SceneExportModal.svelte';
+	import ReviewExportModal from '$lib/components/ui/ReviewExportModal.svelte';
 	import SearchReplace from '$lib/components/ui/SearchReplace.svelte';
 	import Sheet from '$lib/components/mobile/Sheet.svelte';
 	import AssistBar from '$lib/components/mobile/AssistBar.svelte';
@@ -46,7 +54,7 @@
 		supportsHighlight,
 		textRange
 	} from '$lib/utils/editorInput';
-	import { CrdtOpenError, type SceneDocHandle } from '$lib/crdt/doc';
+	import { CrdtOpenError, ORIGIN_AI, type SceneDocHandle } from '$lib/crdt/doc';
 	import { EditorBinding, type TextSelection } from '$lib/crdt/editorBinding';
 	import { createDomAdapter, type DomEditorAdapter } from '$lib/crdt/domAdapter';
 	import { trackLocalGrowth, type LocalGrowthTracker } from '$lib/crdt/progress';
@@ -130,6 +138,7 @@
 	let showVersionManager = $state(false);
 	let showFormattingModal = $state(false);
 	let showExportModal = $state(false);
+	let showReviewExport = $state(false);
 	let showSearch = $state(false);
 	let showProofread = $state(false);
 
@@ -174,17 +183,64 @@
 	}>({ visible: false, x: 0, y: 0, items: [] });
 
 	// ツールバーの操作ボタン(設定で、常時表示と三点メニューに分けられる。src/lib/utils/toolbarItems.ts)
-	const toolbarSplit = $derived(splitToolbar(settingsStore.toolbarMenuItems, { desktop }));
+	// 有効で対応する拡張がツールバーに出す項目(設定の並び・まとめる設定は、組み込みのボタンと同じ仕組みで扱う)
+	const extToolbar = $derived(extensionHost.toolbarItems);
+	const extToolbarById = $derived(new Map(extToolbar.map((e) => [e.itemId, e])));
+	const toolbarSplit = $derived(
+		splitToolbar(
+			settingsStore.toolbarMenuItems,
+			{ desktop },
+			{
+				order: settingsStore.toolbarOrder,
+				extensions: extToolbar.map((e) => ({ id: e.itemId, label: e.label, icon: e.icon }))
+			}
+		)
+	);
 	const pinnedMain = $derived(toolbarSplit.pinned.filter((i) => i.id !== 'ai'));
 	const pinnedAi = $derived(toolbarSplit.pinned.find((i) => i.id === 'ai'));
+
+	// 拡張のポップアップ(デスクトップ/タブレット): 押したボタン(または三点ボタン)に追従して開く
+	let extPopoverOpen = $state(false);
+	let extPopoverItemId = $state<string | null>(null);
+	let extPopoverAnchor = $state<HTMLElement | null>(null);
+	let moreButtonEl = $state<HTMLElement | null>(null);
+	const extPopoverItem = $derived(
+		extPopoverItemId ? extToolbarById.get(extPopoverItemId) : undefined
+	);
+
+	function toggleExtPopover(itemId: string, anchor: HTMLElement | null) {
+		if (extPopoverOpen && extPopoverItemId === itemId) {
+			extPopoverOpen = false;
+			return;
+		}
+		extPopoverItemId = itemId;
+		extPopoverAnchor = anchor;
+		extPopoverOpen = true;
+	}
+
+	// 拡張が無効になったら、開いているポップアップも閉じる
+	$effect(() => {
+		if (extPopoverOpen && !extPopoverItem) extPopoverOpen = false;
+	});
+
+	// 拡張のポップアップ(スマホ): 「操作」シートから、同じ中身をシートで開く
+	let showExtSheet = $state(false);
+	let extSheetItemId = $state<string | null>(null);
+	const extSheetItem = $derived(extSheetItemId ? extToolbarById.get(extSheetItemId) : undefined);
+
+	$effect(() => {
+		if (showExtSheet && !extSheetItem) showExtSheet = false;
+	});
+
 	const toolDefs = $derived<
 		Record<
-			string,
+			ToolbarItemId,
 			{ action: () => void; disabled?: boolean; active?: boolean; tour?: string; testid?: string }
 		>
 	>({
 		assist: { action: () => (showWritingAssistant = true), disabled: readOnly },
 		export: { action: () => (showExportModal = true), tour: 'editor-export' },
+		review: { action: () => void openReviewExport(), testid: 'open-review-export' },
 		manuscript: { action: openManuscriptPreview, testid: 'open-manuscript-preview' },
 		print: { action: () => (showPrintPreview = true) },
 		history: { action: () => (showVersionManager = true), disabled: readOnly },
@@ -210,13 +266,24 @@
 			x: rect.right - 240,
 			y: rect.bottom + 4,
 			targetType: 'toolbar',
-			items: toolbarSplit.menu.map((item) => ({
-				label: item.label,
-				icon: item.icon,
-				shortcut: item.shortcut,
-				disabled: toolDefs[item.id].disabled,
-				action: toolDefs[item.id].action
-			}))
+			items: toolbarSplit.menu.map((item) => {
+				// 拡張の項目は、三点ボタンに追従して同じポップアップを開く
+				if (isExtensionItemId(item.id)) {
+					return {
+						label: item.label,
+						icon: item.icon,
+						action: () => toggleExtPopover(item.id, moreButtonEl)
+					};
+				}
+				const def = toolDefs[item.id as ToolbarItemId];
+				return {
+					label: item.label,
+					icon: item.icon,
+					shortcut: item.shortcut,
+					disabled: def.disabled,
+					action: def.action
+				};
+			})
 		};
 	}
 
@@ -402,8 +469,15 @@
 		const previousCount = editorStore.currentScene.characterCount;
 
 		editorStore.isSaving = true;
+		// 拡張向けのイベント用に、AI の提案を適用した分と自分で書いた分を分けて渡す
+		const origins = editorStore.takeSaveOrigins();
 		try {
-			await scenesDB.update(sceneId, { content: savedContent });
+			try {
+				await scenesDB.update(sceneId, { content: savedContent }, { ai: origins.ai });
+			} catch (error) {
+				editorStore.restoreSaveOrigins(origins);
+				throw error;
+			}
 			saveFailed = false;
 			// 保存中に入力が続いていた場合は未保存のまま残す(次の自動保存で拾う)
 			if (editorStore.content === savedContent) editorStore.isDirty = false;
@@ -456,14 +530,16 @@
 		if (!scene || !editorStore.isDirty) return;
 		const sceneId = scene.id;
 		const content = editorStore.content;
+		const origins = editorStore.takeSaveOrigins();
 		try {
-			await scenesDB.update(sceneId, { content });
+			await scenesDB.update(sceneId, { content }, { ai: origins.ai });
 			if (editorStore.currentScene?.id === sceneId && editorStore.content === content) {
 				editorStore.isDirty = false;
 			}
 			await queueChange('scenes', sceneId, 'update');
 		} catch (error) {
 			console.error('Failed to save scene on leave:', error);
+			editorStore.restoreSaveOrigins(origins);
 			saveFailed = true;
 		}
 	}
@@ -642,7 +718,8 @@
 		editorStore.isDirty = false;
 		// 元に戻す/やり直す(補助入力バー)も自分の編集だけを対象にした履歴へ
 		setHistoryHandler({ undo: () => binding.undo(), redo: () => binding.redo() });
-		editorStore.externalTextSink = (text) => binding.setExternalText(text);
+		// この入口を使うのは AI の提案の適用だけ(利用者が書いた分として数えないよう、origin を分ける)
+		editorStore.externalTextSink = (text) => binding.setExternalText(text, ORIGIN_AI);
 		collab = 'on';
 	}
 
@@ -1779,6 +1856,12 @@
 	});
 
 	// 作品全体を通して読む画面へ(未保存の変更は beforeNavigate で保存される)
+	// 未保存の編集を保存してから開く(保存前の本文が漏れないように)
+	async function openReviewExport() {
+		if (editorStore.currentScene && editorStore.isDirty) await handleSave();
+		showReviewExport = true;
+	}
+
 	function openManuscriptPreview() {
 		void goto(resolve('/project/[id]/preview', { id: currentProjectStore.project?.id ?? '' }));
 	}
@@ -2189,6 +2272,9 @@
 									/>
 								{/if}
 								<SaveState state={saveState} />
+								{#each extToolbar as ext (ext.itemId)}
+									{#if ext.status}{@const Status = ext.status}<Status />{/if}
+								{/each}
 								{#if otherMembers.length > 0}
 									<span class="presence-mini" title={presenceText ?? ''}
 										><Icon name="users" class="presence-icon" />{otherMembers.length}</span
@@ -2378,10 +2464,15 @@
 								<div class="tool-sep"></div>
 							{/if}
 							{#each pinnedMain as item (item.id)}
-								{@render toolButton(item)}
+								{#if extToolbarById.get(item.id)}
+									{@render extToolButton(extToolbarById.get(item.id)!)}
+								{:else}
+									{@render toolButton(item)}
+								{/if}
 							{/each}
 							{#if toolbarSplit.menu.length > 0}
 								<button
+									bind:this={moreButtonEl}
 									class="tool"
 									class:on={contextMenu.visible && contextMenu.targetType === 'toolbar'}
 									aria-haspopup="menu"
@@ -2702,52 +2793,131 @@
 	</form>
 </Sheet>
 
-<!-- スマホ: その他の操作 -->
+<!-- スマホ: その他の操作(執筆 / 出力と確認 / 拡張機能 / シーン の順に、見出しと区切りでまとめる) -->
+{#snippet actionBtn(
+	icon: string,
+	label: string,
+	run: () => void,
+	opts: { disabled?: boolean; danger?: boolean; testid?: string } = {}
+)}
+	<button
+		type="button"
+		class="act"
+		class:danger={opts.danger}
+		disabled={opts.disabled}
+		data-testid={opts.testid}
+		onclick={() => runAction(run)}
+	>
+		<Icon name={icon} class="act-ico" />
+		<span class="act-label">{label}</span>
+	</button>
+{/snippet}
+
 <Sheet bind:open={showActionSheet} title="操作" size="auto">
 	<div class="actions">
 		{#if goalRatio !== null}
-			<button class="goal-line" onclick={() => runAction(openGoalSheet)}>
-				<GoalRing ratio={goalRatio} size={20} />
-				<span>
-					{goal?.type === 'total' ? '全体' : '今日'}
-					{goalDone.toLocaleString()} / {goal?.target.toLocaleString()}字 ({Math.round(
-						goalRatio * 100
-					)}%)
+			<button type="button" class="goal-line" onclick={() => runAction(openGoalSheet)}>
+				<GoalRing ratio={goalRatio} size={22} />
+				<span class="goal-text">
+					<span class="goal-name">{goal?.type === 'total' ? '全体の目標' : '今日の目標'}</span>
+					<span class="goal-num">
+						{goalDone.toLocaleString()} / {goal?.target.toLocaleString()}字 ({Math.round(
+							goalRatio * 100
+						)}%)
+					</span>
 				</span>
-				<span class="goal-edit">目標を変更</span>
+				<span class="goal-edit">変更</span>
 			</button>
 		{/if}
-		<button onclick={() => runAction(() => void handleSave())} disabled={!editorStore.isDirty}>
-			今すぐ保存
-		</button>
-		<button onclick={() => runAction(() => (showProofread = true))}>校正</button>
-		<button onclick={() => runAction(() => void openSearch())}>検索・置換</button>
-		<button onclick={() => runAction(() => (editorStore.focusMode = true))}>集中モード</button>
-		<button disabled={readOnly} onclick={() => runAction(() => (showWritingAssistant = true))}
-			>執筆支援(字下げ・ルビ)</button
-		>
-		<button onclick={() => runAction(() => (showExportModal = true))}>エクスポート</button>
-		<button onclick={() => runAction(openManuscriptPreview)}>作品全体を通して読む</button>
-		<button onclick={() => runAction(() => (showPrintPreview = true))}>印刷プレビュー</button>
-		<button disabled={readOnly} onclick={() => runAction(() => (showVersionManager = true))}
-			>バージョン履歴</button
-		>
+
+		<section class="act-group" aria-labelledby="act-h-write">
+			<h3 id="act-h-write" class="act-head">執筆</h3>
+			{@render actionBtn('device-sd-card', '今すぐ保存', () => void handleSave(), {
+				disabled: !editorStore.isDirty
+			})}
+			{@render actionBtn('search', '検索・置換', () => void openSearch())}
+			{@render actionBtn('check', '校正', () => (showProofread = true))}
+			{@render actionBtn(
+				'pencil-bolt',
+				'執筆支援(字下げ・ルビ)',
+				() => (showWritingAssistant = true),
+				{
+					disabled: readOnly
+				}
+			)}
+			{@render actionBtn('focus-centered', '集中モード', () => (editorStore.focusMode = true))}
+		</section>
+
+		<section class="act-group" aria-labelledby="act-h-out">
+			<h3 id="act-h-out" class="act-head">出力と確認</h3>
+			{@render actionBtn('book-2', '作品全体を通して読む', openManuscriptPreview)}
+			{@render actionBtn('package-export', 'エクスポート', () => (showExportModal = true))}
+			{@render actionBtn('clipboard-text', 'AI 添削用にコピー', openReviewExport, {
+				testid: 'open-review-export'
+			})}
+			{@render actionBtn('printer', '印刷プレビュー', () => (showPrintPreview = true))}
+			{@render actionBtn('history', 'バージョン履歴', () => (showVersionManager = true), {
+				disabled: readOnly
+			})}
+		</section>
+
+		{#if extToolbar.length > 0}
+			<section class="act-group" aria-labelledby="act-h-ext">
+				<h3 id="act-h-ext" class="act-head">拡張機能</h3>
+				{#each extToolbar as ext (ext.itemId)}
+					<button
+						type="button"
+						class="act"
+						data-testid={`action-ext-${ext.extensionId}`}
+						onclick={() =>
+							runAction(() => {
+								extSheetItemId = ext.itemId;
+								showExtSheet = true;
+							})}
+					>
+						<Icon name={ext.icon} class="act-ico" />
+						<span class="act-label">{ext.label}</span>
+						{#if ext.badge?.()}
+							<span class="act-live" role="status"><span class="act-live-dot"></span>動作中</span>
+						{/if}
+						<Icon name="chevron-right" class="act-chev" />
+					</button>
+				{/each}
+			</section>
+		{/if}
+
 		{#if editorStore.currentScene && !readOnly}
-			<div class="actions-sep"></div>
-			<button onclick={() => runAction(() => handleRenameScene(editorStore.currentScene!))}
-				>シーン名を変更</button
-			>
-			<button onclick={() => runAction(() => void handleDuplicateScene(editorStore.currentScene!))}
-				>シーンを複製</button
-			>
-			<button
-				class="danger"
-				onclick={() => runAction(() => void handleDeleteScene(editorStore.currentScene!))}
-			>
-				シーンを削除
-			</button>
+			<section class="act-group" aria-labelledby="act-h-scene">
+				<h3 id="act-h-scene" class="act-head">このシーン</h3>
+				{@render actionBtn('edit', 'シーン名を変更', () =>
+					handleRenameScene(editorStore.currentScene!)
+				)}
+				{@render actionBtn(
+					'copy',
+					'シーンを複製',
+					() => void handleDuplicateScene(editorStore.currentScene!)
+				)}
+				{@render actionBtn(
+					'trash',
+					'シーンを削除',
+					() => void handleDeleteScene(editorStore.currentScene!),
+					{
+						danger: true
+					}
+				)}
+			</section>
 		{/if}
 	</div>
+</Sheet>
+
+<!-- スマホ: 拡張機能の操作(ツールバーのポップアップと同じ中身) -->
+<Sheet bind:open={showExtSheet} title={extSheetItem?.label ?? ''} size="auto">
+	{#if extSheetItem}
+		{@const Panel = extSheetItem.panel}
+		<div class="ext-sheet">
+			<Panel close={() => (showExtSheet = false)} />
+		</div>
+	{/if}
 </Sheet>
 
 <!-- 章作成モーダル -->
@@ -2847,6 +3017,24 @@
 			content={editorStore.content}
 			title={editorStore.currentScene.title}
 			onClose={() => (showExportModal = false)}
+		/>
+	</Modal>
+{/if}
+
+<!-- AI 添削用の書き出しモーダル -->
+{#if showReviewExport && currentProjectStore.project}
+	<Modal
+		isOpen={showReviewExport}
+		onClose={() => (showReviewExport = false)}
+		title="AI 添削用にコピー"
+		size="large"
+	>
+		<ReviewExportModal
+			projectId={currentProjectStore.project.id}
+			projectTitle={currentProjectStore.project.title}
+			chapters={currentProjectStore.chapters}
+			currentChapterId={editorStore.currentScene?.chapterId}
+			onClose={() => (showReviewExport = false)}
 		/>
 	</Modal>
 {/if}
@@ -2992,8 +3180,23 @@
 	</form>
 </Modal>
 
+<!-- 拡張がツールバーに出すボタン。押すと Popover で拡張の panel を開く -->
+{#snippet extToolButton(ext: ActiveToolbarItem)}
+	<button
+		class="tool"
+		class:on={extPopoverOpen && extPopoverItemId === ext.itemId}
+		data-testid={`toolbar-ext-${ext.extensionId}`}
+		onclick={(e) => toggleExtPopover(ext.itemId, e.currentTarget)}
+		aria-label={ext.label}
+		title={ext.label}
+	>
+		<Icon name={ext.icon} class="w:20px" />
+		{#if ext.badge?.()}<span class="tool-dot" aria-hidden="true"></span>{/if}
+	</button>
+{/snippet}
+
 {#snippet toolButton(item: ToolbarItem)}
-	{@const def = toolDefs[item.id]}
+	{@const def = toolDefs[item.id as ToolbarItemId]}
 	<button
 		class="tool"
 		class:tool--ai={item.id === 'ai'}
@@ -3009,6 +3212,16 @@
 		<Icon name={item.icon} class="w:20px" />
 	</button>
 {/snippet}
+
+<!-- 拡張のポップアップ(デスクトップ/タブレット) -->
+{#if extPopoverItem}
+	{@const Panel = extPopoverItem.panel}
+	<Popover bind:open={extPopoverOpen} anchor={extPopoverAnchor} label={extPopoverItem.label}>
+		{#snippet children({ close })}
+			<Panel {close} />
+		{/snippet}
+	</Popover>
+{/if}
 
 <!-- コンテキストメニュー -->
 <ContextMenu
@@ -3205,6 +3418,23 @@
 		transition:
 			background-color 0.15s,
 			color 0.15s;
+	}
+
+	.tool {
+		position: relative;
+	}
+
+	/* 拡張のボタンの状態表示(計測中など) */
+	.tool-dot {
+		position: absolute;
+		top: 6px;
+		right: 6px;
+		width: 8px;
+		height: 8px;
+		border: 1.5px solid var(--color-background);
+		border-radius: 50%;
+		background: var(--color-primary);
+		pointer-events: none;
 	}
 
 	.tool:hover {
@@ -3675,7 +3905,8 @@
 	 * 出入りは transform/opacity だけで行い、高さや余白は変えない。
 	 */
 	.m-bar-wrap {
-		position: absolute;
+		/* 画面上端に固定要素があると iOS は上端への OS 側のぼかしを付けない。absolute だと文字ごとぼやける */
+		position: fixed;
 		top: 0;
 		left: 0;
 		right: 0;
@@ -3683,16 +3914,15 @@
 		padding-top: var(--safe-top);
 		padding-left: var(--safe-left);
 		padding-right: var(--safe-right);
-		background: color-mix(in srgb, var(--color-background) 90%, transparent);
-		-webkit-backdrop-filter: blur(10px);
-		backdrop-filter: blur(10px);
+		/* iOS の PWA で backdrop-filter が常時かかったままになり本文上部がぼやけるため、ぼかしは使わず不透明にする */
+		background: var(--color-background);
 		border-bottom: 1px solid var(--color-border);
 		transform: translateY(0);
 		opacity: 1;
 		transition:
 			transform 0.2s ease-out,
 			opacity 0.2s ease-out;
-		will-change: transform;
+		/* will-change: transform は iOS でバーのレイヤーが低解像度のまま残り文字がぼやけるため付けない */
 	}
 
 	.m-bar-wrap.m-bar-off {
@@ -3774,6 +4004,12 @@
 		line-height: 1.2;
 		color: var(--color-text-secondary);
 		white-space: nowrap;
+		/* 状態の表示が増えても、右のボタンに重ならないよう、はみ出した分は切る */
+		overflow: hidden;
+	}
+
+	.m-title-sub > :global(:not(.ellipsis)) {
+		flex: none;
 	}
 
 	.m-title-sub :global(.save-state) {
@@ -3957,40 +4193,118 @@
 		cursor: pointer;
 	}
 
+	.ext-sheet {
+		padding: 4px 16px 20px;
+	}
+
 	.actions {
 		display: flex;
 		flex-direction: column;
-		padding: 0 8px 8px;
+		padding: 0 12px 12px;
 	}
 
-	.actions button {
-		height: 48px;
+	.act-group {
+		display: flex;
+		flex-direction: column;
+		padding-top: 6px;
+	}
+
+	.act-group + .act-group {
+		margin-top: 6px;
+		border-top: 1px solid var(--color-border);
+	}
+
+	.act-head {
+		margin: 0;
+		padding: 8px 12px 4px;
+		font-size: 12px;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		color: var(--color-text-secondary);
+	}
+
+	.act {
+		display: flex;
+		align-items: center;
+		gap: 14px;
+		width: 100%;
+		min-height: 48px;
 		padding: 0 12px;
 		border: none;
 		border-radius: 10px;
 		background: transparent;
 		color: var(--color-text);
 		text-align: left;
+		font: inherit;
 		font-size: 15px;
 		cursor: pointer;
 	}
 
-	.actions button:active:not(:disabled) {
+	.act:active:not(:disabled) {
 		background: var(--color-surface);
 	}
 
-	.actions button:disabled {
+	.act:disabled {
 		opacity: 0.4;
 	}
 
-	.actions .danger {
-		color: var(--color-error);
+	.act :global(.act-ico) {
+		flex: none;
+		width: 22px;
+		height: 22px;
+		color: var(--color-text-secondary);
 	}
 
-	.actions-sep {
-		height: 1px;
-		margin: 4px 8px;
-		background: var(--color-border);
+	.act :global(.act-ico svg) {
+		width: 100%;
+		height: 100%;
+	}
+
+	.act-label {
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+
+	.act :global(.act-chev) {
+		flex: none;
+		width: 18px;
+		height: 18px;
+		color: var(--color-text-secondary);
+		opacity: 0.7;
+	}
+
+	.act :global(.act-chev svg) {
+		width: 100%;
+		height: 100%;
+	}
+
+	.act-live {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 22px;
+		padding: 0 9px;
+		border-radius: 999px;
+		font-size: 11.5px;
+		color: var(--color-primary);
+		background: color-mix(in srgb, var(--color-primary) 12%, var(--color-background));
+	}
+
+	:root[data-scheme='dark'] .act-live {
+		color: color-mix(in srgb, var(--color-primary) 60%, var(--color-text));
+	}
+
+	.act-live-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: currentColor;
+	}
+
+	.act.danger,
+	.act.danger :global(.act-ico) {
+		color: var(--color-error);
 	}
 
 	.goal-btn {
@@ -4033,22 +4347,48 @@
 	}
 
 	.goal-edit {
-		margin-left: auto;
+		flex: none;
+		font-size: 13px;
 		color: var(--color-primary);
 	}
 
+	:root[data-scheme='dark'] .goal-edit {
+		color: color-mix(in srgb, var(--color-primary) 60%, var(--color-text));
+	}
+
 	.goal-line {
-		width: 100%;
-		border: none;
-		background: transparent;
-		text-align: left;
-		cursor: pointer;
 		display: flex;
 		align-items: center;
-		gap: 10px;
-		padding: 4px 12px 10px;
-		font-size: 13px;
+		gap: 12px;
+		width: 100%;
+		min-height: 56px;
+		margin-bottom: 4px;
+		padding: 8px 14px;
+		border: 1px solid var(--color-border);
+		border-radius: 12px;
+		background: color-mix(in srgb, var(--color-surface) 55%, var(--color-background));
+		color: var(--color-text);
+		text-align: left;
+		font: inherit;
+		cursor: pointer;
+	}
+
+	.goal-text {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+	}
+
+	.goal-name {
+		font-size: 12px;
 		color: var(--color-text-secondary);
+	}
+
+	.goal-num {
+		font-size: 14px;
+		font-variant-numeric: tabular-nums;
 	}
 
 	@media (max-width: 1024px) {

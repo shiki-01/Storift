@@ -126,6 +126,7 @@ shared/{pid}/{type}/{id}        子要素。projectId == pid(元々子要素が�
 形式: `<base>/join#<payload>`。payload = base64url(JSON `{v:1, f:<Firebase設定6項目>, p:<pid>, r:'viewer'|'editor', s?:<秘密>, n?:<名前ヒント>}`)。
 
 - `<base>`: Web 版は `location.origin`、デスクトップ版(Tauri)は公開アプリの URL(`invite.ts` の `PUBLIC_APP_URL`、既定 `https://app.storift.shiki-01.com`)。デスクトップ版で受け取ったリンクも、ホームの「共有リンクから参加」に貼り付けて同じ処理で参加する。
+- デスクトップ版でも、発行する招待リンクは公開 Web 版の URL(`https://app.storift.shiki-01.com`)になる。
 - `s`(秘密)は**トークン方式のときだけ**入れる。パスワード方式ではリンクに秘密を入れず、受け取った人が入力する。方式はオーナー側の `ProjectSharing.secretKinds`(`token` / `password`)に記録する。記録のない旧データは、生成トークンの形(43 文字の base64url)ならトークン、そうでなければパスワードとみなす(迷うときはパスワード側に倒し、誤ってパスワードをリンクに載せない)。
 - `n`(プロジェクト名ヒント)は既定では含めない(発行時のチェックで含める)。
 - フラグメントはサーバーへ送られない。`/join` は先にフラグメントをメモリへ読み取り、ルーターの初期化後(`afterNavigate`)に `replaceState` で URL・履歴から消す(直接読み込みでは初期化前に `replaceState` を呼べないため)。招待データ(`prepared`)は IndexedDB に渡すので `$state.raw` で保持する(`$state` の Proxy は `DataCloneError` になる)。デコードは不正入力で例外を投げず、`{ok:false, error}` を返す(日本語メッセージあり)。

@@ -1,0 +1,47 @@
+{
+	"id": "discord-webhook",
+	"name": "Discord Webhook 投稿",
+	"description": "執筆セッションが終わるたびに、あなたの Discord の Webhook へ、増減した文字数と所要時間を投稿します。",
+	"version": "1.0.0",
+	"author": "shiki-01",
+	"kind": "script",
+	"apiVersion": 1,
+	"platforms": ["web", "desktop"],
+	"icon": "brand-discord",
+	"homepage": "https://github.com/shiki-01/Storift/tree/main/extensions/discord-webhook",
+	"license": "MIT",
+	"updatedAt": "2026-11-12",
+	"entry": "main.js",
+	"permissions": {
+		"events": ["session:end"],
+		"read": ["project:title"],
+		"network": ["discord.com"],
+		"storage": true,
+		"notify": true,
+		"ui": true
+	},
+	"privacy": {
+		"sends": [
+			{
+				"to": "discord.com(あなたが設定した Discord の Webhook)",
+				"items": [
+					"執筆セッションで増減した文字数",
+					"執筆セッションの所要時間(分)",
+					"作品名(設定で「作品名を含める」をオンにしたときだけ。既定はオフ)",
+					"「テスト送信」を押したときは、テストであることを示す短い文"
+				],
+				"when": "執筆セッションが終わったとき(設定で投稿をオンにしているときだけ)と、「テスト送信」を押したとき"
+			}
+		],
+		"stores": [
+			"Webhook の URL、投稿のオン/オフ、作品名を含めるか: この端末の中(拡張ごとの領域)にだけ保存。Webhook の URL はほかへ送らず、通信にだけ使います"
+		],
+		"onDisable": "無効にすると、投稿が止まります。アンインストールすると、この端末に保存した Webhook の URL などを削除します。Discord に投稿済みのメッセージは、Discord 側で削除してください。",
+		"notes": [
+			"作品の本文は送りません。",
+			"Webhook の URL は秘密の情報です。他人に知られると、あなたのチャンネルに投稿できてしまいます。心当たりのない投稿があれば、Discord で Webhook を作り直してください。",
+			"Discord に送られた内容の扱いは、Discord の規約とプライバシーポリシーに従います。送った内容は取り消せません。",
+			"投稿に失敗したときは、通知(トースト)でお知らせします。"
+		]
+	}
+}

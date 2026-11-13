@@ -107,7 +107,11 @@
 		value={systemMode ? SYSTEM_OPTION : value}
 		onchange={handleChange}
 		options={[
-			...fonts.map((f) => ({ value: f.value as string, label: f.label })),
+			...fonts.map((f) => ({
+				value: f.value as string,
+				label: f.label,
+				style: `font-family: ${f.fontFamily}`
+			})),
 			...(desktop ? [{ value: SYSTEM_OPTION, label: 'システムフォント…' }] : [])
 		]}
 	/>

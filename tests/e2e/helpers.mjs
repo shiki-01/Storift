@@ -169,6 +169,11 @@ export function installTauriMock() {
 					});
 					return new Promise(() => {});
 				}
+				case 'extension_folder_scan':
+					// 拡張フォルダの読み取り結果。window.__extFolder で差し替える
+					return window.__extFolder ?? { root: '/mock/extensions', packs: [] };
+				case 'extension_folder_open':
+					return null;
 				case 'plugin:app|version':
 					return '0.3.0';
 				default:

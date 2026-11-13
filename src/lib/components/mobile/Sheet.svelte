@@ -69,6 +69,16 @@
 	/** しきい値に届いている(離すと全画面になる) */
 	const armed = $derived(pullUp >= EXPAND_AT);
 
+	/** 背景の影が画面上端(ステータスバー部分)まで届くよう、body の直下へ移す */
+	function portal(node: HTMLElement) {
+		document.body.appendChild(node);
+		return {
+			destroy() {
+				node.remove();
+			}
+		};
+	}
+
 	function onPointerDown(e: PointerEvent) {
 		dragging = true;
 		startY = e.clientY;
@@ -105,7 +115,7 @@
 </script>
 
 {#if open}
-	<div class="sheet-root" role="presentation">
+	<div class="sheet-root" role="presentation" use:portal>
 		<button
 			class="sheet-backdrop"
 			class:dragging
@@ -253,7 +263,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 0 8px 8px 16px;
+		padding: 0 4px 6px 20px;
 	}
 
 	.sheet-title {
@@ -272,12 +282,13 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 36px;
-		height: 36px;
+		/* タップ領域は 44px 以上 */
+		width: 44px;
+		height: 44px;
 		border: none;
 		background: transparent;
 		color: var(--color-text-secondary);
-		border-radius: 8px;
+		border-radius: 10px;
 		cursor: pointer;
 	}
 

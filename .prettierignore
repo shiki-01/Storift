@@ -13,3 +13,6 @@ bun.lockb
 
 # Tauri
 /src-tauri/
+
+# 攻撃テスト用のスクリプト(テスト専用)
+/tests/e2e/fixtures/

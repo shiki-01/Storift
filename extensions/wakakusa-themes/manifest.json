@@ -1,0 +1,26 @@
+{
+	"id": "wakakusa-themes",
+	"name": "若草と深海のテーマ",
+	"description": "明るい若草色と、落ち着いた深海色の、2 つの配色テーマを足します。",
+	"version": "1.0.0",
+	"author": "shiki-01",
+	"kind": "pack",
+	"apiVersion": 1,
+	"platforms": ["web", "desktop"],
+	"icon": "palette",
+	"homepage": "https://github.com/shiki-01/Storift/tree/main/extensions/wakakusa-themes",
+	"license": "MIT",
+	"updatedAt": "2026-11-12",
+	"permissions": { "storage": true },
+	"privacy": {
+		"sends": [],
+		"stores": ["インストールしたテーマの内容: この端末のブラウザ内(IndexedDB)にだけ保存"],
+		"onDisable": "無効にすると、設定の外観の一覧からこのパックのテーマが消えます。使っていたときは、ライトのテーマに戻ります。アンインストールすると、この端末に保存した内容を削除します。",
+		"notes": [
+			"通信しません。コードも実行しません(JSON のデータだけです)。",
+			"作品の本文は読み取りません。画面の色を決める値だけです。",
+			"同期・バックアップ・書き出しには含まれません。"
+		]
+	},
+	"contributions": { "themes": ["contents/wakakusa.json", "contents/shinkai.json"] }
+}

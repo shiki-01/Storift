@@ -6,6 +6,8 @@ export interface SelectOption {
 	/** 項目の下に出す補足説明 */
 	description?: string;
 	disabled?: boolean;
+	/** 項目の文字に当てるインラインスタイル(例: `font-family: serif`)。省略時は何も付けない */
+	style?: string;
 }
 
 /** 画面の端に残す余白(px) */

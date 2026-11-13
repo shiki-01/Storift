@@ -8,6 +8,16 @@ let isDirty = $state(false);
 let crdtSceneId: string | null = null;
 // 共同編集中に、エディタ以外(AI など)が本文を書き換えるための入口(Y のハンドルへ差分を入れる)
 let externalTextSink: ((text: string) => boolean) | null = null;
+// 前回の保存以降の変更の内訳(拡張向けイベントの origin 用。共同編集中は Y の側で数えるので使わない)。
+// aiDelta は AI の提案の適用による文字数の増減(適用が無ければ null)、userEdited は利用者の編集があったか
+let aiDelta: number | null = null;
+let userEdited = false;
+
+/** 保存 1 回分の変更の内訳。AI の適用が無ければ ai は undefined(すべて利用者の編集) */
+export interface SaveOrigins {
+	ai?: { delta: number; userEdited: boolean };
+	userEdited: boolean;
+}
 let isSaving = $state(false);
 let writingMode = $state<'vertical' | 'horizontal'>('horizontal');
 let fontSize = $state(16);
@@ -77,6 +87,8 @@ export const editorStore = {
 			return;
 		}
 		currentScene = value;
+		aiDelta = null;
+		userEdited = false;
 		if (value) {
 			content = value.content;
 			isDirty = false;
@@ -105,9 +117,26 @@ export const editorStore = {
 	 */
 	applyExternalText(value: string): boolean {
 		if (externalTextSink) return externalTextSink(value);
+		// 利用者の編集と区別できるよう、AI の適用による増減を保存まで覚えておく
+		aiDelta = (aiDelta ?? 0) + (value.length - content.length);
 		content = value;
 		isDirty = true;
 		return true;
+	},
+	/**
+	 * 保存する本文の変更の内訳を取り出して、リセットする(保存の直前に呼ぶ)。
+	 * 保存に失敗したら restoreSaveOrigins で戻す
+	 */
+	takeSaveOrigins(): SaveOrigins {
+		const origins: SaveOrigins =
+			aiDelta === null ? { userEdited } : { ai: { delta: aiDelta, userEdited }, userEdited };
+		aiDelta = null;
+		userEdited = false;
+		return origins;
+	},
+	restoreSaveOrigins(origins: SaveOrigins) {
+		if (origins.ai) aiDelta = (aiDelta ?? 0) + origins.ai.delta;
+		userEdited ||= origins.userEdited;
 	},
 	/** 未保存の印を付けずに本文を差し替える(共同編集で Y の本文に追随するとき) */
 	setContentFromSource(value: string) {
@@ -119,6 +148,7 @@ export const editorStore = {
 	set content(value: string) {
 		content = value;
 		isDirty = true;
+		userEdited = true;
 	},
 	get isDirty() {
 		return isDirty;

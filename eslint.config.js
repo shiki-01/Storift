@@ -13,7 +13,7 @@ const gitignorePath = fileURLToPath(new URL('./.gitignore', import.meta.url));
 export default defineConfig(
 	includeIgnoreFile(gitignorePath),
 	// サイトは別プロジェクト(site/)として管理する
-	{ ignores: ['site/**'] },
+	{ ignores: ['site/**', 'tests/e2e/fixtures/**'] },
 	js.configs.recommended,
 	...ts.configs.recommended,
 	...svelte.configs.recommended,
@@ -29,6 +29,11 @@ export default defineConfig(
 			'no-undef': 'off',
 			'@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }]
 		}
+	},
+	{
+		// スクリプト拡張(隔離された Web Worker で動く)。グローバルに storift がある
+		files: ['extensions/**/*.js'],
+		languageOptions: { globals: { storift: 'readonly' } }
 	},
 	{
 		files: ['**/*.svelte', '**/*.svelte.ts', '**/*.svelte.js'],

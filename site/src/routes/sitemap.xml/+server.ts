@@ -1,4 +1,5 @@
 import { SITE_URL } from '$lib/config';
+import { extensions } from '$lib/extensions';
 
 export const prerender = true;
 
@@ -7,6 +8,9 @@ const paths = [
 	'/features',
 	'/guide',
 	'/guide/firebase',
+	'/extensions',
+	'/extensions/submit',
+	...extensions.map((e) => `/extensions/${e.id}`),
 	'/faq',
 	'/support',
 	'/privacy',

@@ -53,6 +53,13 @@ export const settingsStore = {
 	set toolbarMenuItems(value: string[]) {
 		settings.toolbarMenuItems = value;
 	},
+	/** 執筆画面のツールバーのボタンの並び(保存値のまま。そろえるのは normalizeOrder) */
+	get toolbarOrder() {
+		return settings.toolbarOrder ?? [];
+	},
+	set toolbarOrder(value: string[]) {
+		settings.toolbarOrder = value;
+	},
 	get hasFirebaseConfig() {
 		return settings.firebase !== undefined;
 	}

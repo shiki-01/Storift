@@ -13,7 +13,8 @@
 
 	// テーマ変更
 	async function handleThemeChange(themeId: string) {
-		form.settings.theme = themeId as 'light' | 'dark' | 'auto';
+		// パックのテーマの ID は、同期やバックアップに入る設定には書かない(パックはこの端末だけのもの)
+		if (!themeId.startsWith('pack:')) form.settings.theme = themeId as 'light' | 'dark' | 'auto';
 		await themeStore.setTheme(themeId);
 		await form.save();
 	}
@@ -102,7 +103,7 @@
 	<!-- テーマの見本: 紙の色に、題字と本文の線、差し色の点を載せる -->
 	<div class="theme-grid" role="radiogroup" aria-label="テーマ">
 		{#each themeStore.allThemes as theme (theme.id)}
-			{@const selected = form.settings.theme === theme.id && !form.settings.autoTheme}
+			{@const selected = themeStore.theme.id === theme.id && !form.settings.autoTheme}
 			<div class="theme-item">
 				<button
 					class="theme-card"
@@ -131,6 +132,7 @@
 					</span>
 					<span class="theme-name">
 						{theme.name}
+						{#if theme.id.startsWith('pack:')}<span class="theme-pack">パック</span>{/if}
 						{#if selected}
 							<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"
 								><path
@@ -322,6 +324,16 @@
 		gap: 6px;
 		padding-left: 2px;
 		font-size: 13px;
+	}
+
+	.theme-pack {
+		padding: 1px 6px;
+		border: 1px solid var(--color-border);
+		border-radius: 999px;
+		font-size: 10.5px;
+		font-weight: 400;
+		line-height: 1.4;
+		color: var(--color-text-secondary);
 	}
 
 	.theme-card.selected .theme-name {

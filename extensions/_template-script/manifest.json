@@ -1,0 +1,30 @@
+{
+	"id": "my-script",
+	"name": "私のスクリプト",
+	"description": "ここに 1 〜 2 文で、このスクリプトが何をするのかを書きます。",
+	"version": "1.0.0",
+	"author": "あなたの名前",
+	"kind": "script",
+	"apiVersion": 1,
+	"platforms": ["web", "desktop"],
+	"icon": "puzzle",
+	"license": "MIT",
+	"updatedAt": "2026-11-12",
+	"entry": "main.js",
+	"permissions": {
+		"events": ["session:end"],
+		"storage": true,
+		"notify": true,
+		"ui": true
+	},
+	"privacy": {
+		"sends": [],
+		"stores": ["設定: この端末の中(拡張ごとの領域)にだけ保存"],
+		"onDisable": "無効にすると、スクリプトが止まります。アンインストールすると、この端末に保存した内容を削除します。",
+		"notes": [
+			"通信しません(permissions.network が空です)。",
+			"作品の本文は受け取りません。",
+			"同期・バックアップ・書き出しには含まれません。"
+		]
+	}
+}

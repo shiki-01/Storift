@@ -6,9 +6,9 @@
 </h1>
 
 <p align="center">
-  <a href="https://github.com/shiki-01/Storift/releases"><img src="https://img.shields.io/github/v/release/shiki-01/Storift" alt="最新リリース"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/shiki-01/Storift" alt="ライセンス: MIT"></a>
-  <a href="https://github.com/shiki-01/Storift/actions/workflows/deploy-app.yml"><img src="https://github.com/shiki-01/Storift/actions/workflows/deploy-app.yml/badge.svg" alt="Deploy App"></a>
+  <a href="https://github.com/shiki-01/Storift/releases"><img src="https://img.shields.io/github/v/release/shiki-01/Storift?style=flat-square&labelColor=33507a&color=b4543a&label=%E3%83%AA%E3%83%AA%E3%83%BC%E3%82%B9" alt="最新リリース"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/shiki-01/Storift?style=flat-square&labelColor=33507a&color=b4543a&label=%E3%83%A9%E3%82%A4%E3%82%BB%E3%83%B3%E3%82%B9" alt="ライセンス: MIT"></a>
+  <a href="https://github.com/shiki-01/Storift/actions/workflows/deploy-app.yml"><img src="https://img.shields.io/github/actions/workflow/status/shiki-01/Storift/deploy-app.yml?style=flat-square&labelColor=33507a&label=Deploy%20App" alt="Deploy App"></a>
 </p>
 
 <p align="center">
@@ -35,12 +35,24 @@ Storift は、原稿・プロット・人物・設定資料・進捗を作品ご
   </picture>
 </h2>
 
-|                                                                                                                                                                                                                        |                                                                                                                                                                                                                        |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/editor-dark.webp"><img src="docs/images/editor-light.webp" alt="執筆画面。章とシーンの一覧と本文が並ぶ" width="400"></picture><br>執筆       | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/split-dark.webp"><img src="docs/images/split-light.webp" alt="二画面表示。本文の隣に縦書きプレビューを表示" width="400"></picture><br>二画面 |
-| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/plot-dark.webp"><img src="docs/images/plot-light.webp" alt="プロットのボード。状態ごとの列にカードが並ぶ" width="400"></picture><br>プロット | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/world-dark.webp"><img src="docs/images/world-light.webp" alt="設定資料の一覧と詳細" width="400"></picture><br>設定資料                       |
-| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/characters-dark.webp"><img src="docs/images/characters-light.webp" alt="人物の一覧と詳細" width="400"></picture><br>人物                     | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/relation-dark.webp"><img src="docs/images/relation-light.webp" alt="人物同士の相関図" width="400"></picture><br>相関図                       |
-| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/preview-dark.webp"><img src="docs/images/preview-light.webp" alt="通読の画面。作品全体を章をまたいで読む" width="400"></picture><br>通読     | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/progress-dark.webp"><img src="docs/images/progress-light.webp" alt="進捗の画面。執筆量と目標の達成率" width="400"></picture><br>進捗         |
+<table>
+  <tr>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/editor-dark.webp"><img src="docs/images/editor-light.webp" alt="執筆画面。章とシーンの一覧と本文が並ぶ" width="400"></picture><br>執筆</td>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/split-dark.webp"><img src="docs/images/split-light.webp" alt="二画面表示。本文の隣に縦書きプレビューを表示" width="400"></picture><br>二画面</td>
+  </tr>
+  <tr>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/plot-dark.webp"><img src="docs/images/plot-light.webp" alt="プロットのボード。状態ごとの列にカードが並ぶ" width="400"></picture><br>プロット</td>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/world-dark.webp"><img src="docs/images/world-light.webp" alt="設定資料の一覧と詳細" width="400"></picture><br>設定資料</td>
+  </tr>
+  <tr>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/characters-dark.webp"><img src="docs/images/characters-light.webp" alt="人物の一覧と詳細" width="400"></picture><br>人物</td>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/relation-dark.webp"><img src="docs/images/relation-light.webp" alt="人物同士の相関図" width="400"></picture><br>相関図</td>
+  </tr>
+  <tr>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/preview-dark.webp"><img src="docs/images/preview-light.webp" alt="通読の画面。作品全体を章をまたいで読む" width="400"></picture><br>通読</td>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/progress-dark.webp"><img src="docs/images/progress-light.webp" alt="進捗の画面。執筆量と目標の達成率" width="400"></picture><br>進捗</td>
+  </tr>
+</table>
 
 <h2>
   <picture>

@@ -19,6 +19,7 @@ Storift のロゴとアイコンの置き場所、色、使い方、作り直し
 | デスクトップ版アイコン                       | `src-tauri/icons/*`                                       | `tauri.conf.json` の `bundle.icon`                      |
 | Tauri の元画像(1024px、透過 PNG)             | `scripts/app-icon-macos.png`、`app-icon-windows.png`      | `tauri icon` の入力                                     |
 | サイト用                                     | `site/static/favicon*`、`site/static/og.png`              | サイトの favicon と OG 画像                             |
+| README 用画像(ヒーロー・見出し)              | `docs/images/readme/*.webp`                               | README の冒頭と各節の見出し(明/暗の 2 種)。原本は Figma の「Storift」ファイル、ページ「README」 |
 
 画面に出すロゴは、インライン SVG のコンポーネント(アプリ: `src/lib/components/ui/Logo.svelte`、サイト: `site/src/lib/Logo.svelte`)。羽根と文字は `--color-primary`、火花は `--color-accent` で塗るので、テーマに追従する。`variant="mark" | "full"`、`size`(高さ px)、`title`(あれば `role="img"` で読み上げ、なければ装飾として隠す)を取る。原本の path を貼ってあるので、原本を差し替えたら、2 つの `Logo.svelte` も更新する(`src/lib/utils/brandAssets.test.ts` が食い違いを検出する)。
 

@@ -6,9 +6,9 @@
 </h1>
 
 <p align="center">
-  <a href="https://github.com/shiki-01/Storift/releases"><img src="https://img.shields.io/github/v/release/shiki-01/Storift?style=flat-square&labelColor=33507a&color=b4543a&label=%E3%83%AA%E3%83%AA%E3%83%BC%E3%82%B9" alt="最新リリース"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/shiki-01/Storift?style=flat-square&labelColor=33507a&color=b4543a&label=%E3%83%A9%E3%82%A4%E3%82%BB%E3%83%B3%E3%82%B9" alt="ライセンス: MIT"></a>
-  <a href="https://github.com/shiki-01/Storift/actions/workflows/deploy-app.yml"><img src="https://img.shields.io/github/actions/workflow/status/shiki-01/Storift/deploy-app.yml?style=flat-square&labelColor=33507a&label=Deploy%20App" alt="Deploy App"></a>
+  <a href="https://github.com/shiki-01/Storift/releases"><img src="https://img.shields.io/github/v/release/shiki-01/Storift?style=flat&labelColor=566b8c&color=7b90b0&label=%E3%83%AA%E3%83%AA%E3%83%BC%E3%82%B9" alt="最新リリース"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/shiki-01/Storift?style=flat&labelColor=566b8c&color=7b90b0&label=%E3%83%A9%E3%82%A4%E3%82%BB%E3%83%B3%E3%82%B9" alt="ライセンス: MIT"></a>
+  <a href="https://github.com/shiki-01/Storift/actions/workflows/deploy-app.yml"><img src="https://img.shields.io/github/actions/workflow/status/shiki-01/Storift/deploy-app.yml?style=flat&labelColor=566b8c&color=7b90b0&label=Deploy%20App" alt="Deploy App"></a>
 </p>
 
 <p align="center">
@@ -28,12 +28,12 @@ Storift は、原稿・プロット・人物・設定資料・進捗を作品ご
 
 > **English summary:** Storift is a novel-writing app that keeps manuscripts, plots, characters, world-building notes and progress together for each work. It runs in the browser as an offline-capable PWA, and a desktop version (Windows, macOS, Linux) is also available. Manuscripts are stored on your device, and optional sync and real-time collaboration use your own Firebase project, so the maintainer cannot see your content. The interface is in Japanese. MIT licensed.
 
-<h2>
+<h3>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/h-screenshots-dark.webp">
     <img src="docs/images/readme/h-screenshots-light.webp" alt="スクリーンショット" width="880">
   </picture>
-</h2>
+</h3>
 
 <table>
   <tr>
@@ -54,12 +54,12 @@ Storift は、原稿・プロット・人物・設定資料・進捗を作品ご
   </tr>
 </table>
 
-<h2>
+<h3>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/h-features-dark.webp">
     <img src="docs/images/readme/h-features-light.webp" alt="主な機能" width="880">
   </picture>
-</h2>
+</h3>
 
 ### 書く
 
@@ -99,12 +99,12 @@ Storift は、原稿・プロット・人物・設定資料・進捗を作品ご
 - 本文の編集は「提案のみ」「差分を確認して反映」「自動で反映(後から確認)」から選べます。
 - 詳細は [docs/DESKTOP.md](docs/DESKTOP.md) を参照してください。
 
-<h2>
+<h3>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/h-sync-dark.webp">
     <img src="docs/images/readme/h-sync-light.webp" alt="共同編集と同期" width="880">
   </picture>
-</h2>
+</h3>
 
 複数端末での同期と、作品の共有・共同編集は、利用者自身の Firebase プロジェクトで行います。Storift が運営するサーバーに原稿を預ける仕組みではありません。
 
@@ -115,12 +115,12 @@ Storift は、原稿・プロット・人物・設定資料・進捗を作品ご
 - 新しいセキュリティルール(`firestore.rules`)では、オーナー登録した端末だけが自分のデータにアクセスできます。2 台目以降は、1 台目の設定 →「共有」で表示した「設定コード」を貼り付けて登録します。設定コードを持つ人は全データにアクセスできるので、共有には使わないでください。
 - 設定手順は [docs/FIRESTORE_SETUP.md](docs/FIRESTORE_SETUP.md)、ルールの仕様は [docs/SHARING_RULES.md](docs/SHARING_RULES.md) にあります。
 
-<h2>
+<h3>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/h-install-dark.webp">
     <img src="docs/images/readme/h-install-light.webp" alt="インストール" width="880">
   </picture>
-</h2>
+</h3>
 
 ### Web 版(PWA)
 
@@ -133,12 +133,12 @@ Windows・macOS・Linux 向けを [GitHub Releases](https://github.com/shiki-01/
 - 新しい版があるとアプリ内に通知が出ます。「更新」を押すとダウンロードして入れます。自動では入れません。
 - macOS 版はアドホック署名のみ(Apple の署名・公証はなし)、Windows 版は署名なしのため、初回起動時に OS の警告が出ます。対処は [docs/DESKTOP.md](docs/DESKTOP.md) にあります。
 
-<h2>
+<h3>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/h-start-dark.webp">
     <img src="docs/images/readme/h-start-light.webp" alt="始め方" width="880">
   </picture>
-</h2>
+</h3>
 
 1. エディタを開きます。初回に Firebase の設定を案内されますが、「設定せずに始める」で省略できます(あとから設定画面でも設定できます)。
 2. 作品一覧の「新しい作品」から作品を作ります。
@@ -146,24 +146,24 @@ Windows・macOS・Linux 向けを [GitHub Releases](https://github.com/shiki-01/
 
 詳しい手順は、公開サイトの[使い方](https://storift.shiki-01.com/guide)と [Q&A](https://storift.shiki-01.com/faq) にあります。変更点は [CHANGELOG.md](CHANGELOG.md) を参照してください。
 
-<h2>
+<h3>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/h-data-dark.webp">
     <img src="docs/images/readme/h-data-light.webp" alt="データとバックアップ" width="880">
   </picture>
-</h2>
+</h3>
 
 - 原稿はブラウザのデータ(IndexedDB)に保存されます。ブラウザのデータを消すと、端末内の作品も消えます。大事な作品は、ときどき書き出してください。設定画面の「データ」から、バックアップ(エクスポート/インポート)ができます。
 - デスクトップ版の AI 連携では、質問のたびに原稿の一部が、選んだプロバイダ(Claude Code・Anthropic API なら Anthropic、Gemini なら Google、OpenAI 互換 API なら設定したサービス、Ollama なら設定した接続先)に送られます。Claude Code を使うには、インストール済みでログイン済みの Claude Code が必要で、利用料金・使用量はそのアカウントに計上されます。
 - API キーは、macOS・Windows では OS のキーチェーンに保存します。それ以外の環境では端末内に平文で保存し、設定画面に警告を出します。
 - スクリプトの拡張機能を有効にしている場合は、運営者が停止した拡張を無効にするため、アプリの起動時に 1 日 1 回まで、失効リストを `storift.shiki-01.com` から取得します(設定でオフにできます。スクリプトを有効にしていなければ、起動時に通信しません)。拡張機能を有効にすると、各拡張のページ(`/extensions/<id>`)に書いた範囲の情報が外部に送られます。拡張機能「Monolog. 連携」を有効にして接続すると、執筆時間と増減した文字数などが Monolog. に、「Discord Rich Presence」を有効にすると、開いている画面の名前などが Discord(端末の Discord クライアント経由)に送られます(どちらも本文は送りません)。接続情報(トークン)は、デスクトップ版では API キーと同じ保管の仕組み、Web 版ではブラウザの localStorage に、この端末だけで保存し、同期・バックアップ・書き出しには含めません。設定からいつでも解除できます。
 
-<h2>
+<h3>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/h-dev-dark.webp">
     <img src="docs/images/readme/h-dev-light.webp" alt="開発" width="880">
   </picture>
-</h2>
+</h3>
 
 必要なもの: [Bun](https://bun.sh/)、Node.js 22。デスクトップ版のビルドには加えて Rust と [Tauri の前提環境](https://tauri.app/start/prerequisites/)。
 
@@ -196,12 +196,12 @@ bun run test:e2e       # 共同編集の E2E(Firebase Emulator が必要)
 
 SvelteKit / Svelte 5 / TypeScript / Master CSS / Dexie(IndexedDB) / Yjs(共同編集の CRDT) / Firebase(Firestore・匿名認証。同期と共有のみ) / Tauri v2(Rust) / Vitest・Playwright / Cloudflare Pages
 
-<h2>
+<h3>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/h-docs-dark.webp">
     <img src="docs/images/readme/h-docs-light.webp" alt="ドキュメント" width="880">
   </picture>
-</h2>
+</h3>
 
 | ファイル                                                                   | 内容                                |
 | -------------------------------------------------------------------------- | ----------------------------------- |
@@ -221,21 +221,21 @@ SvelteKit / Svelte 5 / TypeScript / Master CSS / Dexie(IndexedDB) / Yjs(共同�
 | [docs/UI_UX_IMPROVEMENTS.md](docs/UI_UX_IMPROVEMENTS.md)                   | UI/UX の改善項目と対応状況          |
 | [docs/PreviewViewerImplementation.md](docs/PreviewViewerImplementation.md) | プレビューの実装計画(履歴)          |
 
-<h2>
+<h3>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/h-contribute-dark.webp">
     <img src="docs/images/readme/h-contribute-light.webp" alt="コントリビュート" width="880">
   </picture>
-</h2>
+</h3>
 
 [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください。
 
-<h2>
+<h3>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/h-support-dark.webp">
     <img src="docs/images/readme/h-support-light.webp" alt="支援" width="880">
   </picture>
-</h2>
+</h3>
 
 Storift はすべての機能を無料で使えます。開発を支援していただける場合は、次のどちらかからお願いします。支援の有無で使える機能は変わりません。
 
@@ -244,12 +244,12 @@ Storift はすべての機能を無料で使えます。開発を支援してい
 
 支援してくださった方のうち、希望された方の名前を載せています。GitHub Sponsors の支援者は [shiki-01 のプロフィール](https://github.com/shiki-01)、BOOTH の支援者は [SUPPORTERS.md](SUPPORTERS.md) にあります。詳しくは[公開サイトの「開発の支援」](https://storift.shiki-01.com/support)を参照してください。
 
-<h2>
+<h3>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/h-license-dark.webp">
     <img src="docs/images/readme/h-license-light.webp" alt="ライセンス" width="880">
   </picture>
-</h2>
+</h3>
 
 [MIT License](LICENSE)。同梱の第三者の素材(フォントなど)は、それぞれのライセンスに従います。一覧は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) にあります。
 

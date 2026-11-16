@@ -24,7 +24,9 @@ const SHELL_URL = '/';
 const PRECACHE = [
 	...build,
 	...files.filter(
-		(path) => !path.startsWith('/font/') && !path.startsWith('/brand/') && !path.endsWith('.woff')
+		(path) => !path.startsWith('/font/') && !path.startsWith('/brand/') &&
+			path !== '/og.png' &&
+			!path.endsWith('.woff')
 	)
 ];
 

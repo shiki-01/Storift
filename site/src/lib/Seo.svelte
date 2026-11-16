@@ -22,4 +22,5 @@
 	<meta property="og:image:width" content="1920" />
 	<meta property="og:image:height" content="1080" />
 	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:image" content={`${SITE_URL}/og-v2.png`} />
 </svelte:head>

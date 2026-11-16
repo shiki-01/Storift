@@ -265,9 +265,15 @@ describe('HTML の参照先', () => {
 		});
 	}
 
-	it('サイトの OG 画像が 1200x630 で、Seo.svelte の参照と一致する', () => {
-		expect(pngSize('site/static/og.png')).toEqual({ width: 1200, height: 630 });
-		expect(readText('site/src/lib/Seo.svelte')).toContain('/og.png');
+	it('サイトの OG 画像が 1920x1080 で、Seo.svelte の参照と一致する', () => {
+		expect(pngSize('site/static/og-v2.png')).toEqual({ width: 1920, height: 1080 });
+		expect(readText('site/src/lib/Seo.svelte')).toContain('/og-v2.png');
+	});
+
+	it('アプリの OG 画像が 1920x1080 で、app.html と service-worker の参照と一致する', () => {
+		expect(pngSize('static/og-v2.png')).toEqual({ width: 1920, height: 1080 });
+		expect(readText('src/app.html')).toContain('/og-v2.png');
+		expect(readText('src/service-worker.ts')).toContain('/og-v2.png');
 	});
 });
 

@@ -25,7 +25,7 @@ const PRECACHE = [
 	...build,
 	...files.filter(
 		(path) => !path.startsWith('/font/') && !path.startsWith('/brand/') &&
-			path !== '/og.png' &&
+			path !== '/og-v2.png' &&
 			!path.endsWith('.woff')
 	)
 ];

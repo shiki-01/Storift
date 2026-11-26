@@ -99,6 +99,8 @@ jobs:
           releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('Storift {0}', github.ref_name) || '' }}
           releaseDraft: true
           uploadUpdaterJson: true
+          # 4 つのジョブが同じ下書きリリースへ同時に添付するので、API の一時的な Not Found などで落ちないよう再試行する
+          retryAttempts: 3
 
       - name: Upload artifacts
         if: startsWith(github.ref, 'refs/tags/v')

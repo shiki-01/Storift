@@ -1,16 +1,20 @@
 <script lang="ts">
 	/**
-	 * エディタで文章を選択したときに出る「AI に聞く」の小さなポップアップ。
-	 * 選んだ部分を引用として AI パネルへ渡す。
+	 * エディタで文章を選択したときに出る小さなポップアップ(AI に聞く・ルビ・メモ)。
+	 * 「AI に聞く」は選んだ部分を引用として AI パネルへ渡す。
+	 * 「ルビ」は設定の「ルビの振り方」に従う(Storift: 記法を入れて読みを手入力 / AI: 読みを提案してもらう)。
 	 */
 	import { onMount } from 'svelte';
-	import { aiStore, QUICK_ACTIONS } from '$lib/stores/ai.svelte';
+	import { aiStore } from '$lib/stores/ai.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
 	import { makeAnchor, rangeTextOffsets } from '$lib/utils/memos';
+	import { applyInsertion } from '$lib/utils/editorInput';
 
 	const MAX_QUOTE = 20000;
-	const REWRITE_PROMPT =
-		'引用した部分を、意味と文体を保ったまま、より読みやすく自然な文章に書き換えてください。';
+	/** ルビの記法は Storift 形式(｜親文字《よみ》)に合わせる */
+	const RUBY_PROMPT =
+		'引用した部分のうち、読みにくい漢字や固有名詞に、Storift のルビ記法「｜親文字《よみ》」でふりがなを付けてください。' +
+		'本文の文字そのものは変えず、ルビの記法だけを加えてください。すでにルビがある箇所はそのままにしてください。';
 
 	let visible = $state(false);
 	let top = $state(0);
@@ -82,9 +86,19 @@
 		});
 	}
 
-	/** 引用してからプロンプトを作る(「引用した部分」を対象にするため) */
-	function run(prompt: () => string) {
-		if (quote()) void aiStore.send(prompt());
+	/** 選んだ範囲にルビを振る */
+	function ruby() {
+		if (editorStore.rubyProvider === 'ai') {
+			if (aiStore.isRunning) return;
+			aiStore.open = true;
+			if (quote()) void aiStore.send(RUBY_PROMPT);
+			return;
+		}
+		// Storift: ｜親文字《》を入れて、読みの入力位置へカーソルを置く
+		const range = editorRange();
+		visible = false;
+		if (!range) return;
+		applyInsertion('ruby');
 	}
 
 	onMount(() => {
@@ -106,16 +120,18 @@
 		class="popup"
 		style="top:{top}px;left:{left}px"
 		role="toolbar"
-		aria-label="選択した文章を AI に聞く"
+		aria-label="選択した文章の操作"
 		tabindex="-1"
 		onmousedown={(e) => e.preventDefault()}
 	>
 		<button class="main" onclick={ask}>AI に聞く</button>
 		<button
-			onclick={() => run(() => aiStore.actionPrompt(QUICK_ACTIONS[0]))}
-			disabled={aiStore.isRunning}>校正</button
+			onclick={ruby}
+			disabled={editorStore.rubyProvider === 'ai' && aiStore.isRunning}
+			title={editorStore.rubyProvider === 'ai'
+				? 'AI に読みを付けてもらう(設定で切り替えられます)'
+				: '｜親文字《よみ》の形でルビを振る(設定で切り替えられます)'}>ルビ</button
 		>
-		<button onclick={() => run(() => REWRITE_PROMPT)} disabled={aiStore.isRunning}>書き換え</button>
 		<button onclick={memo} title="選んだ範囲にメモを付ける">メモ</button>
 	</div>
 {/if}

@@ -29,10 +29,28 @@ interface EditorPrefs {
 	dimOthers: boolean;
 	/** 章・シーン一覧のパネルを開いているか */
 	sceneListOpen: boolean;
+	/** 改行したとき、次の行の先頭に全角スペースを入れる */
+	autoIndent: boolean;
+	/** 入力中、カーソルが見える位置まで自動でスクロールする */
+	caretFollow: boolean;
+	/** スクロールしないはずの画面の外枠が、ブラウザの自動スクロールでずれたときに戻す */
+	scrollLock: boolean;
+	/** 選択範囲にルビを振るときの方法(storift: 記法を入れて読みを手入力 / ai: AI に読みを付けてもらう) */
+	rubyProvider: RubyProvider;
 }
 
+export type RubyProvider = 'storift' | 'ai';
+
 function loadPrefs(): EditorPrefs {
-	const fallback: EditorPrefs = { typewriter: false, dimOthers: false, sceneListOpen: true };
+	const fallback: EditorPrefs = {
+		typewriter: false,
+		dimOthers: false,
+		sceneListOpen: true,
+		autoIndent: false,
+		caretFollow: true,
+		scrollLock: true,
+		rubyProvider: 'storift'
+	};
 	try {
 		if (typeof localStorage === 'undefined') return fallback;
 		const raw = localStorage.getItem(PREFS_KEY);
@@ -44,7 +62,18 @@ function loadPrefs(): EditorPrefs {
 
 function savePrefs() {
 	try {
-		localStorage.setItem(PREFS_KEY, JSON.stringify({ typewriter, dimOthers, sceneListOpen }));
+		localStorage.setItem(
+			PREFS_KEY,
+			JSON.stringify({
+				typewriter,
+				dimOthers,
+				sceneListOpen,
+				autoIndent,
+				caretFollow,
+				scrollLock,
+				rubyProvider
+			})
+		);
 	} catch {
 		// 保存できなくても動作には影響しない
 	}
@@ -54,6 +83,10 @@ const initialPrefs = loadPrefs();
 let typewriter = $state(initialPrefs.typewriter);
 let dimOthers = $state(initialPrefs.dimOthers);
 let sceneListOpen = $state(initialPrefs.sceneListOpen);
+let autoIndent = $state(initialPrefs.autoIndent);
+let caretFollow = $state(initialPrefs.caretFollow);
+let scrollLock = $state(initialPrefs.scrollLock);
+let rubyProvider = $state<RubyProvider>(initialPrefs.rubyProvider === 'ai' ? 'ai' : 'storift');
 // 集中モード: 上下のバーをすべて隠す(永続化しない)
 let focusMode = $state(false);
 
@@ -186,6 +219,34 @@ export const editorStore = {
 	},
 	set dimOthers(value: boolean) {
 		dimOthers = value;
+		savePrefs();
+	},
+	get autoIndent() {
+		return autoIndent;
+	},
+	set autoIndent(value: boolean) {
+		autoIndent = value;
+		savePrefs();
+	},
+	get caretFollow() {
+		return caretFollow;
+	},
+	set caretFollow(value: boolean) {
+		caretFollow = value;
+		savePrefs();
+	},
+	get scrollLock() {
+		return scrollLock;
+	},
+	set scrollLock(value: boolean) {
+		scrollLock = value;
+		savePrefs();
+	},
+	get rubyProvider() {
+		return rubyProvider;
+	},
+	set rubyProvider(value: RubyProvider) {
+		rubyProvider = value;
 		savePrefs();
 	},
 	get sceneListOpen() {

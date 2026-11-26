@@ -47,6 +47,19 @@ export function buildInsertion(kind: InsertKind, selected = ''): Insertion {
 	}
 }
 
+/** 段落の先頭に全角スペースを入れる(空行・字下げ済み・「『（【〈《 で始まる行はそのまま) */
+export function indentParagraphs(text: string): string {
+	return text
+		.split('\n')
+		.map((line) => {
+			if (line.trim() === '') return line;
+			if (line.startsWith('　') || line.startsWith(' ')) return line;
+			if (/^[「『（【〈《]/.test(line)) return line;
+			return '　' + line;
+		})
+		.join('\n');
+}
+
 /** 選択範囲を置き換える形で補助入力を挿入する(ブラウザのUndo履歴に残る) */
 export function applyInsertion(kind: InsertKind): void {
 	const selection = window.getSelection();
@@ -111,10 +124,36 @@ export function getCaretRect(): DOMRect | null {
 	if (rects.length > 0) return rects[0];
 	const rect = range.getBoundingClientRect();
 	if (rect.height > 0) return rect;
-	// 空行などで矩形が取れない場合は親要素で代用
+	// 空行などで矩形が取れない場合は、カーソルの隣のノード(改行の <br> など)の位置で代用する。
+	// 親要素(エディタ全体)の矩形で代用すると、本文の末尾までスクロールしてしまうので使わない
 	const node = range.startContainer;
-	const el = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
-	return el ? el.getBoundingClientRect() : null;
+	if (node.nodeType === Node.ELEMENT_NODE) {
+		const children = node.childNodes;
+		const offset = range.startOffset;
+		for (const candidate of [children[offset], children[offset - 1]]) {
+			const box = nodeRect(candidate);
+			if (box) return box;
+		}
+		return null;
+	}
+	const parent = node.parentElement;
+	if (!parent || parent.isContentEditable === false) return null;
+	if (parent.getAttribute('contenteditable') === 'true') return null;
+	const box = parent.getBoundingClientRect();
+	return box.height > 0 ? box : null;
+}
+
+/** 1 行ぶんの高さに収まるノードの矩形(取れなければ null) */
+function nodeRect(node: Node | undefined): DOMRect | null {
+	if (!node) return null;
+	const r = document.createRange();
+	r.selectNode(node);
+	const rects = r.getClientRects();
+	const box = rects.length > 0 ? rects[0] : r.getBoundingClientRect();
+	if (box.height <= 0) return null;
+	// 段落の要素など、複数行にまたがる大きな矩形は位置の代用にならない
+	if (node.nodeType === Node.ELEMENT_NODE && node.nodeName !== 'BR' && box.height > 64) return null;
+	return box;
 }
 
 /**
@@ -127,6 +166,7 @@ export function typewriterScroll(container: HTMLElement, ratio = 0.4, topInset =
 	const caret = getCaretRect();
 	if (!caret) return;
 	const box = container.getBoundingClientRect();
+	if (caret.height > box.height / 2) return;
 	const inset = Math.max(0, topInset);
 	const target = box.top + inset + (box.height - inset) * ratio;
 	const delta = caret.top + caret.height / 2 - target;
@@ -142,6 +182,8 @@ export function ensureCaretVisible(container: HTMLElement, margin = 28, topInset
 	const caret = getCaretRect();
 	if (!caret) return;
 	const box = container.getBoundingClientRect();
+	// 1 行より大きな矩形は、カーソルの位置を取り違えている(大きく飛ばさない)
+	if (caret.height > box.height / 2) return;
 	const top = box.top + Math.max(0, topInset);
 	if (caret.bottom > box.bottom - margin) {
 		container.scrollTop += caret.bottom - (box.bottom - margin);

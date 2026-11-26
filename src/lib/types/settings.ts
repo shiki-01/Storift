@@ -75,6 +75,22 @@ export interface AppSettings {
 		replace: string;
 		newChapter: string;
 		newScene: string;
+		/** 選択範囲にルビを振る */
+		ruby: string;
+		/** 選択範囲に傍点を付ける */
+		bouten: string;
+		/** シーン全体の段落の先頭に字下げを入れる */
+		indentAll: string;
+		/** 章・シーン一覧の開閉 */
+		toggleSceneList: string;
+		/** メモパネルの開閉 */
+		toggleMemo: string;
+		/** AI パネルの開閉(デスクトップ版) */
+		toggleAi: string;
+		/** 本文とプレビューの切り替え */
+		togglePreview: string;
+		/** 集中モードの切り替え */
+		focusMode: string;
 	};
 	autoSave: boolean;
 	autoSaveInterval: number;

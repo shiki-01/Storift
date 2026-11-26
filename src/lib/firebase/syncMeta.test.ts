@@ -11,8 +11,13 @@ import {
 	saveSyncState,
 	getTargetState,
 	withTargetState,
-	withoutTargetState
+	withoutTargetState,
+	markOwnWrite,
+	isOwnWrite,
+	baseFor,
+	resetSyncMetaCache
 } from './syncMeta';
+import { reconcile } from './reconcile';
 
 describe('syncMeta の base 永続化', () => {
 	beforeEach(() => {
@@ -139,5 +144,42 @@ describe('ターゲットを区別する base・pending・同期状態', () => {
 
 		state = withoutTargetState(state, 'shared/p1');
 		expect(state.targets).toEqual({});
+	});
+});
+
+describe('この端末が送った版(own writes)', () => {
+	beforeEach(() => {
+		localStorage.clear();
+		resetSyncMetaCache();
+	});
+
+	it('送った版は自分のものと分かる', () => {
+		markOwnWrite('scenes', 's1', 100);
+		expect(isOwnWrite('scenes', 's1', 100)).toBe(true);
+		expect(isOwnWrite('scenes', 's1', 101)).toBe(false);
+		expect(isOwnWrite('scenes', 's1', 100, 'shared:p1')).toBe(false);
+	});
+
+	it('返ってきた自分の版で base を進め、競合にしない', () => {
+		setBase('scenes', 's1', 50);
+		markOwnWrite('scenes', 's1', 100);
+		// 送信中に入力を続け、ローカルは 150 になった。返ってきた 100 は自分の版
+		const base = baseFor('scenes', 's1', 100);
+		expect(base).toBe(100);
+		expect(getBase('scenes', 's1')).toBe(100);
+		expect(reconcile({ updatedAt: 150 }, { updatedAt: 100 }, base)).toBe('push-local');
+	});
+
+	it('他の端末の版では base を動かさない', () => {
+		setBase('scenes', 's1', 50);
+		markOwnWrite('scenes', 's1', 100);
+		expect(baseFor('scenes', 's1', 120)).toBe(50);
+		expect(reconcile({ updatedAt: 150 }, { updatedAt: 120 }, 50)).toBe('conflict');
+	});
+
+	it('1 件あたりの記録は直近の数件だけ残す', () => {
+		for (let i = 1; i <= 20; i++) markOwnWrite('scenes', 's1', i);
+		expect(isOwnWrite('scenes', 's1', 1)).toBe(false);
+		expect(isOwnWrite('scenes', 's1', 20)).toBe(true);
 	});
 });

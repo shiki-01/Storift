@@ -223,7 +223,9 @@ describe('describeConflict', () => {
 		expect(summary.title).toBe('第一場(改)');
 		expect(summary.diffs.map((d) => d.key)).toEqual(['content', 'title']);
 		const content = summary.diffs[0];
-		expect(content.local).toBe(`${'あ'.repeat(40)}…(全100文字)`);
+		// 末尾に書き足した違いは、食い違う位置(末尾)の前後を見せる
+		expect(content.local).toBe(`…${'あ'.repeat(12)}(全100文字)`);
+		expect(content.remote).toBe(`…${'あ'.repeat(18)}(全106文字)`);
 		expect(content.note).toContain('+6文字');
 		expect(summary.diffs[1]).toMatchObject({
 			label: '題名',

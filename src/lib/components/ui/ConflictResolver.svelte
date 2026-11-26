@@ -54,7 +54,7 @@
 				{summary.kindLabel}{summary.title ? `「${summary.title}」` : ''}
 			</p>
 			<p class="fg:theme-text-secondary mb:16">
-				このデータが複数の端末で変更されています。どちらの内容を残しますか?
+				この端末の変更と、クラウドに保存されている版が、どちらも前回の同期のあとに変更されています。どちらの内容を残しますか?
 			</p>
 
 			{#if summary.diffs.length === 0}
@@ -87,12 +87,12 @@
 					<Button onclick={() => handleResolve('local')} variant="primary" class="w:full mt:12">
 						この端末の内容を残す
 					</Button>
-					<p class="font:11 fg:theme-text-secondary mt:4">他の端末の変更は上書きされます</p>
+					<p class="font:11 fg:theme-text-secondary mt:4">クラウドの版は上書きされます</p>
 				</div>
 
 				<!-- リモート版 -->
 				<div class="border:1|solid|theme-border r:8 p:16">
-					<h3 class="font:16 font-weight:600 mb:4 fg:theme-success">他の端末の変更</h3>
+					<h3 class="font:16 font-weight:600 mb:4 fg:theme-success">クラウドの版(他の端末など)</h3>
 					<p class="font:12 fg:theme-text-secondary mb:12">
 						更新日時: {dateTime(remoteUpdatedAt)}
 					</p>
@@ -114,7 +114,7 @@
 						</div>
 					{/if}
 					<Button onclick={() => handleResolve('remote')} variant="secondary" class="w:full mt:12">
-						他の端末の内容に置き換える
+						クラウドの内容に置き換える
 					</Button>
 					<p class="font:11 fg:theme-text-secondary mt:4">この端末の変更は置き換えられます</p>
 				</div>
@@ -131,11 +131,11 @@
 				<p class="mt:4 selectable">
 					ID: {(conflictData.local as { id?: string }).id ?? ''} / この端末 syncedAt: {syncedAtOf(
 						conflictData.local
-					) ?? '-'} updatedAt: {localUpdatedAt ?? '-'}
+					) ?? '-'} updatedAt: {localUpdatedAt ?? '-'}({dateTime(localUpdatedAt)})
 				</p>
 				<p class="selectable">
-					他の端末 syncedAt: {syncedAtOf(conflictData.remote) ?? '-'} updatedAt: {remoteUpdatedAt ??
-						'-'}
+					クラウド syncedAt: {syncedAtOf(conflictData.remote) ?? '-'} updatedAt: {remoteUpdatedAt ??
+						'-'}({dateTime(remoteUpdatedAt)})
 				</p>
 			</details>
 		</div>

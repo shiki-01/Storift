@@ -16,6 +16,7 @@
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
 	import { settingsDB } from '$lib/db';
 	import { settingsStore } from '$lib/stores/settings.svelte';
+	import { editorStore, type RubyProvider } from '$lib/stores/editor.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import SortableList from '$lib/components/items/SortableList.svelte';
 	import { extensionHost } from '$lib/extensions/host.svelte';
@@ -66,6 +67,12 @@
 	// ショートカットの割り当て: 「変更」を押したあとに押したキーを記録する
 	const startRecording = (action: ShortcutAction) => {
 		recordingAction = action;
+	};
+
+	/** 割り当てを外す(ブラウザや IME のキーと重なるときなど) */
+	const clearShortcut = async (action: ShortcutAction) => {
+		form.settings.shortcuts[action] = '';
+		await form.save();
 	};
 
 	const resetShortcut = async (action: ShortcutAction) => {
@@ -207,6 +214,46 @@
 			/>
 		</SettingsRow>
 	{/if}
+</SettingsCard>
+
+<!-- 入力の補助(端末ごとに保存) -->
+<SettingsCard title="入力の補助" description="この端末だけに保存します。">
+	<SettingsRow
+		label="改行したとき、行頭に全角スペースを入れる"
+		description="改行すると、次の行の先頭に字下げ(全角スペース)を自動で入れます。次の行が「『（ や全角スペースで始まるときは入れません。"
+		labelFor="autoIndent"
+	>
+		<input id="autoIndent" type="checkbox" bind:checked={editorStore.autoIndent} />
+	</SettingsRow>
+	<SettingsRow
+		label="入力中、カーソルの位置へ自動でスクロールする"
+		description="入力したときやキーボードが出たときに、カーソルが隠れないよう本文をスクロールします。入力中に画面が大きく動いてしまう場合はオフにしてください。"
+		labelFor="caretFollow"
+	>
+		<input id="caretFollow" type="checkbox" bind:checked={editorStore.caretFollow} />
+	</SettingsRow>
+	<SettingsRow
+		label="画面のずれを自動で戻す"
+		description="入力中に、ブラウザの自動スクロールで画面全体が下にずれたまま戻らなくなるのを防ぎます。"
+		labelFor="scrollLock"
+	>
+		<input id="scrollLock" type="checkbox" bind:checked={editorStore.scrollLock} />
+	</SettingsRow>
+	<SettingsRow
+		label="ルビの振り方"
+		description="文章を選んだときに出る「ルビ」の動作です。Storift は ｜親文字《よみ》 を入れて、読みを自分で入力します。AI は、設定中の AI に読みを付けてもらいます(デスクトップ版)。"
+		labelFor="rubyProvider"
+	>
+		<select
+			id="rubyProvider"
+			value={editorStore.rubyProvider}
+			onchange={(e) => (editorStore.rubyProvider = e.currentTarget.value as RubyProvider)}
+			class="px:.75rem py:.5rem b:1px|solid|theme-border r:8px bg:theme-background fg:theme-text"
+		>
+			<option value="storift">Storift(手入力)</option>
+			<option value="ai">AI</option>
+		</select>
+	</SettingsRow>
 </SettingsCard>
 
 <!-- 書式設定 -->
@@ -375,12 +422,15 @@
 		{@const fixed = FIXED_SHORTCUTS.includes(action)}
 		<SettingsRow label={SHORTCUT_LABELS[action]}>
 			<kbd class="shortcut-key" class:recording={recordingAction === action}>
-				{recordingAction === action ? 'キーを押してください…' : key}
+				{recordingAction === action ? 'キーを押してください…' : key || '未設定'}
 			</kbd>
 			{#if fixed}
 				<span class="fg:theme-text-secondary font:.75rem">固定</span>
 			{:else}
 				<button class="link-btn" onclick={() => startRecording(action)}>変更</button>
+				{#if key}
+					<button class="link-btn" onclick={() => clearShortcut(action)}>解除</button>
+				{/if}
 				{#if key !== DEFAULT_SHORTCUTS[action]}
 					<button class="link-btn" onclick={() => resetShortcut(action)}>初期値</button>
 				{/if}

@@ -86,6 +86,23 @@ export function excerptOf(value: unknown): string {
 	return String(value);
 }
 
+/** 2 つの文字列が最初に食い違う位置(同じなら -1) */
+export function firstDifference(a: string, b: string): number {
+	const n = Math.min(a.length, b.length);
+	for (let i = 0; i < n; i++) if (a[i] !== b[i]) return i;
+	return a.length === b.length ? -1 : n;
+}
+
+/** 長い文字列の、index の前後の抜粋(先頭が同じで分かりにくい本文の違いを見せる) */
+export function excerptAround(value: string, index: number): string {
+	if (value.length <= LONG_TEXT_LENGTH || index < 0) return excerptOf(value);
+	const before = 12;
+	const start = Math.max(0, index - before);
+	const end = Math.min(value.length, start + EXCERPT_LENGTH);
+	const body = oneLine(value.slice(start, end)) || '(空白のみ)';
+	return `${start > 0 ? '…' : ''}${body}${end < value.length ? '…' : ''}(全${value.length}文字)`;
+}
+
 export function describeConflict(type: string, local: object, remote: object): ConflictSummary {
 	const l = local as Record<string, unknown>;
 	const r = remote as Record<string, unknown>;
@@ -96,9 +113,20 @@ export function describeConflict(type: string, local: object, remote: object): C
 			local: excerptOf(l[key]),
 			remote: excerptOf(r[key])
 		};
-		if (typeof l[key] === 'string' && typeof r[key] === 'string' && key === 'content') {
-			const delta = (r[key] as string).length - (l[key] as string).length;
-			diff.note = `他の端末は この端末より ${delta >= 0 ? '+' : ''}${delta}文字`;
+		if (typeof l[key] === 'string' && typeof r[key] === 'string') {
+			const ls = l[key] as string;
+			const rs = r[key] as string;
+			// 長い文字列は、最初に食い違う位置の前後を見せる
+			const at = firstDifference(ls, rs);
+			if (at > 0 && (ls.length > LONG_TEXT_LENGTH || rs.length > LONG_TEXT_LENGTH)) {
+				diff.local = excerptAround(ls, at);
+				diff.remote = excerptAround(rs, at);
+			}
+			if (key === 'content') {
+				const delta = rs.length - ls.length;
+				const where = at >= 0 ? `${at + 1}文字目から違います。` : '';
+				diff.note = `${where}他の端末は この端末より ${delta >= 0 ? '+' : ''}${delta}文字`;
+			}
 		}
 		return diff;
 	});

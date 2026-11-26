@@ -43,6 +43,9 @@ import { isPermissionDeniedError } from '$lib/firebase/joinPolicy';
 import {
 	getBase,
 	setBase,
+	baseFor,
+	isOwnWrite,
+	markOwnWrite,
 	removeBase,
 	loadPendingChanges,
 	savePendingChanges,
@@ -431,7 +434,12 @@ async function handleConflict(
  * 最新のデータで改めて突き合わせるよう再送信の対象にする(そこで自動解決される。違いが残っていれば再び保留になる)。
  */
 function dropIdenticalPendingConflicts(): void {
-	const stale = pendingConflicts.filter((c) => !contentDiffers(c.local, c.remote));
+	// 内容が同一のものと、クラウドの版がこの端末の送ったもの(自分の書き込みの返りを競合と誤って保留したもの)
+	const stale = pendingConflicts.filter(
+		(c) =>
+			!contentDiffers(c.local, c.remote) ||
+			isOwnWrite(c.type, c.id, c.remote.updatedAt, targetOf(c))
+	);
 	if (stale.length === 0) return;
 	for (const conflict of stale) {
 		pendingConflicts.splice(pendingConflicts.indexOf(conflict), 1);
@@ -533,7 +541,8 @@ async function decideRemote(
 		return 'write';
 	}
 
-	const base = getBase(type, remote.id, target);
+	// この端末が送った版が返ってきたものなら、base をその版へ進める(自分の書き込みを競合にしない)
+	const base = baseFor(type, remote.id, remote.updatedAt, target);
 	let action = crdt
 		? reconcileOwned(local, remote, base, contentDiffers(local, remote))
 		: reconcile(local, remote, base);
@@ -1365,6 +1374,12 @@ async function uploadChanges(
 			for (const batch of chunkBatches(sized)) {
 				throwIfCancelled(ctx);
 				const target = batch[0].op.target;
+				// 送る版を先に記録する(遅延補償で返ってくる自分の書き込みや、失敗扱いでも届いていた送信を見分けるため)
+				for (const { op } of batch) {
+					if (op.kind === 'set') {
+						markOwnWrite(op.change.type, op.change.id, op.local.updatedAt, op.target.key);
+					}
+				}
 				try {
 					await commitBatchOps(
 						batch.map(
@@ -1449,7 +1464,7 @@ async function prepareUpload(
 		// CRDT 化したシーンは本文を比較しない(リモートの content で上書きせず、ミラー更新を競合にしない)
 		const crdt = type === 'scenes' && (await crdtSceneIdsIn([id], target.key)).has(id);
 		const effective = crdt ? adoptOwnedFields(local, remote) : remote;
-		const base = getBase(type, id, target.key);
+		const base = baseFor(type, id, remote.updatedAt, target.key);
 		let result = crdt
 			? reconcileOwned(local, effective, base, contentDiffers(local, effective))
 			: reconcile(local, remote, base);
@@ -1666,6 +1681,7 @@ export async function syncCurrentProject(projectId: string): Promise<void> {
 		const upload = async (type: EntityType, entity: SyncableEntity) => {
 			// プロジェクト文書(ポインタ)は常に primary。子要素は所属プロジェクトの行き先
 			const key = type === 'projects' ? PRIMARY_KEY : childKey;
+			markOwnWrite(type, entity.id, entity.updatedAt, key);
 			await syncToFirestore(type, entity, type === 'projects' ? undefined : childTarget);
 			setBase(type, entity.id, entity.updatedAt, key);
 		};

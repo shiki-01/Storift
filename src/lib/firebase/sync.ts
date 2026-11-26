@@ -321,8 +321,11 @@ export function setupRealtimeSync(
 
 			// 変化のあった(追加・更新された)ドキュメントだけを渡す。初回は全件が added として届く
 			const changes = snapshot.docChanges();
+			// この端末の未確定の書き込み(遅延補償で即座に届く自分の変更)は、リモートの変更として扱わない。
+			// サーバーに届いた時点で、確定した版(syncedAt 付き)があらためて届く
 			const entities = changes
 				.filter((change) => change.type === 'added' || change.type === 'modified')
+				.filter((change) => !change.doc.metadata.hasPendingWrites)
 				.map((change) => {
 					const data = change.doc.data() as SyncableEntity & {
 						syncedAt?: { toMillis: () => number };

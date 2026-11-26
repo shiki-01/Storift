@@ -17,6 +17,9 @@
 	import { authStore } from '$lib/stores/auth.svelte';
 	import { viewport, initViewport } from '$lib/stores/viewport.svelte';
 	import { editorStore } from '$lib/stores/editor.svelte';
+	import { installScrollLock } from '$lib/utils/scrollLock';
+	import { settingsStore } from '$lib/stores/settings.svelte';
+	import { DEFAULT_SHORTCUTS, matchesShortcut } from '$lib/utils/shortcuts';
 	import { registerServiceWorker, checkForUpdate } from '$lib/utils/sw-register';
 	import { initializeErrorHandler } from '$lib/utils/errorHandler';
 	import SyncStatus from '$lib/components/ui/SyncStatus.svelte';
@@ -45,8 +48,9 @@
 	const desktop = isDesktop();
 
 	function onGlobalKeydown(e: KeyboardEvent) {
-		// Ctrl(Cmd)+Shift+L でパネルの開閉
-		if (desktop && (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'l') {
+		// AI パネルの開閉(設定のショートカット。既定は Ctrl(Cmd)+Shift+L)
+		const key = settingsStore.settings.shortcuts?.toggleAi ?? DEFAULT_SHORTCUTS.toggleAi;
+		if (desktop && matchesShortcut(e, key)) {
 			e.preventDefault();
 			aiStore.toggle();
 		}
@@ -122,6 +126,12 @@
 			? `height:${viewport.height}px;transform:translateY(${viewport.offsetTop}px);`
 			: ''
 	);
+
+	// スクロールしない外枠がブラウザの自動スクロールでずれたら戻す(設定「画面のずれを自動で戻す」)
+	$effect(() => {
+		if (!editorStore.scrollLock) return;
+		return installScrollLock();
+	});
 
 	// 開いている画面を拡張へ知らせる(購読者がいなければ、値を覚えるだけ)
 	$effect(() => {
@@ -246,11 +256,11 @@
 	<meta name="description" content="個人向け小説執筆アプリ" />
 </svelte:head>
 
-<div class="app-frame">
+<div class="app-frame" data-scroll-lock>
 	{#if desktop}
 		<TitleBar title={windowTitle} />
 	{/if}
-	<div class="app-shell" class:with-rail={showRail} style={shellStyle}>
+	<div class="app-shell" class:with-rail={showRail} style={shellStyle} data-scroll-lock>
 		{#if showRail}
 			<AppRail />
 		{/if}
@@ -295,7 +305,7 @@
 			{/if}
 
 			<div class="app-body">
-				<main class="app-main rel">
+				<main class="app-main rel" data-scroll-lock>
 					{#key pageKey}
 						<div class="page-enter">
 							{@render children()}

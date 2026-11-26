@@ -13,7 +13,15 @@ export const DEFAULT_SHORTCUTS: AppSettings['shortcuts'] = {
 	find: 'Ctrl+Shift+F',
 	replace: 'Ctrl+Shift+H',
 	newChapter: 'Ctrl+Shift+N',
-	newScene: 'Ctrl+Alt+N'
+	newScene: 'Ctrl+Alt+N',
+	ruby: 'Ctrl+Alt+R',
+	bouten: 'Ctrl+Alt+B',
+	indentAll: 'Ctrl+Alt+I',
+	toggleSceneList: 'Ctrl+Alt+L',
+	toggleMemo: 'Ctrl+Shift+M',
+	toggleAi: 'Ctrl+Shift+L',
+	togglePreview: 'Ctrl+Alt+P',
+	focusMode: 'Ctrl+Alt+F'
 };
 
 export const SHORTCUT_LABELS: Record<ShortcutAction, string> = {
@@ -23,7 +31,15 @@ export const SHORTCUT_LABELS: Record<ShortcutAction, string> = {
 	find: '検索',
 	replace: '置換',
 	newChapter: '新しい章',
-	newScene: '新しいシーン'
+	newScene: '新しいシーン',
+	ruby: 'ルビを振る',
+	bouten: '傍点を付ける',
+	indentAll: '全体を字下げ',
+	toggleSceneList: '章・シーン一覧の開閉',
+	toggleMemo: 'メモパネルの開閉',
+	toggleAi: 'AI パネルの開閉(デスクトップ版)',
+	togglePreview: '本文とプレビューの切り替え',
+	focusMode: '集中モードの切り替え'
 };
 
 /** ブラウザ(contenteditable)の標準動作に任せるため、変更できないもの */

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { rubyToHtml, removeRuby, normalizeRuby } from '$lib/utils/ruby';
+	import { indentParagraphs } from '$lib/utils/editorInput';
 	import Modal from './Modal.svelte';
 	import Button from './Button.svelte';
 	import Select from './Select.svelte';
@@ -35,18 +36,7 @@
 
 	// 段落先頭の字下げを適用
 	function applyIndentation() {
-		const lines = text.split('\n');
-		const indentedLines = lines.map((line) => {
-			// 空行はそのまま
-			if (line.trim() === '') return line;
-			// すでに全角スペースまたは半角スペースで始まっている場合はスキップ
-			if (line.startsWith('　') || line.startsWith(' ')) return line;
-			// 記号で始まる行（会話文「」など）はスキップ
-			if (/^[「『（【〈《]/.test(line)) return line;
-			// その他の行は全角スペースを追加
-			return '　' + line;
-		});
-		text = indentedLines.join('\n');
+		text = indentParagraphs(text);
 	}
 
 	// 字下げを削除

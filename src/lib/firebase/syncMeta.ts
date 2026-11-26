@@ -120,6 +120,88 @@ export function removeBase(type: EntityType, id: string, target: string = PRIMAR
 	scheduleBaseFlush();
 }
 
+// ===== この端末が送った版(自分の書き込みが返ってきたものを、他の端末の変更と取り違えないため) =====
+const OWN_WRITES_KEY = 'storift_sync_own_writes';
+/** 1 件あたりに覚えておく版の数(送信の途中で次の版を送ることがあるので、直近の数件) */
+const OWN_WRITES_PER_ENTITY = 8;
+/** 覚えておく件数の上限(超えたら古いものから捨てる) */
+const OWN_WRITES_MAX_ENTITIES = 2000;
+
+let ownWrites: Record<string, number[]> | null = null;
+let ownWritesTimer: ReturnType<typeof setTimeout> | null = null;
+
+function loadOwnWrites(): Record<string, number[]> {
+	if (!ownWrites) ownWrites = read<Record<string, number[]>>(OWN_WRITES_KEY, {});
+	return ownWrites;
+}
+
+function scheduleOwnWritesFlush(): void {
+	if (ownWritesTimer) return;
+	ownWritesTimer = setTimeout(() => {
+		ownWritesTimer = null;
+		if (ownWrites) write(OWN_WRITES_KEY, ownWrites);
+	}, BASE_FLUSH_DELAY);
+}
+
+/**
+ * この端末が、その版(updatedAt)を送ろうとしていることを記録する。送信を始める前に呼ぶ。
+ * 送信の完了を待たずに記録するのは、Firestore の遅延補償(未確定の書き込みがすぐ読み取り・購読に現れる)や、
+ * 失敗扱いになったが実際には書き込まれていた送信でも、返ってきた版を自分のものと分かるようにするため。
+ */
+export function markOwnWrite(
+	type: EntityType,
+	id: string,
+	updatedAt: number,
+	target: string = PRIMARY_KEY
+): void {
+	const map = loadOwnWrites();
+	const key = baseKey(type, id, target);
+	const list = (map[key] ?? []).filter((v) => v !== updatedAt);
+	list.push(updatedAt);
+	delete map[key];
+	map[key] = list.slice(-OWN_WRITES_PER_ENTITY);
+	const keys = Object.keys(map);
+	for (let i = 0; i < keys.length - OWN_WRITES_MAX_ENTITIES; i++) delete map[keys[i]];
+	scheduleOwnWritesFlush();
+}
+
+/** その版(updatedAt)は、この端末が送ったものか */
+export function isOwnWrite(
+	type: EntityType,
+	id: string,
+	updatedAt: number,
+	target: string = PRIMARY_KEY
+): boolean {
+	return loadOwnWrites()[baseKey(type, id, target)]?.includes(updatedAt) ?? false;
+}
+
+/**
+ * 突き合わせに使う base。リモートの版がこの端末の送ったものなら、それが両者の一致していた版なので
+ * base をその版へ進めてから返す(自分の書き込みの返りを、競合と判定しない)。
+ */
+export function baseFor(
+	type: EntityType,
+	id: string,
+	remoteUpdatedAt: number,
+	target: string = PRIMARY_KEY
+): number | undefined {
+	const base = getBase(type, id, target);
+	if (
+		isOwnWrite(type, id, remoteUpdatedAt, target) &&
+		(base === undefined || remoteUpdatedAt > base)
+	) {
+		setBase(type, id, remoteUpdatedAt, target);
+		return remoteUpdatedAt;
+	}
+	return base;
+}
+
+/** テスト用: メモリ上の記録を捨てる */
+export function resetSyncMetaCache(): void {
+	bases = null;
+	ownWrites = null;
+}
+
 export function loadPendingChanges(): PendingChange[] {
 	return read<PendingChange[]>(PENDING_KEY, []).map((c) => ({ ...c, target: targetOf(c) }));
 }

@@ -3,9 +3,13 @@
 	import { isDesktop } from '$lib/desktop/platform';
 	import { aiStore } from '$lib/stores/ai.svelte';
 	import { viewport } from '$lib/stores/viewport.svelte';
+	import { settingsStore } from '$lib/stores/settings.svelte';
+	import { DEFAULT_SHORTCUTS } from '$lib/utils/shortcuts';
 
 	// デスクトップ版だけ。プロット・人物・設定資料・進捗の各画面から AI パネルを開閉する
 	const desktop = isDesktop();
+	const key = $derived(settingsStore.settings.shortcuts?.toggleAi ?? DEFAULT_SHORTCUTS.toggleAi);
+	const hint = $derived(key ? ` (${key})` : '');
 </script>
 
 {#if desktop && !viewport.isMobile}
@@ -16,7 +20,7 @@
 		aria-pressed={aiStore.open}
 		onclick={() => aiStore.toggle()}
 		aria-label="AI パネル"
-		title={aiStore.open ? 'AI パネルを閉じる (Ctrl+Shift+L)' : 'AI パネルを開く (Ctrl+Shift+L)'}
+		title={aiStore.open ? `AI パネルを閉じる${hint}` : `AI パネルを開く${hint}`}
 	>
 		<Icon name="sparkles" class="w:18px" />
 		<span>AI</span>

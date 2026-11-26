@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { toast, confirmDialog } from '$lib/stores/toast.svelte';
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
-	import { beforeNavigate, goto } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { currentProjectStore } from '$lib/stores/currentProject.svelte';
@@ -44,8 +44,15 @@
 	import ReferenceSheet from '$lib/components/mobile/ReferenceSheet.svelte';
 	import ProofreadSheet from '$lib/components/mobile/ProofreadSheet.svelte';
 	import { longpress } from '$lib/utils/longpress';
-	import { historyActionOf, matchesShortcut, normalizeAutoSaveMs } from '$lib/utils/shortcuts';
 	import {
+		DEFAULT_SHORTCUTS,
+		historyActionOf,
+		matchesShortcut,
+		normalizeAutoSaveMs
+	} from '$lib/utils/shortcuts';
+	import {
+		applyInsertion,
+		indentParagraphs,
 		typewriterScroll,
 		ensureCaretVisible,
 		updateDimHighlight,
@@ -71,6 +78,12 @@
 		type ContextMenuItem
 	} from '$lib/utils/contextMenu';
 	import { makeAnchor, rangeTextOffsets, reanchorMemos, resolveAnchor } from '$lib/utils/memos';
+	import {
+		persistScroll,
+		recallScroll,
+		rememberScroll,
+		restoreScroll
+	} from '$lib/utils/scrollMemory';
 	import type {
 		Chapter,
 		Scene,
@@ -250,8 +263,20 @@
 		memo: { action: toggleMemoPanel, active: showMemo, tour: 'editor-memo-button' },
 		ai: { action: () => aiStore.toggle(), active: aiStore.open, tour: 'editor-ai' }
 	});
-	const toolLabel = (item: ToolbarItem) =>
-		item.shortcut ? `${item.label} (${item.shortcut})` : item.label;
+	// ツールバーの項目と、設定で変えられるショートカットの対応(表示は設定中のキーにする)
+	const TOOL_SHORTCUTS: Partial<Record<string, keyof typeof DEFAULT_SHORTCUTS>> = {
+		search: 'find',
+		memo: 'toggleMemo',
+		ai: 'toggleAi',
+		focus: 'focusMode'
+	};
+	const toolLabel = (item: ToolbarItem) => {
+		const action = TOOL_SHORTCUTS[item.id];
+		const key = action
+			? (settingsStore.settings.shortcuts?.[action] ?? DEFAULT_SHORTCUTS[action])
+			: item.shortcut;
+		return key ? `${item.label} (${key})` : item.label;
+	};
 
 	function openToolbarMenu(e: MouseEvent) {
 		if (contextMenu.visible && contextMenu.targetType === 'toolbar') {
@@ -337,10 +362,8 @@
 		// キーボードショートカット(設定画面で変更できる)
 		const handleKeyDown = (e: KeyboardEvent) => {
 			const shortcuts = settingsStore.settings.shortcuts;
-			// メモパネルの開閉(固定。Ctrl+Shift+M)
-			if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'm') {
+			if (handleEditorShortcut(e, shortcuts)) {
 				e.preventDefault();
-				toggleMemoPanel();
 			} else if (matchesShortcut(e, shortcuts.find) || matchesShortcut(e, shortcuts.replace)) {
 				e.preventDefault();
 				void openSearch();
@@ -398,15 +421,115 @@
 		};
 	});
 
+	/**
+	 * 執筆画面のショートカット(設定の「ショートカットキー」で変更できるもの)。処理したら true。
+	 * AI パネルの開閉は、画面をまたいで使うのでレイアウト側で扱う。
+	 */
+	function handleEditorShortcut(
+		e: KeyboardEvent,
+		shortcuts: typeof settingsStore.settings.shortcuts
+	) {
+		const key = (action: keyof typeof DEFAULT_SHORTCUTS) =>
+			shortcuts[action] ?? DEFAULT_SHORTCUTS[action];
+		if (matchesShortcut(e, key('toggleMemo'))) {
+			toggleMemoPanel();
+			return true;
+		}
+		if (matchesShortcut(e, key('toggleSceneList'))) {
+			editorStore.sceneListOpen = !editorStore.sceneListOpen;
+			return true;
+		}
+		if (matchesShortcut(e, key('togglePreview'))) {
+			viewMode = viewMode === 'preview' ? 'editor' : 'preview';
+			return true;
+		}
+		if (matchesShortcut(e, key('focusMode'))) {
+			editorStore.focusMode = !editorStore.focusMode;
+			return true;
+		}
+		const insert = matchesShortcut(e, key('ruby'))
+			? 'ruby'
+			: matchesShortcut(e, key('bouten'))
+				? 'bouten'
+				: null;
+		if (insert) {
+			// 本文を編集しているときだけ(他の入力欄では何もしない)
+			if (!editable || !editorDiv || document.activeElement !== editorDiv) return false;
+			applyInsertion(insert);
+			return true;
+		}
+		if (matchesShortcut(e, key('indentAll'))) {
+			indentWholeScene();
+			return true;
+		}
+		return false;
+	}
+
+	/** シーン全体の段落の先頭に字下げを入れる(元に戻せるよう、本文の置き換えとして入力する) */
+	function indentWholeScene() {
+		if (!editable || !editorDiv || !editorStore.currentScene) return;
+		const current = editorStore.content;
+		const next = indentParagraphs(current);
+		if (next === current) {
+			toast.info('字下げの必要な段落はありません');
+			return;
+		}
+		editorDiv.focus({ preventScroll: true });
+		const selection = window.getSelection();
+		if (!selection) return;
+		const keepTop = editorScrollContainer?.scrollTop ?? 0;
+		const range = document.createRange();
+		range.selectNodeContents(editorDiv);
+		selection.removeAllRanges();
+		selection.addRange(range);
+		if (collabActive) {
+			if (session?.binding.insertText(next)) onTyped();
+		} else {
+			document.execCommand('insertText', false, next);
+			editorStore.content = editorDiv.innerText;
+			editorStore.isDirty = true;
+		}
+		if (editorScrollContainer) editorScrollContainer.scrollTop = keepTop;
+		toast.success('段落の先頭に字下げを入れました');
+	}
+
 	$effect(() => {
 		const currentId = editorStore.currentScene?.id ?? null;
 		if (!currentId || currentId === lastSceneId) return;
 		lastSceneId = currentId;
+		// 本文の差し替え中のスクロール(0 への巻き戻りなど)は、位置の記憶に入れない
+		cancelRestore?.();
+		restoringScroll = true;
 		void tick().then(() => {
-			editorScrollContainer?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
 			previewViewerRef?.scrollToTop?.();
+			const el = editorScrollContainer;
+			if (!el || lastSceneId !== currentId) {
+				restoringScroll = false;
+				return;
+			}
+			// 前に開いていたときの位置へ戻す(初めてなら先頭)
+			cancelRestore = restoreScroll(el, recallScroll(sceneScrollKey(currentId)) ?? 0, () => {
+				restoringScroll = false;
+				cancelRestore = null;
+				lastScrollTop = el.scrollTop;
+			});
 		});
 	});
+
+	// ===== スクロール位置の記憶(画面を移動して戻っても、シーンごとに続きから) =====
+	let restoringScroll = false;
+	let leavingPage = false;
+	let cancelRestore: (() => void) | null = null;
+
+	function sceneScrollKey(sceneId: string): string {
+		return `editor:${sceneId}`;
+	}
+
+	function recordScroll(top: number) {
+		if (restoringScroll || leavingPage) return;
+		const id = editorStore.currentScene?.id;
+		if (id && id === lastSceneId) rememberScroll(sceneScrollKey(id), top);
+	}
 
 	const handleCreateChapter = async () => {
 		if (readOnly || !newChapterTitle.trim() || !currentProjectStore.project) return;
@@ -548,9 +671,23 @@
 	beforeNavigate(() => {
 		clearSaveTimers();
 		void saveOnLeave();
+		// 画面を離れる間の本文の取り外しで位置が 0 に戻っても、記憶を上書きしない
+		const id = editorStore.currentScene?.id;
+		if (id && editorScrollContainer && !restoringScroll) {
+			rememberScroll(sceneScrollKey(id), editorScrollContainer.scrollTop);
+		}
+		leavingPage = true;
+		persistScroll();
+	});
+
+	// 同じ画面のままの遷移(クエリの変更など)や、取り消された遷移のあとは記録を再開する
+	afterNavigate(() => {
+		leavingPage = false;
 	});
 
 	onDestroy(() => {
+		cancelRestore?.();
+		persistScroll();
 		clearSaveTimers();
 		void saveOnLeave();
 		// 共同編集のハンドルを手放す(参照カウントを下げ、最後なら保存・送信・圧縮をして閉じる)
@@ -1547,11 +1684,34 @@
 			// 共同編集: DOM の変化を Y へ反映する(変換中は保留される)。Y の本文がストアへ反映される
 			session?.binding.handleInput();
 			onTyped();
+			maybeAutoIndent(e);
 			return;
 		}
 		const target = e.target as HTMLDivElement;
 		editorStore.content = target.innerText;
 		onTyped();
+		maybeAutoIndent(e);
+	}
+
+	/** 改行の直後に、次の行の先頭へ全角スペースを入れる(設定「改行したとき、行頭に全角スペースを入れる」) */
+	const NO_INDENT_BEFORE = new Set(['　', '「', '『', '（', '(', '〈', '《', '【', '―', '…']);
+	function maybeAutoIndent(e: Event) {
+		if (!editorStore.autoIndent || collabReadOnly) return;
+		const input = e as InputEvent;
+		if (input.isComposing) return;
+		if (input.inputType !== 'insertParagraph' && input.inputType !== 'insertLineBreak') return;
+		if (NO_INDENT_BEFORE.has(charAfterCaret())) return;
+		// execCommand を使い、ブラウザ(または共同編集)の履歴に残す。発生する input は通常の入力として処理される
+		document.execCommand('insertText', false, '　');
+	}
+
+	/** カーソルの直後の 1 文字(行末・取得できなければ空文字) */
+	function charAfterCaret(): string {
+		const selection = window.getSelection();
+		if (!editorDiv || !selection || selection.rangeCount === 0) return '';
+		const offsets = rangeTextOffsets(editorDiv, selection.getRangeAt(0));
+		if (!offsets) return '';
+		return editorStore.content.charAt(offsets.start);
 	}
 
 	// DOM 側の変更(切り取り・貼り付けなど)をストアへ反映する
@@ -1908,7 +2068,7 @@
 		requestAnimationFrame(() => {
 			if (!editorScrollContainer) return;
 			if (editorStore.typewriter) typewriterScroll(editorScrollContainer, 0.4, barInset());
-			else ensureCaretVisible(editorScrollContainer, 28, barInset());
+			else if (editorStore.caretFollow) ensureCaretVisible(editorScrollContainer, 28, barInset());
 		});
 	}
 
@@ -1920,7 +2080,7 @@
 	// キーボードの出入りで高さが変わったとき、カーソルを見える位置に保つ
 	$effect(() => {
 		void viewport.height;
-		if (!viewport.isMobile || !viewport.isKeyboardOpen) return;
+		if (!viewport.isMobile || !viewport.isKeyboardOpen || !editorStore.caretFollow) return;
 		requestAnimationFrame(() => {
 			if (editorScrollContainer) ensureCaretVisible(editorScrollContainer, 28, barInset());
 		});
@@ -1969,6 +2129,7 @@
 		const el = e.currentTarget as HTMLElement;
 		const prevY = lastScrollTop;
 		lastScrollTop = el.scrollTop;
+		recordScroll(el.scrollTop);
 		// 先頭まで戻ったら、操作の種類にかかわらずバーを出す
 		if (el.scrollTop <= 0) {
 			chromeHidden = false;
@@ -2018,7 +2179,6 @@
 		if (!scene) return;
 		await handleSceneSelect(scene);
 		chromeHidden = false;
-		editorScrollContainer?.scrollTo({ top: 0 });
 	}
 
 	// --- 表示シート(書式はプレビューしながら調整し、閉じるだけなら元に戻す) ---
@@ -2223,6 +2383,7 @@
 
 <div
 	class="editor-layout w:100% h:100%"
+	data-scroll-lock
 	data-sidebar-open={editorStore.sceneListOpen ? 'true' : 'false'}
 	data-focus={editorStore.focusMode ? 'true' : 'false'}
 	data-mobile={viewport.isMobile ? 'true' : 'false'}
@@ -2242,7 +2403,8 @@
 	{/if}
 
 	<!-- エディタエリア -->
-	<div class="editor-main flex flex:column w:100% h:100% overflow-y:auto">
+	<!-- 縦スクロールは中の .editor-panel が持つ。外側はスクロールさせない(カーソルの自動スクロールで画面ごとずれるのを防ぐ) -->
+	<div class="editor-main flex flex:column w:100% h:100% overflow:hidden" data-scroll-lock>
 		<!-- スマホ: 1 本だけの上部バー -->
 		{#if viewport.isMobile && !editorStore.focusMode}
 			<div
@@ -2500,8 +2662,8 @@
 			{/if}
 
 			<!-- エディタ & プレビューエリア(デスクトップ版は右に AI パネル) -->
-			<div class="editor-workspace">
-				<div class="editor-panels flex-grow:1 flex overflow:hidden">
+			<div class="editor-workspace" data-scroll-lock>
+				<div class="editor-panels flex-grow:1 flex overflow:hidden" data-scroll-lock>
 					<!-- エディタ -->
 					{#if effectiveViewMode !== 'preview'}
 						<div
@@ -2520,7 +2682,9 @@
 								class:typewriter={editorStore.typewriter}
 								class:with-m-bar={viewport.isMobile && !editorStore.focusMode}
 							>
-								<!-- contentEditable div -->
+								<!-- contentEditable div。本文はテンプレートで描かない(Svelte がテキストノードを書き戻すと、
+								     入力のたびにカーソルが先頭へ戻る)。中身は editorStore.content との差分を見て書き込む $effect と、
+								     共同編集の EditorBinding が書く -->
 								<div
 									bind:this={editorDiv}
 									data-tour="editor-body"
@@ -2550,9 +2714,7 @@
 									letter-spacing: {localFormatting.letterSpacing ?? 0}em;
 								"
 									data-placeholder="ここに執筆を開始..."
-								>
-									{editorStore.content}
-								</div>
+								></div>
 
 								{#if remoteView && editorDiv && remoteCursorList.length > 0}
 									<RemoteCursors

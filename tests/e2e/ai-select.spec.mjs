@@ -216,7 +216,7 @@ async function main() {
 					sendCenter: s.top + s.height / 2,
 					modeCenter: rect(mode).top + rect(mode).height / 2,
 					tagCenter: rect(tag).top + rect(tag).height / 2,
-					stopClass: sendBtn.classList.contains('stop')
+					stopClass: sendBtn.getAttribute('aria-label') === '停止'
 				};
 			});
 		const m = await metrics();
@@ -247,7 +247,8 @@ async function main() {
 		await send.click();
 		await waitFor(
 			'停止ボタンに変わる',
-			async () => (await page.locator('[data-ai-panel] button.send.stop').count()) === 1,
+			async () =>
+				(await page.locator('[data-ai-panel] button.send[aria-label="停止"]').count()) === 1,
 			5000
 		);
 		const stopped = await metrics();

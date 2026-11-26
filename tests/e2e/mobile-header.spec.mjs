@@ -170,7 +170,8 @@ async function main() {
 		const initial = await panelMetrics(page);
 		const shown0 = await barState(page);
 		check('最初はバーが見えている', shown0.opacity === 1 && !shown0.inert);
-		check('バーは本文に重なる(absolute)', shown0.position === 'absolute');
+		// iOS の PWA で上端に OS のぼかしが付かないよう、バーは fixed で本文に重ねる(620d3a7)
+		check('バーは本文に重なる(fixed)', shown0.position === 'fixed', shown0.position);
 
 		// 本文コンテナの矩形を rAF ごとに記録する(遷移中の動きも検出する)
 		await page.locator(PANEL).evaluate((el) => {

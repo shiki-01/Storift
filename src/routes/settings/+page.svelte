@@ -153,7 +153,7 @@
 				</ul>
 			</nav>
 
-			<div class="settings-content" data-section-panel={current.id}>
+			<div class="settings-content scroll-stable" data-section-panel={current.id}>
 				<header class="section-head">
 					<h2 class="section-title" tabindex="-1" bind:this={headingEl}>{current.label}</h2>
 					<p class="section-desc">{current.description}</p>
@@ -218,6 +218,8 @@
 	@media (min-width: 769px) {
 		.settings-scroll {
 			overflow: hidden;
+			/* 広い画面では外側はスクロールしない。スクロールバー分の幅は、中の .settings-content で確保する */
+			scrollbar-gutter: auto;
 		}
 
 		.settings-page {

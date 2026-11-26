@@ -146,8 +146,14 @@ async function main() {
 		);
 
 		console.log('[設定: スペーサー]');
+		// 広い画面では、タイトルとサイドバーを固定し、右の内容(.settings-content)だけがスクロールする
 		await page.goto(`${vite.base}/settings#appearance`);
-		await checkPage(page, '設定', '.settings-scroll', '.settings-title');
+		await checkPage(
+			page,
+			'設定',
+			'.settings-content.scroll-stable',
+			'.settings-content .section-title'
+		);
 
 		console.log('[設定: セクション間(スクロールあり/なし)]');
 		// 普通の高さに戻す(長いセクションでスクロールが入る)
@@ -162,7 +168,7 @@ async function main() {
 			await sleep(400);
 			lefts.push(
 				await page.evaluate(() => {
-					const sc = document.querySelector('.settings-scroll');
+					const sc = document.querySelector('.settings-content');
 					const r = (sel) => document.querySelector(sel)?.getBoundingClientRect().left;
 					return {
 						section: location.hash,
@@ -189,7 +195,7 @@ async function main() {
 				values.join(' / ')
 			);
 		}
-		await shotEl(page.locator('.settings-scroll'), 'settings-scrollbar');
+		await shotEl(page.locator('.settings-content'), 'settings-scrollbar');
 
 		await context.close();
 

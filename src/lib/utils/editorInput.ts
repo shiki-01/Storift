@@ -5,6 +5,8 @@
  * - フォーカスモードの「今の段落以外を薄く」
  */
 
+import { symbolInsertion, type SymbolItem } from './symbols';
+
 export type InsertKind =
 	| 'kagi'
 	| 'nijukagi'
@@ -318,4 +320,13 @@ export function scrollRangeIntoView(root: HTMLElement, range: Range): void {
 		left: rect.left + rect.width / 2 - (box.left + box.width / 2),
 		behavior: 'smooth'
 	});
+}
+
+/** 記号パレットの記号を、選択範囲を置き換える(括弧なら囲む)形で挿入する */
+export function insertSymbol(item: SymbolItem): void {
+	const selection = window.getSelection();
+	const selected = selection ? selection.toString() : '';
+	const { text, caretBack } = symbolInsertion(item, selected);
+	document.execCommand('insertText', false, text);
+	moveCaret(-caretBack);
 }

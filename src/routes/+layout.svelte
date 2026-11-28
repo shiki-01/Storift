@@ -26,6 +26,9 @@
 	import Logo from '$lib/components/ui/Logo.svelte';
 	import ToastHost from '$lib/components/ui/ToastHost.svelte';
 	import ConflictHost from '$lib/components/ui/ConflictHost.svelte';
+	import WhatsNewDialog from '$lib/components/ui/WhatsNewDialog.svelte';
+	import { tourStore } from '$lib/tutorial/tour.svelte';
+	import { whatsNewStore } from '$lib/stores/whatsNew.svelte';
 	import TourOverlay from '$lib/components/tutorial/TourOverlay.svelte';
 	import { isDesktop } from '$lib/desktop/platform';
 	import { installNativeContextMenuPolicy } from '$lib/desktop/nativeContextMenu';
@@ -152,6 +155,9 @@
 
 		// デスクトップ版は、起動後に新しいバージョンを自動で確認する
 		if (desktop) updaterStore.startAutoCheck();
+
+		// 更新のあとの初回起動なら、この版の変更点を表示する(チュートリアル中は出さない)
+		whatsNewStore.init(() => tourStore.active);
 
 		// グローバルエラーハンドラーを初期化
 		initializeErrorHandler();
@@ -354,6 +360,7 @@
 <ToastHost />
 <ConflictHost />
 <TourOverlay />
+<WhatsNewDialog />
 
 <style>
 	.app-frame {

@@ -40,6 +40,8 @@
 	import SearchReplace from '$lib/components/ui/SearchReplace.svelte';
 	import Sheet from '$lib/components/mobile/Sheet.svelte';
 	import AssistBar from '$lib/components/mobile/AssistBar.svelte';
+	import SymbolPalette from '$lib/components/editor/SymbolPalette.svelte';
+	import type { SymbolItem } from '$lib/utils/symbols';
 	import GoalRing from '$lib/components/mobile/GoalRing.svelte';
 	import ReferenceSheet from '$lib/components/mobile/ReferenceSheet.svelte';
 	import ProofreadSheet from '$lib/components/mobile/ProofreadSheet.svelte';
@@ -52,6 +54,7 @@
 	} from '$lib/utils/shortcuts';
 	import {
 		applyInsertion,
+		insertSymbol,
 		indentParagraphs,
 		typewriterScroll,
 		ensureCaretVisible,
@@ -231,6 +234,42 @@
 		extPopoverOpen = true;
 	}
 
+	// 記号パレット(ツールバーの「記号」・ショートカット)。開いたときの本文の選択範囲を覚えておき、挿入の前に戻す
+	let symbolPaletteOpen = $state(false);
+	let symbolPaletteAnchor = $state<HTMLElement | null>(null);
+	let symbolSelection: { start: number; end: number } | null = null;
+
+	function toggleSymbolPalette() {
+		if (symbolPaletteOpen) {
+			symbolPaletteOpen = false;
+			return;
+		}
+		if (!editable || !editorDiv) return;
+		const selection = window.getSelection();
+		symbolSelection =
+			selection && selection.rangeCount > 0 && editorDiv.contains(selection.anchorNode)
+				? rangeTextOffsets(editorDiv, selection.getRangeAt(0))
+				: null;
+		symbolPaletteAnchor =
+			document.querySelector<HTMLElement>('[data-testid="toolbar-symbols"]') ?? moreButtonEl;
+		symbolPaletteOpen = true;
+	}
+
+	function pickSymbol(item: SymbolItem) {
+		if (!editable || !editorDiv) return;
+		editorDiv.focus({ preventScroll: true });
+		const end = editorStore.content.length;
+		const range = symbolSelection ?? { start: end, end };
+		selectTextRange(editorDiv, range.start, range.end);
+		insertSymbol(item);
+		// 続けて入れるときのために、挿入後のカーソル位置を覚え直す
+		const selection = window.getSelection();
+		symbolSelection =
+			selection && selection.rangeCount > 0
+				? rangeTextOffsets(editorDiv, selection.getRangeAt(0))
+				: null;
+	}
+
 	// 拡張が無効になったら、開いているポップアップも閉じる
 	$effect(() => {
 		if (extPopoverOpen && !extPopoverItem) extPopoverOpen = false;
@@ -252,6 +291,12 @@
 		>
 	>({
 		assist: { action: () => (showWritingAssistant = true), disabled: readOnly },
+		symbols: {
+			action: toggleSymbolPalette,
+			disabled: readOnly,
+			active: symbolPaletteOpen,
+			testid: 'toolbar-symbols'
+		},
 		export: { action: () => (showExportModal = true), tour: 'editor-export' },
 		review: { action: () => void openReviewExport(), testid: 'open-review-export' },
 		manuscript: { action: openManuscriptPreview, testid: 'open-manuscript-preview' },
@@ -266,6 +311,7 @@
 	// ツールバーの項目と、設定で変えられるショートカットの対応(表示は設定中のキーにする)
 	const TOOL_SHORTCUTS: Partial<Record<string, keyof typeof DEFAULT_SHORTCUTS>> = {
 		search: 'find',
+		symbols: 'symbolPalette',
 		memo: 'toggleMemo',
 		ai: 'toggleAi',
 		focus: 'focusMode'
@@ -447,15 +493,25 @@
 			editorStore.focusMode = !editorStore.focusMode;
 			return true;
 		}
-		const insert = matchesShortcut(e, key('ruby'))
-			? 'ruby'
-			: matchesShortcut(e, key('bouten'))
-				? 'bouten'
-				: null;
+		const insertKinds = [
+			'ruby',
+			'bouten',
+			'kagi',
+			'nijukagi',
+			'paren',
+			'ellipsis',
+			'dash'
+		] as const;
+		const insert = insertKinds.find((kind) => matchesShortcut(e, key(kind))) ?? null;
 		if (insert) {
 			// 本文を編集しているときだけ(他の入力欄では何もしない)
 			if (!editable || !editorDiv || document.activeElement !== editorDiv) return false;
 			applyInsertion(insert);
+			return true;
+		}
+		if (matchesShortcut(e, key('symbolPalette'))) {
+			if (!editable || !editorDiv) return false;
+			toggleSymbolPalette();
 			return true;
 		}
 		if (matchesShortcut(e, key('indentAll'))) {
@@ -1008,6 +1064,7 @@
 
 	// 元に戻す/やり直す: 共同編集のシーンでは自分の編集だけを戻す履歴へ
 	function handleEditorKeydown(e: KeyboardEvent) {
+		if (replaceUnusedAutoIndent(e)) return;
 		if (!session || e.isComposing) return;
 		const action = historyActionOf(e, settingsStore.settings.shortcuts);
 		if (!action) return;
@@ -1695,23 +1752,64 @@
 
 	/** 改行の直後に、次の行の先頭へ全角スペースを入れる(設定「改行したとき、行頭に全角スペースを入れる」) */
 	const NO_INDENT_BEFORE = new Set(['　', '「', '『', '（', '(', '〈', '《', '【', '―', '…']);
+	/**
+	 * 直前に自動で入れた字下げの直後(=カーソル)の本文上の位置。ほかの入力があれば消す。
+	 * 続けて改行したとき、この字下げだけの行から全角スペースを取り除くのに使う
+	 */
+	let lastAutoIndent: number | null = null;
 	function maybeAutoIndent(e: Event) {
-		if (!editorStore.autoIndent || collabReadOnly) return;
 		const input = e as InputEvent;
-		if (input.isComposing) return;
-		if (input.inputType !== 'insertParagraph' && input.inputType !== 'insertLineBreak') return;
+		const isBreak = input.inputType === 'insertParagraph' || input.inputType === 'insertLineBreak';
+		lastAutoIndent = null;
+		if (!editorStore.autoIndent || collabReadOnly) return;
+		if (input.isComposing || !isBreak) return;
 		if (NO_INDENT_BEFORE.has(charAfterCaret())) return;
 		// execCommand を使い、ブラウザ(または共同編集)の履歴に残す。発生する input は通常の入力として処理される
 		document.execCommand('insertText', false, '　');
+		const caret = caretOffset();
+		lastAutoIndent = caret;
+	}
+
+	/**
+	 * 自動で入れた字下げのあと、何も書かずに改行(Enter)したら、その行(全角スペースだけの行)のスペースを
+	 * 改行で置き換える。字下げは新しい行へ移る(発生する改行の input で入れ直す)。処理したら true。
+	 * 改行の後から消すと、ブラウザが空になった行(<div>)を潰してしまうため、改行の前に置き換える
+	 */
+	function replaceUnusedAutoIndent(e: KeyboardEvent): boolean {
+		if (e.key !== 'Enter' || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return false;
+		const pos = lastAutoIndent;
+		if (pos === null || !editorDiv || !editorStore.autoIndent || collabReadOnly || !editable)
+			return false;
+		const selection = window.getSelection();
+		if (!selection || !selection.isCollapsed || caretOffset() !== pos) return false;
+		const text = editorStore.content;
+		if (text.charAt(pos - 1) !== '　') return false;
+		if (pos - 2 >= 0 && text.charAt(pos - 2) !== '\n') return false;
+		const next = text.charAt(pos);
+		if (next !== '' && next !== '\n') return false;
+		if (!selectTextRange(editorDiv, pos - 1, pos)) return false;
+		e.preventDefault();
+		lastAutoIndent = null;
+		document.execCommand(e.shiftKey ? 'insertLineBreak' : 'insertParagraph');
+		// 改行の input の中からは execCommand が効かないので、新しい行の字下げはここで入れる
+		lastAutoIndent = null;
+		if (NO_INDENT_BEFORE.has(charAfterCaret())) return true;
+		document.execCommand('insertText', false, '　');
+		lastAutoIndent = caretOffset();
+		return true;
+	}
+
+	/** カーソル(選択の始点)の本文上の位置。取れなければ null */
+	function caretOffset(): number | null {
+		const selection = window.getSelection();
+		if (!editorDiv || !selection || selection.rangeCount === 0) return null;
+		return rangeTextOffsets(editorDiv, selection.getRangeAt(0))?.start ?? null;
 	}
 
 	/** カーソルの直後の 1 文字(行末・取得できなければ空文字) */
 	function charAfterCaret(): string {
-		const selection = window.getSelection();
-		if (!editorDiv || !selection || selection.rangeCount === 0) return '';
-		const offsets = rangeTextOffsets(editorDiv, selection.getRangeAt(0));
-		if (!offsets) return '';
-		return editorStore.content.charAt(offsets.start);
+		const caret = caretOffset();
+		return caret === null ? '' : editorStore.content.charAt(caret);
 	}
 
 	// DOM 側の変更(切り取り・貼り付けなど)をストアへ反映する
@@ -3374,6 +3472,11 @@
 		<Icon name={item.icon} class="w:20px" />
 	</button>
 {/snippet}
+
+<!-- 記号パレット(デスクトップ/タブレット) -->
+<Popover bind:open={symbolPaletteOpen} anchor={symbolPaletteAnchor} label="記号">
+	<SymbolPalette onpick={pickSymbol} />
+</Popover>
 
 <!-- 拡張のポップアップ(デスクトップ/タブレット) -->
 {#if extPopoverItem}

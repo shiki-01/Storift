@@ -106,6 +106,18 @@ async function main() {
 		await sleep(200);
 		const lines = (await content(page)).split('\n').filter((l) => l !== '');
 		check('改行した行の先頭に全角スペース', lines.at(-1) === '　次の行', JSON.stringify(lines));
+		// 何も書かずにもう一度改行すると、字下げだけの行のスペースは消え、字下げは新しい行へ移る
+		await page.keyboard.press('Enter');
+		await page.keyboard.press('Enter');
+		await page.keyboard.type('空行の後');
+		await sleep(200);
+		const all = (await content(page)).split('\n');
+		const at = all.lastIndexOf('　空行の後');
+		check(
+			'続けて改行すると字下げだけの行のスペースを消す',
+			at > 1 && all[at - 1] === '' && all.includes('　次の行') && !all.includes('　'),
+			JSON.stringify(all)
+		);
 		await page.keyboard.press('Enter');
 		await page.keyboard.type('「会話');
 		await sleep(200);
@@ -118,6 +130,34 @@ async function main() {
 		await sleep(200);
 		const lines2 = (await content(page)).split('\n').filter((l) => l !== '');
 		check('オフのときは字下げしない', lines2.at(-1) === '字下げなし', JSON.stringify(lines2));
+
+		console.log('[特殊記号]');
+		await page.keyboard.press('Control+Alt+K');
+		await page.keyboard.type('か');
+		await sleep(200);
+		check(
+			'Ctrl+Alt+K でかぎ括弧',
+			(await content(page)).includes('字下げなし「か」'),
+			await content(page)
+		);
+		await page.locator('[data-testid="toolbar-symbols"]').click();
+		await page.locator('[data-testid="symbol-palette"]').waitFor({ timeout: 5000 });
+		await page.locator('[data-testid="symbol-palette"] [data-symbol="※"]').first().click();
+		await sleep(200);
+		check(
+			'記号パレットで記号を入れる(カーソル位置へ)',
+			(await content(page)).includes('「か※」'),
+			await content(page)
+		);
+		await page.locator('[data-testid="symbol-palette"] [data-symbol="『"]').first().click();
+		await page.keyboard.type('題');
+		await sleep(200);
+		check(
+			'パレットの括弧は内側にカーソルを置く',
+			(await content(page)).includes('「か※『題』」'),
+			await content(page)
+		);
+		await page.keyboard.press('Escape');
 
 		console.log('[外枠のずれの補正]');
 		const frameTop = await page.evaluate(async () => {

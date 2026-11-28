@@ -112,15 +112,15 @@ async function main() {
 		});
 		check(
 			'保存された並びで、先頭の 2 つが入れ替わる',
-			Array.isArray(saved) && saved[0] === 'export' && saved[1] === 'assist',
+			Array.isArray(saved) && saved[0] === 'symbols' && saved[1] === 'assist',
 			JSON.stringify(saved?.slice(0, 3))
 		);
 
 		await openEditor(page, base, pid);
 		const labels = await toolbarLabels(page);
-		const iExport = labels.indexOf('エクスポート');
+		const iSymbols = labels.findIndex((l) => l.startsWith('記号'));
 		const iAssist = labels.indexOf('執筆支援');
-		check('ツールバーに順序が反映される', iExport >= 0 && iExport < iAssist, labels.join(','));
+		check('ツールバーに順序が反映される', iSymbols >= 0 && iSymbols < iAssist, labels.join(','));
 
 		console.log('[三点メニューにまとめる]');
 		await page.evaluate(async () => {

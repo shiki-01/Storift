@@ -22,6 +22,7 @@ export interface ToolbarItem {
 
 const BUILTIN_ITEMS = [
 	{ id: 'assist', label: '執筆支援', icon: 'pencil-bolt' },
+	{ id: 'symbols', label: '記号', icon: 'symbols', shortcut: 'Ctrl+Alt+S' },
 	{ id: 'export', label: 'エクスポート', icon: 'download' },
 	{ id: 'review', label: 'AI 添削用にコピー', icon: 'copy' },
 	{ id: 'manuscript', label: '作品全体を通して読む', icon: 'book-2' },

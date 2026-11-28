@@ -11,6 +11,7 @@
 	import { getServiceWorkerVersion, checkForUpdate } from '$lib/utils/sw-register';
 	import SettingsCard from './SettingsCard.svelte';
 	import SettingsRow from './SettingsRow.svelte';
+	import { whatsNewStore } from '$lib/stores/whatsNew.svelte';
 
 	let swVersion = $state<string | null>(null);
 	let checkingUpdate = $state(false);
@@ -51,6 +52,22 @@
 		{/if}
 		<p class="m:4|0|0|0">&copy shiki 2025</p>
 	</div>
+</SettingsCard>
+
+<SettingsCard title="更新情報">
+	<SettingsRow
+		label="この版の変更点"
+		description="新しい機能や修正の内容を確認できます。過去の版の変更履歴も見られます。"
+	>
+		<Button variant="secondary" onclick={() => whatsNewStore.show()}>更新情報を見る</Button>
+	</SettingsRow>
+	<SettingsRow
+		label="更新のあとに更新情報を表示する"
+		description="新しいバージョンに更新したあとの最初の起動で、変更点をポップアップで表示します。"
+		labelFor="whatsNewOnUpdate"
+	>
+		<input id="whatsNewOnUpdate" type="checkbox" bind:checked={whatsNewStore.showOnUpdate} />
+	</SettingsRow>
 </SettingsCard>
 
 <SettingsCard title="使い方">

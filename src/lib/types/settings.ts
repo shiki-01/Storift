@@ -81,6 +81,18 @@ export interface AppSettings {
 		bouten: string;
 		/** シーン全体の段落の先頭に字下げを入れる */
 		indentAll: string;
+		/** かぎ括弧「」を入れる(選択中ならその文字列を囲む) */
+		kagi: string;
+		/** 二重かぎ括弧『』を入れる */
+		nijukagi: string;
+		/** 丸括弧（）を入れる */
+		paren: string;
+		/** 三点リーダー(……)を入れる */
+		ellipsis: string;
+		/** ダッシュ(――)を入れる */
+		dash: string;
+		/** 記号パレットを開く */
+		symbolPalette: string;
 		/** 章・シーン一覧の開閉 */
 		toggleSceneList: string;
 		/** メモパネルの開閉 */
